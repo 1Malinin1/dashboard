@@ -173,7 +173,7 @@
   .toolbar .count{font-size:12.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
 
   /* ===== Плитки KPI поменьше (для доп. вкладок) ===== */
-  .kpis4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+  .kpis4{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:14px}
 
   /* ===== Бейджи статуса (никогда только цветом — всегда с текстом) ===== */
   .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
@@ -201,7 +201,28 @@
   .empty-hint{padding:40px 20px;text-align:center;color:var(--muted);font-size:13.5px}
 
   /* ===== Карточка товара (вкладка «Товар») ===== */
-  #prodSkuSelect{max-width:100%}
+  /* Кастомный комбобокс вместо нативного <select> — у native select браузер сам решает,
+     открывать список вверх или вниз, и это нельзя переопределить. Здесь список — обычный
+     элемент страницы под полем, поэтому всегда раскрывается вниз. */
+  .combo{position:relative}
+  .combo-trigger{width:100%;text-align:left;border:1px solid var(--border);background:var(--surface);color:var(--text-1);
+    font:inherit;font-size:13px;padding:8px 34px 8px 12px;border-radius:9px;cursor:pointer;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap;position:relative}
+  .combo-trigger::after{content:"";position:absolute;right:12px;top:50%;width:8px;height:8px;
+    border-right:2px solid var(--muted);border-bottom:2px solid var(--muted);
+    transform:translateY(-65%) rotate(45deg)}
+  .combo-panel{position:absolute;top:calc(100% + 6px);left:0;right:0;background:var(--surface);
+    border:1px solid var(--border);border-radius:10px;box-shadow:var(--shadow);z-index:30;
+    padding:8px;display:flex;flex-direction:column;gap:6px}
+  #prodSkuSearch.combo-search{border:1px solid var(--border);background:var(--surface-2);color:var(--text-1);
+    font:inherit;font-size:13px;padding:7px 10px;border-radius:8px;flex:none;width:100%;min-width:0}
+  .combo-list{overflow-y:auto;max-height:260px;display:flex;flex-direction:column;gap:1px}
+  .combo-item{display:flex;justify-content:space-between;gap:10px;padding:7px 9px;border-radius:7px;
+    cursor:pointer;font-size:13px;text-align:left;border:0;background:none;color:var(--text-1);width:100%}
+  .combo-item:hover{background:var(--surface-2)}
+  .combo-item.selected{background:color-mix(in srgb,var(--s1) 12%,var(--surface))}
+  .combo-item .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .combo-item .a{color:var(--muted);font-size:11.5px;flex:none}
   .period-compare{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--grid)}
   .period-box{background:var(--surface-2);border-radius:10px;padding:10px 14px;flex:1;min-width:240px}
   .period-box .lbl{font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600}
@@ -320,6 +341,12 @@
       <div class="cap" id="dynChartCap">Штук в день, выбранный период</div>
       <div id="ch-dyn"></div>
     </div>
+    <div class="card" style="margin-bottom:14px">
+      <h3>Сумма заказов и выкупа по дням</h3>
+      <div class="cap" id="dynMoneyCap">₽ в день · по данным воронки продаж (вкладка «Товар»)</div>
+      <div class="legend" id="dynMoneyLegend"></div>
+      <div id="ch-dyn-money"></div>
+    </div>
     <div class="table-card">
       <div class="table-head">
         <h3>Товары за период</h3>
@@ -381,10 +408,13 @@
       <div class="cap">Найдите товар и сравните два периода — что изменилось в воронке</div>
       <div class="toolbar" style="margin-bottom:0">
         <select id="prodCatFilter" title="Категория"></select>
-        <select id="prodSkuSelect" title="Артикул" style="flex:2;min-width:280px"><option value="">Сначала выберите категорию или сразу артикул…</option></select>
-      </div>
-      <div class="toolbar" style="margin-top:8px;margin-bottom:0">
-        <input type="search" id="prodSkuSearch" placeholder="Поиск внутри категории по названию или артикулу…" style="flex:1">
+        <div class="combo" id="prodSkuCombo" style="flex:2;min-width:280px">
+          <button type="button" class="combo-trigger" id="prodSkuTrigger">Выберите артикул…</button>
+          <div class="combo-panel" id="prodSkuPanel" hidden>
+            <input type="search" id="prodSkuSearch" class="combo-search" placeholder="Поиск по названию или артикулу…">
+            <div class="combo-list" id="prodSkuList"></div>
+          </div>
+        </div>
         <span class="count" id="prodSkuCount"></span>
       </div>
       <div id="prodPeriods" class="period-compare" hidden>
@@ -1165,6 +1195,53 @@ function dailyBars(mount,isoDates,values){
   mount.innerHTML="";mount.appendChild(svg);
 }
 
+/* ---- сумма заказов/выкупа по дням — источник: воронка продаж (FUNNEL_CACHE, IndexedDB) ---- */
+function moneySumsForSkus(skus,fromDate,toDate){
+  const skuSet=new Set(skus.map(c=>c.sku));
+  let ordersSum=0,buyoutSum=0;
+  FUNNEL_CACHE.forEach(r=>{ if(skuSet.has(r.sku)&&r.date>=fromDate&&r.date<=toDate){ ordersSum+=r.ordersSum||0; buyoutSum+=r.buyoutSum||0; } });
+  return {ordersSum,buyoutSum};
+}
+function moneySeriesForSkus(skus,isoDates){
+  const skuSet=new Set(skus.map(c=>c.sku));
+  const ordersSum=new Array(isoDates.length).fill(0), buyoutSum=new Array(isoDates.length).fill(0);
+  const idx={}; isoDates.forEach((d,i)=>idx[d]=i);
+  FUNNEL_CACHE.forEach(r=>{ if(!skuSet.has(r.sku))return; const i=idx[r.date]; if(i==null)return;
+    ordersSum[i]+=r.ordersSum||0; buyoutSum[i]+=r.buyoutSum||0; });
+  return {ordersSum,buyoutSum};
+}
+/* ---- график: сгруппированные столбцы по дням (2 серии, много точек) ---- */
+function dailyGroupedBars(mount,isoDates,series){
+  const W=1000,H=240,m={t:18,r:14,b:34,l:56};
+  const iw=W-m.l-m.r, ih=H-m.t-m.b, n=Math.max(1,isoDates.length);
+  const allv=series.flatMap(s=>s.data);
+  const sc=niceScale(0,Math.max(...allv,0),4), max=sc.max||1;
+  const Y=v=>m.t+ih-(v/max)*ih;
+  const band=iw/n, bw=Math.max(1,Math.min(11,(band-2)/series.length));
+  const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
+  for(let v=0;v<=max+1e-6;v+=sc.step){const y=Y(v);
+    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":1}));
+    const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});tx.textContent=fmtAxis(v);svg.appendChild(tx);}
+  const maxLabels=n<=10?n:9, stride=Math.max(1,Math.round(n/maxLabels)), groupW=bw*series.length;
+  for(let i=0;i<n;i++){
+    const cx=m.l+band*i+band/2;
+    series.forEach((s,si)=>{
+      const v=s.data[i]||0, y=Y(v), h=Y(0)-y, x=cx-groupW/2+si*bw;
+      const rect=el("rect",{x,y,width:Math.max(1,bw-1),height:Math.max(1,h),rx:Math.min(2,bw/2),fill:s.color});
+      rect.style.cursor="pointer";
+      rect.addEventListener("pointermove",ev=>{
+        const rows=series.map(ss=>`<div class="t-row"><span class="k"><i style="background:${ss.color}"></i>${ss.name}</span><span class="v">${rub(ss.data[i]||0)}</span></div>`).join("");
+        showTip(`<div class="t-hd">${fmtDateLong(isoDates[i])}</div>${rows}`,ev.clientX,ev.clientY);
+      });
+      rect.addEventListener("pointerleave",hideTip);
+      svg.appendChild(rect);
+    });
+    if(i%stride===0||i===n-1){ const tx=el("text",{x:cx,y:H-12,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
+      tx.textContent=fmtDate(isoDates[i]); svg.appendChild(tx); }
+  }
+  mount.innerHTML="";mount.appendChild(svg);
+}
+
 function renderDynamicsTab(){
   document.getElementById("dynFreshness").innerHTML = RD
     ? `<span class="dot"></span>Заказы обновлены по ${fmtDateLong(RLAST)} · история с ${fmtDateLong(RDATES[0])}`
@@ -1183,17 +1260,37 @@ function renderDynamicsTab(){
   const catTotals={}; skus.forEach(c=>{ const t=sumRange(c.sku,from,to); if(t) catTotals[c.category]=(catTotals[c.category]||0)+t; });
   let topCat="—",topCatQty=0; Object.entries(catTotals).forEach(([k,v])=>{ if(v>topCatQty){topCatQty=v;topCat=k;} });
 
+  const moneyNow = isoDates.length? moneySumsForSkus(skus,isoDates[0],isoDates[isoDates.length-1]) : {ordersSum:0,buyoutSum:0};
+  let moneyPrev=null;
+  if(hasPrev){ const prevDates=RDATES.slice(prevFrom,prevTo+1);
+    if(prevDates.length) moneyPrev=moneySumsForSkus(skus,prevDates[0],prevDates[prevDates.length-1]); }
+
   document.getElementById("dynKpis").innerHTML=[
     {lbl:"Заказов за период",val:fmt(periodTotal),d:hasPrev?delta(periodTotal,prevTotal,true):""},
     {lbl:"В среднем в день",val:avgPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})},
     {lbl:"Активных товаров",val:activeSkuCount+" из "+skus.length},
     {lbl:"Топ-категория",val:esc(topCat)+(topCatQty&&periodTotal?` (${Math.round(topCatQty/periodTotal*100)}%)`:"")},
+    {lbl:"Заказано на сумму, ₽",val:rub(moneyNow.ordersSum),d:moneyPrev?delta(moneyNow.ordersSum,moneyPrev.ordersSum,true):""},
+    {lbl:"Выкуплено на сумму, ₽",val:rub(moneyNow.buyoutSum),d:moneyPrev?delta(moneyNow.buyoutSum,moneyPrev.buyoutSum,true):""},
   ].map(k=>`<div class="kpi"><div class="lbl">${k.lbl}</div><div class="val">${k.val}</div>${k.d||""}</div>`).join("");
 
   document.getElementById("dynChartCap").textContent = isoDates.length
     ? `${fmtDate(isoDates[0])} – ${fmtDate(isoDates[isoDates.length-1])} · ${skus.length} товаров в выборке`
     : "нет данных за выбранный период";
   dailyBars(document.getElementById("ch-dyn"),isoDates,totals);
+
+  legend(document.getElementById("dynMoneyLegend"),[
+    {name:"Заказано, ₽",color:cssv("--s1")},{name:"Выкуплено, ₽",color:cssv("--s2")}]);
+  const hasMoneyData = FUNNEL_CACHE.length && isoDates.some(d=>FUNNEL_CACHE.some(r=>r.date===d));
+  if(hasMoneyData){
+    const money=moneySeriesForSkus(skus,isoDates);
+    dailyGroupedBars(document.getElementById("ch-dyn-money"),isoDates,[
+      {name:"Заказано, ₽",color:cssv("--s1"),data:money.ordersSum},
+      {name:"Выкуплено, ₽",color:cssv("--s2"),data:money.buyoutSum}]);
+    document.getElementById("dynMoneyCap").textContent="₽ в день · по данным воронки продаж (вкладка «Товар»)";
+  } else {
+    document.getElementById("ch-dyn-money").innerHTML=`<div class="empty-hint">За выбранный период нет загруженной воронки продаж — суммы появятся, как только загрузите отчёт на вкладке «Товар» за эти дни.</div>`;
+  }
 
   let rows=skus.map(c=>({sku:c.sku,name:c.name,category:c.category,qty:sumRange(c.sku,from,to)}));
   rows=rows.filter(r=>r.qty>0).sort((a,b)=>b.qty-a.qty);
@@ -1347,23 +1444,38 @@ function prodFilteredCatalog(){
   return RCAT.filter(c=>(!cat||c.category===cat)&&(!q||c.sku.includes(q)||c.name.toLowerCase().includes(q)))
     .sort((a,b)=>a.name.localeCompare(b.name,"ru"));
 }
+function selectSkuTriggerLabel(){
+  const c=RCAT.find(x=>x.sku===selectedSku);
+  document.getElementById("prodSkuTrigger").textContent = c? `${c.name} — ${c.sku}` : "Выберите артикул…";
+}
 function renderProdSkuSelect(){
   const list=prodFilteredCatalog();
-  const sel=document.getElementById("prodSkuSelect");
-  sel.innerHTML='<option value="">Выберите артикул…</option>'+
-    list.map(c=>`<option value="${esc(c.sku)}" ${c.sku===selectedSku?"selected":""}>${esc(c.name)} — ${esc(c.sku)}</option>`).join("");
-  if(selectedSku && !list.some(c=>c.sku===selectedSku)) sel.value="";
+  const box=document.getElementById("prodSkuList");
+  box.innerHTML = list.length
+    ? list.map(c=>`<button type="button" class="combo-item ${c.sku===selectedSku?"selected":""}" data-sku="${esc(c.sku)}">
+        <span class="n">${esc(c.name)}</span><span class="a">${esc(c.sku)}</span></button>`).join("")
+    : `<div class="empty-hint" style="padding:14px">Ничего не найдено</div>`;
   document.getElementById("prodSkuCount").textContent=list.length+" товаров в списке";
 }
 function initProductTabControls(){
   fillProdCatFilter();
   renderProdSkuSelect();
+  selectSkuTriggerLabel();
 }
 document.getElementById("prodCatFilter").addEventListener("change",renderProdSkuSelect);
 document.getElementById("prodSkuSearch").addEventListener("input",renderProdSkuSelect);
-document.getElementById("prodSkuSelect").addEventListener("change",e=>{
-  selectedSku=e.target.value||null;
-  if(!selectedSku){ document.getElementById("prodPeriods").hidden=true; document.getElementById("prodTableCard").hidden=true; return; }
+
+const prodSkuCombo=document.getElementById("prodSkuCombo"), prodSkuTrigger=document.getElementById("prodSkuTrigger"), prodSkuPanel=document.getElementById("prodSkuPanel");
+function openSkuPanel(){ prodSkuPanel.hidden=false; renderProdSkuSelect(); document.getElementById("prodSkuSearch").focus(); }
+function closeSkuPanel(){ prodSkuPanel.hidden=true; }
+prodSkuTrigger.addEventListener("click",()=>{ prodSkuPanel.hidden? openSkuPanel() : closeSkuPanel(); });
+document.addEventListener("click",e=>{ if(!prodSkuCombo.contains(e.target)) closeSkuPanel(); });
+document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeSkuPanel(); });
+document.getElementById("prodSkuList").addEventListener("click",e=>{
+  const b=e.target.closest(".combo-item"); if(!b) return;
+  selectedSku=b.dataset.sku;
+  selectSkuTriggerLabel();
+  closeSkuPanel();
   document.getElementById("prodPeriods").hidden=false;
   initProductPeriods();
   renderProductPeriods();
