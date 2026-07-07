@@ -201,13 +201,7 @@
   .empty-hint{padding:40px 20px;text-align:center;color:var(--muted);font-size:13.5px}
 
   /* ===== Карточка товара (вкладка «Товар») ===== */
-  #prodSkuResults{display:flex;flex-direction:column;gap:2px;margin-top:8px;max-height:260px;overflow-y:auto}
-  .sku-hit{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;
-    border:1px solid transparent;font-size:13px;text-align:left;background:none;color:var(--text-1);width:100%}
-  .sku-hit:hover{background:var(--surface-2)}
-  .sku-hit.selected{background:color-mix(in srgb,var(--s1) 10%,var(--surface));border-color:var(--s1)}
-  .sku-hit .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .sku-hit .a{color:var(--muted);font-size:11.5px;flex:none}
+  #prodSkuSelect{max-width:100%}
   .period-compare{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--grid)}
   .period-box{background:var(--surface-2);border-radius:10px;padding:10px 14px;flex:1;min-width:240px}
   .period-box .lbl{font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600}
@@ -386,9 +380,13 @@
       <h3>Карточка товара</h3>
       <div class="cap">Найдите товар и сравните два периода — что изменилось в воронке</div>
       <div class="toolbar" style="margin-bottom:0">
-        <input type="search" id="prodSkuSearch" placeholder="Поиск по артикулу или названию…" style="flex:2;min-width:260px">
+        <select id="prodCatFilter" title="Категория"></select>
+        <select id="prodSkuSelect" title="Артикул" style="flex:2;min-width:280px"><option value="">Сначала выберите категорию или сразу артикул…</option></select>
       </div>
-      <div id="prodSkuResults"></div>
+      <div class="toolbar" style="margin-top:8px;margin-bottom:0">
+        <input type="search" id="prodSkuSearch" placeholder="Поиск внутри категории по названию или артикулу…" style="flex:1">
+        <span class="count" id="prodSkuCount"></span>
+      </div>
       <div id="prodPeriods" class="period-compare" hidden>
         <div class="period-box">
           <div class="lbl">Период A</div>
@@ -1336,22 +1334,36 @@ function renderProductHistoryInfo(){
   el.innerHTML=`<span class="dot"></span>Воронка: ${dates.length} дн. загружено, с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров · хранится последние ${FUNNEL_RETENTION_DAYS} дней`;
 }
 
-/* ---- поиск и выбор товара ---- */
+/* ---- фильтры "категория → артикул" и выбор товара ---- */
 let selectedSku=null;
-function renderSkuResults(){
-  const q=document.getElementById("prodSkuSearch").value.trim().toLowerCase();
-  const box=document.getElementById("prodSkuResults");
-  if(!q){ box.innerHTML=""; return; }
-  const matches=RCAT.filter(c=>c.sku.includes(q)||c.name.toLowerCase().includes(q)).slice(0,8);
-  if(!matches.length){ box.innerHTML=`<div class="empty-hint" style="padding:14px">Ничего не найдено</div>`; return; }
-  box.innerHTML=matches.map(c=>`<button type="button" class="sku-hit ${c.sku===selectedSku?'selected':''}" data-sku="${esc(c.sku)}">
-      <span class="n">${esc(c.name)}</span><span class="a">${esc(c.sku)}</span></button>`).join("");
+function fillProdCatFilter(){
+  const sel=document.getElementById("prodCatFilter");
+  if(sel.options.length) return;
+  sel.innerHTML='<option value="">Все категории</option>'+categories().map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
 }
-document.getElementById("prodSkuResults").addEventListener("click",e=>{
-  const b=e.target.closest(".sku-hit"); if(!b) return;
-  selectedSku=b.dataset.sku;
-  document.getElementById("prodSkuSearch").value = (RCAT.find(c=>c.sku===selectedSku)||{}).name || selectedSku;
-  renderSkuResults();
+function prodFilteredCatalog(){
+  const cat=document.getElementById("prodCatFilter").value;
+  const q=document.getElementById("prodSkuSearch").value.trim().toLowerCase();
+  return RCAT.filter(c=>(!cat||c.category===cat)&&(!q||c.sku.includes(q)||c.name.toLowerCase().includes(q)))
+    .sort((a,b)=>a.name.localeCompare(b.name,"ru"));
+}
+function renderProdSkuSelect(){
+  const list=prodFilteredCatalog();
+  const sel=document.getElementById("prodSkuSelect");
+  sel.innerHTML='<option value="">Выберите артикул…</option>'+
+    list.map(c=>`<option value="${esc(c.sku)}" ${c.sku===selectedSku?"selected":""}>${esc(c.name)} — ${esc(c.sku)}</option>`).join("");
+  if(selectedSku && !list.some(c=>c.sku===selectedSku)) sel.value="";
+  document.getElementById("prodSkuCount").textContent=list.length+" товаров в списке";
+}
+function initProductTabControls(){
+  fillProdCatFilter();
+  renderProdSkuSelect();
+}
+document.getElementById("prodCatFilter").addEventListener("change",renderProdSkuSelect);
+document.getElementById("prodSkuSearch").addEventListener("input",renderProdSkuSelect);
+document.getElementById("prodSkuSelect").addEventListener("change",e=>{
+  selectedSku=e.target.value||null;
+  if(!selectedSku){ document.getElementById("prodPeriods").hidden=true; document.getElementById("prodTableCard").hidden=true; return; }
   document.getElementById("prodPeriods").hidden=false;
   initProductPeriods();
   renderProductPeriods();
@@ -1441,7 +1453,7 @@ function switchTab(name){
   document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
   if(name==="dynamics") renderDynamicsTab();
   if(name==="turnover") renderTurnoverTab();
-  if(name==="product") renderProductHistoryInfo();
+  if(name==="product"){ renderProductHistoryInfo(); initProductTabControls(); }
   try{localStorage.setItem("wb_active_tab",name);}catch(e){}
 }
 document.getElementById("tabs").addEventListener("click",e=>{
@@ -1466,7 +1478,6 @@ prodFileInput.onchange=e=>{ if(e.target.files.length) handleFunnelFiles(e.target
 ["dragenter","dragover"].forEach(ev=>prodDrop.addEventListener(ev,e=>{e.preventDefault();prodDrop.classList.add("hover");}));
 ["dragleave","drop"].forEach(ev=>prodDrop.addEventListener(ev,e=>{e.preventDefault();prodDrop.classList.remove("hover");}));
 prodDrop.addEventListener("drop",e=>{ if(e.dataTransfer.files.length) handleFunnelFiles(e.dataTransfer.files); });
-document.getElementById("prodSkuSearch").addEventListener("input",renderSkuResults);
 ["prodAFrom","prodATo","prodBFrom","prodBTo"].forEach(id=>document.getElementById(id).addEventListener("change",renderProductPeriods));
 
 // старт
