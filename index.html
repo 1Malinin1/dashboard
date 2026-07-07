@@ -13,7 +13,7 @@
     --s1:#2a78d6;  /* заказы / выручка   */
     --s2:#1baf7a;  /* прибыль / выкупы   */
     --s3:#eda100;  /* реклама            */
-    --good:#0ca30c; --good-txt:#006300; --crit:#d03b3b; --warn:#fab219;
+    --good:#0ca30c; --good-txt:#006300; --crit:#d03b3b; --warn:#fab219; --warn-txt:#8a5a00;
     --radius:14px; --shadow:0 1px 2px rgba(11,11,11,.04),0 4px 16px rgba(11,11,11,.05);
   }
   :root[data-theme="dark"]{
@@ -21,7 +21,7 @@
     --text-1:#fff; --text-2:#c3c2b7; --muted:#898781;
     --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
     --s1:#3987e5; --s2:#199e70; --s3:#c98500;
-    --good:#0ca30c; --good-txt:#0ca30c; --crit:#d03b3b; --warn:#fab219;
+    --good:#0ca30c; --good-txt:#0ca30c; --crit:#d03b3b; --warn:#fab219; --warn-txt:#fab219;
     --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
   }
   @media (prefers-color-scheme:dark){
@@ -29,7 +29,7 @@
       --page:#0d0d0d; --surface:#1a1a19; --surface-2:#232320;
       --text-1:#fff; --text-2:#c3c2b7; --muted:#898781;
       --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,.10);
-      --s1:#3987e5; --s2:#199e70; --s3:#c98500; --good-txt:#0ca30c;
+      --s1:#3987e5; --s2:#199e70; --s3:#c98500; --good-txt:#0ca30c; --warn-txt:#fab219;
       --shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.35);
     }
   }
@@ -152,9 +152,59 @@
   footer{color:var(--muted);font-size:12px;text-align:center;margin-top:26px}
   footer a{color:var(--s1)}
 
+  /* ===== Вкладки ===== */
+  .tabs{display:flex;gap:4px;margin:18px 0 4px;border-bottom:1px solid var(--border)}
+  .tab-btn{border:0;background:transparent;color:var(--text-2);font:inherit;font-size:14px;
+    font-weight:550;padding:10px 4px;margin-right:22px;cursor:pointer;position:relative;
+    border-bottom:2px solid transparent;transition:.12s}
+  .tab-btn:hover{color:var(--text-1)}
+  .tab-btn[aria-selected="true"]{color:var(--text-1);border-bottom-color:var(--s1)}
+  .tab-panel[hidden]{display:none}
+  .freshness{font-size:12px;color:var(--muted);margin:14px 0 16px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .freshness .dot{width:8px;height:8px;border-radius:50%;background:var(--good);flex:none}
+
+  /* ===== Панель поиска/фильтров для больших таблиц ===== */
+  .toolbar{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:14px}
+  .toolbar input[type="search"]{border:1px solid var(--border);background:var(--surface);
+    color:var(--text-1);font:inherit;font-size:13px;padding:8px 12px;border-radius:9px;
+    min-width:220px;flex:1 1 220px}
+  .toolbar select{border:1px solid var(--border);background:var(--surface);color:var(--text-1);
+    font:inherit;font-size:13px;padding:8px 30px 8px 12px;border-radius:9px;cursor:pointer}
+  .toolbar .count{font-size:12.5px;color:var(--muted);margin-left:auto;white-space:nowrap}
+
+  /* ===== Плитки KPI поменьше (для доп. вкладок) ===== */
+  .kpis4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:14px}
+
+  /* ===== Бейджи статуса (никогда только цветом — всегда с текстом) ===== */
+  .badge{display:inline-flex;align-items:center;gap:6px;font-size:12px;font-weight:600;
+    padding:4px 9px 4px 7px;border-radius:99px;white-space:nowrap}
+  .badge .d{width:7px;height:7px;border-radius:50%;flex:none}
+  .badge.critical{background:color-mix(in srgb,var(--crit) 14%,var(--surface));color:var(--crit)}
+  .badge.critical .d{background:var(--crit)}
+  .badge.warning{background:color-mix(in srgb,var(--warn) 18%,var(--surface));color:var(--warn-txt)}
+  .badge.warning .d{background:var(--warn)}
+  .badge.ordered{background:color-mix(in srgb,var(--s1) 14%,var(--surface));color:var(--s1)}
+  .badge.ordered .d{background:var(--s1)}
+  .badge.good{background:color-mix(in srgb,var(--good) 14%,var(--surface));color:var(--good-txt)}
+  .badge.good .d{background:var(--good)}
+  .badge.nodata{background:var(--surface-2);color:var(--muted)}
+  .badge.nodata .d{background:var(--muted)}
+
+  /* ===== Инлайн-редактируемые числа в таблицах ===== */
+  table.rnp input.edit-num{width:56px;border:1px solid var(--border);background:var(--surface-2);
+    color:var(--text-1);font:inherit;font-size:12.5px;text-align:right;border-radius:6px;
+    padding:4px 6px;font-variant-numeric:tabular-nums}
+  table.rnp input.edit-num:focus{outline:2px solid var(--s1);outline-offset:1px;background:var(--surface)}
+  table.rnp td.name-cell{text-align:left;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  table.rnp td.name-cell .sku{color:var(--muted);font-size:11px;display:block}
+  table.rnp tbody tr.row-critical td{background:color-mix(in srgb,var(--crit) 5%,var(--surface))}
+  .empty-hint{padding:40px 20px;text-align:center;color:var(--muted);font-size:13.5px}
+
   @media(max-width:900px){
     .kpis{grid-template-columns:repeat(2,1fr)} .kpi.hero{grid-column:span 2}
+    .kpis4{grid-template-columns:repeat(2,1fr)}
     .grid2{grid-template-columns:1fr}
+    .tabs{overflow-x:auto;white-space:nowrap;flex-wrap:nowrap}
   }
 </style>
 </head>
@@ -183,6 +233,13 @@
     </button>
   </header>
 
+  <nav class="tabs" id="tabs" role="tablist">
+    <button class="tab-btn" data-tab="home" role="tab" aria-selected="true">Главная</button>
+    <button class="tab-btn" data-tab="dynamics" role="tab" aria-selected="false">Динамика заказов</button>
+    <button class="tab-btn" data-tab="turnover" role="tab" aria-selected="false">Оборачиваемость</button>
+  </nav>
+
+  <section id="tab-home" class="tab-panel">
   <div class="filters">
     <div class="seg" id="periodSeg" role="group" aria-label="Период">
       <button data-n="3">3 мес</button>
@@ -233,9 +290,69 @@
     </div>
     <div class="table-scroll"><table class="rnp" id="rnp"></table></div>
   </div>
+  </section>
+
+  <section id="tab-dynamics" class="tab-panel" hidden>
+    <div class="freshness" id="dynFreshness"></div>
+    <div class="toolbar">
+      <div class="seg" id="dynPeriodSeg" role="group" aria-label="Период">
+        <button data-n="1">Вчера</button>
+        <button data-n="7" aria-pressed="true">7 дней</button>
+        <button data-n="30">30 дней</button>
+        <button data-n="90">90 дней</button>
+        <button data-n="0">Весь период</button>
+      </div>
+    </div>
+    <div class="kpis4" id="dynKpis"></div>
+    <div class="card" style="margin-bottom:14px">
+      <h3 id="dynChartTitle">Заказы по дням</h3>
+      <div class="cap" id="dynChartCap">Штук в день, выбранный период</div>
+      <div id="ch-dyn"></div>
+    </div>
+    <div class="table-card">
+      <div class="table-head">
+        <h3>Товары за период</h3>
+        <span class="muted" id="dynTblNote"></span>
+      </div>
+      <div class="toolbar" style="padding:0 18px 12px">
+        <input type="search" id="dynSearch" placeholder="Поиск по артикулу или названию…">
+        <select id="dynCat"></select>
+        <span class="count" id="dynCount"></span>
+      </div>
+      <div class="table-scroll"><table class="rnp" id="dynTable"></table></div>
+    </div>
+  </section>
+
+  <section id="tab-turnover" class="tab-panel" hidden>
+    <div class="freshness" id="turnFreshness"></div>
+    <div class="kpis4" id="turnKpis"></div>
+    <div class="toolbar">
+      <input type="search" id="turnSearch" placeholder="Поиск по артикулу или названию…">
+      <select id="turnCat"></select>
+      <select id="turnStatus">
+        <option value="">Все статусы</option>
+        <option value="critical">Критично — нет в пути</option>
+        <option value="ordered">Мало, но уже заказано</option>
+        <option value="warning">Скоро понадобится</option>
+        <option value="good">Запаса достаточно</option>
+        <option value="nodata">Нет продаж/данных</option>
+      </select>
+      <select id="turnWindow">
+        <option value="14">Скорость: за 14 дней</option>
+        <option value="30" selected>Скорость: за 30 дней</option>
+        <option value="60">Скорость: за 60 дней</option>
+      </select>
+      <span class="count" id="turnCount"></span>
+      <button class="btn" id="turnExportBtn">Скачать список дозаказа CSV</button>
+    </div>
+    <div class="table-card">
+      <div class="table-scroll"><table class="rnp" id="turnTable"></table></div>
+    </div>
+  </section>
 
   <footer>
-    Данные считаются в браузере, никуда не отправляются. Обновление — кнопкой «Загрузить отчёт» (CSV/XLSX по шаблону).
+    Данные считаются в браузере, никуда не отправляются. Раздел «Главная» — кнопкой «Загрузить отчёт» (CSV/XLSX по шаблону).
+    <br>«Динамика заказов» и «Оборачиваемость» — по вашей таблице WB; чтобы обновить, пришлите новую выгрузку.
     <br>Автосохранение в этом браузере · <a href="#" id="exportBtn">выгрузить текущие данные в CSV</a>
   </footer>
 </div>
@@ -266,6 +383,7 @@
 
 <div id="tip"></div>
 
+<script src="wb-data.js"></script>
 <script>
 /* =========================================================================
    1. МОДЕЛЬ ДАННЫХ
@@ -806,8 +924,261 @@ themeBtn.onclick=()=>{
 const savedTheme=localStorage.getItem("wb_theme");
 if(savedTheme)document.documentElement.setAttribute("data-theme",savedTheme);
 
+/* =========================================================================
+   11. РЕАЛЬНЫЕ ДАННЫЕ ПРОДАВЦА (каталог товаров + история заказов)
+   Приходят из wb-data.js — файл целиком пересобирается, когда вы присылаете
+   новую выгрузку. Если файл не подключён — вкладки покажут пустое состояние,
+   а Главная продолжит работать на демо/CSV-данных как обычно.
+   ========================================================================= */
+const RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
+const RCAT = RD ? RD.catalog : [];
+const RSERIES = RD ? RD.orderSeries.bySku : {};
+const RDATES = RD ? RD.orderSeries.dates : [];
+const RLAST = RDATES.length ? RDATES[RDATES.length-1] : null;
+
+function esc(s){ return (s==null?"":String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
+const RU_MONTHS=["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+function fmtDate(d){ if(!d) return "—"; const [y,m,day]=d.split("-"); return `${day}.${m}.${y.slice(2)}`; }
+function fmtDateLong(d){ if(!d) return "—"; const [y,m,day]=d.split("-"); return `${parseInt(day,10)} ${RU_MONTHS[parseInt(m,10)-1]} ${y}`; }
+
+function seriesFor(sku){ return RSERIES[sku] || null; }
+function sumRange(sku,fromIdx,toIdx){ const s=seriesFor(sku); if(!s) return 0;
+  let sum=0; for(let i=fromIdx;i<=toIdx;i++) sum+=s[i]||0; return sum; }
+function categories(){ return [...new Set(RCAT.map(c=>c.category))].sort((a,b)=>a.localeCompare(b,"ru")); }
+function fillCategorySelect(sel){ sel.innerHTML='<option value="">Все категории</option>'+
+  categories().map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(""); }
+function renderNoData(tableId){
+  document.getElementById(tableId).innerHTML=`<tbody><tr><td class="empty-hint">
+    Нет загруженных данных по товарам. Пришлите вашу таблицу WB (или обновлённую выгрузку) —
+    соберу этот раздел на реальных цифрах.</td></tr></tbody>`;
+}
+
+/* ---- редактируемые параметры дозаказа (срок поставки / буфер), свои для каждого SKU ---- */
+const OV_KEY="wb_turnover_overrides_v1";
+let overrides={}; try{ overrides=JSON.parse(localStorage.getItem(OV_KEY)||"{}"); }catch(e){ overrides={}; }
+function getLeadTime(sku){ const o=overrides[sku]; return (o&&o.leadTimeDays!=null)? o.leadTimeDays : 120; }
+function getBuffer(sku){ const o=overrides[sku]; return (o&&o.targetBufferDays!=null)? o.targetBufferDays : getLeadTime(sku); }
+function setOverride(sku,field,val){ overrides[sku]=overrides[sku]||{}; overrides[sku][field]=val;
+  localStorage.setItem(OV_KEY,JSON.stringify(overrides)); }
+
+/* ---- расчёт оборачиваемости и рекомендации по дозаказу ---- */
+function computeTurnover(c,windowDays){
+  const lastIdx=RDATES.length-1;
+  const avgD = RDATES.length ? sumRange(c.sku,Math.max(0,lastIdx-windowDays+1),lastIdx)/Math.min(windowDays,RDATES.length) : 0;
+  const leadTimeDays=getLeadTime(c.sku), targetBufferDays=getBuffer(c.sku);
+  const currentStock=(c.wbStock||0)+(c.ownWarehouseStock||0);
+  const inTransit=c.inTransitToWB||0, pendingQty=c.pending? c.pending.qty:0;
+  const covered=currentStock+inTransit+pendingQty;
+  const daysLeft = avgD>0 ? currentStock/avgD : (currentStock>0? Infinity:0);
+  const targetStock = avgD*targetBufferDays;
+  const need = Math.max(0, Math.ceil(targetStock-covered));
+  const containers = (c.containerQty && need>0) ? Math.ceil(need/c.containerQty) : 0;
+  const needRounded = containers ? containers*c.containerQty : need;
+  let status;
+  if(avgD<=0 && currentStock<=0 && !c.pending) status="nodata";
+  else if(c.pending && daysLeft<leadTimeDays) status="ordered";
+  else if(daysLeft<leadTimeDays) status="critical";
+  else if(daysLeft<targetBufferDays) status="warning";
+  else status="good";
+  return {...c,avgD,leadTimeDays,targetBufferDays,currentStock,inTransit,pendingQty,daysLeft,targetStock,need,containers,needRounded,status};
+}
+const STATUS_LABEL={critical:"Критично",ordered:"Едет, но впритык",warning:"Скоро понадобится",good:"Норма",nodata:"Нет данных"};
+function statusBadge(s){ return `<span class="badge ${s}"><span class="d"></span>${STATUS_LABEL[s]}</span>`; }
+
+function turnoverList(){
+  const windowDays=parseInt(document.getElementById("turnWindow").value,10)||30;
+  return RCAT.map(c=>computeTurnover(c,windowDays));
+}
+
+function renderTurnoverTab(){
+  document.getElementById("turnFreshness").innerHTML = RD
+    ? `<span class="dot"></span>Остатки WB обновлены на ${fmtDateLong(RD.meta.stockSnapshotDate)} · заказы — по ${fmtDateLong(RLAST)}`
+    : "";
+  if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML=""; return; }
+  const catSel=document.getElementById("turnCat");
+  if(!catSel.options.length) fillCategorySelect(catSel);
+  const all=turnoverList();
+  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
+  const cat=catSel.value, statusF=document.getElementById("turnStatus").value;
+  let rows=all;
+  if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
+  if(cat) rows=rows.filter(r=>r.category===cat);
+  if(statusF) rows=rows.filter(r=>r.status===statusF);
+  const order={critical:0,ordered:1,warning:2,good:3,nodata:4};
+  rows=rows.slice().sort((a,b)=>(order[a.status]-order[b.status])||(a.daysLeft-b.daysLeft));
+
+  const critCount=all.filter(r=>r.status==="critical").length;
+  const orderedCount=all.filter(r=>r.status==="ordered").length;
+  const needTotal=all.reduce((s,r)=>s+r.needRounded,0);
+  const activeSku=all.filter(r=>r.avgD>0).length;
+  document.getElementById("turnKpis").innerHTML=[
+    {lbl:"Критично — нет в пути",val:critCount,color:"var(--crit)"},
+    {lbl:"Мало, но уже заказано",val:orderedCount,color:"var(--s1)"},
+    {lbl:"Нужно дозаказать всего, шт",val:fmt(needTotal),color:"var(--text-1)"},
+    {lbl:"Товаров с продажами",val:activeSku+" из "+all.length,color:"var(--text-1)"},
+  ].map(k=>`<div class="kpi"><div class="lbl">${k.lbl}</div><div class="val" style="color:${k.color}">${k.val}</div></div>`).join("");
+  document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров";
+
+  if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
+
+  let html=`<thead><tr><th class="metric">Товар</th><th>Категория</th><th>Остаток WB</th><th>Свой склад</th>
+    <th>Заказов/дн</th><th>Хватит, дн</th><th>Срок пост., дн</th><th>Буфер, дн</th>
+    <th>Едет/заказано</th><th>Прибудет</th><th>Дозаказать</th><th>Статус</th></tr></thead><tbody>`;
+  rows.forEach(r=>{
+    html+=`<tr class="${r.status==='critical'?'row-critical':''}">
+      <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>
+      <td>${esc(r.category)}</td>
+      <td>${fmt(r.wbStock||0)}</td>
+      <td>${fmt(r.ownWarehouseStock||0)}</td>
+      <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
+      <td>${r.daysLeft===Infinity?"∞":Math.round(r.daysLeft)}</td>
+      <td><input class="edit-num" type="number" min="0" step="1" value="${r.leadTimeDays}" data-field="leadTimeDays" data-sku="${esc(r.sku)}"></td>
+      <td><input class="edit-num" type="number" min="0" step="1" value="${r.targetBufferDays}" data-field="targetBufferDays" data-sku="${esc(r.sku)}"></td>
+      <td>${r.pendingQty? fmt(r.pendingQty)+" шт" : (r.inTransit? fmt(r.inTransit)+" шт (на WB)":"—")}</td>
+      <td>${r.pending? fmtDate(r.pending.arrivalDate) : "—"}</td>
+      <td style="font-weight:650">${r.needRounded>0? fmt(r.needRounded)+" шт"+(r.containers?` (${r.containers} конт.)`:"") : "—"}</td>
+      <td>${statusBadge(r.status)}</td>
+    </tr>`;
+  });
+  html+="</tbody>";
+  document.getElementById("turnTable").innerHTML=html;
+  document.getElementById("turnTable").querySelectorAll("input.edit-num").forEach(inp=>{
+    inp.addEventListener("change",e=>{
+      let val=parseFloat(e.target.value); if(isNaN(val)||val<0) val=0;
+      setOverride(e.target.dataset.sku,e.target.dataset.field,val);
+      renderTurnoverTab();
+    });
+  });
+}
+function exportTurnoverCSV(){
+  const rows=turnoverList().filter(r=>r.needRounded>0).sort((a,b)=>b.needRounded-a.needRounded);
+  let csv="Артикул;Название;Категория;Остаток WB;Свой склад;Заказов в день;Хватит дн;Нужно дозаказать шт;Контейнеров;Уже едет шт;Прибудет\n";
+  rows.forEach(r=>{ csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,r.wbStock||0,r.ownWarehouseStock||0,
+    r.avgD.toFixed(1),r.daysLeft===Infinity?"":Math.round(r.daysLeft),r.needRounded,r.containers||"",r.pendingQty||"",
+    r.pending?r.pending.arrivalDate:""].join(";")+"\n"; });
+  downloadCSV("wb-дозаказ.csv",csv);
+}
+
+/* ---- динамика заказов: диапазон дат, агрегация, график ---- */
+let dynPeriodN=7; // 0 = весь период
+function dynRange(){
+  const n=RDATES.length; if(!n) return {from:0,to:-1,prevFrom:0,prevTo:-1,hasPrev:false};
+  const win=dynPeriodN===0? n : Math.min(dynPeriodN,n);
+  const to=n-1, from=n-win, prevTo=from-1, prevFrom=Math.max(0,prevTo-win+1);
+  return {from,to,prevFrom,prevTo,hasPrev:prevTo>=prevFrom};
+}
+function dynFilteredSkus(){
+  const q=document.getElementById("dynSearch").value.trim().toLowerCase();
+  const cat=document.getElementById("dynCat").value;
+  return RCAT.filter(c=>(!q||c.sku.includes(q)||c.name.toLowerCase().includes(q))&&(!cat||c.category===cat));
+}
+function dynSeriesTotals(skus,from,to){
+  const totals=new Array(Math.max(0,to-from+1)).fill(0);
+  skus.forEach(c=>{ const s=seriesFor(c.sku); if(!s) return;
+    for(let i=from;i<=to;i++) totals[i-from]+=s[i]||0; });
+  return totals;
+}
+
+/* ---- график: столбцы по дням (много точек, с прореживанием подписей) ---- */
+function dailyBars(mount,isoDates,values){
+  const W=1000,H=240,m={t:18,r:14,b:34,l:52};
+  const iw=W-m.l-m.r, ih=H-m.t-m.b, n=Math.max(1,values.length);
+  const sc=niceScale(0,Math.max(...values,0),4), max=sc.max||1;
+  const Y=v=>m.t+ih-(v/max)*ih;
+  const band=iw/n, bw=Math.max(1,Math.min(18,band-Math.max(1,band*0.18)));
+  const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
+  for(let v=0;v<=max+1e-6;v+=sc.step){const y=Y(v);
+    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":1}));
+    const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});tx.textContent=fmtAxis(v);svg.appendChild(tx);}
+  const maxLabels=n<=10?n:9, stride=Math.max(1,Math.round(n/maxLabels));
+  for(let i=0;i<n;i++){
+    const cx=m.l+band*i+band/2, v=values[i]||0, y=Y(v), h=Y(0)-y;
+    const rect=el("rect",{x:cx-bw/2,y,width:bw,height:Math.max(1,h),rx:Math.min(3,bw/2),fill:cssv("--s1")});
+    rect.style.cursor="pointer";
+    rect.addEventListener("pointermove",ev=>{ rect.setAttribute("opacity",.8);
+      showTip(`<div class="t-hd">${fmtDateLong(isoDates[i])}</div><div class="t-row"><span class="k"><i style="background:${cssv('--s1')}"></i>Заказы</span><span class="v">${fmt(v)}</span></div>`,ev.clientX,ev.clientY); });
+    rect.addEventListener("pointerleave",()=>{ rect.setAttribute("opacity",1); hideTip(); });
+    svg.appendChild(rect);
+    if(i%stride===0||i===n-1){ const tx=el("text",{x:cx,y:H-12,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
+      tx.textContent=fmtDate(isoDates[i]); svg.appendChild(tx); }
+  }
+  mount.innerHTML="";mount.appendChild(svg);
+}
+
+function renderDynamicsTab(){
+  document.getElementById("dynFreshness").innerHTML = RD
+    ? `<span class="dot"></span>Заказы обновлены по ${fmtDateLong(RLAST)} · история с ${fmtDateLong(RDATES[0])}`
+    : "";
+  if(!RD){ renderNoData("dynTable"); document.getElementById("dynKpis").innerHTML=""; document.getElementById("ch-dyn").innerHTML=""; return; }
+  const catSel=document.getElementById("dynCat");
+  if(!catSel.options.length) fillCategorySelect(catSel);
+  const skus=dynFilteredSkus();
+  const {from,to,prevFrom,prevTo,hasPrev}=dynRange();
+  const totals=dynSeriesTotals(skus,from,to);
+  const isoDates=RDATES.slice(from,to+1);
+  const periodTotal=totals.reduce((a,b)=>a+b,0);
+  const prevTotal=hasPrev? dynSeriesTotals(skus,prevFrom,prevTo).reduce((a,b)=>a+b,0) : null;
+  const avgPerDay=periodTotal/Math.max(1,(to-from+1));
+  const activeSkuCount=skus.filter(c=>sumRange(c.sku,from,to)>0).length;
+  const catTotals={}; skus.forEach(c=>{ const t=sumRange(c.sku,from,to); if(t) catTotals[c.category]=(catTotals[c.category]||0)+t; });
+  let topCat="—",topCatQty=0; Object.entries(catTotals).forEach(([k,v])=>{ if(v>topCatQty){topCatQty=v;topCat=k;} });
+
+  document.getElementById("dynKpis").innerHTML=[
+    {lbl:"Заказов за период",val:fmt(periodTotal),d:hasPrev?delta(periodTotal,prevTotal,true):""},
+    {lbl:"В среднем в день",val:avgPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})},
+    {lbl:"Активных товаров",val:activeSkuCount+" из "+skus.length},
+    {lbl:"Топ-категория",val:esc(topCat)+(topCatQty&&periodTotal?` (${Math.round(topCatQty/periodTotal*100)}%)`:"")},
+  ].map(k=>`<div class="kpi"><div class="lbl">${k.lbl}</div><div class="val">${k.val}</div>${k.d||""}</div>`).join("");
+
+  document.getElementById("dynChartCap").textContent = isoDates.length
+    ? `${fmtDate(isoDates[0])} – ${fmtDate(isoDates[isoDates.length-1])} · ${skus.length} товаров в выборке`
+    : "нет данных за выбранный период";
+  dailyBars(document.getElementById("ch-dyn"),isoDates,totals);
+
+  let rows=skus.map(c=>({sku:c.sku,name:c.name,category:c.category,qty:sumRange(c.sku,from,to)}));
+  rows=rows.filter(r=>r.qty>0).sort((a,b)=>b.qty-a.qty);
+  document.getElementById("dynCount").textContent=rows.length+" товаров с заказами";
+  document.getElementById("dynTblNote").textContent=`период: ${isoDates.length} дн.`;
+  if(!rows.length){ document.getElementById("dynTable").innerHTML=`<tbody><tr><td class="empty-hint">За этот период заказов не найдено</td></tr></tbody>`; return; }
+  let html=`<thead><tr><th class="metric">Товар</th><th>Категория</th><th>Заказы за период</th><th>Доля</th></tr></thead><tbody>`;
+  rows.slice(0,300).forEach(r=>{
+    const share=periodTotal? (r.qty/periodTotal*100):0;
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${share.toFixed(1)}%</td></tr>`;
+  });
+  html+="</tbody>";
+  document.getElementById("dynTable").innerHTML=html;
+}
+
+/* =========================================================================
+   12. ВКЛАДКИ
+   ========================================================================= */
+const TABS=["home","dynamics","turnover"];
+function switchTab(name){
+  TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
+  document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
+  if(name==="dynamics") renderDynamicsTab();
+  if(name==="turnover") renderTurnoverTab();
+  try{localStorage.setItem("wb_active_tab",name);}catch(e){}
+}
+document.getElementById("tabs").addEventListener("click",e=>{
+  const b=e.target.closest(".tab-btn"); if(!b) return; switchTab(b.dataset.tab);
+});
+document.getElementById("dynPeriodSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); dynPeriodN=+b.dataset.n; renderDynamicsTab();
+});
+document.getElementById("dynSearch").addEventListener("input",renderDynamicsTab);
+document.getElementById("dynCat").addEventListener("change",renderDynamicsTab);
+document.getElementById("turnSearch").addEventListener("input",renderTurnoverTab);
+document.getElementById("turnCat").addEventListener("change",renderTurnoverTab);
+document.getElementById("turnStatus").addEventListener("change",renderTurnoverTab);
+document.getElementById("turnWindow").addEventListener("change",renderTurnoverTab);
+document.getElementById("turnExportBtn").addEventListener("click",exportTurnoverCSV);
+
 // старт
 render();
+try{ const saved=localStorage.getItem("wb_active_tab"); if(saved&&TABS.includes(saved)) switchTab(saved); }catch(e){}
 addEventListener("resize",()=>{ clearTimeout(window._rt); window._rt=setTimeout(render,150); });
 </script>
 </body>
