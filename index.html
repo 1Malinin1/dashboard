@@ -270,6 +270,7 @@
     <button class="tab-btn" data-tab="dynamics" role="tab" aria-selected="false">Динамика заказов</button>
     <button class="tab-btn" data-tab="turnover" role="tab" aria-selected="false">Оборачиваемость</button>
     <button class="tab-btn" data-tab="product" role="tab" aria-selected="false">Товар</button>
+    <button class="tab-btn" data-tab="finance" role="tab" aria-selected="false">Финансы</button>
   </nav>
 
   <section id="tab-home" class="tab-panel">
@@ -433,6 +434,49 @@
     <div class="table-card" id="prodTableCard" hidden>
       <div class="table-head"><h3 id="prodTableTitle">Воронка</h3></div>
       <div class="table-scroll"><table class="rnp" id="prodTable"></table></div>
+    </div>
+  </section>
+
+  <section id="tab-finance" class="tab-panel" hidden>
+    <div class="freshness" id="finFreshness"></div>
+    <div class="card" style="margin-bottom:14px">
+      <h3>Загрузка отчёта о реализации</h3>
+      <div class="cap">Отчёт WB «О реализации товаров» (по заказам или по выкупам — структура одинаковая) — загружайте прямо здесь, файл может весить сколько угодно, в чат его слать не нужно. Один файл может охватывать сразу несколько дней; данные накапливаются по датам внутри отчёта, ничего не затирается. Храним последние 90 дней.</div>
+      <div class="drop" id="finDrop" style="margin-top:6px">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="var(--muted)" stroke-width="1.6" style="margin-bottom:8px"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg>
+        <div>Перетащите файл(ы) сюда или <b>нажмите, чтобы выбрать</b></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">Можно выбрать сразу несколько отчётов · только .xlsx</div>
+        <input type="file" id="finFileInput" accept=".xlsx,.xls" multiple hidden>
+      </div>
+      <div class="msg" id="finUploadMsg"></div>
+    </div>
+
+    <div class="toolbar">
+      <div class="seg" id="finPeriodSeg" role="group" aria-label="Период">
+        <button data-n="7">7 дней</button>
+        <button data-n="30" aria-pressed="true">30 дней</button>
+        <button data-n="90">90 дней</button>
+        <button data-n="0">Весь период</button>
+      </div>
+    </div>
+    <div class="kpis4" id="finKpis"></div>
+    <div class="card" style="margin-bottom:14px">
+      <h3>Выручка и к перечислению по дням</h3>
+      <div class="cap" id="finChartCap"></div>
+      <div class="legend" id="finLegend"></div>
+      <div id="ch-fin"></div>
+    </div>
+    <div class="table-card">
+      <div class="table-head">
+        <h3>Финансы по товарам за период</h3>
+        <span class="muted" id="finTblNote"></span>
+      </div>
+      <div class="toolbar" style="padding:0 18px 12px">
+        <input type="search" id="finSearch" placeholder="Поиск по артикулу или названию…">
+        <select id="finCat"></select>
+        <span class="count" id="finCount"></span>
+      </div>
+      <div class="table-scroll"><table class="rnp" id="finTable"></table></div>
     </div>
   </section>
 
@@ -1313,40 +1357,42 @@ function renderDynamicsTab(){
    Храним только строки, чей «Артикул WB» есть в каталоге (RCAT) — так
    отделяем свои товары от остального большого кабинета.
    ========================================================================= */
-const FUNNEL_DB="wb_funnel_db", FUNNEL_STORE="days", FUNNEL_RETENTION_DAYS=90;
+const FUNNEL_DB="wb_funnel_db", FUNNEL_STORE="days", FINANCE_STORE="finance", DB_VERSION=2, FUNNEL_RETENTION_DAYS=90;
 function fdbOpen(){
   return new Promise((resolve,reject)=>{
-    const req=indexedDB.open(FUNNEL_DB,1);
+    const req=indexedDB.open(FUNNEL_DB,DB_VERSION);
     req.onupgradeneeded=e=>{
       const db=e.target.result;
-      if(!db.objectStoreNames.contains(FUNNEL_STORE)){
-        const os=db.createObjectStore(FUNNEL_STORE,{keyPath:"id"});
-        os.createIndex("date","date",{unique:false});
-        os.createIndex("sku","sku",{unique:false});
-      }
+      [FUNNEL_STORE,FINANCE_STORE].forEach(name=>{
+        if(!db.objectStoreNames.contains(name)){
+          const os=db.createObjectStore(name,{keyPath:"id"});
+          os.createIndex("date","date",{unique:false});
+          os.createIndex("sku","sku",{unique:false});
+        }
+      });
     };
     req.onsuccess=()=>resolve(req.result);
     req.onerror=()=>reject(req.error);
   });
 }
-function fdbPutAll(records){
+function fdbPutAll(store,records){
   return fdbOpen().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(FUNNEL_STORE,"readwrite"), os=tx.objectStore(FUNNEL_STORE);
+    const tx=db.transaction(store,"readwrite"), os=tx.objectStore(store);
     records.forEach(r=>os.put(r));
     tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
   }));
 }
-function fdbGetAll(){
+function fdbGetAll(store){
   return fdbOpen().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(FUNNEL_STORE,"readonly");
-    const req=tx.objectStore(FUNNEL_STORE).getAll();
+    const tx=db.transaction(store,"readonly");
+    const req=tx.objectStore(store).getAll();
     req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
   }));
 }
-function fdbDeleteOlderThan(cutoffDate){
+function fdbDeleteOlderThan(store,cutoffDate){
   return fdbOpen().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(FUNNEL_STORE,"readwrite");
-    const idx=tx.objectStore(FUNNEL_STORE).index("date");
+    const tx=db.transaction(store,"readwrite");
+    const idx=tx.objectStore(store).index("date");
     const req=idx.openCursor(IDBKeyRange.upperBound(cutoffDate,true));
     req.onsuccess=e=>{ const cur=e.target.result; if(cur){ cur.delete(); cur.continue(); } };
     tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
@@ -1355,7 +1401,10 @@ function fdbDeleteOlderThan(cutoffDate){
 function addDays(dateStr,n){ const d=new Date(dateStr+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
 
 let FUNNEL_CACHE=[]; // весь набор дней в памяти, отсортирован по дате, обновляется после загрузки
-async function fdbRefreshCache(){ FUNNEL_CACHE=(await fdbGetAll()).sort((a,b)=>a.date<b.date?-1:1); }
+async function fdbRefreshCache(){ FUNNEL_CACHE=(await fdbGetAll(FUNNEL_STORE)).sort((a,b)=>a.date<b.date?-1:1); }
+
+let FINANCE_CACHE=[];
+async function fdbRefreshFinanceCache(){ FINANCE_CACHE=(await fdbGetAll(FINANCE_STORE)).sort((a,b)=>a.date<b.date?-1:1); }
 
 /* колонки отчёта "Товары" (см. заголовок листа WB) — индекс с 0 */
 const FUNNEL_COLS={sellerSku:0,sku:1,name:2,category:3,brand:4,deleted:5,
@@ -1413,15 +1462,180 @@ async function handleFunnelFiles(fileList){
     }catch(e){ notes.push(`«${file.name}» → ошибка: ${e.message}`); }
   }
   if(allRecords.length){
-    await fdbPutAll(allRecords);
+    await fdbPutAll(FUNNEL_STORE,allRecords);
     await fdbRefreshCache();
     const maxDate=FUNNEL_CACHE.length? FUNNEL_CACHE[FUNNEL_CACHE.length-1].date : null;
-    if(maxDate){ await fdbDeleteOlderThan(addDays(maxDate,-FUNNEL_RETENTION_DAYS)); await fdbRefreshCache(); }
+    if(maxDate){ await fdbDeleteOlderThan(FUNNEL_STORE,addDays(maxDate,-FUNNEL_RETENTION_DAYS)); await fdbRefreshCache(); }
   }
   msg.className = allRecords.length? "msg ok" : "msg err";
   msg.innerHTML = notes.map(esc).join("<br>");
   renderProductHistoryInfo();
   if(selectedSku) renderProductPeriods();
+}
+
+/* =========================================================================
+   ФИНАНСОВЫЙ ОТЧЁТ (еженедельный «Отчёт о реализации») — тот же принцип
+   накопления по датам в IndexedDB, что и воронка. Один файл может содержать
+   сразу много дней и много строк на день — агрегируем построчно по
+   (дата продажи, артикул). Колонки ищем по НАЗВАНИЮ заголовка, а не по
+   номеру, т.к. WB иногда меняет порядок колонок между выгрузками.
+   ========================================================================= */
+const FIN_COLS={
+  sku:"Код номенклатуры", sellerSku:"Артикул поставщика", name:"Название", category:"Предмет",
+  docType:"Тип документа", saleDate:"Дата продажи", qty:"Кол-во",
+  retailPriceDiscounted:"Цена розничная с учетом согласованной скидки",
+  wbReward:"Вознаграждение Вайлдберриз (ВВ), без НДС",
+  payout:"К перечислению Продавцу за реализованный Товар",
+  logistics:"Услуги по доставке товара покупателю",
+  penalty:"Общая сумма штрафов",
+  storage:"Хранение",
+};
+function parseFinanceWorkbook(XLSX,wb){
+  const ws=wb.Sheets[wb.SheetNames[0]];
+  const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
+  if(!rows.length) throw new Error("Пустой файл.");
+  const header=rows[0];
+  const colIdx={}; for(const k in FIN_COLS) colIdx[k]=header.indexOf(FIN_COLS[k]);
+  if(colIdx.sku<0||colIdx.saleDate<0||colIdx.payout<0) throw new Error("Не нашёл нужные колонки («Код номенклатуры», «Дата продажи», «К перечислению…») — это точно отчёт о реализации WB?");
+  const num=v=>{ const n=parseFloat((""+v).replace(/\s/g,"").replace(",",".")); return isNaN(n)?0:n; };
+  const byKey={}; let matched=0, total=0;
+  rows.slice(1).forEach(r=>{
+    if(!r||!r.length) return;
+    const sku=(r[colIdx.sku]||"").toString().trim(); if(!sku) return;
+    total++;
+    if(!catalogSkuSet.has(sku)) return;
+    const date=(r[colIdx.saleDate]||"").toString().trim();
+    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
+    matched++;
+    const isReturn=(r[colIdx.docType]||"").toString().trim()==="Возврат";
+    const sign=isReturn?-1:1;
+    const key=date+"_"+sku;
+    if(!byKey[key]) byKey[key]={id:key,date,sku,
+      sellerSku:(r[colIdx.sellerSku]||"").toString(), name:(r[colIdx.name]||sku).toString(), category:(r[colIdx.category]||"").toString(),
+      qty:0, returnsQty:0, revenue:0, payout:0, wbReward:0, logistics:0, storage:0, penalty:0};
+    const rec=byKey[key], qty=num(r[colIdx.qty]);
+    if(isReturn) rec.returnsQty+=qty; else rec.qty+=qty;
+    rec.revenue += sign*num(r[colIdx.retailPriceDiscounted])*qty;
+    rec.payout  += sign*num(r[colIdx.payout]);
+    rec.wbReward+= sign*num(r[colIdx.wbReward]);
+    rec.logistics += num(r[colIdx.logistics]);
+    rec.storage   += num(r[colIdx.storage]);
+    rec.penalty   += num(r[colIdx.penalty]);
+  });
+  return {records:Object.values(byKey), matched, total};
+}
+async function handleFinanceFiles(fileList){
+  const msg=document.getElementById("finUploadMsg");
+  msg.className="msg"; msg.textContent="";
+  const XLSX=await loadXLSX().catch(()=>{ throw new Error("Нет сети для загрузки парсера XLSX. Попробуйте ещё раз при подключении к интернету."); });
+  const notes=[]; let allRecords=[];
+  for(const file of fileList){
+    try{
+      const buf=await file.arrayBuffer();
+      const wb=XLSX.read(new Uint8Array(buf),{type:"array"});
+      const {records,matched,total}=parseFinanceWorkbook(XLSX,wb);
+      allRecords=allRecords.concat(records);
+      const dates=[...new Set(records.map(r=>r.date))].sort();
+      const range=dates.length? (dates.length===1? fmtDateLong(dates[0]) : `${fmtDate(dates[0])}–${fmtDate(dates[dates.length-1])}`) : "—";
+      notes.push(`«${file.name}» → ${range}: найдено ${matched} строк по вашим товарам из ${total}`);
+    }catch(e){ notes.push(`«${file.name}» → ошибка: ${e.message}`); }
+  }
+  if(allRecords.length){
+    // несколько строк файла могут относиться к одному (дата,артикул) — сольём перед записью
+    const merged={};
+    allRecords.forEach(r=>{
+      if(!merged[r.id]) merged[r.id]={...r};
+      else{ const m=merged[r.id]; ["qty","returnsQty","revenue","payout","wbReward","logistics","storage","penalty"].forEach(k=>m[k]+=r[k]); }
+    });
+    await fdbPutAll(FINANCE_STORE,Object.values(merged));
+    await fdbRefreshFinanceCache();
+    const maxDate=FINANCE_CACHE.length? FINANCE_CACHE[FINANCE_CACHE.length-1].date : null;
+    if(maxDate){ await fdbDeleteOlderThan(FINANCE_STORE,addDays(maxDate,-FUNNEL_RETENTION_DAYS)); await fdbRefreshFinanceCache(); }
+  }
+  msg.className = allRecords.length? "msg ok" : "msg err";
+  msg.innerHTML = notes.map(esc).join("<br>") + (allRecords.length? `<br><span class="muted">Считаю «Возврат» как вычитание из выручки и к перечислению — сверьте итог с реальной выплатой WB.</span>` : "");
+  renderFinanceTab();
+}
+
+function renderFinanceHistoryInfo(){
+  const el=document.getElementById("finFreshness");
+  if(!FINANCE_CACHE.length){ el.innerHTML=""; return; }
+  const dates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
+  const skuCount=new Set(FINANCE_CACHE.map(r=>r.sku)).size;
+  el.innerHTML=`<span class="dot"></span>Финансы: ${dates.length} дн. загружено, с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров · хранится последние ${FUNNEL_RETENTION_DAYS} дней`;
+}
+
+let finPeriodN=30;
+function finRange(){
+  const dates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
+  const n=dates.length; if(!n) return {dates:[],prevDates:[]};
+  const win=finPeriodN===0? n : Math.min(finPeriodN,n);
+  const cur=dates.slice(n-win);
+  const restBefore=dates.slice(0,n-win);
+  const prev=restBefore.slice(Math.max(0,restBefore.length-win));
+  return {dates:cur,prevDates:prev};
+}
+function finAggregate(dates,catFilter,q){
+  const set=new Set(dates);
+  const rows=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!catFilter||r.category===catFilter)&&(!q||r.sku.includes(q)||r.name.toLowerCase().includes(q)));
+  const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
+  return {qty:sum("qty"),returnsQty:sum("returnsQty"),revenue:sum("revenue"),payout:sum("payout"),
+    wbReward:sum("wbReward"),logistics:sum("logistics"),storage:sum("storage"),penalty:sum("penalty"),rows};
+}
+function finSeriesByDate(dates,catFilter,q){
+  const idx={}; dates.forEach((d,i)=>idx[d]=i);
+  const revenue=new Array(dates.length).fill(0), payout=new Array(dates.length).fill(0);
+  FINANCE_CACHE.forEach(r=>{ const i=idx[r.date]; if(i==null) return;
+    if(catFilter&&r.category!==catFilter) return;
+    if(q&&!r.sku.includes(q)&&!r.name.toLowerCase().includes(q)) return;
+    revenue[i]+=r.revenue||0; payout[i]+=r.payout||0; });
+  return {revenue,payout};
+}
+function renderFinanceTab(){
+  renderFinanceHistoryInfo();
+  if(!FINANCE_CACHE.length){
+    document.getElementById("finKpis").innerHTML="";
+    document.getElementById("ch-fin").innerHTML="";
+    renderNoData("finTable");
+    return;
+  }
+  const catSel=document.getElementById("finCat");
+  if(!catSel.options.length) fillCategorySelect(catSel);
+  const cat=catSel.value, q=document.getElementById("finSearch").value.trim().toLowerCase();
+  const {dates,prevDates}=finRange();
+  const now=finAggregate(dates,cat,q);
+  const prev=prevDates.length? finAggregate(prevDates,cat,q) : null;
+  const netQty=now.qty-now.returnsQty;
+
+  document.getElementById("finKpis").innerHTML=[
+    {lbl:"Выручка, ₽",val:rub(now.revenue),d:prev?delta(now.revenue,prev.revenue,true):""},
+    {lbl:"К перечислению, ₽",val:rub(now.payout),d:prev?delta(now.payout,prev.payout,true):""},
+    {lbl:"Комиссия WB, ₽",val:rub(now.wbReward)},
+    {lbl:"Логистика + хранение + штрафы, ₽",val:rub(now.logistics+now.storage+now.penalty)},
+    {lbl:"Продано, шт (нетто)",val:fmt(netQty)},
+    {lbl:"Возвраты, шт",val:fmt(now.returnsQty)},
+  ].map(k=>`<div class="kpi"><div class="lbl">${k.lbl}</div><div class="val">${k.val}</div>${k.d||""}</div>`).join("");
+
+  document.getElementById("finChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}` : "нет данных";
+  legend(document.getElementById("finLegend"),[{name:"Выручка, ₽",color:cssv("--s1")},{name:"К перечислению, ₽",color:cssv("--s2")}]);
+  const series=finSeriesByDate(dates,cat,q);
+  dailyGroupedBars(document.getElementById("ch-fin"),dates,[
+    {name:"Выручка, ₽",color:cssv("--s1"),data:series.revenue},
+    {name:"К перечислению, ₽",color:cssv("--s2"),data:series.payout}]);
+
+  const bySku={};
+  now.rows.forEach(r=>{ if(!bySku[r.sku]) bySku[r.sku]={sku:r.sku,name:r.name,category:r.category,qty:0,returnsQty:0,revenue:0,payout:0};
+    const b=bySku[r.sku]; b.qty+=r.qty; b.returnsQty+=r.returnsQty; b.revenue+=r.revenue; b.payout+=r.payout; });
+  const rows=Object.values(bySku).sort((a,b)=>b.revenue-a.revenue);
+  document.getElementById("finCount").textContent=rows.length+" товаров";
+  document.getElementById("finTblNote").textContent=`период: ${dates.length} дн.`;
+  if(!rows.length){ document.getElementById("finTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; return; }
+  let html=`<thead><tr><th class="metric">Товар</th><th>Категория</th><th>Продано, шт</th><th>Возвраты, шт</th><th>Выручка, ₽</th><th>К перечислению, ₽</th></tr></thead><tbody>`;
+  rows.slice(0,300).forEach(r=>{
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${fmt(r.returnsQty)}</td><td>${rub(r.revenue)}</td><td>${rub(r.payout)}</td></tr>`;
+  });
+  html+="</tbody>";
+  document.getElementById("finTable").innerHTML=html;
 }
 
 function renderProductHistoryInfo(){
@@ -1560,13 +1774,14 @@ function renderProductPeriods(){
 /* =========================================================================
    13. ВКЛАДКИ
    ========================================================================= */
-const TABS=["home","dynamics","turnover","product"];
+const TABS=["home","dynamics","turnover","product","finance"];
 function switchTab(name){
   TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
   document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
   if(name==="dynamics") renderDynamicsTab();
   if(name==="turnover") renderTurnoverTab();
   if(name==="product"){ renderProductHistoryInfo(); initProductTabControls(); }
+  if(name==="finance") renderFinanceTab();
   try{localStorage.setItem("wb_active_tab",name);}catch(e){}
 }
 document.getElementById("tabs").addEventListener("click",e=>{
@@ -1593,9 +1808,24 @@ prodFileInput.onchange=e=>{ if(e.target.files.length) handleFunnelFiles(e.target
 prodDrop.addEventListener("drop",e=>{ if(e.dataTransfer.files.length) handleFunnelFiles(e.dataTransfer.files); });
 ["prodAFrom","prodATo","prodBFrom","prodBTo"].forEach(id=>document.getElementById(id).addEventListener("change",renderProductPeriods));
 
+const finDrop=document.getElementById("finDrop"), finFileInput=document.getElementById("finFileInput");
+finDrop.onclick=()=>finFileInput.click();
+finFileInput.onchange=e=>{ if(e.target.files.length) handleFinanceFiles(e.target.files); };
+["dragenter","dragover"].forEach(ev=>finDrop.addEventListener(ev,e=>{e.preventDefault();finDrop.classList.add("hover");}));
+["dragleave","drop"].forEach(ev=>finDrop.addEventListener(ev,e=>{e.preventDefault();finDrop.classList.remove("hover");}));
+finDrop.addEventListener("drop",e=>{ if(e.dataTransfer.files.length) handleFinanceFiles(e.dataTransfer.files); });
+document.getElementById("finPeriodSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); finPeriodN=+b.dataset.n; renderFinanceTab();
+});
+document.getElementById("finSearch").addEventListener("input",renderFinanceTab);
+document.getElementById("finCat").addEventListener("change",renderFinanceTab);
+
 // старт
 render();
 fdbRefreshCache().then(renderProductHistoryInfo).catch(()=>{});
+fdbRefreshFinanceCache().catch(()=>{});
 try{ const saved=localStorage.getItem("wb_active_tab"); if(saved&&TABS.includes(saved)) switchTab(saved); }catch(e){}
 addEventListener("resize",()=>{ clearTimeout(window._rt); window._rt=setTimeout(render,150); });
 </script>
