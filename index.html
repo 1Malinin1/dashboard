@@ -144,7 +144,7 @@
   .drop b{color:var(--text-1)}
   .steps{font-size:13px;color:var(--text-2);margin:16px 0 0;padding-left:18px}
   .steps li{margin:5px 0}
-  .msg{margin-top:14px;font-size:13px;padding:10px 12px;border-radius:9px;display:none}
+  .msg{margin-top:14px;font-size:13px;padding:10px 12px;border-radius:9px;display:none;overflow-wrap:anywhere}
   .msg.ok{display:block;background:color-mix(in srgb,var(--good) 12%,var(--surface));color:var(--good-txt)}
   .msg.err{display:block;background:color-mix(in srgb,var(--crit) 12%,var(--surface));color:var(--crit)}
   .close{border:0;background:transparent;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
@@ -200,6 +200,22 @@
   table.rnp tbody tr.row-critical td{background:color-mix(in srgb,var(--crit) 5%,var(--surface))}
   .empty-hint{padding:40px 20px;text-align:center;color:var(--muted);font-size:13.5px}
 
+  /* ===== Карточка товара (вкладка «Товар») ===== */
+  #prodSkuResults{display:flex;flex-direction:column;gap:2px;margin-top:8px;max-height:260px;overflow-y:auto}
+  .sku-hit{display:flex;align-items:center;gap:10px;padding:8px 10px;border-radius:8px;cursor:pointer;
+    border:1px solid transparent;font-size:13px;text-align:left;background:none;color:var(--text-1);width:100%}
+  .sku-hit:hover{background:var(--surface-2)}
+  .sku-hit.selected{background:color-mix(in srgb,var(--s1) 10%,var(--surface));border-color:var(--s1)}
+  .sku-hit .n{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sku-hit .a{color:var(--muted);font-size:11.5px;flex:none}
+  .period-compare{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--grid)}
+  .period-box{background:var(--surface-2);border-radius:10px;padding:10px 14px;flex:1;min-width:240px}
+  .period-box .lbl{font-size:12px;color:var(--muted);margin-bottom:6px;font-weight:600}
+  .period-inputs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  .period-inputs input[type="date"]{border:1px solid var(--border);background:var(--surface);color:var(--text-1);
+    font:inherit;font-size:13px;padding:6px 8px;border-radius:7px;color-scheme:light dark}
+  table.rnp td.delta-up{color:var(--good-txt)} table.rnp td.delta-down{color:var(--crit)}
+
   @media(max-width:900px){
     .kpis{grid-template-columns:repeat(2,1fr)} .kpi.hero{grid-column:span 2}
     .kpis4{grid-template-columns:repeat(2,1fr)}
@@ -237,6 +253,7 @@
     <button class="tab-btn" data-tab="home" role="tab" aria-selected="true">Главная</button>
     <button class="tab-btn" data-tab="dynamics" role="tab" aria-selected="false">Динамика заказов</button>
     <button class="tab-btn" data-tab="turnover" role="tab" aria-selected="false">Оборачиваемость</button>
+    <button class="tab-btn" data-tab="product" role="tab" aria-selected="false">Товар</button>
   </nav>
 
   <section id="tab-home" class="tab-panel">
@@ -348,6 +365,45 @@
     </div>
     <div class="table-card">
       <div class="table-scroll"><table class="rnp" id="turnTable"></table></div>
+    </div>
+  </section>
+
+  <section id="tab-product" class="tab-panel" hidden>
+    <div class="freshness" id="prodFreshness"></div>
+    <div class="card" style="margin-bottom:14px">
+      <h3>Загрузка воронки продаж по дням</h3>
+      <div class="cap">Ежедневный отчёт WB «Детальный отчёт воронки продаж по карточкам» (Аналитика → Воронка продаж → экспорт за 1 день). Каждый день — отдельный файл; данные накапливаются, ничего не затирается. Храним последние 90 дней.</div>
+      <div class="drop" id="prodDrop" style="margin-top:6px">
+        <svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="var(--muted)" stroke-width="1.6" style="margin-bottom:8px"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg>
+        <div>Перетащите файл(ы) сюда или <b>нажмите, чтобы выбрать</b></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">Можно выбрать сразу несколько дней · только .xlsx</div>
+        <input type="file" id="prodFileInput" accept=".xlsx,.xls" multiple hidden>
+      </div>
+      <div class="msg" id="prodUploadMsg"></div>
+    </div>
+
+    <div class="card" style="margin-bottom:14px">
+      <h3>Карточка товара</h3>
+      <div class="cap">Найдите товар и сравните два периода — что изменилось в воронке</div>
+      <div class="toolbar" style="margin-bottom:0">
+        <input type="search" id="prodSkuSearch" placeholder="Поиск по артикулу или названию…" style="flex:2;min-width:260px">
+      </div>
+      <div id="prodSkuResults"></div>
+      <div id="prodPeriods" class="period-compare" hidden>
+        <div class="period-box">
+          <div class="lbl">Период A</div>
+          <div class="period-inputs"><input type="date" id="prodAFrom"><span>—</span><input type="date" id="prodATo"></div>
+        </div>
+        <div class="period-box">
+          <div class="lbl">Период B <span class="muted">(с чем сравнить)</span></div>
+          <div class="period-inputs"><input type="date" id="prodBFrom"><span>—</span><input type="date" id="prodBTo"></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="table-card" id="prodTableCard" hidden>
+      <div class="table-head"><h3 id="prodTableTitle">Воронка</h3></div>
+      <div class="table-scroll"><table class="rnp" id="prodTable"></table></div>
     </div>
   </section>
 
@@ -1156,14 +1212,236 @@ function renderDynamicsTab(){
 }
 
 /* =========================================================================
-   12. ВКЛАДКИ
+   12. ВОРОНКА ПРОДАЖ ПО ДНЯМ — накопление в IndexedDB (растёт день за днём,
+   ничего не затирается; для одной и той же даты запись просто обновляется).
+   Храним только строки, чей «Артикул WB» есть в каталоге (RCAT) — так
+   отделяем свои товары от остального большого кабинета.
    ========================================================================= */
-const TABS=["home","dynamics","turnover"];
+const FUNNEL_DB="wb_funnel_db", FUNNEL_STORE="days", FUNNEL_RETENTION_DAYS=90;
+function fdbOpen(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(FUNNEL_DB,1);
+    req.onupgradeneeded=e=>{
+      const db=e.target.result;
+      if(!db.objectStoreNames.contains(FUNNEL_STORE)){
+        const os=db.createObjectStore(FUNNEL_STORE,{keyPath:"id"});
+        os.createIndex("date","date",{unique:false});
+        os.createIndex("sku","sku",{unique:false});
+      }
+    };
+    req.onsuccess=()=>resolve(req.result);
+    req.onerror=()=>reject(req.error);
+  });
+}
+function fdbPutAll(records){
+  return fdbOpen().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(FUNNEL_STORE,"readwrite"), os=tx.objectStore(FUNNEL_STORE);
+    records.forEach(r=>os.put(r));
+    tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
+  }));
+}
+function fdbGetAll(){
+  return fdbOpen().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(FUNNEL_STORE,"readonly");
+    const req=tx.objectStore(FUNNEL_STORE).getAll();
+    req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
+  }));
+}
+function fdbDeleteOlderThan(cutoffDate){
+  return fdbOpen().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(FUNNEL_STORE,"readwrite");
+    const idx=tx.objectStore(FUNNEL_STORE).index("date");
+    const req=idx.openCursor(IDBKeyRange.upperBound(cutoffDate,true));
+    req.onsuccess=e=>{ const cur=e.target.result; if(cur){ cur.delete(); cur.continue(); } };
+    tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
+  }));
+}
+function addDays(dateStr,n){ const d=new Date(dateStr+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
+
+let FUNNEL_CACHE=[]; // весь набор дней в памяти, отсортирован по дате, обновляется после загрузки
+async function fdbRefreshCache(){ FUNNEL_CACHE=(await fdbGetAll()).sort((a,b)=>a.date<b.date?-1:1); }
+
+/* колонки отчёта "Товары" (см. заголовок листа WB) — индекс с 0 */
+const FUNNEL_COLS={sellerSku:0,sku:1,name:2,category:3,brand:4,deleted:5,
+  impressions:8, cardViews:14, addCart:16, addFav:18,
+  ordersQty:20, buyoutQty:22, cancelQty:24,
+  ordersSum:32, buyoutSum:35, cancelSum:37,
+  wbStock:43, ownStock:44};
+
+function parseFunnelWorkbook(XLSX, wb){
+  const giRows=XLSX.utils.sheet_to_json(wb.Sheets["Общая информация"],{header:1,raw:false,defval:""});
+  const periodCell=(giRows[1]&&giRows[1][1])||"";
+  const m=periodCell.match(/С (\d{4}-\d{2}-\d{2}) по (\d{4}-\d{2}-\d{2})/);
+  if(!m) throw new Error("Не нашёл дату периода в листе «Общая информация» — это точно отчёт «Воронка продаж»?");
+  const dateFrom=m[1], dateTo=m[2];
+  const wsTov=wb.Sheets["Товары"];
+  if(!wsTov) throw new Error("В файле нет листа «Товары» — это не отчёт по воронке продаж.");
+  const rows=XLSX.utils.sheet_to_json(wsTov,{header:1,raw:true,defval:""});
+  const num=v=>{ const n=parseFloat((""+v).replace(",",".")); return isNaN(n)?0:n; };
+  const records=[]; let matched=0;
+  rows.slice(1).forEach(r=>{
+    const sku=(r[FUNNEL_COLS.sku]||"").toString().trim();
+    if(!sku || !catalogSkuSet.has(sku)) return;
+    matched++;
+    records.push({
+      id:dateFrom+"_"+sku, date:dateFrom, sku,
+      sellerSku:(r[FUNNEL_COLS.sellerSku]||"").toString(),
+      name:(r[FUNNEL_COLS.name]||"").toString(), category:(r[FUNNEL_COLS.category]||"").toString(),
+      brand:(r[FUNNEL_COLS.brand]||"").toString(),
+      impressions:num(r[FUNNEL_COLS.impressions]), cardViews:num(r[FUNNEL_COLS.cardViews]),
+      addCart:num(r[FUNNEL_COLS.addCart]), addFav:num(r[FUNNEL_COLS.addFav]),
+      ordersQty:num(r[FUNNEL_COLS.ordersQty]), buyoutQty:num(r[FUNNEL_COLS.buyoutQty]), cancelQty:num(r[FUNNEL_COLS.cancelQty]),
+      ordersSum:num(r[FUNNEL_COLS.ordersSum]), buyoutSum:num(r[FUNNEL_COLS.buyoutSum]), cancelSum:num(r[FUNNEL_COLS.cancelSum]),
+      wbStock:num(r[FUNNEL_COLS.wbStock]), ownStock:num(r[FUNNEL_COLS.ownStock]),
+    });
+  });
+  return {dateFrom,dateTo,records,matched,total:rows.length-1};
+}
+
+let catalogSkuSet=new Set(RCAT.map(c=>c.sku));
+
+async function handleFunnelFiles(fileList){
+  const msg=document.getElementById("prodUploadMsg");
+  msg.className="msg"; msg.textContent="";
+  const XLSX=await loadXLSX().catch(()=>{ throw new Error("Нет сети для загрузки парсера XLSX. Попробуйте ещё раз при подключении к интернету."); });
+  const notes=[]; let allRecords=[];
+  for(const file of fileList){
+    try{
+      const buf=await file.arrayBuffer();
+      const wb=XLSX.read(new Uint8Array(buf),{type:"array"});
+      const {dateFrom,dateTo,records,matched,total}=parseFunnelWorkbook(XLSX,wb);
+      allRecords=allRecords.concat(records);
+      let note=`«${file.name}» → ${fmtDateLong(dateFrom)}: найдено ${matched} ваших товаров из ${total} строк отчёта`;
+      if(dateFrom!==dateTo) note+=` (⚠ файл охватывает ${fmtDate(dateFrom)}–${fmtDate(dateTo)}, сохранено датой ${fmtDate(dateFrom)} — для точной ежедневки грузите по одному дню)`;
+      notes.push(note);
+    }catch(e){ notes.push(`«${file.name}» → ошибка: ${e.message}`); }
+  }
+  if(allRecords.length){
+    await fdbPutAll(allRecords);
+    await fdbRefreshCache();
+    const maxDate=FUNNEL_CACHE.length? FUNNEL_CACHE[FUNNEL_CACHE.length-1].date : null;
+    if(maxDate){ await fdbDeleteOlderThan(addDays(maxDate,-FUNNEL_RETENTION_DAYS)); await fdbRefreshCache(); }
+  }
+  msg.className = allRecords.length? "msg ok" : "msg err";
+  msg.innerHTML = notes.map(esc).join("<br>");
+  renderProductHistoryInfo();
+  if(selectedSku) renderProductPeriods();
+}
+
+function renderProductHistoryInfo(){
+  const el=document.getElementById("prodFreshness");
+  if(!FUNNEL_CACHE.length){ el.innerHTML=""; return; }
+  const dates=[...new Set(FUNNEL_CACHE.map(r=>r.date))].sort();
+  const skuCount=new Set(FUNNEL_CACHE.map(r=>r.sku)).size;
+  el.innerHTML=`<span class="dot"></span>Воронка: ${dates.length} дн. загружено, с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров · хранится последние ${FUNNEL_RETENTION_DAYS} дней`;
+}
+
+/* ---- поиск и выбор товара ---- */
+let selectedSku=null;
+function renderSkuResults(){
+  const q=document.getElementById("prodSkuSearch").value.trim().toLowerCase();
+  const box=document.getElementById("prodSkuResults");
+  if(!q){ box.innerHTML=""; return; }
+  const matches=RCAT.filter(c=>c.sku.includes(q)||c.name.toLowerCase().includes(q)).slice(0,8);
+  if(!matches.length){ box.innerHTML=`<div class="empty-hint" style="padding:14px">Ничего не найдено</div>`; return; }
+  box.innerHTML=matches.map(c=>`<button type="button" class="sku-hit ${c.sku===selectedSku?'selected':''}" data-sku="${esc(c.sku)}">
+      <span class="n">${esc(c.name)}</span><span class="a">${esc(c.sku)}</span></button>`).join("");
+}
+document.getElementById("prodSkuResults").addEventListener("click",e=>{
+  const b=e.target.closest(".sku-hit"); if(!b) return;
+  selectedSku=b.dataset.sku;
+  document.getElementById("prodSkuSearch").value = (RCAT.find(c=>c.sku===selectedSku)||{}).name || selectedSku;
+  renderSkuResults();
+  document.getElementById("prodPeriods").hidden=false;
+  initProductPeriods();
+  renderProductPeriods();
+});
+
+/* ---- период A / период B ---- */
+function initProductPeriods(){
+  if(!FUNNEL_CACHE.length) return;
+  const dates=[...new Set(FUNNEL_CACHE.map(r=>r.date))].sort();
+  const last=dates[dates.length-1], prev=dates.length>1? dates[dates.length-2] : last;
+  const A_from=document.getElementById("prodAFrom"), A_to=document.getElementById("prodATo");
+  const B_from=document.getElementById("prodBFrom"), B_to=document.getElementById("prodBTo");
+  if(!A_from.value){ A_from.value=last; A_to.value=last; B_from.value=prev; B_to.value=prev; }
+}
+function aggregateSkuPeriod(sku,from,to){
+  if(!from||!to) return null;
+  const recs=FUNNEL_CACHE.filter(r=>r.sku===sku && r.date>=from && r.date<=to);
+  if(!recs.length) return null;
+  const sum=k=>recs.reduce((a,r)=>a+(r[k]||0),0);
+  const impressions=sum("impressions"),cardViews=sum("cardViews"),addCart=sum("addCart"),addFav=sum("addFav"),
+    ordersQty=sum("ordersQty"),buyoutQty=sum("buyoutQty"),cancelQty=sum("cancelQty"),
+    ordersSum=sum("ordersSum"),buyoutSum=sum("buyoutSum"),cancelSum=sum("cancelSum");
+  return {
+    days:recs.length, impressions, cardViews, addCart, addFav, ordersQty, buyoutQty, cancelQty, ordersSum, buyoutSum, cancelSum,
+    ctr: impressions? cardViews/impressions*100:0,
+    cartConv: cardViews? addCart/cardViews*100:0,
+    orderConv: addCart? ordersQty/addCart*100:0,
+    buyoutPct: (buyoutQty+cancelQty)? buyoutQty/(buyoutQty+cancelQty)*100:0,
+    avgPrice: ordersQty? ordersSum/ordersQty:0,
+    avgOrdersDay: recs.length? ordersQty/recs.length:0,
+    wbStock: recs[recs.length-1].wbStock, ownStock: recs[recs.length-1].ownStock,
+  };
+}
+const FUNNEL_METRICS=[
+  {k:"impressions",l:"Показы",f:fmt,up:true},
+  {k:"ctr",l:"CTR (переходы/показы), %",f:v=>v.toFixed(1)+"%",up:true},
+  {k:"cardViews",l:"Переходы в карточку",f:fmt,up:true},
+  {k:"addCart",l:"Положили в корзину",f:fmt,up:true},
+  {k:"cartConv",l:"Конверсия в корзину, %",f:v=>v.toFixed(1)+"%",up:true},
+  {k:"addFav",l:"Добавили в отложенные",f:fmt,up:true},
+  {k:"ordersQty",l:"Заказали, шт",f:fmt,up:true},
+  {k:"orderConv",l:"Конверсия в заказ, %",f:v=>v.toFixed(1)+"%",up:true},
+  {k:"ordersSum",l:"Заказали на сумму, ₽",f:rub,up:true},
+  {k:"buyoutQty",l:"Выкупили, шт",f:fmt,up:true},
+  {k:"buyoutSum",l:"Выкупили на сумму, ₽",f:rub,up:true},
+  {k:"buyoutPct",l:"Процент выкупа",f:v=>v.toFixed(1)+"%",up:true},
+  {k:"cancelQty",l:"Отменили, шт",f:fmt,up:false},
+  {k:"cancelSum",l:"Отменили на сумму, ₽",f:rub,up:false},
+  {k:"avgPrice",l:"Средняя цена, ₽",f:rub,up:null},
+  {k:"avgOrdersDay",l:"Заказов в день (в среднем)",f:v=>v.toLocaleString("ru-RU",{maximumFractionDigits:1}),up:true},
+  {k:"wbStock",l:"Остаток «Склад WB», шт",f:fmt,up:null},
+  {k:"ownStock",l:"Остаток «Свой склад», шт",f:fmt,up:null},
+];
+function renderProductPeriods(){
+  if(!selectedSku) return;
+  const A=aggregateSkuPeriod(selectedSku,document.getElementById("prodAFrom").value,document.getElementById("prodATo").value);
+  const B=aggregateSkuPeriod(selectedSku,document.getElementById("prodBFrom").value,document.getElementById("prodBTo").value);
+  const card=document.getElementById("prodTableCard"); card.hidden=false;
+  const c=RCAT.find(x=>x.sku===selectedSku);
+  document.getElementById("prodTableTitle").textContent=`Воронка: ${(c&&c.name)||selectedSku} · ${selectedSku}`;
+  if(!A && !B){ document.getElementById("prodTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет загруженных данных по этому товару за выбранные периоды — загрузите отчёт воронки за нужные дни.</td></tr></tbody>`; return; }
+  let html=`<thead><tr><th class="metric">Метрика</th><th>Период A</th><th>Период B</th><th>Δ</th><th>Δ %</th></tr></thead><tbody>`;
+  FUNNEL_METRICS.forEach(m=>{
+    const av=A?A[m.k]:null, bv=B?B[m.k]:null;
+    const has = av!=null && bv!=null;
+    const d = has? av-bv : null;
+    const dPct = has && bv? (d/Math.abs(bv)*100) : null;
+    let dCls="";
+    if(has && m.up!=null && d!==0){ const good=(d>0)===m.up; dCls=good?"delta-up":"delta-down"; }
+    html+=`<tr><td class="metric">${m.l}</td>
+      <td>${av!=null? m.f(av):"—"}</td>
+      <td>${bv!=null? m.f(bv):"—"}</td>
+      <td class="${dCls}">${has? (d>=0?"+":"")+m.f(d):"—"}</td>
+      <td class="${dCls}">${dPct!=null? (dPct>=0?"+":"")+dPct.toFixed(1)+"%":"—"}</td>
+    </tr>`;
+  });
+  html+="</tbody>";
+  document.getElementById("prodTable").innerHTML=html;
+}
+
+/* =========================================================================
+   13. ВКЛАДКИ
+   ========================================================================= */
+const TABS=["home","dynamics","turnover","product"];
 function switchTab(name){
   TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
   document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
   if(name==="dynamics") renderDynamicsTab();
   if(name==="turnover") renderTurnoverTab();
+  if(name==="product") renderProductHistoryInfo();
   try{localStorage.setItem("wb_active_tab",name);}catch(e){}
 }
 document.getElementById("tabs").addEventListener("click",e=>{
@@ -1182,8 +1460,18 @@ document.getElementById("turnStatus").addEventListener("change",renderTurnoverTa
 document.getElementById("turnWindow").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnExportBtn").addEventListener("click",exportTurnoverCSV);
 
+const prodDrop=document.getElementById("prodDrop"), prodFileInput=document.getElementById("prodFileInput");
+prodDrop.onclick=()=>prodFileInput.click();
+prodFileInput.onchange=e=>{ if(e.target.files.length) handleFunnelFiles(e.target.files); };
+["dragenter","dragover"].forEach(ev=>prodDrop.addEventListener(ev,e=>{e.preventDefault();prodDrop.classList.add("hover");}));
+["dragleave","drop"].forEach(ev=>prodDrop.addEventListener(ev,e=>{e.preventDefault();prodDrop.classList.remove("hover");}));
+prodDrop.addEventListener("drop",e=>{ if(e.dataTransfer.files.length) handleFunnelFiles(e.dataTransfer.files); });
+document.getElementById("prodSkuSearch").addEventListener("input",renderSkuResults);
+["prodAFrom","prodATo","prodBFrom","prodBTo"].forEach(id=>document.getElementById(id).addEventListener("change",renderProductPeriods));
+
 // старт
 render();
+fdbRefreshCache().then(renderProductHistoryInfo).catch(()=>{});
 try{ const saved=localStorage.getItem("wb_active_tab"); if(saved&&TABS.includes(saved)) switchTab(saved); }catch(e){}
 addEventListener("resize",()=>{ clearTimeout(window._rt); window._rt=setTimeout(render,150); });
 </script>
