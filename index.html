@@ -336,6 +336,7 @@
         <option value="warning">Скоро понадобится</option>
         <option value="good">Запаса достаточно</option>
         <option value="nodata">Нет продаж/данных</option>
+        <option value="discontinued">Выводится из ассортимента</option>
       </select>
       <select id="turnWindow">
         <option value="14">Скорость: за 14 дней</option>
@@ -967,23 +968,28 @@ function computeTurnover(c,windowDays){
   const avgD = RDATES.length ? sumRange(c.sku,Math.max(0,lastIdx-windowDays+1),lastIdx)/Math.min(windowDays,RDATES.length) : 0;
   const leadTimeDays=getLeadTime(c.sku), targetBufferDays=getBuffer(c.sku);
   const currentStock=(c.wbStock||0)+(c.ownWarehouseStock||0);
-  const inTransit=c.inTransitToWB||0, pendingQty=c.pending? c.pending.qty:0;
+  // плановая дата поставки уже прошла (относительно последней известной даты) — считаем партию уже пришедшей,
+  // а не всё ещё «в пути», чтобы не задваивать её с фактическим остатком
+  const pending = (c.pending && RLAST && c.pending.arrivalDate>=RLAST) ? c.pending : null;
+  const isDiscontinued = c.productionStatus==="На вывод";
+  const inTransit=c.inTransitToWB||0, pendingQty=pending? pending.qty:0;
   const covered=currentStock+inTransit+pendingQty;
   const daysLeft = avgD>0 ? currentStock/avgD : (currentStock>0? Infinity:0);
   const targetStock = avgD*targetBufferDays;
-  const need = Math.max(0, Math.ceil(targetStock-covered));
+  const need = isDiscontinued ? 0 : Math.max(0, Math.ceil(targetStock-covered));
   const containers = (c.containerQty && need>0) ? Math.ceil(need/c.containerQty) : 0;
   const needRounded = containers ? containers*c.containerQty : need;
   let status;
-  if(avgD<=0 && currentStock<=0 && !c.pending) status="nodata";
-  else if(c.pending && daysLeft<leadTimeDays) status="ordered";
+  if(isDiscontinued) status="discontinued";
+  else if(avgD<=0 && currentStock<=0 && !pending) status="nodata";
+  else if(pending && daysLeft<leadTimeDays) status="ordered";
   else if(daysLeft<leadTimeDays) status="critical";
   else if(daysLeft<targetBufferDays) status="warning";
   else status="good";
-  return {...c,avgD,leadTimeDays,targetBufferDays,currentStock,inTransit,pendingQty,daysLeft,targetStock,need,containers,needRounded,status};
+  return {...c,pending,avgD,leadTimeDays,targetBufferDays,currentStock,inTransit,pendingQty,daysLeft,targetStock,need,containers,needRounded,status};
 }
-const STATUS_LABEL={critical:"Критично",ordered:"Едет, но впритык",warning:"Скоро понадобится",good:"Норма",nodata:"Нет данных"};
-function statusBadge(s){ return `<span class="badge ${s}"><span class="d"></span>${STATUS_LABEL[s]}</span>`; }
+const STATUS_LABEL={critical:"Критично",ordered:"Едет, но впритык",warning:"Скоро понадобится",good:"Норма",nodata:"Нет данных",discontinued:"Выводится из ассортимента"};
+function statusBadge(s){ return `<span class="badge ${s==='discontinued'?'nodata':s}"><span class="d"></span>${STATUS_LABEL[s]}</span>`; }
 
 function turnoverList(){
   const windowDays=parseInt(document.getElementById("turnWindow").value,10)||30;
@@ -1004,7 +1010,7 @@ function renderTurnoverTab(){
   if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
   if(cat) rows=rows.filter(r=>r.category===cat);
   if(statusF) rows=rows.filter(r=>r.status===statusF);
-  const order={critical:0,ordered:1,warning:2,good:3,nodata:4};
+  const order={critical:0,ordered:1,warning:2,good:3,nodata:4,discontinued:5};
   rows=rows.slice().sort((a,b)=>(order[a.status]-order[b.status])||(a.daysLeft-b.daysLeft));
 
   const critCount=all.filter(r=>r.status==="critical").length;
