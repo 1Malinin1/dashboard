@@ -1406,55 +1406,124 @@ async function fdbRefreshCache(){ FUNNEL_CACHE=(await fdbGetAll(FUNNEL_STORE)).s
 let FINANCE_CACHE=[];
 async function fdbRefreshFinanceCache(){ FINANCE_CACHE=(await fdbGetAll(FINANCE_STORE)).sort((a,b)=>a.date<b.date?-1:1); }
 
-/* колонки отчёта "Товары" (см. заголовок листа WB) — индекс с 0 */
-const FUNNEL_COLS={sellerSku:0,sku:1,name:2,category:3,brand:4,deleted:5,
-  impressions:8, cardViews:14, addCart:16, addFav:18,
-  ordersQty:20, buyoutQty:22, cancelQty:24,
-  ordersSum:32, buyoutSum:35, cancelSum:37,
-  wbStock:43, ownStock:44};
-
-function parseFunnelWorkbook(XLSX, wb){
-  const giRows=XLSX.utils.sheet_to_json(wb.Sheets["Общая информация"],{header:1,raw:false,defval:""});
-  const periodCell=(giRows[1]&&giRows[1][1])||"";
-  const m=periodCell.match(/С (\d{4}-\d{2}-\d{2}) по (\d{4}-\d{2}-\d{2})/);
-  if(!m) throw new Error("Не нашёл дату периода в листе «Общая информация» — это точно отчёт «Воронка продаж»?");
-  const dateFrom=m[1], dateTo=m[2];
-  const wsTov=wb.Sheets["Товары"];
-  if(!wsTov) throw new Error("В файле нет листа «Товары» — это не отчёт по воронке продаж.");
-  const rows=XLSX.utils.sheet_to_json(wsTov,{header:1,raw:true,defval:""});
-  const num=v=>{ const n=parseFloat((""+v).replace(",",".")); return isNaN(n)?0:n; };
-  const records=[]; let matched=0;
-  rows.slice(1).forEach(r=>{
-    const sku=(r[FUNNEL_COLS.sku]||"").toString().trim();
-    if(!sku || !catalogSkuSet.has(sku)) return;
-    matched++;
-    records.push({
-      id:dateFrom+"_"+sku, date:dateFrom, sku,
-      sellerSku:(r[FUNNEL_COLS.sellerSku]||"").toString(),
-      name:(r[FUNNEL_COLS.name]||"").toString(), category:(r[FUNNEL_COLS.category]||"").toString(),
-      brand:(r[FUNNEL_COLS.brand]||"").toString(),
-      impressions:num(r[FUNNEL_COLS.impressions]), cardViews:num(r[FUNNEL_COLS.cardViews]),
-      addCart:num(r[FUNNEL_COLS.addCart]), addFav:num(r[FUNNEL_COLS.addFav]),
-      ordersQty:num(r[FUNNEL_COLS.ordersQty]), buyoutQty:num(r[FUNNEL_COLS.buyoutQty]), cancelQty:num(r[FUNNEL_COLS.cancelQty]),
-      ordersSum:num(r[FUNNEL_COLS.ordersSum]), buyoutSum:num(r[FUNNEL_COLS.buyoutSum]), cancelSum:num(r[FUNNEL_COLS.cancelSum]),
-      wbStock:num(r[FUNNEL_COLS.wbStock]), ownStock:num(r[FUNNEL_COLS.ownStock]),
-    });
-  });
-  return {dateFrom,dateTo,records,matched,total:rows.length-1};
-}
-
 let catalogSkuSet=new Set(RCAT.map(c=>c.sku));
+
+/* =========================================================================
+   РАЗБОР БОЛЬШИХ ОТЧЁТОВ В WEB WORKER
+   Крупные выгрузки (десятки МБ, десятки тысяч строк) блокировали вкладку —
+   XLSX.read() и построчная агрегация шли синхронно в основном потоке, и
+   браузер показывал «страница не отвечает». Выносим весь тяжёлый разбор
+   в одноразовый Worker (создаётся из Blob, поэтому не нужен отдельный файл),
+   а сам XLSX подгружается внутри воркера через importScripts — интерфейс
+   остаётся отзывчивым, даже если файл разбирается минуту.
+   ========================================================================= */
+const WORKER_SRC = String.raw`
+self.onmessage = function(e){
+  const { type, buffer, catalogSkus } = e.data;
+  const catalogSkuSet = new Set(catalogSkus);
+  function num(v){ const n=parseFloat((""+v).replace(/\s/g,"").replace(",",".")); return isNaN(n)?0:n; }
+  try{
+    importScripts('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
+    const wb = XLSX.read(new Uint8Array(buffer), {type:"array"});
+
+    if(type==="funnel"){
+      const giRows = XLSX.utils.sheet_to_json(wb.Sheets["Общая информация"],{header:1,raw:false,defval:""});
+      const periodCell = (giRows[1]&&giRows[1][1])||"";
+      const m = periodCell.match(/С (\d{4}-\d{2}-\d{2}) по (\d{4}-\d{2}-\d{2})/);
+      if(!m) throw new Error("Не нашёл дату периода в листе «Общая информация» — это точно отчёт «Воронка продаж»?");
+      const dateFrom=m[1], dateTo=m[2];
+      const wsTov = wb.Sheets["Товары"];
+      if(!wsTov) throw new Error("В файле нет листа «Товары» — это не отчёт по воронке продаж.");
+      const rows = XLSX.utils.sheet_to_json(wsTov,{header:1,raw:true,defval:""});
+      const COLS = {sellerSku:0,sku:1,name:2,category:3,brand:4,deleted:5,
+        impressions:8, cardViews:14, addCart:16, addFav:18,
+        ordersQty:20, buyoutQty:22, cancelQty:24,
+        ordersSum:32, buyoutSum:35, cancelSum:37,
+        wbStock:43, ownStock:44};
+      const records=[]; let matched=0;
+      for(let i=1;i<rows.length;i++){
+        const r=rows[i];
+        const sku=(r[COLS.sku]||"").toString().trim();
+        if(!sku||!catalogSkuSet.has(sku)) continue;
+        matched++;
+        records.push({ id:dateFrom+"_"+sku, date:dateFrom, sku,
+          sellerSku:(r[COLS.sellerSku]||"").toString(), name:(r[COLS.name]||"").toString(), category:(r[COLS.category]||"").toString(),
+          brand:(r[COLS.brand]||"").toString(),
+          impressions:num(r[COLS.impressions]), cardViews:num(r[COLS.cardViews]),
+          addCart:num(r[COLS.addCart]), addFav:num(r[COLS.addFav]),
+          ordersQty:num(r[COLS.ordersQty]), buyoutQty:num(r[COLS.buyoutQty]), cancelQty:num(r[COLS.cancelQty]),
+          ordersSum:num(r[COLS.ordersSum]), buyoutSum:num(r[COLS.buyoutSum]), cancelSum:num(r[COLS.cancelSum]),
+          wbStock:num(r[COLS.wbStock]), ownStock:num(r[COLS.ownStock]) });
+      }
+      self.postMessage({ok:true, dateFrom, dateTo, records, matched, total:rows.length-1});
+
+    } else if(type==="finance"){
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
+      if(!rows.length) throw new Error("Пустой файл.");
+      const header=rows[0];
+      const FIN_COLS={ sku:"Код номенклатуры", sellerSku:"Артикул поставщика", name:"Название", category:"Предмет",
+        docType:"Тип документа", saleDate:"Дата продажи", qty:"Кол-во",
+        retailPriceDiscounted:"Цена розничная с учетом согласованной скидки",
+        wbReward:"Вознаграждение Вайлдберриз (ВВ), без НДС",
+        payout:"К перечислению Продавцу за реализованный Товар",
+        logistics:"Услуги по доставке товара покупателю",
+        penalty:"Общая сумма штрафов", storage:"Хранение" };
+      const colIdx={}; for(const k in FIN_COLS) colIdx[k]=header.indexOf(FIN_COLS[k]);
+      if(colIdx.sku<0||colIdx.saleDate<0||colIdx.payout<0) throw new Error("Не нашёл нужные колонки («Код номенклатуры», «Дата продажи», «К перечислению…») — это точно отчёт о реализации WB?");
+      const byKey={}; let matched=0, total=0;
+      for(let i=1;i<rows.length;i++){
+        const r=rows[i]; if(!r||!r.length) continue;
+        const sku=(r[colIdx.sku]||"").toString().trim(); if(!sku) continue;
+        total++;
+        if(!catalogSkuSet.has(sku)) continue;
+        const date=(r[colIdx.saleDate]||"").toString().trim();
+        if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
+        matched++;
+        const isReturn=(r[colIdx.docType]||"").toString().trim()==="Возврат";
+        const sign=isReturn?-1:1;
+        const key=date+"_"+sku;
+        if(!byKey[key]) byKey[key]={id:key,date,sku,
+          sellerSku:(r[colIdx.sellerSku]||"").toString(), name:(r[colIdx.name]||sku).toString(), category:(r[colIdx.category]||"").toString(),
+          qty:0, returnsQty:0, revenue:0, payout:0, wbReward:0, logistics:0, storage:0, penalty:0};
+        const rec=byKey[key], qty=num(r[colIdx.qty]);
+        if(isReturn) rec.returnsQty+=qty; else rec.qty+=qty;
+        rec.revenue += sign*num(r[colIdx.retailPriceDiscounted])*qty;
+        rec.payout  += sign*num(r[colIdx.payout]);
+        rec.wbReward+= sign*num(r[colIdx.wbReward]);
+        rec.logistics += num(r[colIdx.logistics]);
+        rec.storage   += num(r[colIdx.storage]);
+        rec.penalty   += num(r[colIdx.penalty]);
+      }
+      self.postMessage({ok:true, records:Object.values(byKey), matched, total});
+    } else {
+      throw new Error("Неизвестный тип отчёта: "+type);
+    }
+  }catch(err){
+    self.postMessage({ok:false, error: (err&&err.message)||String(err)});
+  }
+};
+`;
+function parseReportInWorker(type,file,catalogSkus){
+  return new Promise((resolve,reject)=>{
+    let worker;
+    try{ worker=new Worker(URL.createObjectURL(new Blob([WORKER_SRC],{type:"application/javascript"}))); }
+    catch(e){ reject(new Error("Не удалось запустить фоновую обработку: "+e.message)); return; }
+    worker.onmessage=e=>{ worker.terminate(); e.data.ok? resolve(e.data) : reject(new Error(e.data.error)); };
+    worker.onerror=err=>{ worker.terminate(); reject(new Error(err.message||"Ошибка фоновой обработки файла")); };
+    file.arrayBuffer().then(buffer=>{ worker.postMessage({type,buffer,catalogSkus},[buffer]); })
+      .catch(e=>{ worker.terminate(); reject(e); });
+  });
+}
 
 async function handleFunnelFiles(fileList){
   const msg=document.getElementById("prodUploadMsg");
-  msg.className="msg"; msg.textContent="";
-  const XLSX=await loadXLSX().catch(()=>{ throw new Error("Нет сети для загрузки парсера XLSX. Попробуйте ещё раз при подключении к интернету."); });
+  msg.className="msg"; msg.textContent="Обрабатываю файл(ы)… для больших отчётов это может занять до минуты, страница не зависает.";
+  const catalogSkus=[...catalogSkuSet];
   const notes=[]; let allRecords=[];
   for(const file of fileList){
     try{
-      const buf=await file.arrayBuffer();
-      const wb=XLSX.read(new Uint8Array(buf),{type:"array"});
-      const {dateFrom,dateTo,records,matched,total}=parseFunnelWorkbook(XLSX,wb);
+      const {dateFrom,dateTo,records,matched,total}=await parseReportInWorker("funnel",file,catalogSkus);
       allRecords=allRecords.concat(records);
       let note=`«${file.name}» → ${fmtDateLong(dateFrom)}: найдено ${matched} ваших товаров из ${total} строк отчёта`;
       if(dateFrom!==dateTo) note+=` (⚠ файл охватывает ${fmtDate(dateFrom)}–${fmtDate(dateTo)}, сохранено датой ${fmtDate(dateFrom)} — для точной ежедневки грузите по одному дню)`;
@@ -1473,67 +1542,14 @@ async function handleFunnelFiles(fileList){
   if(selectedSku) renderProductPeriods();
 }
 
-/* =========================================================================
-   ФИНАНСОВЫЙ ОТЧЁТ (еженедельный «Отчёт о реализации») — тот же принцип
-   накопления по датам в IndexedDB, что и воронка. Один файл может содержать
-   сразу много дней и много строк на день — агрегируем построчно по
-   (дата продажи, артикул). Колонки ищем по НАЗВАНИЮ заголовка, а не по
-   номеру, т.к. WB иногда меняет порядок колонок между выгрузками.
-   ========================================================================= */
-const FIN_COLS={
-  sku:"Код номенклатуры", sellerSku:"Артикул поставщика", name:"Название", category:"Предмет",
-  docType:"Тип документа", saleDate:"Дата продажи", qty:"Кол-во",
-  retailPriceDiscounted:"Цена розничная с учетом согласованной скидки",
-  wbReward:"Вознаграждение Вайлдберриз (ВВ), без НДС",
-  payout:"К перечислению Продавцу за реализованный Товар",
-  logistics:"Услуги по доставке товара покупателю",
-  penalty:"Общая сумма штрафов",
-  storage:"Хранение",
-};
-function parseFinanceWorkbook(XLSX,wb){
-  const ws=wb.Sheets[wb.SheetNames[0]];
-  const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
-  if(!rows.length) throw new Error("Пустой файл.");
-  const header=rows[0];
-  const colIdx={}; for(const k in FIN_COLS) colIdx[k]=header.indexOf(FIN_COLS[k]);
-  if(colIdx.sku<0||colIdx.saleDate<0||colIdx.payout<0) throw new Error("Не нашёл нужные колонки («Код номенклатуры», «Дата продажи», «К перечислению…») — это точно отчёт о реализации WB?");
-  const num=v=>{ const n=parseFloat((""+v).replace(/\s/g,"").replace(",",".")); return isNaN(n)?0:n; };
-  const byKey={}; let matched=0, total=0;
-  rows.slice(1).forEach(r=>{
-    if(!r||!r.length) return;
-    const sku=(r[colIdx.sku]||"").toString().trim(); if(!sku) return;
-    total++;
-    if(!catalogSkuSet.has(sku)) return;
-    const date=(r[colIdx.saleDate]||"").toString().trim();
-    if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) return;
-    matched++;
-    const isReturn=(r[colIdx.docType]||"").toString().trim()==="Возврат";
-    const sign=isReturn?-1:1;
-    const key=date+"_"+sku;
-    if(!byKey[key]) byKey[key]={id:key,date,sku,
-      sellerSku:(r[colIdx.sellerSku]||"").toString(), name:(r[colIdx.name]||sku).toString(), category:(r[colIdx.category]||"").toString(),
-      qty:0, returnsQty:0, revenue:0, payout:0, wbReward:0, logistics:0, storage:0, penalty:0};
-    const rec=byKey[key], qty=num(r[colIdx.qty]);
-    if(isReturn) rec.returnsQty+=qty; else rec.qty+=qty;
-    rec.revenue += sign*num(r[colIdx.retailPriceDiscounted])*qty;
-    rec.payout  += sign*num(r[colIdx.payout]);
-    rec.wbReward+= sign*num(r[colIdx.wbReward]);
-    rec.logistics += num(r[colIdx.logistics]);
-    rec.storage   += num(r[colIdx.storage]);
-    rec.penalty   += num(r[colIdx.penalty]);
-  });
-  return {records:Object.values(byKey), matched, total};
-}
 async function handleFinanceFiles(fileList){
   const msg=document.getElementById("finUploadMsg");
-  msg.className="msg"; msg.textContent="";
-  const XLSX=await loadXLSX().catch(()=>{ throw new Error("Нет сети для загрузки парсера XLSX. Попробуйте ещё раз при подключении к интернету."); });
+  msg.className="msg"; msg.textContent="Обрабатываю файл(ы)… для больших отчётов это может занять до минуты, страница не зависает.";
+  const catalogSkus=[...catalogSkuSet];
   const notes=[]; let allRecords=[];
   for(const file of fileList){
     try{
-      const buf=await file.arrayBuffer();
-      const wb=XLSX.read(new Uint8Array(buf),{type:"array"});
-      const {records,matched,total}=parseFinanceWorkbook(XLSX,wb);
+      const {records,matched,total}=await parseReportInWorker("finance",file,catalogSkus);
       allRecords=allRecords.concat(records);
       const dates=[...new Set(records.map(r=>r.date))].sort();
       const range=dates.length? (dates.length===1? fmtDateLong(dates[0]) : `${fmtDate(dates[0])}–${fmtDate(dates[dates.length-1])}`) : "—";
