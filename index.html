@@ -66,18 +66,12 @@
     font-size:13px;padding:6px 12px;border-radius:7px;cursor:pointer;transition:.12s}
   .seg button[aria-pressed="true"]{background:var(--s1);color:#fff;font-weight:550}
   .filters .spacer{flex:1}
-  .src-tag{font-size:12px;color:var(--muted);display:inline-flex;align-items:center;gap:6px}
-  .src-tag .dot{width:8px;height:8px;border-radius:50%;background:var(--good)}
-  .src-tag.demo .dot{background:var(--warn)}
 
   /* ===== KPI-плитки ===== */
-  .kpis{display:grid;grid-template-columns:repeat(6,1fr);gap:12px;margin-bottom:14px}
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);
     padding:15px 16px;box-shadow:var(--shadow);min-width:0}
-  .kpi.hero{grid-column:span 2}
   .kpi .lbl{font-size:12.5px;color:var(--muted);margin-bottom:7px}
   .kpi .val{font-weight:650;letter-spacing:-.02em;font-size:24px;line-height:1.05}
-  .kpi.hero .val{font-size:40px}
   .kpi .delta{font-size:12.5px;margin-top:7px;display:inline-flex;align-items:center;gap:4px;font-weight:550}
   .kpi .delta.up{color:var(--good-txt)} .kpi .delta.down{color:var(--crit)}
   .kpi .spark{margin-top:9px;height:26px;width:100%;display:block}
@@ -107,6 +101,10 @@
     border-bottom:1px solid var(--grid)}
   table.rnp thead th{position:sticky;top:0;background:var(--surface);z-index:2;
     color:var(--muted);font-weight:600;font-size:12px}
+  table.rnp th.sortable{cursor:pointer;user-select:none;transition:color .12s}
+  table.rnp th.sortable:hover{color:var(--text-1)}
+  table.rnp th.sortable.active{color:var(--s1)}
+  table.rnp th.sortable .sort-arrow{display:inline-block;min-width:11px;margin-left:2px;font-size:9px;color:var(--s1)}
   table.rnp th.metric,table.rnp td.metric{text-align:left;position:sticky;left:0;
     background:var(--surface);z-index:1;color:var(--text-1);font-weight:500;min-width:210px}
   table.rnp thead th.metric{z-index:3}
@@ -129,25 +127,17 @@
   #tip .t-row .k i{width:14px;height:3px;border-radius:2px;display:inline-block}
   #tip .t-row .v{font-weight:650;font-variant-numeric:tabular-nums}
 
-  /* ===== Модалка загрузки ===== */
-  .overlay{position:fixed;inset:0;background:rgba(11,11,11,.45);display:none;
-    place-items:center;z-index:100;padding:20px}
-  .overlay.on{display:grid}
-  .modal{background:var(--surface);border:1px solid var(--border);border-radius:16px;
-    max-width:560px;width:100%;box-shadow:var(--shadow);max-height:90vh;overflow:auto}
-  .modal .m-hd{padding:18px 20px 12px;border-bottom:1px solid var(--grid);
-    display:flex;justify-content:space-between;align-items:center}
-  .modal .m-hd h2{margin:0;font-size:17px} .modal .m-bd{padding:18px 20px 22px}
+  /* ===== Зона перетаскивания файлов (Товар/Финансы) ===== */
   .drop{border:2px dashed var(--baseline);border-radius:12px;padding:26px 18px;text-align:center;
     color:var(--text-2);cursor:pointer;transition:.15s;background:var(--surface-2)}
   .drop.hover{border-color:var(--s1);background:color-mix(in srgb,var(--s1) 8%,var(--surface))}
   .drop b{color:var(--text-1)}
-  .steps{font-size:13px;color:var(--text-2);margin:16px 0 0;padding-left:18px}
-  .steps li{margin:5px 0}
   .msg{margin-top:14px;font-size:13px;padding:10px 12px;border-radius:9px;display:none;overflow-wrap:anywhere}
   .msg.ok{display:block;background:color-mix(in srgb,var(--good) 12%,var(--surface));color:var(--good-txt)}
   .msg.err{display:block;background:color-mix(in srgb,var(--crit) 12%,var(--surface));color:var(--crit)}
-  .close{border:0;background:transparent;font-size:22px;cursor:pointer;color:var(--muted);line-height:1}
+  .callout-warn{background:color-mix(in srgb,var(--warn) 14%,var(--surface));color:var(--warn-txt);
+    border:1px solid color-mix(in srgb,var(--warn) 35%,transparent);border-radius:10px;
+    padding:10px 14px;font-size:13px;margin-bottom:14px}
 
   footer{color:var(--muted);font-size:12px;text-align:center;margin-top:26px}
   footer a{color:var(--s1)}
@@ -233,7 +223,6 @@
   table.rnp td.delta-up{color:var(--good-txt)} table.rnp td.delta-down{color:var(--crit)}
 
   @media(max-width:900px){
-    .kpis{grid-template-columns:repeat(2,1fr)} .kpi.hero{grid-column:span 2}
     .kpis4{grid-template-columns:repeat(2,1fr)}
     .grid2{grid-template-columns:1fr}
     .tabs{overflow-x:auto;white-space:nowrap;flex-wrap:nowrap}
@@ -255,14 +244,6 @@
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l-1.5-1.5M18 18l1.5 1.5M6 18l-1.5 1.5M18 6l1.5-1.5"/><circle cx="12" cy="12" r="4"/></svg>
       Тема
     </button>
-    <button class="btn" id="tplBtn" title="Скачать CSV-шаблон для загрузки">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v12m0 0l-4-4m4 4l4-4M4 19h16"/></svg>
-      Шаблон
-    </button>
-    <button class="btn primary" id="uploadBtn">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V7m0 0l-5 5m5-5l5 5M5 5h14"/></svg>
-      Загрузить отчёт
-    </button>
   </header>
 
   <nav class="tabs" id="tabs" role="tablist">
@@ -274,55 +255,52 @@
   </nav>
 
   <section id="tab-home" class="tab-panel">
+  <div class="freshness" id="homeFreshness"></div>
   <div class="filters">
-    <div class="seg" id="periodSeg" role="group" aria-label="Период">
-      <button data-n="3">3 мес</button>
-      <button data-n="6" aria-pressed="true">6 мес</button>
-      <button data-n="12">Всё</button>
-    </div>
-    <div class="spacer"></div>
-    <span class="src-tag demo" id="srcTag"><span class="dot"></span><span id="srcTxt">Демо-данные</span></span>
-    <button class="btn" id="resetBtn" title="Вернуть демо-данные" style="display:none">Сброс</button>
-  </div>
-
-  <div class="kpis" id="kpis"></div>
-
-  <div class="grid2">
-    <div class="card">
-      <h3>Динамика заказов и выкупов</h3>
-      <div class="cap">Штук по периодам · линия — заказы, область — выкупы</div>
-      <div class="legend" id="lg-orders"></div>
-      <div id="ch-orders"></div>
-    </div>
-    <div class="card">
-      <h3>Выручка и валовая прибыль</h3>
-      <div class="cap">₽ по периодам · перечислено WB и прибыль после всех затрат</div>
-      <div class="legend" id="lg-money"></div>
-      <div id="ch-money"></div>
+    <div class="seg" id="homePeriodSeg" role="group" aria-label="Период">
+      <button data-n="7">7 дней</button>
+      <button data-n="30" aria-pressed="true">30 дней</button>
+      <button data-n="90">90 дней</button>
+      <button data-n="0">Весь период</button>
     </div>
   </div>
 
-  <div class="grid2">
-    <div class="card">
-      <h3>Юнит-экономика · структура 1 заказа</h3>
-      <div class="cap">Средний чек за период, разложенный на затраты и прибыль, ₽</div>
-      <div class="legend" id="lg-unit"></div>
-      <div id="ch-unit"></div>
-    </div>
-    <div class="card">
-      <h3>Оборачиваемость и ДРР</h3>
-      <div class="cap">Дни запаса на складе (столбцы) · метка — доля рекламы в выручке</div>
-      <div class="legend" id="lg-turn"></div>
-      <div id="ch-turn"></div>
-    </div>
+  <div id="homeEmpty" class="empty-hint" hidden style="padding:60px 20px">
+    Пока нет данных для сводки. Загрузите отчёт о реализации на вкладке «Финансы» — здесь появится реальная прибыль по товарам.
   </div>
 
-  <div class="table-card">
-    <div class="table-head">
-      <h3>РНП — полная таблица по периодам</h3>
-      <span class="muted" id="tblNote"></span>
+  <div id="homeContent" hidden>
+    <div class="kpis4" id="homeKpis"></div>
+    <div class="callout-warn" id="homeCostWarning" hidden></div>
+
+    <div class="grid2">
+      <div class="card">
+        <h3>Выручка и прибыль по дням</h3>
+        <div class="cap" id="homeChartCap"></div>
+        <div class="legend" id="homeChartLegend"></div>
+        <div id="ch-home-money"></div>
+      </div>
+      <div class="card">
+        <h3>Структура одной продажи</h3>
+        <div class="cap">В среднем на 1 проданную единицу за период, ₽</div>
+        <div class="legend" id="homeUnitLegend"></div>
+        <div id="ch-home-unit"></div>
+      </div>
     </div>
-    <div class="table-scroll"><table class="rnp" id="rnp"></table></div>
+
+    <div class="table-card">
+      <div class="table-head">
+        <h3>Прибыль по товарам за период</h3>
+        <span class="muted" id="homeTblNote"></span>
+      </div>
+      <div class="toolbar" style="padding:0 18px 12px">
+        <input type="search" id="homeSearch" placeholder="Поиск по артикулу или названию…">
+        <select id="homeCat"></select>
+        <span class="count" id="homeCount"></span>
+        <button class="btn" id="homeExportBtn">Скачать CSV</button>
+      </div>
+      <div class="table-scroll"><table class="rnp" id="homeTable"></table></div>
+    </div>
   </div>
   </section>
 
@@ -481,34 +459,10 @@
   </section>
 
   <footer>
-    Данные считаются в браузере, никуда не отправляются. Раздел «Главная» — кнопкой «Загрузить отчёт» (CSV/XLSX по шаблону).
-    <br>«Динамика заказов» и «Оборачиваемость» — по вашей таблице WB; чтобы обновить, пришлите новую выгрузку.
-    <br>Автосохранение в этом браузере · <a href="#" id="exportBtn">выгрузить текущие данные в CSV</a>
+    Данные считаются в браузере, никуда не отправляются. «Главная» собирается из отчётов, загруженных на вкладке «Финансы».
+    <br>«Динамика заказов» и «Оборачиваемость» — по вашей таблице WB; «Товар»/«Финансы» — самостоятельная загрузка на месте.
+    <br>Автосохранение в этом браузере.
   </footer>
-</div>
-
-<!-- Модалка загрузки -->
-<div class="overlay" id="overlay">
-  <div class="modal">
-    <div class="m-hd">
-      <h2>Загрузка отчёта</h2>
-      <button class="close" id="modalClose" aria-label="Закрыть">×</button>
-    </div>
-    <div class="m-bd">
-      <div class="drop" id="drop">
-        <svg viewBox="0 0 24 24" width="34" height="34" fill="none" stroke="var(--muted)" stroke-width="1.6" style="margin-bottom:8px"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg>
-        <div>Перетащите файл сюда или <b>нажмите, чтобы выбрать</b></div>
-        <div style="font-size:12px;color:var(--muted);margin-top:6px">CSV или XLSX по шаблону · первая колонка — метрика, дальше периоды</div>
-        <input type="file" id="fileInput" accept=".csv,.xlsx,.xls" hidden>
-      </div>
-      <div class="msg" id="uploadMsg"></div>
-      <ol class="steps">
-        <li>Нажмите <b>«Шаблон»</b> в шапке — скачается CSV с нужными строками.</li>
-        <li>Заполните его из отчётов WB (продажи, финансовый, остатки, реклама) — или пришлите мне сырые выгрузки, и я соберу файл за вас.</li>
-        <li>Загрузите заполненный файл здесь — дашборд пересчитается автоматически и сохранится в браузере.</li>
-      </ol>
-    </div>
-  </div>
 </div>
 
 <div id="tip"></div>
@@ -516,77 +470,10 @@
 <script src="wb-data.js"></script>
 <script>
 /* =========================================================================
-   1. МОДЕЛЬ ДАННЫХ
-   Базовые (вводимые) метрики. Всё остальное считается автоматически.
-   Чтобы обновить вручную — правьте массивы здесь ИЛИ загрузите CSV/XLSX.
-   ========================================================================= */
-const DEMO = {
-  periods: ["Янв","Фев","Мар","Апр","Май","Июн"],
-  base: {
-    orders_qty:  [1180, 1340, 1290, 1520, 1810, 1975],  // Заказы, шт
-    buyout_qty:  [ 860,  995,  968, 1155, 1400, 1560],  // Выкуплено, шт
-    returns_qty: [  58,   64,   71,   80,   92,   96],   // Возвраты, шт
-    price:       [1490, 1490, 1450, 1450, 1390, 1390],   // Средняя цена продажи, ₽
-    cogs_unit:   [ 520,  520,  515,  505,  495,  490],   // Себестоимость за шт, ₽
-    commission:  [ 219000, 253000, 241000, 288000, 335000, 372000], // Комиссия WB, ₽
-    logistics:   [  92000, 104000, 101000, 121000, 146000, 162000], // Логистика, ₽
-    storage:     [  18000,  21000,  24000,  27000,  31000,  34000], // Хранение, ₽
-    ads:         [  74000,  96000, 110000, 132000, 168000, 205000], // Реклама, ₽
-    tax:         [  38000,  44000,  42000,  50000,  58000,  64000], // Налог, ₽
-    stock_qty:   [ 3200, 3050, 3350, 3600, 3900, 4100],  // Остаток на складе, шт
-  }
-};
-
-// ключи базовых метрик и их подписи (для шаблона/загрузки)
-const BASE_LABELS = {
-  orders_qty:"Заказы, шт", buyout_qty:"Выкуплено, шт", returns_qty:"Возвраты, шт",
-  price:"Средняя цена продажи, ₽", cogs_unit:"Себестоимость за шт, ₽",
-  commission:"Комиссия WB, ₽", logistics:"Логистика, ₽", storage:"Хранение, ₽",
-  ads:"Реклама, ₽", tax:"Налог, ₽", stock_qty:"Остаток на складе, шт"
-};
-
-/* =========================================================================
-   2. РАСЧЁТ ПРОИЗВОДНЫХ МЕТРИК (юнитка, прибыль, оборачиваемость)
-   ========================================================================= */
-function compute(d){
-  const b=d.base, n=d.periods.length, r={periods:d.periods};
-  const arr=k=>b[k]||new Array(n).fill(0);
-  const O=arr("orders_qty"),BQ=arr("buyout_qty"),RQ=arr("returns_qty"),
-        P=arr("price"),CU=arr("cogs_unit"),COM=arr("commission"),
-        LOG=arr("logistics"),STO=arr("storage"),ADS=arr("ads"),
-        TAX=arr("tax"),STK=arr("stock_qty");
-  r.orders_qty=O; r.buyout_qty=BQ; r.returns_qty=RQ; r.price=P; r.stock_qty=STK;
-  r.commission=COM; r.logistics=LOG; r.storage=STO; r.ads=ADS; r.tax=TAX;
-  r.revenue    = BQ.map((q,i)=>q*P[i]);                       // Выручка (продажи), ₽
-  r.cogs       = BQ.map((q,i)=>q*CU[i]);                      // Себестоимость проданного, ₽
-  r.buyout_pct = O.map((q,i)=> q? BQ[i]/q : 0);               // % выкупа
-  r.avg_check  = P.slice();                                   // средний чек
-  r.transferred= r.revenue.map((v,i)=>v-COM[i]-LOG[i]-STO[i]);// к перечислению от WB
-  r.profit     = r.revenue.map((v,i)=>v-COM[i]-LOG[i]-STO[i]-ADS[i]-r.cogs[i]-TAX[i]); // валовая прибыль
-  r.margin     = r.profit.map((v,i)=> r.revenue[i]? v/r.revenue[i] : 0);
-  r.drr        = ADS.map((v,i)=> r.revenue[i]? v/r.revenue[i] : 0);
-  r.roi        = r.profit.map((v,i)=> r.cogs[i]? v/r.cogs[i] : 0);
-  r.turnover   = STK.map((s,i)=> BQ[i]? s/(BQ[i]/30) : 0);    // дни запаса
-  // юнитка (на 1 заказанный товар — усреднённо по выкупу)
-  r.u_price=P.slice();
-  r.u_cogs = CU.slice();
-  r.u_com  = COM.map((v,i)=> BQ[i]? v/BQ[i]:0);
-  r.u_log  = LOG.map((v,i)=> BQ[i]? v/BQ[i]:0);
-  r.u_sto  = STO.map((v,i)=> BQ[i]? v/BQ[i]:0);
-  r.u_ads  = ADS.map((v,i)=> BQ[i]? v/BQ[i]:0);
-  r.u_tax  = TAX.map((v,i)=> BQ[i]? v/BQ[i]:0);
-  r.u_profit = P.map((p,i)=> p - r.u_cogs[i]-r.u_com[i]-r.u_log[i]-r.u_sto[i]-r.u_ads[i]-r.u_tax[i]);
-  return r;
-}
-
-/* =========================================================================
-   3. ФОРМАТ ЧИСЕЛ
+   ФОРМАТ ЧИСЕЛ
    ========================================================================= */
 const nf=new Intl.NumberFormat("ru-RU");
 const fmt =v=>nf.format(Math.round(v));
-const fmtC=v=>{const a=Math.abs(v);
-  if(a>=1e6)return (v/1e6).toLocaleString("ru-RU",{maximumFractionDigits:1})+" млн";
-  if(a>=1e3)return Math.round(v/1e3)+"K"; return fmt(v);};
 // подпись оси — «круглые» значения: млн / K / тысячи с пробелом
 const fmtAxis=v=>{const a=Math.abs(v);
   if(a>=1e6)return (v/1e6).toLocaleString("ru-RU",{maximumFractionDigits:1})+" млн";
@@ -602,31 +489,7 @@ const rub =v=>fmt(v)+" ₽";
 const pct =v=>(v*100).toLocaleString("ru-RU",{maximumFractionDigits:1})+"%";
 
 /* =========================================================================
-   4. СОСТОЯНИЕ + ПЕРСИСТ
-   ========================================================================= */
-const LS_KEY="wb_rnp_data_v1";
-let raw = loadData();          // {periods, base}
-let periodN = 6;               // сколько периодов показывать
-
-function loadData(){
-  try{const s=localStorage.getItem(LS_KEY); if(s){const d=JSON.parse(s);
-    if(d&&d.periods&&d.base)return d;}}catch(e){}
-  return JSON.parse(JSON.stringify(DEMO));
-}
-function saveData(d){ try{localStorage.setItem(LS_KEY,JSON.stringify(d));}catch(e){} }
-function isDemo(){ return !localStorage.getItem(LS_KEY); }
-
-/* slice по выбранному числу периодов (последние N) */
-function sliced(){
-  const full=compute(raw), n=full.periods.length, k=Math.min(periodN,n), s=n-k;
-  const out={};
-  for(const key in full){ out[key]=Array.isArray(full[key])? full[key].slice(s) : full[key]; }
-  out.periods=full.periods.slice(s);
-  return out;
-}
-
-/* =========================================================================
-   5. МИНИ-ДВИЖОК ГРАФИКОВ (inline SVG, без библиотек)
+   МИНИ-ДВИЖОК ГРАФИКОВ (inline SVG, без библиотек)
    ========================================================================= */
 const SVGNS="http://www.w3.org/2000/svg";
 function el(t,a){const e=document.createElementNS(SVGNS,t);for(const k in a)e.setAttribute(k,a[k]);return e;}
@@ -639,89 +502,12 @@ function showTip(html,x,y){tip.innerHTML=html;tip.style.opacity=1;
   tip.style.left=nx+"px";tip.style.top=ny+"px";}
 function hideTip(){tip.style.opacity=0;}
 
-/* ---- линия + область (заказы/выкупы) ---- */
-function lineArea(mount,cats,series){
-  const W=520,H=230,m={t:18,r:18,b:34,l:52};
-  const iw=W-m.l-m.r, ih=H-m.t-m.b;
-  const sc=niceScale(0,Math.max(...series.flatMap(s=>s.data)),4), max=sc.max;
-  const X=i=>m.l+(cats.length<2?iw/2:iw*i/(cats.length-1));
-  const Y=v=>m.t+ih-(v/max)*ih;
-  const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`,preserveAspectRatio:"xMidYMid meet"});
-  // сетка + оси Y
-  for(let v=0;v<=max+1e-6;v+=sc.step){const y=Y(v);
-    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":1}));
-    const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});
-    tx.textContent=fmtAxis(v);svg.appendChild(tx);}
-  // подписи X
-  cats.forEach((c,i)=>{const tx=el("text",{x:X(i),y:H-12,"text-anchor":"middle","font-size":11,fill:cssv("--muted")});tx.textContent=c;svg.appendChild(tx);});
-  // область (series[1])
-  const a=series[1];
-  if(a){let d=`M ${X(0)} ${Y(a.data[0])}`;a.data.forEach((v,i)=>d+=` L ${X(i)} ${Y(v)}`);
-    d+=` L ${X(cats.length-1)} ${Y(0)} L ${X(0)} ${Y(0)} Z`;
-    svg.appendChild(el("path",{d,fill:a.color,"fill-opacity":.12,stroke:"none"}));
-    let ld=`M ${X(0)} ${Y(a.data[0])}`;a.data.forEach((v,i)=>ld+=` L ${X(i)} ${Y(v)}`);
-    svg.appendChild(el("path",{d:ld,fill:"none",stroke:a.color,"stroke-width":2,"stroke-linejoin":"round"}));}
-  // линия (series[0])
-  const l=series[0];
-  let ld=`M ${X(0)} ${Y(l.data[0])}`;l.data.forEach((v,i)=>ld+=` L ${X(i)} ${Y(v)}`);
-  svg.appendChild(el("path",{d:ld,fill:"none",stroke:l.color,"stroke-width":2,"stroke-linejoin":"round","stroke-linecap":"round"}));
-  // точки + подпись последней
-  series.forEach(s=>s.data.forEach((v,i)=>{
-    svg.appendChild(el("circle",{cx:X(i),cy:Y(v),r:i===cats.length-1?4.5:3.4,fill:s.color,stroke:cssv("--surface"),"stroke-width":2}));
-    if(i===cats.length-1){const tx=el("text",{x:X(i),y:Y(v)-11,"text-anchor":"end","font-size":11.5,"font-weight":600,fill:cssv("--text-1")});tx.textContent=fmt(v);svg.appendChild(tx);}
-  }));
-  // crosshair + hit
-  const cross=el("line",{x1:0,y1:m.t,x2:0,y2:m.t+ih,stroke:cssv("--baseline"),"stroke-width":1,opacity:0});svg.appendChild(cross);
-  const hit=el("rect",{x:m.l,y:m.t,width:iw,height:ih,fill:"transparent"});svg.appendChild(hit);
-  hit.addEventListener("pointermove",ev=>{
-    const box=svg.getBoundingClientRect(),sx=(ev.clientX-box.left)/box.width*W;
-    let idx=Math.round((sx-m.l)/(iw/Math.max(1,cats.length-1)));idx=Math.max(0,Math.min(cats.length-1,idx));
-    cross.setAttribute("x1",X(idx));cross.setAttribute("x2",X(idx));cross.setAttribute("opacity",.6);
-    const rows=series.map(s=>`<div class="t-row"><span class="k"><i style="background:${s.color}"></i>${s.name}</span><span class="v">${fmt(s.data[idx])}</span></div>`).join("");
-    showTip(`<div class="t-hd">${cats[idx]}</div>${rows}`,ev.clientX,ev.clientY);
-  });
-  hit.addEventListener("pointerleave",()=>{cross.setAttribute("opacity",0);hideTip();});
-  mount.innerHTML="";mount.appendChild(svg);
-}
-
-/* ---- сгруппированные столбцы (выручка/прибыль) ---- */
-function groupedBars(mount,cats,series){
-  const W=520,H=230,m={t:18,r:18,b:34,l:56};
-  const iw=W-m.l-m.r, ih=H-m.t-m.b;
-  const allv=series.flatMap(s=>s.data);
-  const sc=niceScale(Math.min(0,...allv),Math.max(0,...allv),4), max=sc.max, lo=sc.min;
-  const Y=v=>m.t+ih-((v-lo)/(max-lo))*ih;
-  const band=iw/cats.length, bw=Math.min(24,(band-14)/series.length);
-  const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
-  for(let v=lo;v<=max+1e-6;v+=sc.step){const y=Y(v);
-    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":1}));
-    const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});tx.textContent=fmtAxis(v);svg.appendChild(tx);}
-  const y0=Y(0);
-  svg.appendChild(el("line",{x1:m.l,y1:y0,x2:W-m.r,y2:y0,stroke:cssv("--baseline"),"stroke-width":1}));
-  cats.forEach((c,i)=>{
-    const cx=m.l+band*i+band/2;
-    const tx=el("text",{x:cx,y:H-12,"text-anchor":"middle","font-size":11,fill:cssv("--muted")});tx.textContent=c;svg.appendChild(tx);
-    const groupW=bw*series.length+2*(series.length-1);
-    series.forEach((s,si)=>{
-      const v=s.data[i],x=cx-groupW/2+si*(bw+2),y=Y(Math.max(0,v)),h=Math.abs(Y(v)-y0);
-      const rect=el("rect",{x,y:v>=0?y:y0,width:bw,height:Math.max(1,h),rx:4,fill:s.color});
-      rect.style.cursor="pointer";
-      rect.addEventListener("pointermove",ev=>{rect.setAttribute("opacity",.82);
-        const rows=series.map(ss=>`<div class="t-row"><span class="k"><i style="background:${ss.color}"></i>${ss.name}</span><span class="v">${rub(ss.data[i])}</span></div>`).join("");
-        showTip(`<div class="t-hd">${cats[i]}</div>${rows}`,ev.clientX,ev.clientY);});
-      rect.addEventListener("pointerleave",()=>{rect.setAttribute("opacity",1);hideTip();});
-      svg.appendChild(rect);
-      if(si===0&&i===cats.length-1){const t=el("text",{x:x+bw/2,y:y-6,"text-anchor":"middle","font-size":11,"font-weight":600,fill:cssv("--text-1")});t.textContent=fmtC(v);svg.appendChild(t);}
-    });
-  });
-  mount.innerHTML="";mount.appendChild(svg);
-}
-
-/* ---- стек одной колонки: юнит-экономика последнего периода ---- */
+/* ---- стек одной колонки: структура выручки за период ---- */
 function unitStack(mount,parts){
   const W=520,H=230,m={t:14,r:150,b:24,l:20};
   const ih=H-m.t-m.b, colW=90, x=m.l+30;
   const total=parts.reduce((a,p)=>a+Math.abs(p.v),0)||1;
+  const price=parts.reduce((a,p)=>a+p.v,0);
   const pos=parts.filter(p=>p.v>0);
   const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
   let y=m.t;
@@ -742,33 +528,7 @@ function unitStack(mount,parts){
   });
   // подпись цены сверху
   const cap=el("text",{x:x+colW/2,y:m.t-1,"text-anchor":"middle","font-size":11,fill:cssv("--muted")});
-  cap.textContent="Цена "+rub(total);cap.setAttribute("y",H-8);cap.setAttribute("x",x+colW/2);svg.appendChild(cap);
-  mount.innerHTML="";mount.appendChild(svg);
-}
-
-/* ---- столбцы оборачиваемости + метка ДРР ---- */
-function turnBars(mount,cats,turn,drr){
-  const W=520,H=230,m={t:22,r:18,b:34,l:44};
-  const iw=W-m.l-m.r, ih=H-m.t-m.b;
-  const sc=niceScale(0,Math.max(...turn),4), max=sc.max;
-  const Y=v=>m.t+ih-(v/max)*ih;
-  const band=iw/cats.length, bw=Math.min(24,band-18);
-  const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
-  for(let v=0;v<=max+1e-6;v+=sc.step){const y=Y(v);
-    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":1}));
-    const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});tx.textContent=Math.round(v);svg.appendChild(tx);}
-  cats.forEach((c,i)=>{
-    const cx=m.l+band*i+band/2, v=turn[i], y=Y(v), h=Y(0)-y;
-    const rect=el("rect",{x:cx-bw/2,y,width:bw,height:Math.max(1,h),rx:4,fill:cssv("--s1")});
-    rect.style.cursor="pointer";
-    rect.addEventListener("pointermove",ev=>{rect.setAttribute("opacity",.82);
-      showTip(`<div class="t-hd">${cats[i]}</div><div class="t-row"><span class="k"><i style="background:${cssv('--s1')}"></i>Оборачиваемость</span><span class="v">${Math.round(v)} дн</span></div><div class="t-row"><span class="k"><i style="background:${cssv('--s3')}"></i>ДРР</span><span class="v">${pct(drr[i])}</span></div>`,ev.clientX,ev.clientY);});
-    rect.addEventListener("pointerleave",()=>{rect.setAttribute("opacity",1);hideTip();});
-    svg.appendChild(rect);
-    const t1=el("text",{x:cx,y:y-16,"text-anchor":"middle","font-size":11,"font-weight":600,fill:cssv("--text-1")});t1.textContent=Math.round(v);svg.appendChild(t1);
-    const t2=el("text",{x:cx,y:y-4,"text-anchor":"middle","font-size":10,fill:cssv("--s3")});t2.textContent=pct(drr[i]);svg.appendChild(t2);
-    const cx2=el("text",{x:cx,y:H-12,"text-anchor":"middle","font-size":11,fill:cssv("--muted")});cx2.textContent=c;svg.appendChild(cx2);
-  });
+  cap.textContent="Цена "+rub(price);cap.setAttribute("y",H-8);cap.setAttribute("x",x+colW/2);svg.appendChild(cap);
   mount.innerHTML="";mount.appendChild(svg);
 }
 
@@ -780,7 +540,7 @@ function legend(mount,items){
 }
 
 /* =========================================================================
-   6. KPI-плитки со спарклайнами
+   KPI-плитки со спарклайнами
    ========================================================================= */
 function spark(data,color){
   const W=120,H=26,max=Math.max(...data),min=Math.min(...data),rng=(max-min)||1;
@@ -796,256 +556,19 @@ function delta(cur,prev,upGood=true){
   const cls=good?"up":"down", arw=up?"▲":"▼";
   return `<div class="delta ${cls}">${arw} ${pct(Math.abs(ch))} <span class="muted" style="font-weight:400">к пред.</span></div>`;
 }
-function renderKPIs(d){
-  const n=d.periods.length, last=n-1, prev=n-2;
-  const sum=a=>a.reduce((x,y)=>x+y,0);
-  const K=[
-    {hero:true,lbl:`Валовая прибыль · ${d.periods[last]}`,val:rub(d.profit[last]),
-      d:delta(d.profit[last],d.profit[prev],true),sk:[d.profit,cssv("--s2")]},
-    {lbl:"Выручка за период",val:rub(d.revenue[last]),d:delta(d.revenue[last],d.revenue[prev],true),sk:[d.revenue,cssv("--s1")]},
-    {lbl:"Маржинальность",val:pct(d.margin[last]),d:delta(d.margin[last],d.margin[prev],true),sk:[d.margin,cssv("--s2")]},
-    {lbl:"ДРР (доля рекламы)",val:pct(d.drr[last]),d:delta(d.drr[last],d.drr[prev],false),sk:[d.drr,cssv("--s3")]},
-    {lbl:"% выкупа",val:pct(d.buyout_pct[last]),d:delta(d.buyout_pct[last],d.buyout_pct[prev],true),sk:[d.buyout_pct,cssv("--s2")]},
-    {lbl:"Оборачиваемость",val:Math.round(d.turnover[last])+" дн",d:delta(d.turnover[last],d.turnover[prev],false),sk:[d.turnover,cssv("--s1")]},
-  ];
-  document.getElementById("kpis").innerHTML=K.map(k=>`
-    <div class="kpi ${k.hero?'hero':''}">
-      <div class="lbl">${k.lbl}</div>
-      <div class="val">${k.val}</div>
-      ${k.d}
-      ${spark(k.sk[0],k.sk[1])}
-    </div>`).join("");
-}
-
-/* =========================================================================
-   7. РНП ТАБЛИЦА
-   ========================================================================= */
-function renderTable(d){
-  const P=d.periods, tot=a=>a.reduce((x,y)=>x+y,0), avg=a=>a.reduce((x,y)=>x+y,0)/a.length;
-  const rows=[
-    {g:"Продажи"},
-    {l:"Заказы, шт",v:d.orders_qty,f:fmt,t:tot},
-    {l:"Выкуплено, шт",v:d.buyout_qty,f:fmt,t:tot},
-    {l:"% выкупа",v:d.buyout_pct,f:pct,t:avg},
-    {l:"Возвраты, шт",v:d.returns_qty,f:fmt,t:tot},
-    {l:"Средний чек, ₽",v:d.avg_check,f:rub,t:avg},
-    {l:"Выручка, ₽",v:d.revenue,f:rub,t:tot,strong:true},
-    {g:"Затраты"},
-    {l:"Себестоимость, ₽",v:d.cogs,f:rub,t:tot},
-    {l:"Комиссия WB, ₽",v:d.commission,f:rub,t:tot},
-    {l:"Логистика, ₽",v:d.logistics,f:rub,t:tot},
-    {l:"Хранение, ₽",v:d.storage,f:rub,t:tot},
-    {l:"Реклама, ₽",v:d.ads,f:rub,t:tot},
-    {l:"Налог, ₽",v:d.tax,f:rub,t:tot},
-    {g:"Итоги"},
-    {l:"К перечислению от WB, ₽",v:d.transferred,f:rub,t:tot},
-    {l:"Валовая прибыль, ₽",v:d.profit,f:rub,t:tot,strong:true,signed:true},
-    {l:"Маржинальность",v:d.margin,f:pct,t:avg,signed:true},
-    {l:"ROI",v:d.roi,f:pct,t:avg,signed:true},
-    {l:"ДРР",v:d.drr,f:pct,t:avg},
-    {l:"Оборачиваемость, дн",v:d.turnover,f:v=>Math.round(v),t:avg},
-    {l:"Остаток, шт",v:d.stock_qty,f:fmt,t:a=>a[a.length-1]},
-  ];
-  let html=`<thead><tr><th class="metric">Метрика</th>${P.map(p=>`<th>${p}</th>`).join("")}<th>Итого/Ср.</th></tr></thead><tbody>`;
-  rows.forEach(r=>{
-    if(r.g){html+=`<tr class="group"><td class="metric" colspan="${P.length+2}">${r.g}</td></tr>`;return;}
-    const cls=r.strong?"total":"";
-    const sign=x=>r.signed?(x>=0?"pos":"neg"):"";
-    html+=`<tr><td class="metric">${r.l}</td>`+
-      r.v.map(x=>`<td class="${cls} ${sign(x)}">${r.f(x)}</td>`).join("")+
-      `<td class="${cls} ${sign(r.t(r.v))}" style="font-weight:650">${r.f(r.t(r.v))}</td></tr>`;
-  });
-  html+="</tbody>";
-  document.getElementById("rnp").innerHTML=html;
-  document.getElementById("tblNote").textContent=`${P.length} периодов · последняя колонка — сумма или среднее`;
-}
-
-/* =========================================================================
-   8. ГЛАВНЫЙ РЕНДЕР
-   ========================================================================= */
-function render(){
-  const d=sliced();
-  renderKPIs(d);
-  // график 1: заказы (линия) + выкупы (область)
-  legend(document.getElementById("lg-orders"),[
-    {name:"Заказы",color:cssv("--s1"),line:true},{name:"Выкупы",color:cssv("--s2"),line:true}]);
-  lineArea(document.getElementById("ch-orders"),d.periods,[
-    {name:"Заказы",color:cssv("--s1"),data:d.orders_qty},
-    {name:"Выкупы",color:cssv("--s2"),data:d.buyout_qty}]);
-  // график 2: выручка + прибыль
-  legend(document.getElementById("lg-money"),[
-    {name:"Выручка",color:cssv("--s1")},{name:"Валовая прибыль",color:cssv("--s2")}]);
-  groupedBars(document.getElementById("ch-money"),d.periods,[
-    {name:"Выручка",color:cssv("--s1"),data:d.revenue},
-    {name:"Валовая прибыль",color:cssv("--s2"),data:d.profit}]);
-  // график 3: юнитка последнего периода
-  const i=d.periods.length-1;
-  legend(document.getElementById("lg-unit"),[
-    {name:"Прибыль",color:cssv("--s2")},{name:"Себестоимость",color:cssv("--muted")},
-    {name:"Комиссия+лог.+хран.",color:cssv("--s1")},{name:"Реклама",color:cssv("--s3")},{name:"Налог",color:cssv("--baseline")}]);
-  unitStack(document.getElementById("ch-unit"),[
-    {name:"Прибыль",v:d.u_profit[i],color:cssv("--s2")},
-    {name:"Себестоимость",v:d.u_cogs[i],color:cssv("--muted")},
-    {name:"Комиссия WB",v:d.u_com[i],color:cssv("--s1")},
-    {name:"Логистика",v:d.u_log[i],color:"#6da7ec"},
-    {name:"Хранение",v:d.u_sto[i],color:"#9ec5f4"},
-    {name:"Реклама",v:d.u_ads[i],color:cssv("--s3")},
-    {name:"Налог",v:d.u_tax[i],color:cssv("--baseline")}]);
-  // график 4: оборачиваемость + ДРР
-  legend(document.getElementById("lg-turn"),[
-    {name:"Оборачиваемость, дн",color:cssv("--s1")},{name:"ДРР, %",color:cssv("--s3"),line:true}]);
-  turnBars(document.getElementById("ch-turn"),d.periods,d.turnover,d.drr);
-  // таблица
-  renderTable(d);
-  // источник
-  const demo=isDemo();
-  const tag=document.getElementById("srcTag");
-  tag.classList.toggle("demo",demo);
-  document.getElementById("srcTxt").textContent=demo?"Демо-данные":"Загруженные данные";
-  document.getElementById("resetBtn").style.display=demo?"none":"inline-flex";
-}
-
-/* =========================================================================
-   9. CSV: ПАРСИНГ / ШАБЛОН / ЭКСПОРТ
-   ========================================================================= */
-function detectDelim(txt){const l=txt.split(/\r?\n/)[0]||"";
-  return (l.split(";").length>l.split(",").length)?";":",";}
-function parseCSV(txt){
-  const delim=detectDelim(txt), rows=[]; let row=[],cell="",q=false;
-  for(let i=0;i<txt.length;i++){const c=txt[i];
-    if(q){ if(c==='"'){ if(txt[i+1]==='"'){cell+='"';i++;} else q=false; } else cell+=c; }
-    else{ if(c==='"')q=true; else if(c===delim){row.push(cell);cell="";}
-      else if(c==="\n"){row.push(cell);rows.push(row);row=[];cell="";}
-      else if(c==="\r"){} else cell+=c; }
-  }
-  if(cell!==""||row.length){row.push(cell);rows.push(row);}
-  return rows.filter(r=>r.some(c=>c.trim()!==""));
-}
-// нормализация числа "1 234,56" / "1,234.56" / "12%"
-function num(s){ if(s==null)return 0; s=(""+s).replace(/\s|₽|%/g,"").trim(); if(!s)return 0;
-  if(s.includes(",")&&s.includes("."))s=s.replace(/,/g,""); else s=s.replace(",",".");
-  const v=parseFloat(s); return isNaN(v)?0:v; }
-
-// сопоставление строки таблицы с ключом базовой метрики
-const LABEL2KEY={};
-Object.entries(BASE_LABELS).forEach(([k,l])=>{ LABEL2KEY[k.toLowerCase()]=k; LABEL2KEY[l.toLowerCase()]=k; });
-const ALIASES={ // частые варианты названий
-  "заказы":"orders_qty","заказы шт":"orders_qty",
-  "выкуп":"buyout_qty","выкупы":"buyout_qty","выкуплено":"buyout_qty","продажи шт":"buyout_qty",
-  "возвраты":"returns_qty","цена":"price","средняя цена":"price",
-  "себестоимость":"cogs_unit","себес":"cogs_unit",
-  "комиссия":"commission","комиссия wb":"commission",
-  "логистика":"logistics","хранение":"storage","реклама":"ads","ррк":"ads",
-  "налог":"tax","остаток":"stock_qty","остатки":"stock_qty"
-};
-function rowKey(label){
-  const s=label.toLowerCase().trim().replace(/[,\.]/g," ").replace(/\s+/g," ").trim();
-  if(LABEL2KEY[s])return LABEL2KEY[s];
-  if(ALIASES[s])return ALIASES[s];
-  for(const a in ALIASES){ if(s.startsWith(a))return ALIASES[a]; }
-  return null;
-}
-function ingestRows(rows){
-  if(rows.length<2)throw new Error("Файл пустой или без данных.");
-  const header=rows[0], periods=header.slice(1).map(h=>h.trim()).filter(Boolean);
-  if(!periods.length)throw new Error("Не найдены названия периодов в шапке (первая строка).");
-  const base={}; let matched=0;
-  rows.slice(1).forEach(r=>{
-    const key=rowKey((r[0]||"").trim()); if(!key)return;
-    base[key]=periods.map((_,i)=>num(r[i+1])); matched++;
-  });
-  if(!matched)throw new Error("Не удалось распознать ни одной метрики. Используйте шаблон.");
-  // недостающие метрики — нулями
-  Object.keys(BASE_LABELS).forEach(k=>{ if(!base[k])base[k]=new Array(periods.length).fill(0); });
-  return {periods,base,matched};
-}
-function handleFile(file){
-  const msg=document.getElementById("uploadMsg");
-  const done=(d)=>{ raw={periods:d.periods,base:d.base}; saveData(raw);
-    periodN=Math.max(periodN,d.periods.length>=12?12:d.periods.length); render();
-    msg.className="msg ok"; msg.textContent=`Готово: распознано ${d.matched} метрик за ${d.periods.length} периодов. Данные сохранены.`;
-    setTimeout(closeModal,1400); };
-  const fail=(e)=>{ msg.className="msg err"; msg.textContent="Ошибка: "+e.message; };
-  const name=file.name.toLowerCase();
-  if(name.endsWith(".csv")){
-    const rd=new FileReader();
-    rd.onload=()=>{ try{done(ingestRows(parseCSV(rd.result)));}catch(e){fail(e);} };
-    rd.readAsText(file,"utf-8");
-  } else if(name.endsWith(".xlsx")||name.endsWith(".xls")){
-    loadXLSX().then(XLSX=>{
-      const rd=new FileReader();
-      rd.onload=()=>{ try{
-        const wb=XLSX.read(new Uint8Array(rd.result),{type:"array"});
-        const ws=wb.Sheets[wb.SheetNames[0]];
-        const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""}).map(r=>r.map(c=>""+c));
-        done(ingestRows(rows));
-      }catch(e){fail(e);} };
-      rd.readAsArrayBuffer(file);
-    }).catch(()=>fail(new Error("Не удалось загрузить парсер XLSX (нет сети). Сохраните файл как CSV и попробуйте снова.")));
-  } else fail(new Error("Поддерживаются CSV и XLSX."));
-}
-// ленивая загрузка SheetJS для XLSX (нужна сеть; при хостинге работает всегда)
-let _xlsx=null;
-function loadXLSX(){
-  if(_xlsx)return _xlsx;
-  if(window.XLSX)return Promise.resolve(window.XLSX);
-  _xlsx=new Promise((res,rej)=>{
-    const s=document.createElement("script");
-    s.src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js";
-    s.onload=()=>window.XLSX?res(window.XLSX):rej();
-    s.onerror=rej; document.head.appendChild(s);
-  });
-  return _xlsx;
-}
 function downloadCSV(filename,text){
   const blob=new Blob(["﻿"+text],{type:"text/csv;charset=utf-8"});
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
-function makeTemplate(){
-  const periods=["Янв","Фев","Мар","Апр","Май","Июн"];
-  let csv="Метрика;"+periods.join(";")+"\n";
-  Object.entries(BASE_LABELS).forEach(([k,l])=>{ csv+=l+";"+periods.map(()=>"").join(";")+"\n"; });
-  downloadCSV("wb-rnp-шаблон.csv",csv);
-}
-function exportCurrent(){
-  const full=compute(raw), P=full.periods;
-  let csv="Метрика;"+P.join(";")+"\n";
-  Object.entries(BASE_LABELS).forEach(([k,l])=>{ csv+=l+";"+raw.base[k].join(";")+"\n"; });
-  downloadCSV("wb-rnp-данные.csv",csv);
-}
 
 /* =========================================================================
-   10. UI-СОБЫТИЯ
+   UI-СОБЫТИЯ: тема
    ========================================================================= */
-const overlay=document.getElementById("overlay");
-function openModal(){overlay.classList.add("on");document.getElementById("uploadMsg").className="msg";}
-function closeModal(){overlay.classList.remove("on");}
-document.getElementById("uploadBtn").onclick=openModal;
-document.getElementById("modalClose").onclick=closeModal;
-overlay.addEventListener("click",e=>{if(e.target===overlay)closeModal();});
-document.getElementById("tplBtn").onclick=makeTemplate;
-document.getElementById("exportBtn").onclick=e=>{e.preventDefault();exportCurrent();};
-document.getElementById("resetBtn").onclick=()=>{localStorage.removeItem(LS_KEY);raw=loadData();render();};
-
-const drop=document.getElementById("drop"), fileInput=document.getElementById("fileInput");
-drop.onclick=()=>fileInput.click();
-fileInput.onchange=e=>{if(e.target.files[0])handleFile(e.target.files[0]);};
-["dragenter","dragover"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.add("hover");}));
-["dragleave","drop"].forEach(ev=>drop.addEventListener(ev,e=>{e.preventDefault();drop.classList.remove("hover");}));
-drop.addEventListener("drop",e=>{if(e.dataTransfer.files[0])handleFile(e.dataTransfer.files[0]);});
-
-document.getElementById("periodSeg").addEventListener("click",e=>{
-  const b=e.target.closest("button"); if(!b)return;
-  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
-  b.setAttribute("aria-pressed","true"); periodN=+b.dataset.n; render();
-});
-
-// тема
 const themeBtn=document.getElementById("themeBtn");
 function applyTheme(t){ if(t)document.documentElement.setAttribute("data-theme",t);
   else document.documentElement.removeAttribute("data-theme");
-  localStorage.setItem("wb_theme",t||""); render(); }
+  localStorage.setItem("wb_theme",t||""); renderActiveTab(); }
 themeBtn.onclick=()=>{
   const cur=document.documentElement.getAttribute("data-theme");
   const dark=cur==="dark"||(!cur&&matchMedia("(prefers-color-scheme:dark)").matches);
@@ -1055,16 +578,16 @@ const savedTheme=localStorage.getItem("wb_theme");
 if(savedTheme)document.documentElement.setAttribute("data-theme",savedTheme);
 
 /* =========================================================================
-   11. РЕАЛЬНЫЕ ДАННЫЕ ПРОДАВЦА (каталог товаров + история заказов)
+   РЕАЛЬНЫЕ ДАННЫЕ ПРОДАВЦА (каталог товаров + история заказов)
    Приходят из wb-data.js — файл целиком пересобирается, когда вы присылаете
-   новую выгрузку. Если файл не подключён — вкладки покажут пустое состояние,
-   а Главная продолжит работать на демо/CSV-данных как обычно.
+   новую выгрузку. Если файл не подключён — вкладки покажут пустое состояние.
    ========================================================================= */
 const RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
 const RCAT = RD ? RD.catalog : [];
 const RSERIES = RD ? RD.orderSeries.bySku : {};
 const RDATES = RD ? RD.orderSeries.dates : [];
 const RLAST = RDATES.length ? RDATES[RDATES.length-1] : null;
+const catalogCostBySku = {}; RCAT.forEach(c=>{ if(c.costPrice!=null) catalogCostBySku[c.sku]=c.costPrice; });
 
 function esc(s){ return (s==null?"":String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const RU_MONTHS=["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
@@ -1120,6 +643,36 @@ function computeTurnover(c,windowDays){
 const STATUS_LABEL={critical:"Критично",ordered:"Едет, но впритык",warning:"Скоро понадобится",good:"Норма",nodata:"Нет данных",discontinued:"Выводится из ассортимента"};
 function statusBadge(s){ return `<span class="badge ${s==='discontinued'?'nodata':s}"><span class="d"></span>${STATUS_LABEL[s]}</span>`; }
 
+/* =========================================================================
+   СОРТИРОВКА ТАБЛИЦ ПО КЛИКУ НА ЗАГОЛОВОК — общий механизм для всех
+   табличных вкладок. Состояние {key,dir} хранится снаружи (по одному
+   объекту на таблицу), клик по th[data-key] переключает направление или
+   меняет колонку, слушатель навешан один раз на сам <table> (переживает
+   переотрисовку innerHTML тела/шапки).
+   ========================================================================= */
+function thSort(label,key,state,extraClass){
+  const active=state.key===key, arrow=active?(state.dir===1?"▲":"▼"):"";
+  return `<th class="sortable${active?" active":""}${extraClass?" "+extraClass:""}" data-key="${esc(key)}">${label}<span class="sort-arrow">${arrow}</span></th>`;
+}
+function sortRows(rows,state,accessors){
+  const acc=accessors[state.key]; if(!acc) return rows;
+  return rows.slice().sort((a,b)=>{
+    let va=acc(a), vb=acc(b), cmp;
+    if(typeof va==="string") cmp=va.localeCompare(vb,"ru");
+    else{ if(va===Infinity)va=1e15; if(vb===Infinity)vb=1e15; cmp=(va||0)-(vb||0); }
+    return cmp*state.dir;
+  });
+}
+function wireSortable(tableId,state,onChange){
+  document.getElementById(tableId).addEventListener("click",e=>{
+    const th=e.target.closest("th[data-key]"); if(!th) return;
+    const key=th.dataset.key;
+    if(state.key===key) state.dir=-state.dir; else { state.key=key; state.dir=1; }
+    onChange();
+  });
+}
+
+let turnSortState={key:"status",dir:1};
 function turnoverList(){
   const windowDays=parseInt(document.getElementById("turnWindow").value,10)||30;
   return RCAT.map(c=>computeTurnover(c,windowDays));
@@ -1139,8 +692,14 @@ function renderTurnoverTab(){
   if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
   if(cat) rows=rows.filter(r=>r.category===cat);
   if(statusF) rows=rows.filter(r=>r.status===statusF);
-  const order={critical:0,ordered:1,warning:2,good:3,nodata:4,discontinued:5};
-  rows=rows.slice().sort((a,b)=>(order[a.status]-order[b.status])||(a.daysLeft-b.daysLeft));
+  const statusRank={critical:0,ordered:1,warning:2,good:3,nodata:4,discontinued:5};
+  const dl=v=>v===Infinity?1e9:v;
+  rows=sortRows(rows,turnSortState,{
+    name:r=>r.name, category:r=>r.category, wbStock:r=>r.wbStock||0, ownStock:r=>r.ownWarehouseStock||0,
+    avgD:r=>r.avgD, daysLeft:r=>dl(r.daysLeft), leadTime:r=>r.leadTimeDays, buffer:r=>r.targetBufferDays,
+    pending:r=>r.pendingQty||r.inTransit||0, arrival:r=>(r.pending&&r.pending.arrivalDate)||"",
+    need:r=>r.needRounded, status:r=>statusRank[r.status]*1e9+dl(r.daysLeft),
+  });
 
   const critCount=all.filter(r=>r.status==="critical").length;
   const orderedCount=all.filter(r=>r.status==="ordered").length;
@@ -1156,9 +715,10 @@ function renderTurnoverTab(){
 
   if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
 
-  let html=`<thead><tr><th class="metric">Товар</th><th>Категория</th><th>Остаток WB</th><th>Свой склад</th>
-    <th>Заказов/дн</th><th>Хватит, дн</th><th>Срок пост., дн</th><th>Буфер, дн</th>
-    <th>Едет/заказано</th><th>Прибудет</th><th>Дозаказать</th><th>Статус</th></tr></thead><tbody>`;
+  let html=`<thead><tr>${thSort("Товар","name",turnSortState,"metric")}
+    ${thSort("Категория","category",turnSortState)}${thSort("Остаток WB","wbStock",turnSortState)}${thSort("Свой склад","ownStock",turnSortState)}
+    ${thSort("Заказов/дн","avgD",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Срок пост., дн","leadTime",turnSortState)}${thSort("Буфер, дн","buffer",turnSortState)}
+    ${thSort("Едет/заказано","pending",turnSortState)}${thSort("Прибудет","arrival",turnSortState)}${thSort("Дозаказать","need",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
       <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>
@@ -1196,6 +756,7 @@ function exportTurnoverCSV(){
 
 /* ---- динамика заказов: диапазон дат, агрегация, график ---- */
 let dynPeriodN=7; // 0 = весь период
+let dynSortState={key:"qty",dir:-1};
 function dynRange(){
   const n=RDATES.length; if(!n) return {from:0,to:-1,prevFrom:0,prevTo:-1,hasPrev:false};
   const win=dynPeriodN===0? n : Math.min(dynPeriodN,n);
@@ -1260,19 +821,22 @@ function dailyGroupedBars(mount,isoDates,series){
   const W=1000,H=240,m={t:18,r:14,b:34,l:56};
   const iw=W-m.l-m.r, ih=H-m.t-m.b, n=Math.max(1,isoDates.length);
   const allv=series.flatMap(s=>s.data);
-  const sc=niceScale(0,Math.max(...allv,0),4), max=sc.max||1;
-  const Y=v=>m.t+ih-(v/max)*ih;
+  const sc=niceScale(Math.min(...allv,0),Math.max(...allv,0),4);
+  const span=(sc.max-sc.min)||1;
+  const Y=v=>m.t+ih-((v-sc.min)/span)*ih;
+  const y0=Y(0);
   const band=iw/n, bw=Math.max(1,Math.min(11,(band-2)/series.length));
   const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
-  for(let v=0;v<=max+1e-6;v+=sc.step){const y=Y(v);
-    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":1}));
+  for(let v=sc.min;v<=sc.max+1e-6;v+=sc.step){const y=Y(v);
+    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":Math.abs(v)<1e-9?1.6:1}));
     const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});tx.textContent=fmtAxis(v);svg.appendChild(tx);}
   const maxLabels=n<=10?n:9, stride=Math.max(1,Math.round(n/maxLabels)), groupW=bw*series.length;
   for(let i=0;i<n;i++){
     const cx=m.l+band*i+band/2;
     series.forEach((s,si)=>{
-      const v=s.data[i]||0, y=Y(v), h=Y(0)-y, x=cx-groupW/2+si*bw;
-      const rect=el("rect",{x,y,width:Math.max(1,bw-1),height:Math.max(1,h),rx:Math.min(2,bw/2),fill:s.color});
+      const v=s.data[i]||0, y=Math.min(Y(v),y0), h=Math.abs(Y(v)-y0), x=cx-groupW/2+si*bw;
+      const fill=(v<0&&s.negColor)? s.negColor : s.color;
+      const rect=el("rect",{x,y,width:Math.max(1,bw-1),height:Math.max(1,h),rx:Math.min(2,bw/2),fill});
       rect.style.cursor="pointer";
       rect.addEventListener("pointermove",ev=>{
         const rows=series.map(ss=>`<div class="t-row"><span class="k"><i style="background:${ss.color}"></i>${ss.name}</span><span class="v">${rub(ss.data[i]||0)}</span></div>`).join("");
@@ -1337,18 +901,32 @@ function renderDynamicsTab(){
     document.getElementById("ch-dyn-money").innerHTML=`<div class="empty-hint">За выбранный период нет загруженной воронки продаж — суммы появятся, как только загрузите отчёт на вкладке «Товар» за эти дни.</div>`;
   }
 
-  let rows=skus.map(c=>({sku:c.sku,name:c.name,category:c.category,qty:sumRange(c.sku,from,to)}));
-  rows=rows.filter(r=>r.qty>0).sort((a,b)=>b.qty-a.qty);
+  const moneyMap = isoDates.length? moneyBySkuMap(isoDates[0],isoDates[isoDates.length-1]) : {};
+  let rows=skus.map(c=>{ const m=moneyMap[c.sku]||{ordersSum:0,buyoutSum:0};
+    return {sku:c.sku,name:c.name,category:c.category,qty:sumRange(c.sku,from,to),ordersSum:m.ordersSum,buyoutSum:m.buyoutSum}; });
+  rows=rows.filter(r=>r.qty>0);
+  rows=sortRows(rows,dynSortState,{
+    name:r=>r.name, category:r=>r.category, qty:r=>r.qty, share:r=>r.qty,
+    ordersSum:r=>r.ordersSum, buyoutSum:r=>r.buyoutSum,
+  });
   document.getElementById("dynCount").textContent=rows.length+" товаров с заказами";
   document.getElementById("dynTblNote").textContent=`период: ${isoDates.length} дн.`;
   if(!rows.length){ document.getElementById("dynTable").innerHTML=`<tbody><tr><td class="empty-hint">За этот период заказов не найдено</td></tr></tbody>`; return; }
-  let html=`<thead><tr><th class="metric">Товар</th><th>Категория</th><th>Заказы за период</th><th>Доля</th></tr></thead><tbody>`;
+  let html=`<thead><tr>${thSort("Товар","name",dynSortState,"metric")}${thSort("Категория","category",dynSortState)}
+    ${thSort("Заказы, шт","qty",dynSortState)}${thSort("Доля","share",dynSortState)}${thSort("Заказано, ₽","ordersSum",dynSortState)}${thSort("Выкуплено, ₽","buyoutSum",dynSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
     const share=periodTotal? (r.qty/periodTotal*100):0;
-    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${share.toFixed(1)}%</td></tr>`;
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${share.toFixed(1)}%</td><td>${r.ordersSum?rub(r.ordersSum):"—"}</td><td>${r.buyoutSum?rub(r.buyoutSum):"—"}</td></tr>`;
   });
   html+="</tbody>";
   document.getElementById("dynTable").innerHTML=html;
+}
+function moneyBySkuMap(fromDate,toDate){
+  const map={};
+  FUNNEL_CACHE.forEach(r=>{ if(r.date<fromDate||r.date>toDate) return;
+    if(!map[r.sku]) map[r.sku]={ordersSum:0,buyoutSum:0};
+    map[r.sku].ordersSum+=r.ordersSum||0; map[r.sku].buyoutSum+=r.buyoutSum||0; });
+  return map;
 }
 
 /* =========================================================================
@@ -1606,31 +1184,141 @@ function renderFinanceHistoryInfo(){
 }
 
 let finPeriodN=30;
-function finRange(){
-  const dates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
+let finSortState={key:"revenue",dir:-1};
+function dateRangeFromCache(cache,periodN){
+  const dates=[...new Set(cache.map(r=>r.date))].sort();
   const n=dates.length; if(!n) return {dates:[],prevDates:[]};
-  const win=finPeriodN===0? n : Math.min(finPeriodN,n);
+  const win=periodN===0? n : Math.min(periodN,n);
   const cur=dates.slice(n-win);
   const restBefore=dates.slice(0,n-win);
   const prev=restBefore.slice(Math.max(0,restBefore.length-win));
   return {dates:cur,prevDates:prev};
 }
+function finRange(){ return dateRangeFromCache(FINANCE_CACHE,finPeriodN); }
 function finAggregate(dates,catFilter,q){
   const set=new Set(dates);
   const rows=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!catFilter||r.category===catFilter)&&(!q||r.sku.includes(q)||r.name.toLowerCase().includes(q)));
   const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
+  const cogs=rows.reduce((a,r)=>{ const cp=catalogCostBySku[r.sku]; return a+(cp!=null?(r.qty-r.returnsQty)*cp:0); },0);
   return {qty:sum("qty"),returnsQty:sum("returnsQty"),revenue:sum("revenue"),payout:sum("payout"),
-    wbReward:sum("wbReward"),logistics:sum("logistics"),storage:sum("storage"),penalty:sum("penalty"),rows};
+    wbReward:sum("wbReward"),logistics:sum("logistics"),storage:sum("storage"),penalty:sum("penalty"),cogs,rows};
 }
 function finSeriesByDate(dates,catFilter,q){
   const idx={}; dates.forEach((d,i)=>idx[d]=i);
-  const revenue=new Array(dates.length).fill(0), payout=new Array(dates.length).fill(0);
+  const revenue=new Array(dates.length).fill(0), payout=new Array(dates.length).fill(0), cogs=new Array(dates.length).fill(0);
   FINANCE_CACHE.forEach(r=>{ const i=idx[r.date]; if(i==null) return;
     if(catFilter&&r.category!==catFilter) return;
     if(q&&!r.sku.includes(q)&&!r.name.toLowerCase().includes(q)) return;
-    revenue[i]+=r.revenue||0; payout[i]+=r.payout||0; });
-  return {revenue,payout};
+    revenue[i]+=r.revenue||0; payout[i]+=r.payout||0;
+    const cp=catalogCostBySku[r.sku]; if(cp!=null) cogs[i]+=(r.qty-r.returnsQty)*cp; });
+  return {revenue,payout,cogs};
 }
+/* ---- главная: сводный P&L на основе загруженной "Финансы" ---- */
+let homePeriodN=30;
+let homeSortState={key:"profit",dir:-1};
+function renderHomeTab(){
+  const fresh=document.getElementById("homeFreshness");
+  if(!FINANCE_CACHE.length){
+    fresh.innerHTML="";
+    document.getElementById("homeEmpty").hidden=false;
+    document.getElementById("homeContent").hidden=true;
+    return;
+  }
+  document.getElementById("homeEmpty").hidden=true;
+  document.getElementById("homeContent").hidden=false;
+  const allDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
+  fresh.innerHTML=`<span class="dot"></span>Финансы обновлены по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])}`;
+
+  const catSel=document.getElementById("homeCat");
+  if(!catSel.options.length) fillCategorySelect(catSel);
+  const cat=catSel.value, q=document.getElementById("homeSearch").value.trim().toLowerCase();
+  const {dates,prevDates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
+  const now=finAggregate(dates,cat,q);
+  const prev=prevDates.length? finAggregate(prevDates,cat,q) : null;
+  const netQty=now.qty-now.returnsQty;
+  const profit=now.payout-now.cogs;
+  const wbHold=now.revenue-now.payout;
+  const prevProfit=prev? prev.payout-prev.cogs : null;
+  const prevWbHold=prev? prev.revenue-prev.payout : null;
+
+  document.getElementById("homeKpis").innerHTML=[
+    {lbl:"Валовая прибыль, ₽",val:rub(profit),d:prev?delta(profit,prevProfit,true):""},
+    {lbl:"Выручка, ₽",val:rub(now.revenue),d:prev?delta(now.revenue,prev.revenue,true):""},
+    {lbl:"К перечислению, ₽",val:rub(now.payout),d:prev?delta(now.payout,prev.payout,true):""},
+    {lbl:"Удержания WB, ₽",val:rub(wbHold),d:prev?delta(wbHold,prevWbHold,false):""},
+    {lbl:"Маржинальность",val:now.revenue? pct(profit/now.revenue) : "—"},
+    {lbl:"Продано, шт (нетто)",val:fmt(netQty)},
+  ].map(k=>`<div class="kpi"><div class="lbl">${k.lbl}</div><div class="val">${k.val}</div>${k.d||""}</div>`).join("");
+
+  const skusNoCost=new Set(now.rows.filter(r=>(r.qty-r.returnsQty)>0&&catalogCostBySku[r.sku]==null).map(r=>r.sku));
+  const warnEl=document.getElementById("homeCostWarning");
+  if(skusNoCost.size){
+    warnEl.hidden=false;
+    warnEl.innerHTML=`⚠ У ${skusNoCost.size} товаров за этот период не указана себестоимость — прибыль по ним посчитана как «К перечислению» без вычета с/с (то есть завышена). Дозагрузите файл себестоимости, чтобы уточнить.`;
+  } else warnEl.hidden=true;
+
+  document.getElementById("homeChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}` : "нет данных";
+  legend(document.getElementById("homeChartLegend"),[{name:"Выручка, ₽",color:cssv("--s1")},{name:"Прибыль, ₽",color:cssv("--s2")}]);
+  const series=finSeriesByDate(dates,cat,q);
+  const profitSeries=series.payout.map((p,i)=>p-series.cogs[i]);
+  dailyGroupedBars(document.getElementById("ch-home-money"),dates,[
+    {name:"Выручка, ₽",color:cssv("--s1"),data:series.revenue},
+    {name:"Прибыль, ₽",color:cssv("--s2"),negColor:cssv("--crit"),data:profitSeries}]);
+
+  legend(document.getElementById("homeUnitLegend"),[
+    {name:"Прибыль",color:cssv("--s2")},{name:"Удержания WB",color:cssv("--s3")},{name:"Себестоимость",color:cssv("--crit")}]);
+  if(netQty>0){
+    unitStack(document.getElementById("ch-home-unit"),[
+      {name:"Прибыль",v:profit/netQty,color:cssv("--s2")},
+      {name:"Удержания WB",v:wbHold/netQty,color:cssv("--s3")},
+      {name:"Себестоимость",v:now.cogs/netQty,color:cssv("--crit")},
+    ]);
+  } else document.getElementById("ch-home-unit").innerHTML=`<div class="empty-hint">Нет продаж за период</div>`;
+
+  const bySku={};
+  now.rows.forEach(r=>{ if(!bySku[r.sku]) bySku[r.sku]={sku:r.sku,name:r.name,category:r.category,qty:0,returnsQty:0,revenue:0,payout:0};
+    const b=bySku[r.sku]; b.qty+=r.qty; b.returnsQty+=r.returnsQty; b.revenue+=r.revenue; b.payout+=r.payout; });
+  let rows=Object.values(bySku).map(r=>{
+    const net=r.qty-r.returnsQty, cp=catalogCostBySku[r.sku];
+    const cogs=cp!=null? net*cp : 0, hasCost=cp!=null;
+    const rProfit=r.payout-cogs, rHold=r.revenue-r.payout;
+    return {...r,net,cogs,hasCost,profit:rProfit,wbHold:rHold,margin:r.revenue?rProfit/r.revenue:0};
+  });
+  rows=sortRows(rows,homeSortState,{
+    name:r=>r.name, category:r=>r.category, qty:r=>r.net, revenue:r=>r.revenue,
+    cogs:r=>r.cogs, wbHold:r=>r.wbHold, profit:r=>r.profit, margin:r=>r.margin,
+  });
+  document.getElementById("homeCount").textContent=rows.length+" товаров";
+  document.getElementById("homeTblNote").textContent=`период: ${dates.length} дн.`;
+  if(!rows.length){ document.getElementById("homeTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; return; }
+  let html=`<thead><tr>${thSort("Товар","name",homeSortState,"metric")}${thSort("Категория","category",homeSortState)}
+    ${thSort("Продано, шт","qty",homeSortState)}${thSort("Выручка, ₽","revenue",homeSortState)}${thSort("Себестоимость, ₽","cogs",homeSortState)}${thSort("Удержания WB, ₽","wbHold",homeSortState)}${thSort("Прибыль, ₽","profit",homeSortState)}${thSort("Маржа","margin",homeSortState)}</tr></thead><tbody>`;
+  rows.slice(0,300).forEach(r=>{
+    const costCell=r.hasCost? rub(r.cogs) : `<span class="muted" title="Себестоимость не указана">—</span>`;
+    const profitCell=r.hasCost? rub(r.profit) : `<span title="Без вычета себестоимости — она не указана для этого товара">${rub(r.profit)}*</span>`;
+    const marginCell=r.hasCost? pct(r.margin) : "—";
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td><td>${costCell}</td><td>${rub(r.wbHold)}</td><td>${profitCell}</td><td>${marginCell}</td></tr>`;
+  });
+  html+="</tbody>";
+  document.getElementById("homeTable").innerHTML=html;
+}
+function exportHomeCSV(){
+  const catSel=document.getElementById("homeCat");
+  const cat=catSel.value, q=document.getElementById("homeSearch").value.trim().toLowerCase();
+  const {dates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
+  const now=finAggregate(dates,cat,q);
+  const bySku={};
+  now.rows.forEach(r=>{ if(!bySku[r.sku]) bySku[r.sku]={sku:r.sku,name:r.name,category:r.category,qty:0,returnsQty:0,revenue:0,payout:0};
+    const b=bySku[r.sku]; b.qty+=r.qty; b.returnsQty+=r.returnsQty; b.revenue+=r.revenue; b.payout+=r.payout; });
+  let csv="Артикул;Название;Категория;Продано шт;Выручка;Себестоимость;Удержания WB;Прибыль;Маржа\n";
+  Object.values(bySku).forEach(r=>{
+    const net=r.qty-r.returnsQty, cp=catalogCostBySku[r.sku];
+    const cogs=cp!=null? net*cp : 0, profit=r.payout-cogs, hold=r.revenue-r.payout, margin=r.revenue?(profit/r.revenue*100).toFixed(1):"";
+    csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,net,Math.round(r.revenue),cp!=null?Math.round(cogs):"",Math.round(hold),Math.round(profit),margin].join(";")+"\n";
+  });
+  downloadCSV("wb-главная.csv",csv);
+}
+
 function renderFinanceTab(){
   renderFinanceHistoryInfo();
   if(!FINANCE_CACHE.length){
@@ -1666,11 +1354,15 @@ function renderFinanceTab(){
   const bySku={};
   now.rows.forEach(r=>{ if(!bySku[r.sku]) bySku[r.sku]={sku:r.sku,name:r.name,category:r.category,qty:0,returnsQty:0,revenue:0,payout:0};
     const b=bySku[r.sku]; b.qty+=r.qty; b.returnsQty+=r.returnsQty; b.revenue+=r.revenue; b.payout+=r.payout; });
-  const rows=Object.values(bySku).sort((a,b)=>b.revenue-a.revenue);
+  let rows=Object.values(bySku);
+  rows=sortRows(rows,finSortState,{
+    name:r=>r.name, category:r=>r.category, qty:r=>r.qty, returnsQty:r=>r.returnsQty, revenue:r=>r.revenue, payout:r=>r.payout,
+  });
   document.getElementById("finCount").textContent=rows.length+" товаров";
   document.getElementById("finTblNote").textContent=`период: ${dates.length} дн.`;
   if(!rows.length){ document.getElementById("finTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; return; }
-  let html=`<thead><tr><th class="metric">Товар</th><th>Категория</th><th>Продано, шт</th><th>Возвраты, шт</th><th>Выручка, ₽</th><th>К перечислению, ₽</th></tr></thead><tbody>`;
+  let html=`<thead><tr>${thSort("Товар","name",finSortState,"metric")}${thSort("Категория","category",finSortState)}
+    ${thSort("Продано, шт","qty",finSortState)}${thSort("Возвраты, шт","returnsQty",finSortState)}${thSort("Выручка, ₽","revenue",finSortState)}${thSort("К перечислению, ₽","payout",finSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
     html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${fmt(r.returnsQty)}</td><td>${rub(r.revenue)}</td><td>${rub(r.payout)}</td></tr>`;
   });
@@ -1818,11 +1510,16 @@ const TABS=["home","dynamics","turnover","product","finance"];
 function switchTab(name){
   TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
   document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
+  if(name==="home") renderHomeTab();
   if(name==="dynamics") renderDynamicsTab();
   if(name==="turnover") renderTurnoverTab();
   if(name==="product"){ renderProductHistoryInfo(); initProductTabControls(); }
   if(name==="finance") renderFinanceTab();
   try{localStorage.setItem("wb_active_tab",name);}catch(e){}
+}
+function renderActiveTab(){
+  const active=TABS.find(t=>!document.getElementById("tab-"+t).hidden)||"home";
+  switchTab(active);
 }
 document.getElementById("tabs").addEventListener("click",e=>{
   const b=e.target.closest(".tab-btn"); if(!b) return; switchTab(b.dataset.tab);
@@ -1839,6 +1536,9 @@ document.getElementById("turnCat").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnStatus").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnWindow").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnExportBtn").addEventListener("click",exportTurnoverCSV);
+wireSortable("turnTable",turnSortState,renderTurnoverTab);
+wireSortable("dynTable",dynSortState,renderDynamicsTab);
+wireSortable("finTable",finSortState,renderFinanceTab);
 
 const prodDrop=document.getElementById("prodDrop"), prodFileInput=document.getElementById("prodFileInput");
 prodDrop.onclick=()=>prodFileInput.click();
@@ -1862,12 +1562,24 @@ document.getElementById("finPeriodSeg").addEventListener("click",e=>{
 document.getElementById("finSearch").addEventListener("input",renderFinanceTab);
 document.getElementById("finCat").addEventListener("change",renderFinanceTab);
 
+document.getElementById("homePeriodSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); homePeriodN=+b.dataset.n; renderHomeTab();
+});
+document.getElementById("homeSearch").addEventListener("input",renderHomeTab);
+document.getElementById("homeCat").addEventListener("change",renderHomeTab);
+document.getElementById("homeExportBtn").addEventListener("click",exportHomeCSV);
+wireSortable("homeTable",homeSortState,renderHomeTab);
+
 // старт
-render();
-fdbRefreshCache().then(renderProductHistoryInfo).catch(()=>{});
-fdbRefreshFinanceCache().catch(()=>{});
-try{ const saved=localStorage.getItem("wb_active_tab"); if(saved&&TABS.includes(saved)) switchTab(saved); }catch(e){}
-addEventListener("resize",()=>{ clearTimeout(window._rt); window._rt=setTimeout(render,150); });
+Promise.all([fdbRefreshCache().catch(()=>{}), fdbRefreshFinanceCache().catch(()=>{})]).then(()=>{
+  try{
+    const saved=localStorage.getItem("wb_active_tab");
+    switchTab(saved&&TABS.includes(saved)? saved : "home");
+  }catch(e){ switchTab("home"); }
+});
+addEventListener("resize",()=>{ clearTimeout(window._rt); window._rt=setTimeout(renderActiveTab,150); });
 </script>
 </body>
 </html>
