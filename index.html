@@ -1422,9 +1422,19 @@ self.onmessage = function(e){
   const { type, buffer, catalogSkus } = e.data;
   const catalogSkuSet = new Set(catalogSkus);
   function num(v){ const n=parseFloat((""+v).replace(/\s/g,"").replace(",",".")); return isNaN(n)?0:n; }
+  function headerRow(ws){
+    const ref=ws["!ref"]; if(!ref) return [];
+    const range=XLSX.utils.decode_range(ref), header=[];
+    for(let c=range.s.c;c<=range.e.c;c++){
+      const cell=ws[XLSX.utils.encode_cell({r:range.s.r,c})];
+      header.push(cell? (cell.w!==undefined?cell.w:cell.v) : "");
+    }
+    return header;
+  }
   try{
     importScripts('https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js');
-    const wb = XLSX.read(new Uint8Array(buffer), {type:"array"});
+    // отключаем разбор стилей/формул/VBA — на очень больших файлах это заметно экономит память
+    const wb = XLSX.read(new Uint8Array(buffer), {type:"array", cellStyles:false, cellHTML:false, cellFormula:false, sheetStubs:false, bookVBA:false});
 
     if(type==="funnel"){
       const giRows = XLSX.utils.sheet_to_json(wb.Sheets["Общая информация"],{header:1,raw:false,defval:""});
@@ -1458,10 +1468,7 @@ self.onmessage = function(e){
       self.postMessage({ok:true, dateFrom, dateTo, records, matched, total:rows.length-1});
 
     } else if(type==="finance"){
-      const ws = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
-      if(!rows.length) throw new Error("Пустой файл.");
-      const header=rows[0];
+      if(!wb.SheetNames.length) throw new Error("В файле не нашлось ни одного листа.");
       const FIN_COLS={ sku:"Код номенклатуры", sellerSku:"Артикул поставщика", name:"Название", category:"Предмет",
         docType:"Тип документа", saleDate:"Дата продажи", qty:"Кол-во",
         retailPriceDiscounted:"Цена розничная с учетом согласованной скидки",
@@ -1469,6 +1476,19 @@ self.onmessage = function(e){
         payout:"К перечислению Продавцу за реализованный Товар",
         logistics:"Услуги по доставке товара покупателю",
         penalty:"Общая сумма штрафов", storage:"Хранение" };
+      // ищем лист по заголовкам, а не берём первый попавшийся — в больших выгрузках
+      // данные иногда лежат не на первом листе (например, есть лист с пояснениями)
+      let ws=null, header=null, sheetInfo=[];
+      for(const name of wb.SheetNames){
+        const cand=wb.Sheets[name];
+        const h=headerRow(cand);
+        const ref=cand["!ref"]; const rc=ref? XLSX.utils.decode_range(ref).e.r+1 : 0;
+        sheetInfo.push(name+" ("+rc+" стр.)");
+        if(h.indexOf(FIN_COLS.sku)>=0 && h.indexOf(FIN_COLS.saleDate)>=0){ ws=cand; header=h; break; }
+      }
+      if(!ws) throw new Error("Не нашёл лист с колонками «Код номенклатуры»/«Дата продажи». Листы в файле: "+sheetInfo.join(", ")+". Это точно отчёт о реализации WB?");
+      const rows = XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
+      if(rows.length<2) throw new Error("Лист найден, но в нём нет строк с данными (только заголовок).");
       const colIdx={}; for(const k in FIN_COLS) colIdx[k]=header.indexOf(FIN_COLS[k]);
       if(colIdx.sku<0||colIdx.saleDate<0||colIdx.payout<0) throw new Error("Не нашёл нужные колонки («Код номенклатуры», «Дата продажи», «К перечислению…») — это точно отчёт о реализации WB?");
       const byKey={}; let matched=0, total=0;
@@ -1500,7 +1520,11 @@ self.onmessage = function(e){
       throw new Error("Неизвестный тип отчёта: "+type);
     }
   }catch(err){
-    self.postMessage({ok:false, error: (err&&err.message)||String(err)});
+    let message=(err&&err.message)||String(err);
+    if(/out of memory|invalid (array|string) length|allocation failed/i.test(message)){
+      message="Не хватило памяти браузера на файл такого размера. Попробуйте выгрузить из WB отчёт за более короткий период (например, по одной неделе вместо нескольких) и загрузить его по частям.";
+    }
+    self.postMessage({ok:false, error: message});
   }
 };
 `;
