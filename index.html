@@ -1042,12 +1042,16 @@ function moneyBySkuMap(fromDate,toDate){
    Храним только строки, чей «Артикул WB» есть в каталоге (RCAT) — так
    отделяем свои товары от остального большого кабинета.
    ========================================================================= */
-const FUNNEL_DB="wb_funnel_db", FUNNEL_STORE="days", FINANCE_STORE="finance", DB_VERSION=2, FUNNEL_RETENTION_DAYS=90;
+const FUNNEL_DB="wb_funnel_db", FUNNEL_STORE="days", FINANCE_STORE="finance", DB_VERSION=3, FUNNEL_RETENTION_DAYS=90;
 function fdbOpen(){
   return new Promise((resolve,reject)=>{
     const req=indexedDB.open(FUNNEL_DB,DB_VERSION);
     req.onupgradeneeded=e=>{
       const db=e.target.result;
+      // v3: финансы теперь хранятся ПОСТРОЧНО (ключ = отпечаток строки отчёта),
+      // а не агрегировано по (дата+артикул). Старый формат несовместим —
+      // пересоздаём стор начисто (в нём всё равно ещё нет боевых данных).
+      if(e.oldVersion<3 && db.objectStoreNames.contains(FINANCE_STORE)) db.deleteObjectStore(FINANCE_STORE);
       [FUNNEL_STORE,FINANCE_STORE].forEach(name=>{
         if(!db.objectStoreNames.contains(name)){
           const os=db.createObjectStore(name,{keyPath:"id"});
@@ -1074,6 +1078,13 @@ function fdbGetAll(store){
     req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
   }));
 }
+function fdbGetAllKeys(store){
+  return fdbOpen().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(store,"readonly");
+    const req=tx.objectStore(store).getAllKeys();
+    req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
+  }));
+}
 function fdbDeleteOlderThan(store,cutoffDate){
   return fdbOpen().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(store,"readwrite");
@@ -1088,8 +1099,29 @@ function addDays(dateStr,n){ const d=new Date(dateStr+"T00:00:00Z"); d.setUTCDat
 let FUNNEL_CACHE=[]; // весь набор дней в памяти, отсортирован по дате, обновляется после загрузки
 async function fdbRefreshCache(){ FUNNEL_CACHE=(await fdbGetAll(FUNNEL_STORE)).sort((a,b)=>a.date<b.date?-1:1); }
 
-let FINANCE_CACHE=[];
-async function fdbRefreshFinanceCache(){ FINANCE_CACHE=(await fdbGetAll(FINANCE_STORE)).sort((a,b)=>a.date<b.date?-1:1); }
+let FINANCE_CACHE=[];      // свод по (дата+артикул), пересобирается из построчных данных
+let FINANCE_ROW_COUNT=0;   // сколько уникальных строк отчёта учтено (для контроля полноты)
+/* агрегируем построчные записи в привычный свод (дата+артикул), применяя знак по типу документа */
+function aggregateFinanceRows(raw){
+  const byKey={};
+  for(const r of raw){
+    const key=r.date+"_"+r.sku;
+    let b=byKey[key];
+    if(!b) b=byKey[key]={id:key,date:r.date,sku:r.sku,name:r.name,category:r.category,
+      qty:0,returnsQty:0,revenue:0,payout:0,wbReward:0,logistics:0,storage:0,penalty:0};
+    const sign=r.isReturn?-1:1;
+    if(r.isReturn) b.returnsQty+=r.qty||0; else b.qty+=r.qty||0;
+    b.revenue+=sign*(r.rev||0); b.payout+=sign*(r.payout||0); b.wbReward+=sign*(r.wbReward||0);
+    b.logistics+=r.logistics||0; b.storage+=r.storage||0; b.penalty+=r.penalty||0;
+    if(!b.name && r.name) b.name=r.name; if(!b.category && r.category) b.category=r.category;
+  }
+  return Object.values(byKey);
+}
+async function fdbRefreshFinanceCache(){
+  const raw=await fdbGetAll(FINANCE_STORE);
+  FINANCE_ROW_COUNT=raw.length;
+  FINANCE_CACHE=aggregateFinanceRows(raw).sort((a,b)=>a.date<b.date?-1:1);
+}
 
 let catalogSkuSet=new Set(RCAT.map(c=>c.sku));
 
@@ -1107,6 +1139,16 @@ self.onmessage = function(e){
   const { type, buffer, catalogSkus } = e.data;
   const catalogSkuSet = new Set(catalogSkus);
   function num(v){ const n=parseFloat((""+v).replace(/\s/g,"").replace(",",".")); return isNaN(n)?0:n; }
+  // Стабильный 64-битный отпечаток строки отчёта (два независимых 32-битных хэша).
+  // Считается по ВСЕМ ячейкам строки, поэтому одинаковый для одной и той же физической
+  // строки в любом файле/куске и практически не даёт коллизий на сотнях тысяч строк.
+  function rowHash(cells){
+    const s=cells.join("");
+    let h1=0x811c9dc5, h2=0xc2b2ae35;
+    for(let i=0;i<s.length;i++){ const c=s.charCodeAt(i);
+      h1=Math.imul(h1^c,16777619); h2=Math.imul(h2^c,2246822519); }
+    return (h1>>>0).toString(16).padStart(8,"0")+(h2>>>0).toString(16).padStart(8,"0");
+  }
   function headerRow(ws){
     const ref=ws["!ref"]; if(!ref) return [];
     const range=XLSX.utils.decode_range(ref), header=[];
@@ -1176,7 +1218,11 @@ self.onmessage = function(e){
       if(rows.length<2) throw new Error("Лист найден, но в нём нет строк с данными (только заголовок).");
       const colIdx={}; for(const k in FIN_COLS) colIdx[k]=header.indexOf(FIN_COLS[k]);
       if(colIdx.sku<0||colIdx.saleDate<0||colIdx.payout<0) throw new Error("Не нашёл нужные колонки («Код номенклатуры», «Дата продажи», «К перечислению…») — это точно отчёт о реализации WB?");
-      const byKey={}; let matched=0, total=0;
+      // Храним ПОСТРОЧНО: одна запись = одна строка отчёта, ключ = отпечаток всей строки.
+      // Повторная загрузка той же строки (тот же файл или пересекающийся кусок) просто
+      // перезапишет саму себя тем же значением — задвоиться невозможно. Разные строки
+      // накапливаются. Свод по (дата+артикул) считается уже при чтении из базы.
+      const byId={}; let matched=0, total=0;
       for(let i=1;i<rows.length;i++){
         const r=rows[i]; if(!r||!r.length) continue;
         const sku=(r[colIdx.sku]||"").toString().trim(); if(!sku) continue;
@@ -1186,21 +1232,16 @@ self.onmessage = function(e){
         if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
         matched++;
         const isReturn=(r[colIdx.docType]||"").toString().trim()==="Возврат";
-        const sign=isReturn?-1:1;
-        const key=date+"_"+sku;
-        if(!byKey[key]) byKey[key]={id:key,date,sku,
-          sellerSku:(r[colIdx.sellerSku]||"").toString(), name:(r[colIdx.name]||sku).toString(), category:(r[colIdx.category]||"").toString(),
-          qty:0, returnsQty:0, revenue:0, payout:0, wbReward:0, logistics:0, storage:0, penalty:0};
-        const rec=byKey[key], qty=num(r[colIdx.qty]);
-        if(isReturn) rec.returnsQty+=qty; else rec.qty+=qty;
-        rec.revenue += sign*num(r[colIdx.retailPriceDiscounted])*qty;
-        rec.payout  += sign*num(r[colIdx.payout]);
-        rec.wbReward+= sign*num(r[colIdx.wbReward]);
-        rec.logistics += num(r[colIdx.logistics]);
-        rec.storage   += num(r[colIdx.storage]);
-        rec.penalty   += num(r[colIdx.penalty]);
+        const qty=num(r[colIdx.qty]);
+        // ключ по всей строке + порядковому "№" (если есть) — гарантирует уникальность строки
+        byId[rowHash(r)]={ id:rowHash(r), date, sku,
+          name:(r[colIdx.name]||sku).toString(), category:(r[colIdx.category]||"").toString(),
+          isReturn, qty,
+          rev:num(r[colIdx.retailPriceDiscounted])*qty,
+          payout:num(r[colIdx.payout]), wbReward:num(r[colIdx.wbReward]),
+          logistics:num(r[colIdx.logistics]), storage:num(r[colIdx.storage]), penalty:num(r[colIdx.penalty]) };
       }
-      self.postMessage({ok:true, records:Object.values(byKey), matched, total});
+      self.postMessage({ok:true, records:Object.values(byId), matched, total});
     } else {
       throw new Error("Неизвестный тип отчёта: "+type);
     }
@@ -1255,31 +1296,40 @@ async function handleFinanceFiles(fileList){
   const msg=document.getElementById("finUploadMsg");
   msg.className="msg"; msg.textContent="Обрабатываю файл(ы)… для больших отчётов это может занять до минуты, страница не зависает.";
   const catalogSkus=[...catalogSkuSet];
-  const notes=[]; let allRecords=[];
+  // строки, уже лежащие в базе (до этой загрузки) — по ним отличаем новое от повторного
+  const existingIds=new Set(await fdbGetAllKeys(FINANCE_STORE).catch(()=>[]));
+  const notes=[]; const seenThisBatch=new Set(); const toWrite=[];
+  let batchNew=0, batchDup=0, anyParsed=false;
   for(const file of fileList){
     try{
       const {records,matched,total}=await parseReportInWorker("finance",file,catalogSkus);
-      allRecords=allRecords.concat(records);
+      anyParsed=true;
+      let fNew=0, fDup=0;
+      for(const rec of records){
+        if(seenThisBatch.has(rec.id)) continue;   // та же строка встретилась дважды в этой загрузке
+        seenThisBatch.add(rec.id);
+        if(existingIds.has(rec.id)){ fDup++; } else { fNew++; toWrite.push(rec); }
+      }
+      batchNew+=fNew; batchDup+=fDup;
       const dates=[...new Set(records.map(r=>r.date))].sort();
       const range=dates.length? (dates.length===1? fmtDateLong(dates[0]) : `${fmtDate(dates[0])}–${fmtDate(dates[dates.length-1])}`) : "—";
-      notes.push(`«${file.name}» → ${range}: найдено ${matched} строк по вашим товарам из ${total}`);
-    }catch(e){ notes.push(`«${file.name}» → ошибка: ${e.message}`); }
+      notes.push(`«${esc(file.name)}» → ${range}: ${matched} строк по вашим товарам из ${total} · <b>новых ${fNew}</b>, уже было ${fDup}`);
+    }catch(e){ notes.push(`«${esc(file.name)}» → ошибка: ${esc(e.message)}`); }
   }
-  if(allRecords.length){
-    // несколько строк файла могут относиться к одному (дата,артикул) — сольём перед записью
-    const merged={};
-    allRecords.forEach(r=>{
-      if(!merged[r.id]) merged[r.id]={...r};
-      else{ const m=merged[r.id]; ["qty","returnsQty","revenue","payout","wbReward","logistics","storage","penalty"].forEach(k=>m[k]+=r[k]); }
-    });
-    await fdbPutAll(FINANCE_STORE,Object.values(merged));
+  if(toWrite.length){
+    await fdbPutAll(FINANCE_STORE,toWrite);
     await fdbRefreshFinanceCache();
     const maxDate=FINANCE_CACHE.length? FINANCE_CACHE[FINANCE_CACHE.length-1].date : null;
     if(maxDate){ await fdbDeleteOlderThan(FINANCE_STORE,addDays(maxDate,-FUNNEL_RETENTION_DAYS)); await fdbRefreshFinanceCache(); }
   }
-  msg.className = allRecords.length? "msg ok" : "msg err";
-  msg.innerHTML = notes.map(esc).join("<br>") + (allRecords.length? `<br><span class="muted">Считаю «Возврат» как вычитание из выручки и к перечислению — сверьте итог с реальной выплатой WB.</span>` : "");
+  msg.className = anyParsed? "msg ok" : "msg err";
+  const summary = anyParsed
+    ? `<br><b>Итого: добавлено ${batchNew} новых строк, ${batchDup} уже были загружены ранее (задвоения нет). Всего в базе: ${FINANCE_ROW_COUNT} строк.</b>`
+      + `<br><span class="muted">Возвраты вычитаются из выручки и к перечислению — сверьте итог с реальной выплатой WB.</span>`
+    : "";
+  msg.innerHTML = notes.map(n=>n).join("<br>") + summary;
   renderFinanceTab();
+  renderHomeTab();
 }
 
 function renderFinanceHistoryInfo(){
@@ -1287,7 +1337,7 @@ function renderFinanceHistoryInfo(){
   if(!FINANCE_CACHE.length){ el.innerHTML=""; return; }
   const dates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   const skuCount=new Set(FINANCE_CACHE.map(r=>r.sku)).size;
-  el.innerHTML=`<span class="dot"></span>Финансы: ${dates.length} дн. загружено, с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров · хранится последние ${FUNNEL_RETENTION_DAYS} дней`;
+  el.innerHTML=`<span class="dot"></span>Финансы: ${dates.length} дн., с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров · ${fmt(FINANCE_ROW_COUNT)} строк учтено · хранится последние ${FUNNEL_RETENTION_DAYS} дней`;
 }
 
 let finPeriodN=30;
