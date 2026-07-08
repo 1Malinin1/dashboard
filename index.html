@@ -1186,18 +1186,25 @@ function aggregateFinanceRows(raw){
 function finHoldings(a){ return (a.logistics||0)+(a.penalty||0)+(a.storage||0)+(a.reimb||0)+(a.deduction||0)+(a.priyomka||0)+(a.loyalty||0)+(a.loyaltyPts||0); }
 function finNet(a){ return (a.payout||0)-finHoldings(a); }  // «Итого к оплате» по формуле WB
 let financeIsBaked=false;
+// Категорию каждой строки отчёта приводим к категории из каталога (по «Артикул WB»).
+// В отчётах WB поле «Предмет» может называться иначе, чем категория товара в каталоге
+// (напр. товар «Набор для бокса» проходит в отчёте как «Груши боксерские»). Из-за этого
+// фильтр по выпадающему списку (там — категории каталога) не находил такие товары.
+// Нормализуем в одном месте — и фильтры, и таблицы, и разбивка «Продано» становятся согласованы.
+function normFinCategory(sku,fallback){ return catalogCatBySku[sku] || fallback || ""; }
 async function fdbRefreshFinanceCache(){
   const raw=await fdbGetAll(FINANCE_STORE);
   // если свои отчёты ещё не загружали — показываем зашитый снимок (wb-reports.js)
   if(!raw.length && typeof BAKED_FINANCE!=="undefined"){
     financeIsBaked=true;
     FINANCE_ROW_COUNT=(typeof BAKED_FINANCE_ROWS!=="undefined"? BAKED_FINANCE_ROWS : BAKED_FINANCE.length);
-    FINANCE_CACHE=BAKED_FINANCE.slice().sort((a,b)=>a.date<b.date?-1:1);
+    FINANCE_CACHE=BAKED_FINANCE.map(r=>({...r,category:normFinCategory(r.sku,r.category)})).sort((a,b)=>a.date<b.date?-1:1);
     return;
   }
   financeIsBaked=false;
   FINANCE_ROW_COUNT=raw.length;
   FINANCE_CACHE=aggregateFinanceRows(raw).sort((a,b)=>a.date<b.date?-1:1);
+  FINANCE_CACHE.forEach(r=>{ r.category=normFinCategory(r.sku,r.category); });
 }
 
 /* ---- реклама (WB Продвижение): расход по (дата+артикул) ---- */
