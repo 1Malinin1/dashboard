@@ -115,6 +115,10 @@
   .kpi:hover{border-color:var(--border-2);box-shadow:var(--shadow-lg);transform:translateY(-1px)}
   .kpi .lbl{font-size:12px;color:var(--muted);margin-bottom:9px;font-weight:530;
     letter-spacing:.01em;display:flex;align-items:center;gap:6px}
+  .kpi.has-tip{cursor:help}
+  .kpi-i{display:inline-grid;place-items:center;width:14px;height:14px;border-radius:50%;font-size:9.5px;
+    font-weight:700;font-style:normal;background:var(--surface-2);color:var(--muted);border:1px solid var(--border)}
+  .kpi.has-tip:hover .kpi-i{background:var(--accent);color:#fff;border-color:transparent}
   .kpi .val{font-weight:680;letter-spacing:-.025em;font-size:25px;line-height:1.02;
     font-variant-numeric:tabular-nums}
   .kpi .delta{font-size:12px;margin-top:9px;display:inline-flex;align-items:center;gap:4px;font-weight:600;
@@ -266,6 +270,12 @@
   table.rnp input.edit-num:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring);background:var(--surface)}
   table.rnp td.name-cell{text-align:left;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:520}
   table.rnp td.name-cell .sku{color:var(--muted);font-size:11px;display:block;font-weight:450}
+  /* Плотные таблицы P&L (Главная/Финансы): узкие колонки, чтобы всё влезало без прокрутки вбок */
+  #homeTable th,#homeTable td,#finTable th,#finTable td{padding:8px 7px}
+  #homeTable th.metric,#homeTable td.metric,#finTable th.metric,#finTable td.metric{min-width:0;max-width:150px;padding-left:14px}
+  #homeTable td.name-cell,#finTable td.name-cell{max-width:150px}
+  #homeTable td.name-cell .sku,#finTable td.name-cell .sku{font-size:10.5px}
+  #homeTable input.cost-input{width:64px}
   table.rnp tbody tr.row-critical td{background:color-mix(in srgb,var(--crit) 6%,var(--surface))}
   table.rnp tbody tr.row-critical:hover td{background:color-mix(in srgb,var(--crit) 10%,var(--surface))}
   .empty-hint{padding:44px 20px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.6}
@@ -470,6 +480,18 @@
   <section id="tab-product" class="tab-panel" hidden>
     <div class="freshness" id="prodFreshness"></div>
     <div class="card" style="margin-bottom:14px">
+      <h3>Себестоимость товаров</h3>
+      <div class="cap">Файл с колонками «Артикул wb» и «себестоимость» (₽ за штуку, налог уже внутри). Загрузите здесь, если себестоимость поменялась — прибыль на «Главной» пересчитается автоматически. Можно также вписывать вручную прямо в таблице на «Главной» (жёлтый баннер → заполнить).</div>
+      <div class="freshness" id="costInfo" style="margin:8px 0 0"></div>
+      <div class="drop" id="costDrop" style="margin-top:10px">
+        <div class="drop-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg></div>
+        <div>Перетащите файл себестоимости или <b>нажмите, чтобы выбрать</b></div>
+        <div style="font-size:12px;color:var(--muted);margin-top:6px">Артикул wb + себестоимость · только .xlsx</div>
+        <input type="file" id="costFileInput" accept=".xlsx,.xls" multiple hidden>
+      </div>
+      <div class="msg" id="costUploadMsg"></div>
+    </div>
+    <div class="card" style="margin-bottom:14px">
       <h3>Загрузка воронки продаж по дням</h3>
       <div class="cap">Ежедневный отчёт WB «Детальный отчёт воронки продаж по карточкам» (Аналитика → Воронка продаж → экспорт за 1 день). Каждый день — отдельный файл; данные накапливаются, ничего не затирается. Храним последние 90 дней.</div>
       <div class="drop" id="prodDrop" style="margin-top:6px">
@@ -673,8 +695,17 @@ function delta(cur,prev,upGood=true){
 /* единая KPI-плитка: {lbl,val,delta?,hero?,spark?,valColor?} */
 function kpiCard(k){
   const style=k.valColor? ` style="color:${k.valColor}"`:"";
-  return `<div class="kpi${k.hero?" hero":""}"><div class="lbl">${k.lbl}</div>`+
+  const tip=k.tip? ` has-tip" data-tip="${encodeURIComponent(k.tip)}` : "";
+  const hint=k.tip? `<span class="kpi-i">i</span>` : "";
+  return `<div class="kpi${k.hero?" hero":""}${tip}"><div class="lbl">${k.lbl}${hint}</div>`+
     `<div class="val"${style}>${k.val}</div>${k.delta||""}${k.spark||""}</div>`;
+}
+// подсказки на KPI-плитках: показываем плавающий #tip при наведении
+function wireKpiTips(containerId){
+  document.getElementById(containerId).querySelectorAll(".kpi.has-tip").forEach(t=>{
+    t.addEventListener("pointermove",e=>showTip(decodeURIComponent(t.dataset.tip),e.clientX,e.clientY));
+    t.addEventListener("pointerleave",hideTip);
+  });
 }
 function downloadCSV(filename,text){
   const blob=new Blob(["﻿"+text],{type:"text/csv;charset=utf-8"});
@@ -708,6 +739,12 @@ const RSERIES = RD ? RD.orderSeries.bySku : {};
 const RDATES = RD ? RD.orderSeries.dates : [];
 const RLAST = RDATES.length ? RDATES[RDATES.length-1] : null;
 const catalogCostBySku = {}; RCAT.forEach(c=>{ if(c.costPrice!=null) catalogCostBySku[c.sku]=c.costPrice; });
+// ручные/загруженные правки себестоимости (перекрывают каталог), хранятся в браузере
+const COST_OV_KEY="wb_cost_overrides_v1";
+let costOverrides={}; try{ costOverrides=JSON.parse(localStorage.getItem(COST_OV_KEY)||"{}"); }catch(e){ costOverrides={}; }
+function costOf(sku){ const o=costOverrides[sku]; if(o!=null) return o; const c=catalogCostBySku[sku]; return c!=null? c : null; }
+function saveCostOverrides(){ try{ localStorage.setItem(COST_OV_KEY,JSON.stringify(costOverrides)); }catch(e){} }
+function setCost(sku,val){ const n=parseFloat(val); if(!n||n<=0||isNaN(n)) delete costOverrides[sku]; else costOverrides[sku]=Math.round(n*100)/100; saveCostOverrides(); }
 
 function esc(s){ return (s==null?"":String(s)).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c])); }
 const RU_MONTHS=["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
@@ -1365,6 +1402,23 @@ self.onmessage = function(e){
       }
       self.postMessage({ok:true, records:Object.values(byId), matched, total});
 
+    } else if(type==="cost"){
+      // файл себестоимости: «Артикул wb» → «себестоимость»
+      let ws=null, header=null, info=[];
+      for(const name of wb.SheetNames){ const cand=wb.Sheets[name]; const h=headerRow(cand);
+        const ref=cand["!ref"]; const rc=ref? XLSX.utils.decode_range(ref).e.r+1 : 0; info.push(name+" ("+rc+" стр.)");
+        const hasSku=h.findIndex(x=>/артикул/i.test(""+x)); const hasCost=h.findIndex(x=>/себестоим/i.test(""+x));
+        if(hasSku>=0 && hasCost>=0){ ws=cand; header=h; break; } }
+      if(!ws) throw new Error("Не нашёл колонки «Артикул»/«себестоимость». Листы: "+info.join(", ")+".");
+      let si=header.findIndex(x=>/артикул/i.test(""+x)&&/wb|вб/i.test(""+x)); if(si<0) si=header.findIndex(x=>/артикул/i.test(""+x));
+      const ci=header.findIndex(x=>/себестоим/i.test(""+x));
+      const rows=XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
+      const costMap={}; let matched=0, total=0;
+      for(let i=1;i<rows.length;i++){ const r=rows[i]; if(!r||!r.length) continue;
+        const sku=(""+(r[si]||"")).trim(); if(!/^\d+$/.test(sku)) continue; total++;
+        if(!catalogSkuSet.has(sku)) continue; const c=num(r[ci]); if(c>0){ costMap[sku]=c; matched++; } }
+      self.postMessage({ok:true, costMap, matched, total});
+
     } else {
       throw new Error("Неизвестный тип отчёта: "+type);
     }
@@ -1506,6 +1560,31 @@ function renderAdsHistoryInfo(){
     + (adsIsBaked? ` · <span class="muted">зашитый снимок</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`);
 }
 
+async function handleCostFiles(fileList){
+  const msg=document.getElementById("costUploadMsg");
+  msg.className="msg"; msg.textContent="Обрабатываю файл себестоимости…";
+  const catalogSkus=[...catalogSkuSet];
+  const notes=[]; let applied=0, anyParsed=false;
+  for(const file of fileList){
+    try{
+      const {costMap,matched,total}=await parseReportInWorker("cost",file,catalogSkus);
+      anyParsed=true;
+      Object.keys(costMap).forEach(sku=>{ costOverrides[sku]=costMap[sku]; applied++; });
+      notes.push(`«${esc(file.name)}» → обновлена себестоимость у ${matched} ваших товаров (из ${total} строк)`);
+    }catch(e){ notes.push(`«${esc(file.name)}» → ошибка: ${esc(e.message)}`); }
+  }
+  if(applied) saveCostOverrides();
+  msg.className = anyParsed? "msg ok" : "msg err";
+  msg.innerHTML = notes.map(n=>n).join("<br>") + (applied? `<br><b>Применено ${applied} себестоимостей. Прибыль пересчитана.</b>` : "");
+  renderCostInfo(); renderHomeTab(); renderFinanceTab();
+}
+function renderCostInfo(){
+  const el=document.getElementById("costInfo"); if(!el) return;
+  const withCost=new Set([...Object.keys(catalogCostBySku),...Object.keys(costOverrides)]).size;
+  const nOv=Object.keys(costOverrides).length;
+  el.innerHTML=`<span class="dot"></span>Себестоимость есть у ${withCost} из ${RCAT.length} товаров каталога${nOv?` · ручных/загруженных правок: ${nOv}`:""}`;
+}
+
 function renderFinanceHistoryInfo(){
   const el=document.getElementById("finFreshness");
   if(!FINANCE_CACHE.length){ el.innerHTML=""; return; }
@@ -1532,7 +1611,7 @@ function finAggregate(dates,catFilter,q){
   const set=new Set(dates);
   const rows=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!catFilter||r.category===catFilter)&&(!q||r.sku.includes(q)||r.name.toLowerCase().includes(q)));
   const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
-  const cogs=rows.reduce((a,r)=>{ const cp=catalogCostBySku[r.sku]; return a+(cp!=null?(r.qty-r.returnsQty)*cp:0); },0);
+  const cogs=rows.reduce((a,r)=>{ const cp=costOf(r.sku); return a+(cp!=null?(r.qty-r.returnsQty)*cp:0); },0);
   const agg={qty:sum("qty"),returnsQty:sum("returnsQty"),cogs,rows};
   FIN_MONEY.forEach(k=>agg[k]=sum(k));
   agg.holdings=finHoldings(agg); agg.net=finNet(agg); agg.profit=agg.net-cogs;
@@ -1555,12 +1634,13 @@ function finSeriesByDate(dates,catFilter,q){
     if(catFilter&&r.category!==catFilter) return;
     if(q&&!r.sku.includes(q)&&!r.name.toLowerCase().includes(q)) return;
     revenue[i]+=r.revenue||0; net[i]+=finNet(r);
-    const cp=catalogCostBySku[r.sku]; if(cp!=null) cogs[i]+=(r.qty-r.returnsQty)*cp; });
+    const cp=costOf(r.sku); if(cp!=null) cogs[i]+=(r.qty-r.returnsQty)*cp; });
   return {revenue,net,cogs};
 }
 /* ---- главная: сводный P&L на основе загруженной "Финансы" ---- */
 let homePeriodN=30;
 let homeSortState={key:"profit",dir:-1};
+let homeNoCostOnly=false;   // показывать только товары без себестоимости (по клику на баннер)
 function renderHomeTab(){
   const fresh=document.getElementById("homeFreshness");
   if(!FINANCE_CACHE.length){
@@ -1593,25 +1673,54 @@ function renderHomeTab(){
   const profitSeries=series.net.map((p,i)=>p-series.cogs[i]-(ad.series[i]||0));
   const hasAds=ADS_CACHE.length>0;
 
+  // --- тултипы для KPI (как считается / из чего состоит) ---
+  const tr=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  const revTip=`<div class="t-hd">Выручка — как считается</div>`+
+    tr("Розничная цена (со скидкой) × продано, минус возвраты")+
+    tr("Продано нетто",fmt(netQty)+" шт")+tr("Средняя цена",netQty?rub(now.revenue/netQty):"—")+tr("= Выручка",rub(now.revenue));
+  const commission=now.revenue-now.payout;   // комиссия WB (кВВ+эквайринг) — заложена в «к перечислению за товар»
+  const expParts=[["Комиссия WB",commission],["Логистика",now.logistics],["Возмещение издержек",now.reimb],
+    ["Хранение",now.storage],["Штрафы",now.penalty],["Удержания",now.deduction],["Приёмка",now.priyomka],
+    ["Программа лояльности",now.loyalty+now.loyaltyPts]].filter(x=>Math.round(x[1]));
+  const expTip=`<div class="t-hd">Расходы и удержания WB — ${rub(wbHold)}</div>`+
+    expParts.sort((a,b)=>b[1]-a[1]).map(([k,v])=>tr(k,rub(v)+" · "+(wbHold?Math.round(v/wbHold*100):0)+"%")).join("")+
+    `<div class="t-row" style="border-top:1px solid var(--grid);margin-top:5px;padding-top:6px"><span class="k">Придёт на счёт (к перечислению)</span><span class="v">${rub(now.net)}</span></div>`;
+  const marginTip=`<div class="t-hd">Маржинальность</div>`+tr("Прибыль ÷ Выручка")+
+    tr(`Прибыль = Итого к оплате − Себестоимость${hasAds?" − Реклама":""}`,rub(profit))+
+    tr(`${rub(profit)} ÷ ${rub(now.revenue)}`,now.revenue?pct(profit/now.revenue):"—");
+  const topAd=Object.entries(ad.bySku).sort((a,b)=>b[1]-a[1]).slice(0,5);
+  const adTip=hasAds? `<div class="t-hd">Реклама — ${rub(ad.total)}</div>`+tr("ДРР = реклама ÷ выручка",pct(drr))+
+      (topAd.length? `<div class="t-row" style="margin-top:4px;opacity:.7"><span class="k">Больше всего расход:</span></div>`+
+        topAd.map(([sku,v])=>tr(esc((catalogNameBySku[sku]||sku).slice(0,30)),rub(v))).join("") : "")
+    : `<div class="t-hd">Реклама</div>`+tr("Отчёт «История затрат» ещё не загружен");
+  const catQty={}; now.rows.forEach(r=>{ const n=(r.qty||0)-(r.returnsQty||0); if(n) catQty[r.category||"—"]=(catQty[r.category||"—"]||0)+n; });
+  const soldTip=`<div class="t-hd">Продано по категориям — ${fmt(netQty)} шт</div>`+
+    Object.entries(catQty).sort((a,b)=>b[1]-a[1]).map(([c,n])=>tr(esc(c),fmt(n)+" шт · "+(netQty?Math.round(n/netQty*100):0)+"%")).join("");
+
   document.getElementById("homeKpis").innerHTML=[
     {lbl:hasAds?"Прибыль за период (после рекламы)":"Валовая прибыль за период",val:rub(profit),
       delta:prev?delta(profit,prevProfit,true):"",hero:true,
       valColor:profit>=0?"var(--good-txt)":"var(--crit-txt)",
       spark:profitSeries.length>1? spark(profitSeries,cssv(profit>=0?"--s2":"--crit")):""},
-    {lbl:"Выручка, ₽",val:rub(now.revenue),delta:prev?delta(now.revenue,prev.revenue,true):""},
-    {lbl:"Итого к оплате от WB, ₽",val:rub(now.net),delta:prev?delta(now.net,prev.net,true):""},
+    {lbl:"Выручка, ₽",val:rub(now.revenue),delta:prev?delta(now.revenue,prev.revenue,true):"",tip:revTip},
+    {lbl:"Расходы и удержания WB, ₽",val:rub(wbHold),delta:prev?delta(wbHold,prev.revenue-prev.net,false):"",tip:expTip},
     {lbl:"Реклама, ₽",val:hasAds?rub(ad.total):"—",
-      delta:hasAds?`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">ДРР ${pct(drr)}</div>`:`<div class="delta" style="background:var(--surface-2);color:var(--muted)">нет отчёта</div>`},
-    {lbl:"Маржинальность",val:now.revenue? pct(profit/now.revenue) : "—"},
-    {lbl:"Продано, шт (нетто)",val:fmt(netQty)},
+      delta:hasAds?`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">ДРР ${pct(drr)}</div>`:`<div class="delta" style="background:var(--surface-2);color:var(--muted)">нет отчёта</div>`,tip:adTip},
+    {lbl:"Маржинальность",val:now.revenue? pct(profit/now.revenue) : "—",tip:marginTip},
+    {lbl:"Продано, шт (нетто)",val:fmt(netQty),tip:soldTip},
   ].map(kpiCard).join("");
+  wireKpiTips("homeKpis");
 
-  const skusNoCost=new Set(now.rows.filter(r=>(r.qty-r.returnsQty)>0&&catalogCostBySku[r.sku]==null).map(r=>r.sku));
+  const skusNoCost=new Set(now.rows.filter(r=>(r.qty-r.returnsQty)>0&&costOf(r.sku)==null).map(r=>r.sku));
   const warnEl=document.getElementById("homeCostWarning");
   if(skusNoCost.size){
-    warnEl.hidden=false;
-    warnEl.innerHTML=`⚠ У ${skusNoCost.size} товаров за этот период не указана себестоимость — прибыль по ним посчитана как «Итого к оплате» без вычета с/с (то есть завышена). Дозагрузите файл себестоимости, чтобы уточнить.`;
-  } else warnEl.hidden=true;
+    warnEl.hidden=false; warnEl.style.cursor="pointer";
+    warnEl.innerHTML = homeNoCostOnly
+      ? `✎ Показаны ${skusNoCost.size} товаров без себестоимости. Впишите с/с за штуку в колонке «Себестоимость» — прибыль пересчитается сразу. &nbsp;<b>← Показать все товары</b>`
+      : `⚠ У ${skusNoCost.size} товаров не указана себестоимость — прибыль по ним завышена (без вычета с/с). &nbsp;<b>Нажмите, чтобы заполнить вручную →</b>`;
+    warnEl.onclick=()=>{ homeNoCostOnly=!homeNoCostOnly; renderHomeTab();
+      if(homeNoCostOnly) document.querySelector("#homeContent .table-card").scrollIntoView({behavior:"smooth",block:"start"}); };
+  } else { warnEl.hidden=true; homeNoCostOnly=false; warnEl.onclick=null; }
 
   document.getElementById("homeChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}${hasAds?" · прибыль за вычетом рекламы":""}` : "нет данных";
   legend(document.getElementById("homeChartLegend"),[{name:"Выручка, ₽",color:cssv("--s1")},{name:"Прибыль, ₽",color:cssv("--s2")}]);
@@ -1631,23 +1740,25 @@ function renderHomeTab(){
   const bySku={}; finAggBySku(now.rows).forEach(r=>bySku[r.sku]=r);
   Object.keys(ad.bySku).forEach(sku=>{ if(!bySku[sku]) bySku[sku]={sku,name:catalogNameBySku[sku]||sku,category:catalogCatBySku[sku]||"",qty:0,returnsQty:0,revenue:0,payout:0,logistics:0,penalty:0,storage:0,reimb:0,deduction:0,priyomka:0,loyalty:0,loyaltyPts:0}; });
   let rows=Object.values(bySku).map(r=>{
-    const net=r.qty-r.returnsQty, cp=catalogCostBySku[r.sku];
+    const net=r.qty-r.returnsQty, cp=costOf(r.sku);
     const cogs=cp!=null? net*cp : 0, hasCost=cp!=null;
     const adSp=ad.bySku[r.sku]||0;
     const rNet=finNet(r), rProfit=rNet-cogs-adSp, rHold=r.revenue-rNet;
     return {...r,net,cogs,hasCost,ad:adSp,payoutNet:rNet,profit:rProfit,wbHold:rHold,margin:r.revenue?rProfit/r.revenue:0};
   });
+  if(homeNoCostOnly) rows=rows.filter(r=>!r.hasCost);
   rows=sortRows(rows,homeSortState,{
     name:r=>r.name, category:r=>r.category, qty:r=>r.net, revenue:r=>r.revenue,
     cogs:r=>r.cogs, wbHold:r=>r.wbHold, ad:r=>r.ad, profit:r=>r.profit, margin:r=>r.margin,
   });
   document.getElementById("homeCount").textContent=rows.length+" товаров";
-  document.getElementById("homeTblNote").textContent=`период: ${dates.length} дн.`;
+  document.getElementById("homeTblNote").textContent = homeNoCostOnly? "только без себестоимости" : `период: ${dates.length} дн.`;
   if(!rows.length){ document.getElementById("homeTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар","name",homeSortState,"metric")}${thSort("Категория","category",homeSortState)}
-    ${thSort("Продано, шт","qty",homeSortState)}${thSort("Выручка, ₽","revenue",homeSortState)}${thSort("Себестоимость, ₽","cogs",homeSortState)}${thSort("Удержания WB, ₽","wbHold",homeSortState)}${thSort("Реклама, ₽","ad",homeSortState)}${thSort("Прибыль, ₽","profit",homeSortState)}${thSort("Маржа","margin",homeSortState)}</tr></thead><tbody>`;
+    ${thSort("Продано","qty",homeSortState)}${thSort("Выручка, ₽","revenue",homeSortState)}${thSort("Себест., ₽","cogs",homeSortState)}${thSort("Удерж. WB, ₽","wbHold",homeSortState)}${thSort("Реклама","ad",homeSortState)}${thSort("Прибыль, ₽","profit",homeSortState)}${thSort("Маржа","margin",homeSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
-    const costCell=r.hasCost? rub(r.cogs) : `<span class="muted" title="Себестоимость не указана">—</span>`;
+    const costCell=r.hasCost? rub(r.cogs)
+      : `<input class="cost-input edit-num" type="number" min="0" step="0.01" data-sku="${esc(r.sku)}" value="" placeholder="с/с" title="Впишите себестоимость за штуку — прибыль пересчитается">`;
     const profitCell=r.hasCost? rub(r.profit) : `<span title="Без вычета себестоимости — она не указана для этого товара">${rub(r.profit)}*</span>`;
     const marginCell=r.hasCost? pct(r.margin) : "—";
     html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td><td>${costCell}</td><td>${rub(r.wbHold)}</td><td>${r.ad?rub(r.ad):"—"}</td><td>${profitCell}</td><td>${marginCell}</td></tr>`;
@@ -1664,7 +1775,7 @@ function exportHomeCSV(){
   Object.keys(ad.bySku).forEach(sku=>{ if(!bySku[sku]) bySku[sku]={sku,name:catalogNameBySku[sku]||sku,category:catalogCatBySku[sku]||"",qty:0,returnsQty:0,revenue:0,payout:0,logistics:0,penalty:0,storage:0,reimb:0,deduction:0,priyomka:0,loyalty:0,loyaltyPts:0}; });
   let csv="Артикул;Название;Категория;Продано шт;Выручка;Итого к оплате;Себестоимость;Удержания WB;Реклама;Прибыль;Маржа\n";
   Object.values(bySku).forEach(r=>{
-    const net=r.qty-r.returnsQty, cp=catalogCostBySku[r.sku];
+    const net=r.qty-r.returnsQty, cp=costOf(r.sku);
     const cogs=cp!=null? net*cp : 0, payoutNet=finNet(r), adSp=ad.bySku[r.sku]||0, profit=payoutNet-cogs-adSp, hold=r.revenue-payoutNet, margin=r.revenue?(profit/r.revenue*100).toFixed(1):"";
     csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,net,Math.round(r.revenue),Math.round(payoutNet),cp!=null?Math.round(cogs):"",Math.round(hold),Math.round(adSp),Math.round(profit),margin].join(";")+"\n";
   });
@@ -1865,7 +1976,7 @@ function switchTab(name){
   if(name==="home") renderHomeTab();
   if(name==="dynamics") renderDynamicsTab();
   if(name==="turnover") renderTurnoverTab();
-  if(name==="product"){ renderProductHistoryInfo(); initProductTabControls(); }
+  if(name==="product"){ renderProductHistoryInfo(); initProductTabControls(); renderCostInfo(); }
   if(name==="finance") renderFinanceTab();
   try{localStorage.setItem("wb_active_tab",name);}catch(e){}
 }
@@ -1900,6 +2011,13 @@ prodFileInput.onchange=e=>{ if(e.target.files.length) handleFunnelFiles(e.target
 prodDrop.addEventListener("drop",e=>{ if(e.dataTransfer.files.length) handleFunnelFiles(e.dataTransfer.files); });
 ["prodAFrom","prodATo","prodBFrom","prodBTo"].forEach(id=>document.getElementById(id).addEventListener("change",renderProductPeriods));
 
+const costDrop=document.getElementById("costDrop"), costFileInput=document.getElementById("costFileInput");
+costDrop.onclick=()=>costFileInput.click();
+costFileInput.onchange=e=>{ if(e.target.files.length) handleCostFiles(e.target.files); };
+["dragenter","dragover"].forEach(ev=>costDrop.addEventListener(ev,e=>{e.preventDefault();costDrop.classList.add("hover");}));
+["dragleave","drop"].forEach(ev=>costDrop.addEventListener(ev,e=>{e.preventDefault();costDrop.classList.remove("hover");}));
+costDrop.addEventListener("drop",e=>{ if(e.dataTransfer.files.length) handleCostFiles(e.dataTransfer.files); });
+
 const finDrop=document.getElementById("finDrop"), finFileInput=document.getElementById("finFileInput");
 finDrop.onclick=()=>finFileInput.click();
 finFileInput.onchange=e=>{ if(e.target.files.length) handleFinanceFiles(e.target.files); };
@@ -1931,6 +2049,11 @@ document.getElementById("homeSearch").addEventListener("input",renderHomeTab);
 document.getElementById("homeCat").addEventListener("change",renderHomeTab);
 document.getElementById("homeExportBtn").addEventListener("click",exportHomeCSV);
 wireSortable("homeTable",homeSortState,renderHomeTab);
+// ручной ввод себестоимости прямо в таблице «Главной»
+document.getElementById("homeTable").addEventListener("change",e=>{
+  const inp=e.target.closest(".cost-input"); if(!inp) return;
+  setCost(inp.dataset.sku, inp.value); renderHomeTab(); renderFinanceTab();
+});
 
 // старт
 Promise.all([fdbRefreshCache().catch(()=>{}), fdbRefreshFinanceCache().catch(()=>{}), fdbRefreshAdsCache().catch(()=>{})]).then(()=>{
