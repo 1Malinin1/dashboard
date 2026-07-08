@@ -579,6 +579,7 @@
 <div id="tip"></div>
 
 <script src="wb-data.js"></script>
+<script src="wb-reports.js"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1147,8 +1148,17 @@ function aggregateFinanceRows(raw){
 // удержания WB и чистая выплата по агрегату (одно место истины для всех вкладок)
 function finHoldings(a){ return (a.logistics||0)+(a.penalty||0)+(a.storage||0)+(a.reimb||0)+(a.deduction||0)+(a.priyomka||0)+(a.loyalty||0)+(a.loyaltyPts||0); }
 function finNet(a){ return (a.payout||0)-finHoldings(a); }  // «Итого к оплате» по формуле WB
+let financeIsBaked=false;
 async function fdbRefreshFinanceCache(){
   const raw=await fdbGetAll(FINANCE_STORE);
+  // если свои отчёты ещё не загружали — показываем зашитый снимок (wb-reports.js)
+  if(!raw.length && typeof BAKED_FINANCE!=="undefined"){
+    financeIsBaked=true;
+    FINANCE_ROW_COUNT=(typeof BAKED_FINANCE_ROWS!=="undefined"? BAKED_FINANCE_ROWS : BAKED_FINANCE.length);
+    FINANCE_CACHE=BAKED_FINANCE.slice().sort((a,b)=>a.date<b.date?-1:1);
+    return;
+  }
+  financeIsBaked=false;
   FINANCE_ROW_COUNT=raw.length;
   FINANCE_CACHE=aggregateFinanceRows(raw).sort((a,b)=>a.date<b.date?-1:1);
 }
@@ -1162,8 +1172,16 @@ function aggregateAdRows(raw){
     b.spend+=r.spend||0; }
   return Object.values(byKey);
 }
+let adsIsBaked=false;
 async function fdbRefreshAdsCache(){
   const raw=await fdbGetAll(ADS_STORE);
+  if(!raw.length && typeof BAKED_ADS!=="undefined"){
+    adsIsBaked=true;
+    ADS_ROW_COUNT=(typeof BAKED_ADS_ROWS!=="undefined"? BAKED_ADS_ROWS : BAKED_ADS.length);
+    ADS_CACHE=BAKED_ADS.slice().sort((a,b)=>a.date<b.date?-1:1);
+    return;
+  }
+  adsIsBaked=false;
   ADS_ROW_COUNT=raw.length;
   ADS_CACHE=aggregateAdRows(raw).sort((a,b)=>a.date<b.date?-1:1);
 }
@@ -1484,7 +1502,8 @@ function renderAdsHistoryInfo(){
   const dates=[...new Set(ADS_CACHE.map(r=>r.date).filter(Boolean))].sort();
   const skus=new Set(ADS_CACHE.map(r=>r.sku)).size;
   const spend=ADS_CACHE.reduce((s,r)=>s+(r.spend||0),0);
-  el.innerHTML=`<span class="dot"></span>Реклама: ${dates.length} дн., ${skus} артикулов, расход ${rub(spend)} · хранится последние ${FUNNEL_RETENTION_DAYS} дней`;
+  el.innerHTML=`<span class="dot"></span>Реклама: ${dates.length} дн., ${skus} артикулов, расход ${rub(spend)}`
+    + (adsIsBaked? ` · <span class="muted">зашитый снимок</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`);
 }
 
 function renderFinanceHistoryInfo(){
@@ -1492,7 +1511,8 @@ function renderFinanceHistoryInfo(){
   if(!FINANCE_CACHE.length){ el.innerHTML=""; return; }
   const dates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   const skuCount=new Set(FINANCE_CACHE.map(r=>r.sku)).size;
-  el.innerHTML=`<span class="dot"></span>Финансы: ${dates.length} дн., с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров · ${fmt(FINANCE_ROW_COUNT)} строк учтено · хранится последние ${FUNNEL_RETENTION_DAYS} дней`;
+  el.innerHTML=`<span class="dot"></span>Финансы: ${dates.length} дн., с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров · ${fmt(FINANCE_ROW_COUNT)} строк учтено`
+    + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`);
 }
 
 let finPeriodN=30;
@@ -1552,7 +1572,8 @@ function renderHomeTab(){
   document.getElementById("homeEmpty").hidden=true;
   document.getElementById("homeContent").hidden=false;
   const allDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
-  fresh.innerHTML=`<span class="dot"></span>Финансы обновлены по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])}`;
+  fresh.innerHTML=`<span class="dot"></span>Финансы обновлены по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])}`
+    + (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}; загрузите свои отчёты на «Финансах», чтобы заменить</span>` : "");
 
   const catSel=document.getElementById("homeCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
