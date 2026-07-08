@@ -975,25 +975,27 @@ function moneySeriesForSkus(skus,isoDates){
 }
 /* ---- график: сгруппированные столбцы по дням (2 серии, много точек) ---- */
 function dailyGroupedBars(mount,isoDates,series){
-  const W=1000,H=240,m={t:18,r:14,b:34,l:56};
+  // viewBox держим близко к реальной ширине карточки (~560), иначе SVG сжимается
+  // до 0.6× и подписи осей становятся ~6px — нечитаемо. Так шрифт рендерится ~12px.
+  const W=560,H=250,m={t:16,r:12,b:34,l:52};
   const iw=W-m.l-m.r, ih=H-m.t-m.b, n=Math.max(1,isoDates.length);
   const allv=series.flatMap(s=>s.data);
   const sc=niceScale(Math.min(...allv,0),Math.max(...allv,0),4);
   const span=(sc.max-sc.min)||1;
   const Y=v=>m.t+ih-((v-sc.min)/span)*ih;
   const y0=Y(0);
-  const band=iw/n, bw=Math.max(1,Math.min(11,(band-2)/series.length));
+  const band=iw/n, bw=Math.max(1,Math.min(26,(band-6)/series.length));
   const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
   for(let v=sc.min;v<=sc.max+1e-6;v+=sc.step){const y=Y(v);
-    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":Math.abs(v)<1e-9?1.6:1}));
-    const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});tx.textContent=fmtAxis(v);svg.appendChild(tx);}
+    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":Math.abs(v)<1e-9?1.3:.8}));
+    const tx=el("text",{x:m.l-7,y:y+4,"text-anchor":"end","font-size":11.5,fill:cssv("--muted")});tx.textContent=fmtAxis(v);svg.appendChild(tx);}
   const maxLabels=n<=10?n:9, stride=Math.max(1,Math.round(n/maxLabels)), groupW=bw*series.length;
   for(let i=0;i<n;i++){
     const cx=m.l+band*i+band/2;
     series.forEach((s,si)=>{
       const v=s.data[i]||0, y=Math.min(Y(v),y0), h=Math.abs(Y(v)-y0), x=cx-groupW/2+si*bw;
       const fill=(v<0&&s.negColor)? s.negColor : s.color;
-      const rect=el("rect",{x,y,width:Math.max(1,bw-1),height:Math.max(1,h),rx:Math.min(2,bw/2),fill});
+      const rect=el("rect",{x,y,width:Math.max(1,bw-2),height:Math.max(1,h),rx:Math.min(3,bw/2),fill});
       rect.style.cursor="pointer";
       rect.addEventListener("pointermove",ev=>{
         const rows=series.map(ss=>`<div class="t-row"><span class="k"><i style="background:${ss.color}"></i>${ss.name}</span><span class="v">${rub(ss.data[i]||0)}</span></div>`).join("");
@@ -1002,7 +1004,7 @@ function dailyGroupedBars(mount,isoDates,series){
       rect.addEventListener("pointerleave",hideTip);
       svg.appendChild(rect);
     });
-    if(i%stride===0||i===n-1){ const tx=el("text",{x:cx,y:H-12,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
+    if(i%stride===0||i===n-1){ const tx=el("text",{x:cx,y:H-11,"text-anchor":"middle","font-size":11,fill:cssv("--muted")});
       tx.textContent=fmtDate(isoDates[i]); svg.appendChild(tx); }
   }
   mount.innerHTML="";mount.appendChild(svg);
