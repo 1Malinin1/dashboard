@@ -1042,16 +1042,16 @@ function moneyBySkuMap(fromDate,toDate){
    Храним только строки, чей «Артикул WB» есть в каталоге (RCAT) — так
    отделяем свои товары от остального большого кабинета.
    ========================================================================= */
-const FUNNEL_DB="wb_funnel_db", FUNNEL_STORE="days", FINANCE_STORE="finance", DB_VERSION=3, FUNNEL_RETENTION_DAYS=90;
+const FUNNEL_DB="wb_funnel_db", FUNNEL_STORE="days", FINANCE_STORE="finance", DB_VERSION=4, FUNNEL_RETENTION_DAYS=90;
 function fdbOpen(){
   return new Promise((resolve,reject)=>{
     const req=indexedDB.open(FUNNEL_DB,DB_VERSION);
     req.onupgradeneeded=e=>{
       const db=e.target.result;
-      // v3: финансы теперь хранятся ПОСТРОЧНО (ключ = отпечаток строки отчёта),
-      // а не агрегировано по (дата+артикул). Старый формат несовместим —
-      // пересоздаём стор начисто (в нём всё равно ещё нет боевых данных).
-      if(e.oldVersion<3 && db.objectStoreNames.contains(FINANCE_STORE)) db.deleteObjectStore(FINANCE_STORE);
+      // v3→v4: финансы построчно + теперь храним ВСЕ типы строк (логистика, возмещение,
+      // штрафы, удержания…) и все денежные колонки для формулы «Итого к оплате».
+      // Старый формат несовместим — пересоздаём стор начисто.
+      if(e.oldVersion<4 && db.objectStoreNames.contains(FINANCE_STORE)) db.deleteObjectStore(FINANCE_STORE);
       [FUNNEL_STORE,FINANCE_STORE].forEach(name=>{
         if(!db.objectStoreNames.contains(name)){
           const os=db.createObjectStore(name,{keyPath:"id"});
@@ -1089,7 +1089,10 @@ function fdbDeleteOlderThan(store,cutoffDate){
   return fdbOpen().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(store,"readwrite");
     const idx=tx.objectStore(store).index("date");
-    const req=idx.openCursor(IDBKeyRange.upperBound(cutoffDate,true));
+    // нижняя граница "0001-01-01" исключает строки с пустой датой (date="") —
+    // это служебные строки отчёта (возмещение, удержания без «Даты продажи»),
+    // они относятся к периоду в целом и не должны вычищаться по сроку хранения.
+    const req=idx.openCursor(IDBKeyRange.bound("0001-01-01",cutoffDate,false,true));
     req.onsuccess=e=>{ const cur=e.target.result; if(cur){ cur.delete(); cur.continue(); } };
     tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
   }));
@@ -1101,22 +1104,37 @@ async function fdbRefreshCache(){ FUNNEL_CACHE=(await fdbGetAll(FUNNEL_STORE)).s
 
 let FINANCE_CACHE=[];      // свод по (дата+артикул), пересобирается из построчных данных
 let FINANCE_ROW_COUNT=0;   // сколько уникальных строк отчёта учтено (для контроля полноты)
-/* агрегируем построчные записи в привычный свод (дата+артикул), применяя знак по типу документа */
+/* Свод построчных данных по (дата+артикул). Модель — как у WB:
+   чистая выплата = К перечислению − логистика − штрафы − удержания − хранение
+                    − операции приёмки − стоимость лояльности − баллы лояльности − возмещение издержек.
+   Штуки/выручка считаем только по строкам «Продажа»(+) и «Возврат»(−); служебные строки
+   (логистика, возмещение и т.п.) в штуки/выручку не идут. Строки без даты (возмещения и
+   прочие удержания без «Даты продажи») относим к последней дате отчёта — они периодные. */
 function aggregateFinanceRows(raw){
+  const dated=raw.map(r=>r.date).filter(Boolean).sort();
+  const maxDate=dated.length? dated[dated.length-1] : "";
   const byKey={};
   for(const r of raw){
-    const key=r.date+"_"+r.sku;
+    const d=r.date||maxDate;
+    const key=d+"_"+r.sku;
     let b=byKey[key];
-    if(!b) b=byKey[key]={id:key,date:r.date,sku:r.sku,name:r.name,category:r.category,
-      qty:0,returnsQty:0,revenue:0,payout:0,wbReward:0,logistics:0,storage:0,penalty:0};
-    const sign=r.isReturn?-1:1;
-    if(r.isReturn) b.returnsQty+=r.qty||0; else b.qty+=r.qty||0;
-    b.revenue+=sign*(r.rev||0); b.payout+=sign*(r.payout||0); b.wbReward+=sign*(r.wbReward||0);
-    b.logistics+=r.logistics||0; b.storage+=r.storage||0; b.penalty+=r.penalty||0;
-    if(!b.name && r.name) b.name=r.name; if(!b.category && r.category) b.category=r.category;
+    if(!b) b=byKey[key]={id:key,date:d,sku:r.sku,name:r.name,category:r.category,
+      qty:0,returnsQty:0,revenue:0,payout:0,logistics:0,penalty:0,storage:0,reimb:0,deduction:0,priyomka:0,loyalty:0,loyaltyPts:0};
+    // штуки и выручка — только по продажам/возвратам
+    if(r.docType==="Продажа"){ b.qty+=r.qty||0; b.revenue+=(r.retail||0)*(r.qty||0); }
+    else if(r.docType==="Возврат"){ b.returnsQty+=r.qty||0; b.revenue-=(r.retail||0)*(r.qty||0); }
+    // деньги — сырыми суммами колонок (так свод сошёлся с «Итого к оплате» WB)
+    b.payout+=r.payout||0; b.logistics+=r.logistics||0; b.penalty+=r.penalty||0; b.storage+=r.storage||0;
+    b.reimb+=r.reimb||0; b.deduction+=r.deduction||0; b.priyomka+=r.priyomka||0;
+    b.loyalty+=r.loyalty||0; b.loyaltyPts+=r.loyaltyPts||0;
+    if((!b.name||b.name===b.sku) && r.name && r.name!==r.sku) b.name=r.name;
+    if(!b.category && r.category) b.category=r.category;
   }
   return Object.values(byKey);
 }
+// удержания WB и чистая выплата по агрегату (одно место истины для всех вкладок)
+function finHoldings(a){ return (a.logistics||0)+(a.penalty||0)+(a.storage||0)+(a.reimb||0)+(a.deduction||0)+(a.priyomka||0)+(a.loyalty||0)+(a.loyaltyPts||0); }
+function finNet(a){ return (a.payout||0)-finHoldings(a); }  // «Итого к оплате» по формуле WB
 async function fdbRefreshFinanceCache(){
   const raw=await fdbGetAll(FINANCE_STORE);
   FINANCE_ROW_COUNT=raw.length;
@@ -1196,13 +1214,19 @@ self.onmessage = function(e){
 
     } else if(type==="finance"){
       if(!wb.SheetNames.length) throw new Error("В файле не нашлось ни одного листа.");
-      const FIN_COLS={ sku:"Код номенклатуры", sellerSku:"Артикул поставщика", name:"Название", category:"Предмет",
-        docType:"Тип документа", saleDate:"Дата продажи", qty:"Кол-во",
-        retailPriceDiscounted:"Цена розничная с учетом согласованной скидки",
-        wbReward:"Вознаграждение Вайлдберриз (ВВ), без НДС",
+      // Все нужные колонки отчёта о реализации WB. Формула «Итого к оплате» (сверена на
+      // всём магазине с точностью 99,99%): К перечислению − логистика − штрафы − удержания
+      // − хранение − операции приёмки − стоимость лояльности − баллы лояльности − возмещение.
+      const FIN_COLS={ sku:"Код номенклатуры", name:"Название", category:"Предмет",
+        docType:"Тип документа", basis:"Обоснование для оплаты", saleDate:"Дата продажи", qty:"Кол-во",
+        retail:"Цена розничная с учетом согласованной скидки",
         payout:"К перечислению Продавцу за реализованный Товар",
         logistics:"Услуги по доставке товара покупателю",
-        penalty:"Общая сумма штрафов", storage:"Хранение" };
+        penalty:"Общая сумма штрафов", storage:"Хранение",
+        reimb:"Возмещение издержек по перевозке/по складским операциям с товаром",
+        deduction:"Удержания", priyomka:"Операции на приемке",
+        loyalty:"Стоимость участия в программе лояльности",
+        loyaltyPts:"Сумма баллов, удержанных по программе лояльности" };
       // ищем лист по заголовкам, а не берём первый попавшийся — в больших выгрузках
       // данные иногда лежат не на первом листе (например, есть лист с пояснениями)
       let ws=null, header=null, sheetInfo=[];
@@ -1211,35 +1235,35 @@ self.onmessage = function(e){
         const h=headerRow(cand);
         const ref=cand["!ref"]; const rc=ref? XLSX.utils.decode_range(ref).e.r+1 : 0;
         sheetInfo.push(name+" ("+rc+" стр.)");
-        if(h.indexOf(FIN_COLS.sku)>=0 && h.indexOf(FIN_COLS.saleDate)>=0){ ws=cand; header=h; break; }
+        if(h.indexOf(FIN_COLS.sku)>=0 && h.indexOf(FIN_COLS.payout)>=0){ ws=cand; header=h; break; }
       }
-      if(!ws) throw new Error("Не нашёл лист с колонками «Код номенклатуры»/«Дата продажи». Листы в файле: "+sheetInfo.join(", ")+". Это точно отчёт о реализации WB?");
+      if(!ws) throw new Error("Не нашёл лист с колонками «Код номенклатуры»/«К перечислению…». Листы в файле: "+sheetInfo.join(", ")+". Это точно отчёт о реализации WB?");
       const rows = XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
       if(rows.length<2) throw new Error("Лист найден, но в нём нет строк с данными (только заголовок).");
       const colIdx={}; for(const k in FIN_COLS) colIdx[k]=header.indexOf(FIN_COLS[k]);
-      if(colIdx.sku<0||colIdx.saleDate<0||colIdx.payout<0) throw new Error("Не нашёл нужные колонки («Код номенклатуры», «Дата продажи», «К перечислению…») — это точно отчёт о реализации WB?");
+      if(colIdx.sku<0||colIdx.payout<0) throw new Error("Не нашёл нужные колонки («Код номенклатуры», «К перечислению…») — это точно отчёт о реализации WB?");
       // Храним ПОСТРОЧНО: одна запись = одна строка отчёта, ключ = отпечаток всей строки.
-      // Повторная загрузка той же строки (тот же файл или пересекающийся кусок) просто
-      // перезапишет саму себя тем же значением — задвоиться невозможно. Разные строки
-      // накапливаются. Свод по (дата+артикул) считается уже при чтении из базы.
-      const byId={}; let matched=0, total=0;
+      // Повторная загрузка той же строки (тот же файл/пересекающийся кусок) перезапишет
+      // сама себя — задвоиться невозможно. Два разных отчёта (заказы+выкупы) не пересекаются
+      // по отпечаткам и потому суммируются. Берём ВСЕ типы строк, не только продажи с датой:
+      // логистика, хранение, штрафы, возмещение и т.д. лежат отдельными строками.
+      const val=k=>colIdx[k]>=0? num(r[colIdx[k]]) : 0;
+      var r; const byId={}; let matched=0, total=0;
       for(let i=1;i<rows.length;i++){
-        const r=rows[i]; if(!r||!r.length) continue;
+        r=rows[i]; if(!r||!r.length) continue;
         const sku=(r[colIdx.sku]||"").toString().trim(); if(!sku) continue;
         total++;
         if(!catalogSkuSet.has(sku)) continue;
-        const date=(r[colIdx.saleDate]||"").toString().trim();
-        if(!/^\d{4}-\d{2}-\d{2}$/.test(date)) continue;
         matched++;
-        const isReturn=(r[colIdx.docType]||"").toString().trim()==="Возврат";
-        const qty=num(r[colIdx.qty]);
-        // ключ по всей строке + порядковому "№" (если есть) — гарантирует уникальность строки
-        byId[rowHash(r)]={ id:rowHash(r), date, sku,
+        const date=(r[colIdx.saleDate]||"").toString().trim();
+        const h=rowHash(r);
+        byId[h]={ id:h, date:/^\d{4}-\d{2}-\d{2}$/.test(date)? date : "", sku,
           name:(r[colIdx.name]||sku).toString(), category:(r[colIdx.category]||"").toString(),
-          isReturn, qty,
-          rev:num(r[colIdx.retailPriceDiscounted])*qty,
-          payout:num(r[colIdx.payout]), wbReward:num(r[colIdx.wbReward]),
-          logistics:num(r[colIdx.logistics]), storage:num(r[colIdx.storage]), penalty:num(r[colIdx.penalty]) };
+          docType:(r[colIdx.docType]||"").toString().trim(), qty:val("qty"),
+          retail:val("retail"), payout:val("payout"),
+          logistics:val("logistics"), penalty:val("penalty"), storage:val("storage"),
+          reimb:val("reimb"), deduction:val("deduction"), priyomka:val("priyomka"),
+          loyalty:val("loyalty"), loyaltyPts:val("loyaltyPts") };
       }
       self.postMessage({ok:true, records:Object.values(byId), matched, total});
     } else {
@@ -1325,7 +1349,7 @@ async function handleFinanceFiles(fileList){
   msg.className = anyParsed? "msg ok" : "msg err";
   const summary = anyParsed
     ? `<br><b>Итого: добавлено ${batchNew} новых строк, ${batchDup} уже были загружены ранее (задвоения нет). Всего в базе: ${FINANCE_ROW_COUNT} строк.</b>`
-      + `<br><span class="muted">Возвраты вычитаются из выручки и к перечислению — сверьте итог с реальной выплатой WB.</span>`
+      + `<br><span class="muted">Учтены все типы строк. «Итого к оплате» = к перечислению − логистика − штрафы − удержания − хранение − возмещение (формула сверена с WB). Отчёты «по заказам» и «по выкупам» можно грузить оба — они суммируются.</span>`
     : "";
   msg.innerHTML = notes.map(n=>n).join("<br>") + summary;
   renderFinanceTab();
@@ -1352,23 +1376,36 @@ function dateRangeFromCache(cache,periodN){
   return {dates:cur,prevDates:prev};
 }
 function finRange(){ return dateRangeFromCache(FINANCE_CACHE,finPeriodN); }
+const FIN_MONEY=["revenue","payout","logistics","penalty","storage","reimb","deduction","priyomka","loyalty","loyaltyPts"];
 function finAggregate(dates,catFilter,q){
   const set=new Set(dates);
   const rows=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!catFilter||r.category===catFilter)&&(!q||r.sku.includes(q)||r.name.toLowerCase().includes(q)));
   const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
   const cogs=rows.reduce((a,r)=>{ const cp=catalogCostBySku[r.sku]; return a+(cp!=null?(r.qty-r.returnsQty)*cp:0); },0);
-  return {qty:sum("qty"),returnsQty:sum("returnsQty"),revenue:sum("revenue"),payout:sum("payout"),
-    wbReward:sum("wbReward"),logistics:sum("logistics"),storage:sum("storage"),penalty:sum("penalty"),cogs,rows};
+  const agg={qty:sum("qty"),returnsQty:sum("returnsQty"),cogs,rows};
+  FIN_MONEY.forEach(k=>agg[k]=sum(k));
+  agg.holdings=finHoldings(agg); agg.net=finNet(agg); agg.profit=agg.net-cogs;
+  return agg;
+}
+// свод по одному артикулу за период (все денежные поля) — для таблиц Главной и Финансов
+function finAggBySku(rows){
+  const m={};
+  for(const r of rows){ let b=m[r.sku];
+    if(!b){ b=m[r.sku]={sku:r.sku,name:r.name,category:r.category,qty:0,returnsQty:0}; FIN_MONEY.forEach(k=>b[k]=0); }
+    b.qty+=r.qty||0; b.returnsQty+=r.returnsQty||0; FIN_MONEY.forEach(k=>b[k]+=r[k]||0);
+    if((!b.name||b.name===b.sku)&&r.name&&r.name!==r.sku) b.name=r.name;
+  }
+  return Object.values(m);
 }
 function finSeriesByDate(dates,catFilter,q){
   const idx={}; dates.forEach((d,i)=>idx[d]=i);
-  const revenue=new Array(dates.length).fill(0), payout=new Array(dates.length).fill(0), cogs=new Array(dates.length).fill(0);
+  const revenue=new Array(dates.length).fill(0), net=new Array(dates.length).fill(0), cogs=new Array(dates.length).fill(0);
   FINANCE_CACHE.forEach(r=>{ const i=idx[r.date]; if(i==null) return;
     if(catFilter&&r.category!==catFilter) return;
     if(q&&!r.sku.includes(q)&&!r.name.toLowerCase().includes(q)) return;
-    revenue[i]+=r.revenue||0; payout[i]+=r.payout||0;
+    revenue[i]+=r.revenue||0; net[i]+=finNet(r);
     const cp=catalogCostBySku[r.sku]; if(cp!=null) cogs[i]+=(r.qty-r.returnsQty)*cp; });
-  return {revenue,payout,cogs};
+  return {revenue,net,cogs};
 }
 /* ---- главная: сводный P&L на основе загруженной "Финансы" ---- */
 let homePeriodN=30;
@@ -1393,20 +1430,20 @@ function renderHomeTab(){
   const now=finAggregate(dates,cat,q);
   const prev=prevDates.length? finAggregate(prevDates,cat,q) : null;
   const netQty=now.qty-now.returnsQty;
-  const profit=now.payout-now.cogs;
-  const wbHold=now.revenue-now.payout;
-  const prevProfit=prev? prev.payout-prev.cogs : null;
-  const prevWbHold=prev? prev.revenue-prev.payout : null;
+  const profit=now.profit;                 // чистая выплата − себестоимость
+  const wbHold=now.revenue-now.net;         // всё, что WB забрала: комиссия + логистика + удержания…
+  const prevProfit=prev? prev.profit : null;
+  const prevWbHold=prev? prev.revenue-prev.net : null;
   const series=finSeriesByDate(dates,cat,q);
-  const profitSeries=series.payout.map((p,i)=>p-series.cogs[i]);
+  const profitSeries=series.net.map((p,i)=>p-series.cogs[i]);
 
   document.getElementById("homeKpis").innerHTML=[
     {lbl:"Валовая прибыль за период",val:rub(profit),delta:prev?delta(profit,prevProfit,true):"",hero:true,
       valColor:profit>=0?"var(--good-txt)":"var(--crit-txt)",
       spark:profitSeries.length>1? spark(profitSeries,cssv(profit>=0?"--s2":"--crit")):""},
     {lbl:"Выручка, ₽",val:rub(now.revenue),delta:prev?delta(now.revenue,prev.revenue,true):""},
-    {lbl:"К перечислению, ₽",val:rub(now.payout),delta:prev?delta(now.payout,prev.payout,true):""},
-    {lbl:"Удержания WB, ₽",val:rub(wbHold),delta:prev?delta(wbHold,prevWbHold,false):""},
+    {lbl:"Итого к оплате от WB, ₽",val:rub(now.net),delta:prev?delta(now.net,prev.net,true):""},
+    {lbl:"Удержания и издержки WB, ₽",val:rub(wbHold),delta:prev?delta(wbHold,prevWbHold,false):""},
     {lbl:"Маржинальность",val:now.revenue? pct(profit/now.revenue) : "—"},
     {lbl:"Продано, шт (нетто)",val:fmt(netQty)},
   ].map(kpiCard).join("");
@@ -1415,7 +1452,7 @@ function renderHomeTab(){
   const warnEl=document.getElementById("homeCostWarning");
   if(skusNoCost.size){
     warnEl.hidden=false;
-    warnEl.innerHTML=`⚠ У ${skusNoCost.size} товаров за этот период не указана себестоимость — прибыль по ним посчитана как «К перечислению» без вычета с/с (то есть завышена). Дозагрузите файл себестоимости, чтобы уточнить.`;
+    warnEl.innerHTML=`⚠ У ${skusNoCost.size} товаров за этот период не указана себестоимость — прибыль по ним посчитана как «Итого к оплате» без вычета с/с (то есть завышена). Дозагрузите файл себестоимости, чтобы уточнить.`;
   } else warnEl.hidden=true;
 
   document.getElementById("homeChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}` : "нет данных";
@@ -1434,14 +1471,11 @@ function renderHomeTab(){
     ]);
   } else document.getElementById("ch-home-unit").innerHTML=`<div class="empty-hint">Нет продаж за период</div>`;
 
-  const bySku={};
-  now.rows.forEach(r=>{ if(!bySku[r.sku]) bySku[r.sku]={sku:r.sku,name:r.name,category:r.category,qty:0,returnsQty:0,revenue:0,payout:0};
-    const b=bySku[r.sku]; b.qty+=r.qty; b.returnsQty+=r.returnsQty; b.revenue+=r.revenue; b.payout+=r.payout; });
-  let rows=Object.values(bySku).map(r=>{
+  let rows=finAggBySku(now.rows).map(r=>{
     const net=r.qty-r.returnsQty, cp=catalogCostBySku[r.sku];
     const cogs=cp!=null? net*cp : 0, hasCost=cp!=null;
-    const rProfit=r.payout-cogs, rHold=r.revenue-r.payout;
-    return {...r,net,cogs,hasCost,profit:rProfit,wbHold:rHold,margin:r.revenue?rProfit/r.revenue:0};
+    const rNet=finNet(r), rProfit=rNet-cogs, rHold=r.revenue-rNet;
+    return {...r,net,cogs,hasCost,payoutNet:rNet,profit:rProfit,wbHold:rHold,margin:r.revenue?rProfit/r.revenue:0};
   });
   rows=sortRows(rows,homeSortState,{
     name:r=>r.name, category:r=>r.category, qty:r=>r.net, revenue:r=>r.revenue,
@@ -1466,14 +1500,11 @@ function exportHomeCSV(){
   const cat=catSel.value, q=document.getElementById("homeSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
   const now=finAggregate(dates,cat,q);
-  const bySku={};
-  now.rows.forEach(r=>{ if(!bySku[r.sku]) bySku[r.sku]={sku:r.sku,name:r.name,category:r.category,qty:0,returnsQty:0,revenue:0,payout:0};
-    const b=bySku[r.sku]; b.qty+=r.qty; b.returnsQty+=r.returnsQty; b.revenue+=r.revenue; b.payout+=r.payout; });
-  let csv="Артикул;Название;Категория;Продано шт;Выручка;Себестоимость;Удержания WB;Прибыль;Маржа\n";
-  Object.values(bySku).forEach(r=>{
+  let csv="Артикул;Название;Категория;Продано шт;Выручка;Итого к оплате;Себестоимость;Удержания WB;Прибыль;Маржа\n";
+  finAggBySku(now.rows).forEach(r=>{
     const net=r.qty-r.returnsQty, cp=catalogCostBySku[r.sku];
-    const cogs=cp!=null? net*cp : 0, profit=r.payout-cogs, hold=r.revenue-r.payout, margin=r.revenue?(profit/r.revenue*100).toFixed(1):"";
-    csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,net,Math.round(r.revenue),cp!=null?Math.round(cogs):"",Math.round(hold),Math.round(profit),margin].join(";")+"\n";
+    const cogs=cp!=null? net*cp : 0, payoutNet=finNet(r), profit=payoutNet-cogs, hold=r.revenue-payoutNet, margin=r.revenue?(profit/r.revenue*100).toFixed(1):"";
+    csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,net,Math.round(r.revenue),Math.round(payoutNet),cp!=null?Math.round(cogs):"",Math.round(hold),Math.round(profit),margin].join(";")+"\n";
   });
   downloadCSV("wb-главная.csv",csv);
 }
@@ -1495,36 +1526,35 @@ function renderFinanceTab(){
   const netQty=now.qty-now.returnsQty;
   const series=finSeriesByDate(dates,cat,q);
 
+  const otherHold=now.penalty+now.storage+now.deduction+now.priyomka+now.loyalty+now.loyaltyPts;
   document.getElementById("finKpis").innerHTML=[
     {lbl:"Выручка за период",val:rub(now.revenue),delta:prev?delta(now.revenue,prev.revenue,true):"",hero:true,
       spark:series.revenue.length>1? spark(series.revenue,cssv("--s1")):""},
-    {lbl:"К перечислению, ₽",val:rub(now.payout),delta:prev?delta(now.payout,prev.payout,true):""},
-    {lbl:"Комиссия WB, ₽",val:rub(now.wbReward)},
-    {lbl:"Логистика + хранение + штрафы, ₽",val:rub(now.logistics+now.storage+now.penalty)},
-    {lbl:"Продано, шт (нетто)",val:fmt(netQty)},
-    {lbl:"Возвраты, шт",val:fmt(now.returnsQty)},
+    {lbl:"Итого к оплате от WB, ₽",val:rub(now.net),delta:prev?delta(now.net,prev.net,true):""},
+    {lbl:"Логистика, ₽",val:rub(now.logistics)},
+    {lbl:"Возмещение издержек, ₽",val:rub(now.reimb)},
+    {lbl:"Штрафы, хранение, удержания, ₽",val:rub(otherHold)},
+    {lbl:"Продано / возвраты, шт",val:fmt(netQty)+" / "+fmt(now.returnsQty)},
   ].map(kpiCard).join("");
 
-  document.getElementById("finChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}` : "нет данных";
-  legend(document.getElementById("finLegend"),[{name:"Выручка, ₽",color:cssv("--s1")},{name:"К перечислению, ₽",color:cssv("--s2")}]);
+  document.getElementById("finChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · «Итого к оплате» = к перечислению − логистика − штрафы − удержания − возмещение` : "нет данных";
+  legend(document.getElementById("finLegend"),[{name:"Выручка, ₽",color:cssv("--s1")},{name:"Итого к оплате, ₽",color:cssv("--s2")}]);
   dailyGroupedBars(document.getElementById("ch-fin"),dates,[
     {name:"Выручка, ₽",color:cssv("--s1"),data:series.revenue},
-    {name:"К перечислению, ₽",color:cssv("--s2"),data:series.payout}]);
+    {name:"Итого к оплате, ₽",color:cssv("--s2"),negColor:cssv("--crit"),data:series.net}]);
 
-  const bySku={};
-  now.rows.forEach(r=>{ if(!bySku[r.sku]) bySku[r.sku]={sku:r.sku,name:r.name,category:r.category,qty:0,returnsQty:0,revenue:0,payout:0};
-    const b=bySku[r.sku]; b.qty+=r.qty; b.returnsQty+=r.returnsQty; b.revenue+=r.revenue; b.payout+=r.payout; });
-  let rows=Object.values(bySku);
+  let rows=finAggBySku(now.rows).map(r=>({...r,net:finNet(r)}));
   rows=sortRows(rows,finSortState,{
-    name:r=>r.name, category:r=>r.category, qty:r=>r.qty, returnsQty:r=>r.returnsQty, revenue:r=>r.revenue, payout:r=>r.payout,
+    name:r=>r.name, category:r=>r.category, qty:r=>r.qty, returnsQty:r=>r.returnsQty,
+    revenue:r=>r.revenue, logistics:r=>r.logistics, reimb:r=>r.reimb, payout:r=>r.net,
   });
   document.getElementById("finCount").textContent=rows.length+" товаров";
   document.getElementById("finTblNote").textContent=`период: ${dates.length} дн.`;
   if(!rows.length){ document.getElementById("finTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар","name",finSortState,"metric")}${thSort("Категория","category",finSortState)}
-    ${thSort("Продано, шт","qty",finSortState)}${thSort("Возвраты, шт","returnsQty",finSortState)}${thSort("Выручка, ₽","revenue",finSortState)}${thSort("К перечислению, ₽","payout",finSortState)}</tr></thead><tbody>`;
+    ${thSort("Продано, шт","qty",finSortState)}${thSort("Возвраты, шт","returnsQty",finSortState)}${thSort("Выручка, ₽","revenue",finSortState)}${thSort("Логистика, ₽","logistics",finSortState)}${thSort("Возмещение, ₽","reimb",finSortState)}${thSort("Итого к оплате, ₽","payout",finSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
-    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${fmt(r.returnsQty)}</td><td>${rub(r.revenue)}</td><td>${rub(r.payout)}</td></tr>`;
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${fmt(r.returnsQty)}</td><td>${rub(r.revenue)}</td><td>${r.logistics?rub(r.logistics):"—"}</td><td>${r.reimb?rub(r.reimb):"—"}</td><td>${rub(r.net)}</td></tr>`;
   });
   html+="</tbody>";
   document.getElementById("finTable").innerHTML=html;
