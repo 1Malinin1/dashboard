@@ -1685,9 +1685,17 @@ function renderHomeTab(){
   const expTip=`<div class="t-hd">Расходы и удержания WB — ${rub(wbHold)}</div>`+
     expParts.sort((a,b)=>b[1]-a[1]).map(([k,v])=>tr(k,rub(v)+" · "+(wbHold?Math.round(v/wbHold*100):0)+"%")).join("")+
     `<div class="t-row" style="border-top:1px solid var(--grid);margin-top:5px;padding-top:6px"><span class="k">Придёт на счёт (к перечислению)</span><span class="v">${rub(now.net)}</span></div>`;
-  const marginTip=`<div class="t-hd">Маржинальность</div>`+tr("Прибыль ÷ Выручка")+
-    tr(`Прибыль = Итого к оплате − Себестоимость${hasAds?" − Реклама":""}`,rub(profit))+
-    tr(`${rub(profit)} ÷ ${rub(now.revenue)}`,now.revenue?pct(profit/now.revenue):"—");
+  const sep=`border-top:1px solid var(--grid);margin-top:5px;padding-top:6px`;
+  const profitTip=`<div class="t-hd">Прибыль — как считается</div>`+
+    tr("Выручка",rub(now.revenue))+
+    tr("− Расходы и удержания WB","−"+rub(wbHold))+
+    tr("− Себестоимость проданного","−"+rub(now.cogs))+
+    (hasAds? tr("− Реклама","−"+rub(ad.total)) : "")+
+    `<div class="t-row" style="${sep}"><span class="k">= Прибыль</span><span class="v">${rub(profit)}</span></div>`;
+  const marginTip=`<div class="t-hd">Маржинальность</div>`+
+    tr("Прибыль ÷ Выручка")+
+    tr(`${rub(profit)} ÷ ${rub(now.revenue)}`,now.revenue?pct(profit/now.revenue):"—")+
+    `<div class="t-row" style="${sep};opacity:.75"><span class="k">Прибыль = Выручка − Расходы WB − Себест.${hasAds?" − Реклама":""}</span></div>`;
   const topAd=Object.entries(ad.bySku).sort((a,b)=>b[1]-a[1]).slice(0,5);
   const adTip=hasAds? `<div class="t-hd">Реклама — ${rub(ad.total)}</div>`+tr("ДРР = реклама ÷ выручка",pct(drr))+
       (topAd.length? `<div class="t-row" style="margin-top:4px;opacity:.7"><span class="k">Больше всего расход:</span></div>`+
@@ -1699,7 +1707,7 @@ function renderHomeTab(){
 
   document.getElementById("homeKpis").innerHTML=[
     {lbl:hasAds?"Прибыль за период (после рекламы)":"Валовая прибыль за период",val:rub(profit),
-      delta:prev?delta(profit,prevProfit,true):"",hero:true,
+      delta:prev?delta(profit,prevProfit,true):"",hero:true,tip:profitTip,
       valColor:profit>=0?"var(--good-txt)":"var(--crit-txt)",
       spark:profitSeries.length>1? spark(profitSeries,cssv(profit>=0?"--s2":"--crit")):""},
     {lbl:"Выручка, ₽",val:rub(now.revenue),delta:prev?delta(now.revenue,prev.revenue,true):"",tip:revTip},
