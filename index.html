@@ -280,6 +280,33 @@
   table.rnp tbody tr.row-critical:hover td{background:color-mix(in srgb,var(--crit) 10%,var(--surface))}
   .empty-hint{padding:44px 20px;text-align:center;color:var(--muted);font-size:13.5px;line-height:1.6}
 
+  /* ===== Экран кода доступа ===== */
+  .top-actions{display:flex;gap:8px;align-items:center}
+  body.locked .wrap{display:none}
+  body.locked{overflow:hidden}
+  #lockScreen{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;
+    background:var(--bg);}
+  #lockScreen[hidden]{display:none}
+  .lock-card{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);
+    border-radius:var(--r);box-shadow:var(--shadow-lg);padding:32px 28px;text-align:center;
+    display:flex;flex-direction:column;gap:14px}
+  .lock-logo{width:48px;height:48px;border-radius:13px;margin:0 auto;display:grid;place-items:center;
+    background:var(--accent);color:#fff;font-weight:800;font-size:18px;letter-spacing:-.03em}
+  .lock-card h2{margin:0;font-size:19px;font-weight:680;letter-spacing:-.02em;color:var(--text-1)}
+  .lock-hint{margin:0;color:var(--muted);font-size:13.5px;line-height:1.55}
+  #lockInput{width:100%;border:1px solid var(--border);background:var(--surface-2);color:var(--text-1);
+    font:inherit;font-size:15px;padding:12px 14px;border-radius:var(--r-sm);text-align:center;letter-spacing:.04em}
+  #lockInput:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring)}
+  .lock-remember{display:flex;align-items:center;justify-content:center;gap:8px;font-size:13px;color:var(--muted);cursor:pointer}
+  .lock-remember input{accent-color:var(--accent);width:15px;height:15px}
+  .lock-btn{width:100%;border:0;background:var(--accent);color:#fff;font:inherit;font-weight:640;font-size:15px;
+    padding:12px;border-radius:var(--r-sm);cursor:pointer;transition:filter .15s}
+  .lock-btn:hover{filter:brightness(1.06)}
+  .lock-btn:disabled{opacity:.6;cursor:default}
+  .lock-msg{min-height:18px;font-size:13px;color:var(--muted)}
+  .lock-msg.err{color:var(--crit);font-weight:560}
+  .lock-period{font-size:12px;color:var(--muted);opacity:.8}
+
   /* ===== Богатое пустое состояние ===== */
   .empty-state{text-align:center;padding:56px 24px}
   .empty-state .es-ic{width:60px;height:60px;border-radius:16px;margin:0 auto 18px;display:grid;place-items:center;
@@ -336,6 +363,18 @@
 </style>
 </head>
 <body>
+<div id="lockScreen" hidden>
+  <form class="lock-card" id="lockForm">
+    <div class="lock-logo">WB</div>
+    <h2>РНП · Дашборд</h2>
+    <p class="lock-hint">Данные зашифрованы. Введите код доступа, чтобы открыть.</p>
+    <input type="password" id="lockInput" placeholder="Код доступа" autocomplete="current-password" autofocus>
+    <label class="lock-remember"><input type="checkbox" id="lockRemember" checked> Запомнить на этом устройстве</label>
+    <button type="submit" class="lock-btn">Открыть</button>
+    <div class="lock-msg" id="lockMsg"></div>
+    <div class="lock-period" id="lockPeriod"></div>
+  </form>
+</div>
 <div class="wrap">
 
   <header class="top">
@@ -346,10 +385,16 @@
         <div class="sub">Управленческий дашборд Wildberries</div>
       </div>
     </div>
-    <button class="btn" id="themeBtn" title="Сменить тему">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l-1.5-1.5M18 18l1.5 1.5M6 18l-1.5 1.5M18 6l1.5-1.5"/><circle cx="12" cy="12" r="4"/></svg>
-      Тема
-    </button>
+    <div class="top-actions">
+      <button class="btn" id="themeBtn" title="Сменить тему">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v2M12 19v2M5 12H3M21 12h-2M6 6l-1.5-1.5M18 18l1.5 1.5M6 18l-1.5 1.5M18 6l1.5-1.5"/><circle cx="12" cy="12" r="4"/></svg>
+        Тема
+      </button>
+      <button class="btn" id="lockBtn" title="Заблокировать (спросит код при следующем входе)" onclick="lockNow()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+        Выйти
+      </button>
+    </div>
   </header>
 
   <nav class="tabs" id="tabs" role="tablist">
@@ -600,8 +645,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-data.js"></script>
-<script src="wb-reports.js"></script>
+<script src="wb-secure.js"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -730,15 +774,11 @@ if(savedTheme)document.documentElement.setAttribute("data-theme",savedTheme);
 
 /* =========================================================================
    РЕАЛЬНЫЕ ДАННЫЕ ПРОДАВЦА (каталог товаров + история заказов)
-   Приходят из wb-data.js — файл целиком пересобирается, когда вы присылаете
-   новую выгрузку. Если файл не подключён — вкладки покажут пустое состояние.
+   Приходят из зашифрованного снимка wb-secure.js и появляются только после
+   ввода кода доступа (см. hydrateData ниже). До разблокировки — пустое состояние.
    ========================================================================= */
-const RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
-const RCAT = RD ? RD.catalog : [];
-const RSERIES = RD ? RD.orderSeries.bySku : {};
-const RDATES = RD ? RD.orderSeries.dates : [];
-const RLAST = RDATES.length ? RDATES[RDATES.length-1] : null;
-const catalogCostBySku = {}; RCAT.forEach(c=>{ if(c.costPrice!=null) catalogCostBySku[c.sku]=c.costPrice; });
+let RD = null, RCAT = [], RSERIES = {}, RDATES = [], RLAST = null;
+const catalogCostBySku = {}; // заполняется в hydrateData из RCAT
 // ручные/загруженные правки себестоимости (перекрывают каталог), хранятся в браузере
 const COST_OV_KEY="wb_cost_overrides_v1";
 let costOverrides={}; try{ costOverrides=JSON.parse(localStorage.getItem(COST_OV_KEY)||"{}"); }catch(e){ costOverrides={}; }
@@ -2072,15 +2112,91 @@ document.getElementById("homeTable").addEventListener("change",e=>{
   setCost(inp.dataset.sku, inp.value); renderHomeTab(); renderFinanceTab();
 });
 
-// старт
-Promise.all([fdbRefreshCache().catch(()=>{}), fdbRefreshFinanceCache().catch(()=>{}), fdbRefreshAdsCache().catch(()=>{})]).then(()=>{
-  renderAdsHistoryInfo();
-  try{
-    const saved=localStorage.getItem("wb_active_tab");
-    switchTab(saved&&TABS.includes(saved)? saved : "home");
-  }catch(e){ switchTab("home"); }
-});
+// пересобираем производные каталога после расшифровки данных
+function hydrateData(){
+  RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
+  RCAT = RD ? RD.catalog : [];
+  RSERIES = RD ? RD.orderSeries.bySku : {};
+  RDATES = RD ? RD.orderSeries.dates : [];
+  RLAST = RDATES.length ? RDATES[RDATES.length-1] : null;
+  catalogSkuSet = new Set(RCAT.map(c=>c.sku));
+  for(const k in catalogCostBySku) delete catalogCostBySku[k];
+  for(const k in catalogCatBySku) delete catalogCatBySku[k];
+  for(const k in catalogNameBySku) delete catalogNameBySku[k];
+  RCAT.forEach(c=>{ if(c.costPrice!=null) catalogCostBySku[c.sku]=c.costPrice;
+    catalogCatBySku[c.sku]=c.category; catalogNameBySku[c.sku]=c.name; });
+}
+
+// запуск дашборда (после разблокировки)
+let appBooted=false;
+function bootApp(){
+  if(appBooted) return; appBooted=true;
+  Promise.all([fdbRefreshCache().catch(()=>{}), fdbRefreshFinanceCache().catch(()=>{}), fdbRefreshAdsCache().catch(()=>{})]).then(()=>{
+    renderAdsHistoryInfo();
+    try{
+      const saved=localStorage.getItem("wb_active_tab");
+      switchTab(saved&&TABS.includes(saved)? saved : "home");
+    }catch(e){ switchTab("home"); }
+  });
+}
 addEventListener("resize",()=>{ clearTimeout(window._rt); window._rt=setTimeout(renderActiveTab,150); });
+
+/* =========================================================================
+   КОД ДОСТУПА (шифрование данных)
+   Данные лежат в wb-secure.js зашифрованными (AES-256-GCM, ключ из кода через
+   PBKDF2). Без верного кода расшифровать нечем — в исходниках только шифртекст.
+   ========================================================================= */
+const LOCK_KEY="wb_pass_v1";
+const b64ToBytes=s=>{ const bin=atob(s); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i); return u; };
+async function wbDecrypt(pass){
+  const S=WB_SECURE, enc=new TextEncoder();
+  const baseKey=await crypto.subtle.importKey("raw",enc.encode(pass),"PBKDF2",false,["deriveKey"]);
+  const key=await crypto.subtle.deriveKey(
+    {name:"PBKDF2",salt:b64ToBytes(S.salt),iterations:S.iter,hash:S.hash||"SHA-256"},
+    baseKey,{name:"AES-GCM",length:256},false,["decrypt"]);
+  const buf=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64ToBytes(S.iv)},key,b64ToBytes(S.ct)); // бросает при неверном коде
+  return new TextDecoder().decode(buf);
+}
+async function unlock(pass,remember){
+  let text; try{ text=await wbDecrypt(pass); }catch(e){ return false; }
+  let d; try{ d=JSON.parse(text); }catch(e){ return false; }
+  window.REAL_DATA=d.REAL_DATA; window.BAKED_AT=d.BAKED_AT; window.BAKED_PERIOD=d.BAKED_PERIOD;
+  window.BAKED_FINANCE_ROWS=d.BAKED_FINANCE_ROWS; window.BAKED_ADS_ROWS=d.BAKED_ADS_ROWS;
+  window.BAKED_FINANCE=d.BAKED_FINANCE; window.BAKED_ADS=d.BAKED_ADS;
+  hydrateData();
+  if(remember){ try{ localStorage.setItem(LOCK_KEY,pass); }catch(e){} }
+  document.body.classList.remove("locked");
+  const ls=document.getElementById("lockScreen"); if(ls) ls.hidden=true;
+  bootApp();
+  return true;
+}
+function lockNow(){ try{ localStorage.removeItem(LOCK_KEY); }catch(e){} location.reload(); }
+function showLock(){
+  document.body.classList.add("locked");
+  const ls=document.getElementById("lockScreen"); if(ls) ls.hidden=false;
+  const per=document.getElementById("lockPeriod");
+  if(per && WB_SECURE.period) per.textContent="Снимок за "+WB_SECURE.period;
+  const inp=document.getElementById("lockInput"); if(inp) inp.focus();
+}
+(function initGate(){
+  if(typeof WB_SECURE==="undefined"){ // нет зашифрованного файла — работаем как раньше (пустое состояние/свои загрузки)
+    document.body.classList.remove("locked"); bootApp(); return;
+  }
+  const form=document.getElementById("lockForm");
+  if(form) form.addEventListener("submit",async e=>{
+    e.preventDefault();
+    const pass=document.getElementById("lockInput").value;
+    const remember=document.getElementById("lockRemember").checked;
+    const msg=document.getElementById("lockMsg"), btn=form.querySelector("button");
+    msg.textContent="Проверяем…"; msg.className="lock-msg"; btn.disabled=true;
+    const ok=await unlock(pass,remember); btn.disabled=false;
+    if(!ok){ msg.textContent="Неверный код"; msg.className="lock-msg err";
+      const inp=document.getElementById("lockInput"); inp.select(); }
+  });
+  const saved=(()=>{ try{ return localStorage.getItem(LOCK_KEY); }catch(e){ return null; } })();
+  if(saved){ unlock(saved,false).then(ok=>{ if(!ok){ try{localStorage.removeItem(LOCK_KEY);}catch(e){} showLock(); } }); }
+  else showLock();
+})();
 </script>
 </body>
 </html>
