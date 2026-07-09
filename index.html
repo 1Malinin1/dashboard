@@ -307,6 +307,16 @@
   .lock-msg.err{color:var(--crit);font-weight:560}
   .lock-period{font-size:12px;color:var(--muted);opacity:.8}
 
+  /* ===== ABC-бейджи (вкладка «Аналитика») ===== */
+  .abc{display:inline-block;min-width:20px;text-align:center;font-weight:700;font-size:11.5px;
+    padding:2px 8px;border-radius:6px;letter-spacing:.02em}
+  .abc.A{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good-txt)}
+  .abc.B{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
+  .abc.C{background:var(--surface-2);color:var(--muted)}
+  .abc.loss{background:color-mix(in srgb,var(--crit) 16%,transparent);color:var(--crit-txt)}
+  td.pos{color:var(--good-txt);font-variant-numeric:tabular-nums}
+  td.neg{color:var(--crit-txt);font-variant-numeric:tabular-nums}
+
   /* ===== Богатое пустое состояние ===== */
   .empty-state{text-align:center;padding:56px 24px}
   .empty-state .es-ic{width:60px;height:60px;border-radius:16px;margin:0 auto 18px;display:grid;place-items:center;
@@ -403,6 +413,7 @@
     <button class="tab-btn" data-tab="turnover" role="tab" aria-selected="false">Оборачиваемость</button>
     <button class="tab-btn" data-tab="product" role="tab" aria-selected="false">Товар</button>
     <button class="tab-btn" data-tab="finance" role="tab" aria-selected="false">Финансы</button>
+    <button class="tab-btn" data-tab="analytics" role="tab" aria-selected="false">Аналитика</button>
   </nav>
 
   <section id="tab-home" class="tab-panel">
@@ -633,6 +644,53 @@
         <span class="count" id="finCount"></span>
       </div>
       <div class="table-scroll"><table class="rnp" id="finTable"></table></div>
+    </div>
+  </section>
+
+  <section id="tab-analytics" class="tab-panel" hidden>
+    <div class="freshness" id="anFreshness"></div>
+    <div class="filters">
+      <div class="seg" id="anPeriodSeg" role="group" aria-label="Период">
+        <button data-n="7">7 дней</button>
+        <button data-n="30">30 дней</button>
+        <button data-n="90">90 дней</button>
+        <button data-n="0" aria-pressed="true">Весь период</button>
+      </div>
+    </div>
+
+    <div id="anEmpty" class="empty-state" hidden>
+      <div class="es-ic"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20V10M10 20V4M16 20v-7M20 20H2"/></svg></div>
+      <h3>Аналитика появится после первого отчёта</h3>
+      <p>Загрузите отчёт о реализации на вкладке «Финансы» — здесь соберётся ABC-анализ, список убыточных товаров и товаров, где реклама не окупается.</p>
+    </div>
+
+    <div id="anContent" hidden>
+      <div class="kpis4" id="anKpis"></div>
+
+      <div class="table-card" style="margin-bottom:14px">
+        <div class="table-head">
+          <h3>ABC-анализ по прибыли</h3>
+          <span class="muted">A — дают ~80% прибыли · B — ещё ~15% · C — хвост · <span style="color:var(--crit-txt)">убыток</span> — минусовые</span>
+        </div>
+        <div class="toolbar" style="padding:0 18px 12px">
+          <input type="search" id="anSearch" placeholder="Поиск по артикулу или названию…">
+          <select id="anCat"></select>
+          <span class="count" id="anCount"></span>
+          <button class="btn" id="anExportBtn">Скачать CSV</button>
+        </div>
+        <div class="table-scroll"><table class="rnp" id="anTable"></table></div>
+      </div>
+
+      <div class="grid2">
+        <div class="table-card">
+          <div class="table-head"><h3>Убыточные товары</h3><span class="muted" id="anLossNote"></span></div>
+          <div class="table-scroll"><table class="rnp" id="anLossTable"></table></div>
+        </div>
+        <div class="table-card">
+          <div class="table-head"><h3>Реклама съедает прибыль</h3><span class="muted" id="anAdNote"></span></div>
+          <div class="table-scroll"><table class="rnp" id="anAdTable"></table></div>
+        </div>
+      </div>
     </div>
   </section>
 
@@ -1686,6 +1744,23 @@ function finSeriesByDate(dates,catFilter,q){
     const cp=costOf(r.sku); if(cp!=null) cogs[i]+=(r.qty-r.returnsQty)*cp; });
   return {revenue,net,cogs};
 }
+/* ---- свод P&L по каждому товару за период ----
+   Одна точка истины: объединяем артикулы с продажами и артикулы только с рекламой,
+   считаем себестоимость, чистую выплату, прибыль (до и после рекламы), маржу, % возврата.
+   Переиспользуется «Главной», её экспортом и «Аналитикой». */
+function productPnL(dates,cat,q){
+  const now=finAggregate(dates,cat,q), ad=adAggregate(dates,cat,q);
+  const bySku={}; finAggBySku(now.rows).forEach(r=>bySku[r.sku]=r);
+  Object.keys(ad.bySku).forEach(sku=>{ if(!bySku[sku]) bySku[sku]={sku,name:catalogNameBySku[sku]||sku,category:catalogCatBySku[sku]||"",qty:0,returnsQty:0,revenue:0,payout:0,logistics:0,penalty:0,storage:0,reimb:0,deduction:0,priyomka:0,loyalty:0,loyaltyPts:0}; });
+  return Object.values(bySku).map(r=>{
+    const net=r.qty-r.returnsQty, cp=costOf(r.sku);
+    const cogs=cp!=null? net*cp : 0, hasCost=cp!=null, adSp=ad.bySku[r.sku]||0;
+    const payoutNet=finNet(r), preAdProfit=payoutNet-cogs, profit=preAdProfit-adSp, wbHold=r.revenue-payoutNet;
+    const returnRate = r.qty>0? r.returnsQty/r.qty : (r.returnsQty>0?1:0);
+    return {...r,net,cogs,hasCost,ad:adSp,payoutNet,preAdProfit,profit,wbHold,margin:r.revenue?profit/r.revenue:0,returnRate};
+  });
+}
+
 /* ---- главная: сводный P&L на основе загруженной "Финансы" ---- */
 let homePeriodN=30;
 let homeSortState={key:"profit",dir:-1};
@@ -1793,16 +1868,8 @@ function renderHomeTab(){
   if(netQty>0) unitStack(document.getElementById("ch-home-unit"),unitParts);
   else document.getElementById("ch-home-unit").innerHTML=`<div class="empty-hint">Нет продаж за период</div>`;
 
-  // строки таблицы: объединяем артикулы с продажами и артикулы только с рекламой
-  const bySku={}; finAggBySku(now.rows).forEach(r=>bySku[r.sku]=r);
-  Object.keys(ad.bySku).forEach(sku=>{ if(!bySku[sku]) bySku[sku]={sku,name:catalogNameBySku[sku]||sku,category:catalogCatBySku[sku]||"",qty:0,returnsQty:0,revenue:0,payout:0,logistics:0,penalty:0,storage:0,reimb:0,deduction:0,priyomka:0,loyalty:0,loyaltyPts:0}; });
-  let rows=Object.values(bySku).map(r=>{
-    const net=r.qty-r.returnsQty, cp=costOf(r.sku);
-    const cogs=cp!=null? net*cp : 0, hasCost=cp!=null;
-    const adSp=ad.bySku[r.sku]||0;
-    const rNet=finNet(r), rProfit=rNet-cogs-adSp, rHold=r.revenue-rNet;
-    return {...r,net,cogs,hasCost,ad:adSp,payoutNet:rNet,profit:rProfit,wbHold:rHold,margin:r.revenue?rProfit/r.revenue:0};
-  });
+  // строки таблицы (единый свод P&L по товарам)
+  let rows=productPnL(dates,cat,q);
   if(homeNoCostOnly) rows=rows.filter(r=>!r.hasCost);
   rows=sortRows(rows,homeSortState,{
     name:r=>r.name, category:r=>r.category, qty:r=>r.net, revenue:r=>r.revenue,
@@ -1827,16 +1894,128 @@ function exportHomeCSV(){
   const catSel=document.getElementById("homeCat");
   const cat=catSel.value, q=document.getElementById("homeSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
-  const now=finAggregate(dates,cat,q); const ad=adAggregate(dates,cat,q);
-  const bySku={}; finAggBySku(now.rows).forEach(r=>bySku[r.sku]=r);
-  Object.keys(ad.bySku).forEach(sku=>{ if(!bySku[sku]) bySku[sku]={sku,name:catalogNameBySku[sku]||sku,category:catalogCatBySku[sku]||"",qty:0,returnsQty:0,revenue:0,payout:0,logistics:0,penalty:0,storage:0,reimb:0,deduction:0,priyomka:0,loyalty:0,loyaltyPts:0}; });
   let csv="Артикул;Название;Категория;Продано шт;Выручка;Итого к оплате;Себестоимость;Удержания WB;Реклама;Прибыль;Маржа\n";
-  Object.values(bySku).forEach(r=>{
-    const net=r.qty-r.returnsQty, cp=costOf(r.sku);
-    const cogs=cp!=null? net*cp : 0, payoutNet=finNet(r), adSp=ad.bySku[r.sku]||0, profit=payoutNet-cogs-adSp, hold=r.revenue-payoutNet, margin=r.revenue?(profit/r.revenue*100).toFixed(1):"";
-    csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,net,Math.round(r.revenue),Math.round(payoutNet),cp!=null?Math.round(cogs):"",Math.round(hold),Math.round(adSp),Math.round(profit),margin].join(";")+"\n";
+  productPnL(dates,cat,q).forEach(r=>{
+    const margin=r.revenue?(r.margin*100).toFixed(1):"";
+    csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,r.net,Math.round(r.revenue),Math.round(r.payoutNet),r.hasCost?Math.round(r.cogs):"",Math.round(r.wbHold),Math.round(r.ad),Math.round(r.profit),margin].join(";")+"\n";
   });
   downloadCSV("wb-главная.csv",csv);
+}
+
+/* =========================================================================
+   ВКЛАДКА «АНАЛИТИКА» — ABC-анализ, убыточные товары, реклама-не-окупается
+   ========================================================================= */
+let analyticsPeriodN=0;                    // по умолчанию — весь период (ABC нагляднее на всём)
+let anSortState={key:"profit",dir:-1};
+const ABC_ORDER={A:0,B:1,C:2,loss:3};
+// классификация ABC по прибыли: ранжируем по убыванию, копим долю среди прибыльных
+function classifyABC(all){
+  const totalPos=all.reduce((a,r)=>a+Math.max(0,r.profit),0)||1;
+  const ranked=all.slice().sort((a,b)=>b.profit-a.profit);
+  let cum=0;
+  ranked.forEach(r=>{
+    r.share=r.profit>0? r.profit/totalPos : 0;
+    if(r.profit<0){ r.abc="loss"; return; }
+    cum+=r.profit; const c=cum/totalPos;
+    r.abc = c<=0.8001? "A" : c<=0.9501? "B" : "C";
+  });
+  return {ranked,totalPos};
+}
+function renderAnalyticsTab(){
+  const fresh=document.getElementById("anFreshness");
+  if(!FINANCE_CACHE.length){ fresh.innerHTML=""; document.getElementById("anEmpty").hidden=false; document.getElementById("anContent").hidden=true; return; }
+  document.getElementById("anEmpty").hidden=true; document.getElementById("anContent").hidden=false;
+  const allDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
+  fresh.innerHTML=`<span class="dot"></span>Финансы по ${fmtDateLong(allDates[allDates.length-1])} · с ${fmtDateLong(allDates[0])}`
+    + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : "");
+  const catSel=document.getElementById("anCat"); if(!catSel.options.length) fillCategorySelect(catSel);
+  const cat=catSel.value, q=document.getElementById("anSearch").value.trim().toLowerCase();
+  const {dates}=dateRangeFromCache(FINANCE_CACHE,analyticsPeriodN);
+  const all=productPnL(dates,cat,q).filter(r=>r.qty>0||r.returnsQty>0||r.ad>0);
+  const hasAds=ADS_CACHE.length>0;
+  const {ranked,totalPos}=classifyABC(all);
+
+  const lossers=ranked.filter(r=>r.profit<0).sort((a,b)=>a.profit-b.profit);
+  const lossSum=lossers.reduce((a,r)=>a+r.profit,0);
+  const adWaste=ranked.filter(r=>r.hasCost && r.ad>0 && r.ad>=r.preAdProfit).sort((a,b)=>(b.ad-b.preAdProfit)-(a.ad-a.preAdProfit));
+  const totQty=all.reduce((a,r)=>a+r.qty,0), totRet=all.reduce((a,r)=>a+r.returnsQty,0), retRate=totQty? totRet/totQty:0;
+  const abcCounts=["A","B","C","loss"].map(k=>ranked.filter(r=>r.abc===k).length);
+  const aProfit=ranked.filter(r=>r.abc==="A").reduce((a,r)=>a+r.profit,0);
+  const worstRet=all.filter(r=>r.qty>=5).sort((a,b)=>b.returnRate-a.returnRate)[0];
+
+  // --- KPI-плитки ---
+  const tr=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  const sep=`border-top:1px solid var(--grid);margin-top:5px;padding-top:6px`;
+  const aTip=`<div class="t-hd">ABC-анализ по прибыли</div>`+tr("A · ядро",abcCounts[0]+" тов.")+tr("B · середина",abcCounts[1]+" тов.")+tr("C · хвост",abcCounts[2]+" тов.")+tr("Убыточные",abcCounts[3]+" тов.")+`<div class="t-row" style="${sep}"><span class="k">A даёт</span><span class="v">${pct(totalPos?aProfit/totalPos:0)} прибыли</span></div>`;
+  const lossTip=`<div class="t-hd">Убыточные — ${lossers.length} тов.</div>`+tr("Суммарный минус",rub(lossSum))+tr("Убрать их — прибыль вырастет на",rub(-lossSum));
+  const wasteExtra=adWaste.reduce((a,r)=>a+(r.ad-Math.max(0,r.preAdProfit)),0);
+  const adTip=hasAds? `<div class="t-hd">Реклама не окупается</div>`+tr("Расход ≥ прибыли до рекламы",adWaste.length+" тов.")+tr("Ушло сверх прибыли",rub(wasteExtra)) : `<div class="t-hd">Реклама</div>`+tr("Отчёт «История затрат» не загружен");
+  const retTip=`<div class="t-hd">Возвраты</div>`+tr("Возвращено ÷ продано",fmt(totRet)+" из "+fmt(totQty)+" шт")+(worstRet?`<div class="t-row" style="${sep}"><span class="k">Чаще всего возвращают</span></div>`+tr(esc((worstRet.name||"").slice(0,28)),pct(worstRet.returnRate)):"");
+
+  document.getElementById("anKpis").innerHTML=[
+    {lbl:"Ядро прибыли (класс A)",val:abcCounts[0]+" тов.",hero:true,tip:aTip,
+      delta:`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">${pct(totalPos?aProfit/totalPos:0)} прибыли</div>`},
+    {lbl:"Убыточные товары",val:String(lossers.length),valColor:lossers.length?"var(--crit-txt)":"",tip:lossTip,
+      delta:`<div class="delta ${lossSum<0?'down':''}">${rub(lossSum)}</div>`},
+    {lbl:"Реклама не окупается",val:hasAds?String(adWaste.length):"—",tip:adTip,
+      delta:hasAds?`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">товаров</div>`:`<div class="delta" style="background:var(--surface-2);color:var(--muted)">нет отчёта</div>`},
+    {lbl:"Возвраты",val:pct(retRate),tip:retTip,
+      delta:`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">${fmt(totRet)} из ${fmt(totQty)} шт</div>`},
+  ].map(kpiCard).join("");
+  wireKpiTips("anKpis");
+
+  // --- ABC-таблица ---
+  document.getElementById("anCount").textContent=all.length+" товаров";
+  const abcLabel={A:"A",B:"B",C:"C",loss:"убыток"};
+  const rows=sortRows(ranked,anSortState,{
+    name:r=>r.name, category:r=>r.category, abc:r=>ABC_ORDER[r.abc], qty:r=>r.net,
+    revenue:r=>r.revenue, profit:r=>r.profit, share:r=>r.share, margin:r=>r.margin, returnRate:r=>r.returnRate });
+  if(!rows.length){ document.getElementById("anTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; }
+  else {
+    let html=`<thead><tr>${thSort("Товар","name",anSortState,"metric")}${thSort("Категория","category",anSortState)}${thSort("Класс","abc",anSortState)}${thSort("Продано","qty",anSortState)}${thSort("Выручка, ₽","revenue",anSortState)}${thSort("Прибыль, ₽","profit",anSortState)}${thSort("Доля приб.","share",anSortState)}${thSort("Маржа","margin",anSortState)}${thSort("Возврат","returnRate",anSortState)}</tr></thead><tbody>`;
+    rows.slice(0,300).forEach(r=>{
+      const profTxt=r.hasCost? rub(r.profit) : `<span title="Без вычета себестоимости — она не указана">${rub(r.profit)}*</span>`;
+      html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>`+
+        `<td>${esc(r.category)}</td>`+
+        `<td><span class="abc ${r.abc}">${abcLabel[r.abc]}</span></td>`+
+        `<td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td>`+
+        `<td class="${r.profit<0?'neg':'pos'}">${profTxt}</td>`+
+        `<td>${r.profit>0?pct(r.share):"—"}</td>`+
+        `<td>${r.hasCost?pct(r.margin):"—"}</td>`+
+        `<td>${r.returnsQty?pct(r.returnRate):"0%"}</td></tr>`;
+    });
+    html+="</tbody>"; document.getElementById("anTable").innerHTML=html;
+  }
+
+  // --- Убыточные товары (топ 15) ---
+  document.getElementById("anLossNote").textContent = lossers.length? `${lossers.length} шт · ${rub(lossSum)}` : "нет";
+  document.getElementById("anLossTable").innerHTML = lossers.length
+    ? `<thead><tr><th class="metric">Товар</th><th>Продано</th><th>Выручка</th><th>Прибыль, ₽</th></tr></thead><tbody>`
+      + lossers.slice(0,15).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td><td class="neg">${r.hasCost?rub(r.profit):rub(r.profit)+"*"}</td></tr>`).join("")
+      + `</tbody>`
+    : `<tbody><tr><td class="empty-hint">Убыточных товаров нет 🎉</td></tr></tbody>`;
+
+  // --- Реклама съедает прибыль (топ 15) ---
+  document.getElementById("anAdNote").textContent = !hasAds? "нет отчёта" : (adWaste.length? `${adWaste.length} шт` : "нет");
+  document.getElementById("anAdTable").innerHTML = !hasAds
+    ? `<tbody><tr><td class="empty-hint">Загрузите отчёт по рекламе на «Финансах»</td></tr></tbody>`
+    : (adWaste.length
+      ? `<thead><tr><th class="metric">Товар</th><th>Реклама</th><th>ДРР</th><th>Прибыль, ₽</th></tr></thead><tbody>`
+        + adWaste.slice(0,15).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${rub(r.ad)}</td><td>${r.revenue?pct(r.ad/r.revenue):"—"}</td><td class="${r.profit<0?'neg':'pos'}">${rub(r.profit)}</td></tr>`).join("")
+        + `</tbody>`
+      : `<tbody><tr><td class="empty-hint">Реклама окупается везде 👍</td></tr></tbody>`);
+}
+function exportAnalyticsCSV(){
+  const cat=document.getElementById("anCat").value, q=document.getElementById("anSearch").value.trim().toLowerCase();
+  const {dates}=dateRangeFromCache(FINANCE_CACHE,analyticsPeriodN);
+  const all=productPnL(dates,cat,q).filter(r=>r.qty>0||r.returnsQty>0||r.ad>0);
+  const {ranked,totalPos}=classifyABC(all);
+  let csv="Артикул;Название;Категория;Класс;Продано шт;Выручка;Прибыль;Доля прибыли %;Маржа %;Возврат %\n";
+  ranked.forEach(r=>{
+    csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,r.abc,r.net,Math.round(r.revenue),Math.round(r.profit),
+      r.profit>0?(r.profit/totalPos*100).toFixed(1):"",r.hasCost?(r.margin*100).toFixed(1):"",(r.returnRate*100).toFixed(1)].join(";")+"\n";
+  });
+  downloadCSV("wb-аналитика.csv",csv);
 }
 
 function renderFinanceTab(){
@@ -2026,7 +2205,7 @@ function renderProductPeriods(){
 /* =========================================================================
    13. ВКЛАДКИ
    ========================================================================= */
-const TABS=["home","dynamics","turnover","product","finance"];
+const TABS=["home","dynamics","turnover","product","finance","analytics"];
 function switchTab(name){
   TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
   document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
@@ -2035,6 +2214,7 @@ function switchTab(name){
   if(name==="turnover") renderTurnoverTab();
   if(name==="product"){ renderProductHistoryInfo(); initProductTabControls(); renderCostInfo(); }
   if(name==="finance") renderFinanceTab();
+  if(name==="analytics") renderAnalyticsTab();
   try{localStorage.setItem("wb_active_tab",name);}catch(e){}
 }
 function renderActiveTab(){
@@ -2059,6 +2239,16 @@ document.getElementById("turnExportBtn").addEventListener("click",exportTurnover
 wireSortable("turnTable",turnSortState,renderTurnoverTab);
 wireSortable("dynTable",dynSortState,renderDynamicsTab);
 wireSortable("finTable",finSortState,renderFinanceTab);
+
+document.getElementById("anPeriodSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); analyticsPeriodN=+b.dataset.n; renderAnalyticsTab();
+});
+document.getElementById("anSearch").addEventListener("input",renderAnalyticsTab);
+document.getElementById("anCat").addEventListener("change",renderAnalyticsTab);
+document.getElementById("anExportBtn").addEventListener("click",exportAnalyticsCSV);
+wireSortable("anTable",anSortState,renderAnalyticsTab);
 
 const prodDrop=document.getElementById("prodDrop"), prodFileInput=document.getElementById("prodFileInput");
 prodDrop.onclick=()=>prodFileInput.click();
