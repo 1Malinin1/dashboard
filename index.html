@@ -62,14 +62,27 @@
   }
   *{box-sizing:border-box}
   html,body{margin:0;padding:0}
+  html{background:var(--page)}
   body{
     font-family:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    background:var(--page); color:var(--text-1);
-    background-image:radial-gradient(1200px 600px at 78% -8%,color-mix(in srgb,var(--accent) 7%,transparent),transparent 60%);
-    background-attachment:fixed;
+    background:transparent; color:var(--text-1);
     -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
     line-height:1.5;font-feature-settings:"cv01","ss01","tnum";
   }
+  /* Деликатная «аврора» за приложением — глубина и премиум-атмосфера без 3D-шума.
+     Лежит на слое z-index:-1: выше фона страницы, но ниже всего контента. */
+  body::before{content:"";position:fixed;inset:-25% -12%;z-index:-1;pointer-events:none;
+    background:
+      radial-gradient(40% 46% at 14% 8%, color-mix(in srgb,var(--s1) 26%,transparent), transparent 70%),
+      radial-gradient(38% 42% at 90% 4%, color-mix(in srgb,var(--s2) 22%,transparent), transparent 72%),
+      radial-gradient(52% 54% at 82% 98%, color-mix(in srgb,var(--s3) 15%,transparent), transparent 70%);
+    filter:blur(42px) saturate(116%); opacity:.5;
+    animation:auroraDrift 30s ease-in-out infinite alternate;}
+  :root[data-theme="light"] body::before{opacity:.4}
+  @keyframes auroraDrift{
+    from{transform:translate3d(-2%,-1%,0) scale(1.03)}
+    to{transform:translate3d(2.5%,2%,0) scale(1.07)}}
+  @media (prefers-reduced-motion:reduce){body::before{animation:none}}
   ::selection{background:color-mix(in srgb,var(--accent) 26%,transparent)}
   :focus-visible{outline:none;box-shadow:var(--ring);border-radius:8px}
   .wrap{max-width:1200px;margin:0 auto;padding:24px 22px 96px}
@@ -110,8 +123,8 @@
 
   /* ===== KPI-плитки ===== */
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
-    padding:16px 18px 15px;box-shadow:var(--shadow);min-width:0;position:relative;
-    transition:border-color .15s,box-shadow .15s,transform .15s}
+    padding:16px 18px 15px;box-shadow:var(--shadow),inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent);
+    min-width:0;position:relative;transition:border-color .15s,box-shadow .15s,transform .15s}
   .kpi:hover{border-color:var(--border-2);box-shadow:var(--shadow-lg);transform:translateY(-1px)}
   .kpi .lbl{font-size:12px;color:var(--muted);margin-bottom:9px;font-weight:530;
     letter-spacing:.01em;display:flex;align-items:center;gap:6px}
@@ -140,7 +153,7 @@
   /* ===== Карточки графиков ===== */
   .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
   .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
-    padding:18px 20px 14px;box-shadow:var(--shadow);min-width:0}
+    padding:18px 20px 14px;box-shadow:var(--shadow),inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent);min-width:0}
   .card h3{margin:0 0 3px;font-size:15px;font-weight:640;letter-spacing:-.015em}
   .card .cap{font-size:12px;color:var(--muted);margin-bottom:12px;line-height:1.45}
   .legend{display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 10px;font-size:12.5px;color:var(--text-2)}
@@ -152,7 +165,10 @@
 
   /* ===== РНП таблица ===== */
   .table-card{background:var(--surface);border:1px solid var(--border);
-    border-radius:var(--r-lg);box-shadow:var(--shadow);overflow:hidden;margin-bottom:16px}
+    border-radius:var(--r-lg);box-shadow:var(--shadow),inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent);
+    overflow:hidden;margin-bottom:16px}
+  :root[data-theme="dark"] .table-card,:root[data-theme="dark"] .card,:root[data-theme="dark"] .kpi{
+    box-shadow:var(--shadow),inset 0 1px 0 rgba(255,255,255,.05)}
   .table-head{display:flex;align-items:center;justify-content:space-between;
     padding:17px 20px 13px;flex-wrap:wrap;gap:8px}
   .table-head h3{margin:0;font-size:15px;font-weight:640;letter-spacing:-.015em}
@@ -170,9 +186,10 @@
   table.rnp th.metric,table.rnp td.metric{text-align:left;position:sticky;left:0;
     background:var(--surface);z-index:1;color:var(--text-1);font-weight:520;min-width:210px}
   table.rnp thead th.metric{z-index:3;background:var(--surface-2)}
-  table.rnp tbody tr{transition:background .1s}
-  table.rnp tbody tr:hover td{background:var(--surface-2)}
-  table.rnp tbody tr:hover td.metric{background:var(--surface-2)}
+  table.rnp tbody tr{transition:background .12s}
+  table.rnp tbody tr:hover td{background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
+  table.rnp tbody tr:hover td.metric{background:color-mix(in srgb,var(--accent) 6%,var(--surface));
+    box-shadow:inset 3px 0 0 var(--accent)}
   table.rnp tbody tr:last-child td{border-bottom:0}
   table.rnp td.total{font-weight:680;color:var(--text-1)}
   table.rnp tr.sep td{border-top:2px solid var(--baseline)}
@@ -285,11 +302,15 @@
   body.locked .wrap{display:none}
   body.locked{overflow:hidden}
   #lockScreen{position:fixed;inset:0;z-index:1000;display:grid;place-items:center;padding:20px;
-    background:var(--bg);}
+    background:var(--page);}
   #lockScreen[hidden]{display:none}
-  .lock-card{width:100%;max-width:360px;background:var(--surface);border:1px solid var(--border);
-    border-radius:var(--r);box-shadow:var(--shadow-lg);padding:32px 28px;text-align:center;
-    display:flex;flex-direction:column;gap:14px}
+  .lock-card{width:100%;max-width:360px;
+    background:linear-gradient(180deg,color-mix(in srgb,var(--surface) 88%,transparent),var(--surface));
+    border:1px solid var(--border-2);border-radius:var(--r-lg);
+    box-shadow:var(--shadow-lg),inset 0 1px 0 color-mix(in srgb,#fff 60%,transparent);
+    padding:34px 28px;text-align:center;display:flex;flex-direction:column;gap:14px;
+    backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px)}
+  :root[data-theme="dark"] .lock-card{box-shadow:var(--shadow-lg),inset 0 1px 0 rgba(255,255,255,.06)}
   .lock-logo{width:48px;height:48px;border-radius:13px;margin:0 auto;display:grid;place-items:center;
     background:var(--accent);color:#fff;font-weight:800;font-size:18px;letter-spacing:-.03em}
   .lock-card h2{margin:0;font-size:19px;font-weight:680;letter-spacing:-.02em;color:var(--text-1)}
@@ -308,14 +329,24 @@
   .lock-period{font-size:12px;color:var(--muted);opacity:.8}
 
   /* ===== ABC-бейджи (вкладка «Аналитика») ===== */
-  .abc{display:inline-block;min-width:20px;text-align:center;font-weight:700;font-size:11.5px;
-    padding:2px 8px;border-radius:6px;letter-spacing:.02em}
-  .abc.A{background:color-mix(in srgb,var(--good) 18%,transparent);color:var(--good-txt)}
-  .abc.B{background:color-mix(in srgb,var(--warn) 20%,transparent);color:var(--warn)}
-  .abc.C{background:var(--surface-2);color:var(--muted)}
-  .abc.loss{background:color-mix(in srgb,var(--crit) 16%,transparent);color:var(--crit-txt)}
+  .abc{display:inline-block;min-width:22px;text-align:center;font-weight:700;font-size:11px;
+    padding:3px 9px;border-radius:99px;letter-spacing:.03em}
+  .abc.A{background:color-mix(in srgb,var(--good) 15%,transparent);color:var(--good-txt);
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--good) 40%,transparent)}
+  .abc.B{background:color-mix(in srgb,var(--warn) 17%,transparent);color:var(--warn-txt);
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warn) 42%,transparent)}
+  .abc.C{background:var(--surface-3);color:var(--muted);box-shadow:inset 0 0 0 1px var(--border)}
+  .abc.loss{background:color-mix(in srgb,var(--crit) 14%,transparent);color:var(--crit-txt);
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--crit) 40%,transparent)}
   td.pos{color:var(--good-txt);font-variant-numeric:tabular-nums}
   td.neg{color:var(--crit-txt);font-variant-numeric:tabular-nums}
+  td.heat{font-variant-numeric:tabular-nums;font-weight:560}
+  /* мини-бар доли прибыли прямо в ячейке (data-ink) */
+  table.rnp td.share-cell{position:relative;overflow:hidden}
+  .share-fill{position:absolute;left:0;top:50%;transform:translateY(-50%);height:56%;
+    background:linear-gradient(90deg,color-mix(in srgb,var(--accent) 26%,transparent),color-mix(in srgb,var(--accent) 10%,transparent));
+    border-radius:0 4px 4px 0;pointer-events:none}
+  .share-val{position:relative}
 
   /* ===== Богатое пустое состояние ===== */
   .empty-state{text-align:center;padding:56px 24px}
@@ -723,6 +754,12 @@ function niceScale(min,max,maxTicks=5){
 }
 const rub =v=>fmt(v)+" ₽";
 const pct =v=>(v*100).toLocaleString("ru-RU",{maximumFractionDigits:1})+"%";
+// тепловая заливка ячейки по величине: зелёная для +, красная для − (для inline style)
+function heatBg(v,maxAbs){
+  if(!maxAbs||!v) return "";
+  const t=Math.min(1,Math.abs(v)/maxAbs), p=(t*16).toFixed(1);
+  return `background:color-mix(in srgb,var(${v>=0?"--good":"--crit"}) ${p}%,transparent)`;
+}
 
 /* =========================================================================
    МИНИ-ДВИЖОК ГРАФИКОВ (inline SVG, без библиотек)
@@ -1875,6 +1912,7 @@ function renderHomeTab(){
     name:r=>r.name, category:r=>r.category, qty:r=>r.net, revenue:r=>r.revenue,
     cogs:r=>r.cogs, wbHold:r=>r.wbHold, ad:r=>r.ad, profit:r=>r.profit, margin:r=>r.margin,
   });
+  const maxAbsP=rows.reduce((m,r)=>Math.max(m,Math.abs(r.profit)),0);
   document.getElementById("homeCount").textContent=rows.length+" товаров";
   document.getElementById("homeTblNote").textContent = homeNoCostOnly? "только без себестоимости" : `период: ${dates.length} дн.`;
   if(!rows.length){ document.getElementById("homeTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; return; }
@@ -1885,7 +1923,7 @@ function renderHomeTab(){
       : `<input class="cost-input edit-num" type="number" min="0" step="0.01" data-sku="${esc(r.sku)}" value="" placeholder="с/с" title="Впишите себестоимость за штуку — прибыль пересчитается">`;
     const profitCell=r.hasCost? rub(r.profit) : `<span title="Без вычета себестоимости — она не указана для этого товара">${rub(r.profit)}*</span>`;
     const marginCell=r.hasCost? pct(r.margin) : "—";
-    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td><td>${costCell}</td><td>${rub(r.wbHold)}</td><td>${r.ad?rub(r.ad):"—"}</td><td>${profitCell}</td><td>${marginCell}</td></tr>`;
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td><td>${costCell}</td><td>${rub(r.wbHold)}</td><td>${r.ad?rub(r.ad):"—"}</td><td class="heat ${r.profit<0?'neg':'pos'}" style="${heatBg(r.profit,maxAbsP)}">${profitCell}</td><td>${marginCell}</td></tr>`;
   });
   html+="</tbody>";
   document.getElementById("homeTable").innerHTML=html;
@@ -1972,15 +2010,18 @@ function renderAnalyticsTab(){
     revenue:r=>r.revenue, profit:r=>r.profit, share:r=>r.share, margin:r=>r.margin, returnRate:r=>r.returnRate });
   if(!rows.length){ document.getElementById("anTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; }
   else {
+    const maxShare=ranked.reduce((m,r)=>Math.max(m,r.share||0),0);
+    const maxAbsProfit=ranked.reduce((m,r)=>Math.max(m,Math.abs(r.profit)),0);
     let html=`<thead><tr>${thSort("Товар","name",anSortState,"metric")}${thSort("Категория","category",anSortState)}${thSort("Класс","abc",anSortState)}${thSort("Продано","qty",anSortState)}${thSort("Выручка, ₽","revenue",anSortState)}${thSort("Прибыль, ₽","profit",anSortState)}${thSort("Доля приб.","share",anSortState)}${thSort("Маржа","margin",anSortState)}${thSort("Возврат","returnRate",anSortState)}</tr></thead><tbody>`;
     rows.slice(0,300).forEach(r=>{
       const profTxt=r.hasCost? rub(r.profit) : `<span title="Без вычета себестоимости — она не указана">${rub(r.profit)}*</span>`;
+      const barW=maxShare&&r.share>0? (r.share/maxShare*100).toFixed(1) : 0;
       html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>`+
         `<td>${esc(r.category)}</td>`+
         `<td><span class="abc ${r.abc}">${abcLabel[r.abc]}</span></td>`+
         `<td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td>`+
-        `<td class="${r.profit<0?'neg':'pos'}">${profTxt}</td>`+
-        `<td>${r.profit>0?pct(r.share):"—"}</td>`+
+        `<td class="heat ${r.profit<0?'neg':'pos'}" style="${heatBg(r.profit,maxAbsProfit)}">${profTxt}</td>`+
+        `<td class="share-cell">${barW?`<span class="share-fill" style="width:${barW}%"></span>`:""}<span class="share-val">${r.profit>0?pct(r.share):"—"}</span></td>`+
         `<td>${r.hasCost?pct(r.margin):"—"}</td>`+
         `<td>${r.returnsQty?pct(r.returnRate):"0%"}</td></tr>`;
     });
