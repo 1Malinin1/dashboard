@@ -355,6 +355,46 @@
     border-radius:0 4px 4px 0;pointer-events:none}
   .share-val{position:relative}
 
+  /* ===== Вкладка «Инструкция» ===== */
+  .guide-hero{margin-bottom:18px}
+  .guide-hero h2{margin:0 0 6px;font-size:20px;font-weight:700;letter-spacing:-.02em}
+  .guide-hero p{margin:0;color:var(--text-2);font-size:14px;line-height:1.6;max-width:760px}
+  .guide-h{font-size:13px;font-weight:640;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--muted);margin:24px 2px 12px}
+  .flow{display:flex;flex-direction:column;gap:12px;margin-bottom:6px}
+  .flow-row{display:flex;align-items:stretch;gap:14px;flex-wrap:wrap}
+  .flow-src{flex:0 0 300px;display:flex;flex-direction:column;gap:3px;
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+    box-shadow:var(--shadow),inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent);padding:14px 16px}
+  .flow-src .flow-ic{font-size:20px;line-height:1}
+  .flow-src b{font-size:13.5px}
+  .flow-src span{font-size:12px;color:var(--muted);line-height:1.45}
+  .flow-arrow{align-self:center;color:var(--accent);font-size:22px;font-weight:700}
+  .flow-dst{flex:1;min-width:230px;display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+    background:var(--surface-2);border:1px dashed var(--border-2);border-radius:var(--r);padding:12px 14px}
+  .flow-chip{display:inline-flex;align-items:center;gap:7px;background:var(--accent-weak);
+    color:var(--accent);border-radius:99px;padding:6px 12px;font-size:12.5px;font-weight:560}
+  @media(max-width:640px){.flow-arrow{transform:rotate(90deg)}.flow-src{flex-basis:100%}}
+  .faq{background:var(--surface);border:1px solid var(--border);border-radius:var(--r);
+    box-shadow:var(--shadow);margin-bottom:10px;overflow:hidden}
+  .faq>summary{cursor:pointer;list-style:none;padding:15px 18px;font-weight:600;font-size:14.5px;
+    display:flex;align-items:center;justify-content:space-between;gap:10px;transition:background .12s}
+  .faq>summary::-webkit-details-marker{display:none}
+  .faq>summary::after{content:"+";color:var(--muted);font-size:19px;font-weight:400;line-height:1}
+  .faq[open]>summary::after{content:"–"}
+  .faq>summary:hover{background:var(--surface-2)}
+  .faq .faq-body{padding:2px 18px 16px;color:var(--text-2);font-size:13.5px;line-height:1.65}
+  .faq .faq-body b{color:var(--text-1)}
+  .faq .faq-body ul{margin:6px 0;padding-left:18px}
+  .faq .faq-body li{margin:5px 0}
+  .faq .faq-body code{background:var(--surface-2);border:1px solid var(--border);border-radius:5px;
+    padding:1px 6px;font-size:12.5px}
+  .guide-steps{counter-reset:step;list-style:none;padding:0;margin:8px 0}
+  .guide-steps li{position:relative;padding:3px 0 3px 32px;margin:7px 0}
+  .guide-steps li::before{counter-increment:step;content:counter(step);position:absolute;left:0;top:1px;
+    width:21px;height:21px;border-radius:50%;background:var(--accent);color:#fff;font-size:11px;font-weight:700;
+    display:grid;place-items:center}
+
   /* ===== Богатое пустое состояние ===== */
   .empty-state{text-align:center;padding:56px 24px}
   .empty-state .es-ic{width:60px;height:60px;border-radius:16px;margin:0 auto 18px;display:grid;place-items:center;
@@ -452,6 +492,7 @@
     <button class="tab-btn" data-tab="product" role="tab" aria-selected="false">Товар</button>
     <button class="tab-btn" data-tab="finance" role="tab" aria-selected="false">Финансы</button>
     <button class="tab-btn" data-tab="analytics" role="tab" aria-selected="false">Аналитика</button>
+    <button class="tab-btn" data-tab="guide" role="tab" aria-selected="false">Инструкция</button>
   </nav>
 
   <section id="tab-home" class="tab-panel">
@@ -730,6 +771,105 @@
         </div>
       </div>
     </div>
+  </section>
+
+  <section id="tab-guide" class="tab-panel" hidden>
+    <div class="guide-hero card">
+      <h2>Как пользоваться дашбордом</h2>
+      <p>Дашборд собирает вашу реальную прибыль из отчётов Wildberries. Всё считается прямо в браузере, данные зашифрованы и никуда не отправляются. Вы загружаете отчёты на вкладке «Финансы» — остальные вкладки пересчитываются автоматически.</p>
+    </div>
+
+    <div class="guide-h">Поток данных: загрузили → обновилось</div>
+    <div class="flow">
+      <div class="flow-row">
+        <div class="flow-src"><div class="flow-ic">📄</div><b>Отчёт «О реализации»</b><span>Финансы → перетащите .xlsx (по заказам + по выкупам)</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-dst">
+          <span class="flow-chip">🟢 Главная — прибыль, выручка</span>
+          <span class="flow-chip">📊 Аналитика — ABC, убыточные</span>
+          <span class="flow-chip">💰 Финансы — детализация</span>
+        </div>
+      </div>
+      <div class="flow-row">
+        <div class="flow-src"><div class="flow-ic">📣</div><b>Реклама «История затрат»</b><span>Финансы → перетащите .xlsx (WB Продвижение)</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-dst">
+          <span class="flow-chip">Реклама и ДРР на Главной</span>
+          <span class="flow-chip">«Реклама съедает прибыль» в Аналитике</span>
+        </div>
+      </div>
+      <div class="flow-row">
+        <div class="flow-src"><div class="flow-ic">🏷️</div><b>Файл себестоимости</b><span>Товар → загрузка с/с (или впишите вручную на Главной)</span></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-dst">
+          <span class="flow-chip">Пересчёт прибыли и маржи на всех вкладках</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="guide-h">Частые вопросы</div>
+
+    <details class="faq" open><summary>Что показывает каждая вкладка</summary>
+      <div class="faq-body"><ul>
+        <li><b>Главная</b> — сводный P&amp;L за период: прибыль, выручка, расходы WB, реклама, маржа и таблица по товарам.</li>
+        <li><b>Динамика заказов</b> — заказы в штуках и деньгах по дням, процент выкупа.</li>
+        <li><b>Оборачиваемость</b> — сколько дней до обнуления остатка и сколько дозаказать.</li>
+        <li><b>Товар</b> — карточка одного товара, сравнение двух периодов, загрузка воронки и себестоимости.</li>
+        <li><b>Финансы</b> — загрузка отчётов WB и детальная реализация по товарам за период.</li>
+        <li><b>Аналитика</b> — ABC-анализ, убыточные товары, где реклама не окупается, процент возвратов.</li>
+      </ul></div>
+    </details>
+
+    <details class="faq"><summary>Как загрузить отчёт о реализации</summary>
+      <div class="faq-body">
+        <ol class="guide-steps">
+          <li>Личный кабинет WB → Финансовые отчёты → отчёт «О реализации товаров».</li>
+          <li>Скачайте оба отчёта за неделю: <b>по заказам</b> и <b>по выкупам</b> (структура одинаковая, дашборд их складывает).</li>
+          <li>Вкладка «Финансы» → перетащите файлы в область загрузки (можно сразу оба, можно частями).</li>
+        </ol>
+        Данные накапливаются по датам; одинаковые строки не задваиваются (распознаются по отпечатку). Храним последние 90 дней. После загрузки Главная и Аналитика пересчитываются автоматически.
+      </div>
+    </details>
+
+    <details class="faq"><summary>Как загрузить рекламу и что такое ДРР</summary>
+      <div class="faq-body">
+        WB Продвижение → Финансы → «История затрат» → экспорт .xlsx. Загрузите файл на вкладке «Финансы».
+        Дашборд берёт кампании, начинающиеся с <code>18+</code>, и разносит расход по артикулам (по последним цифрам в названии кампании).
+        <b>ДРР</b> = реклама ÷ выручка: чем выше, тем дороже обходятся продажи через рекламу. Реклама вычитается из прибыли.
+      </div>
+    </details>
+
+    <details class="faq"><summary>Как задать себестоимость</summary>
+      <div class="faq-body">
+        Два способа: <b>файлом</b> — вкладка «Товар», блок загрузки себестоимости (артикул + цена за штуку); или <b>вручную</b> — на Главной жёлтая плашка «нет себестоимости», впишите цену прямо в таблице.
+        Налог отдельно считать не нужно — он уже заложен в себестоимость. Для товаров без себестоимости прибыль помечается звёздочкой (∗) как завышенная.
+      </div>
+    </details>
+
+    <details class="faq"><summary>Как читать ключевые цифры</summary>
+      <div class="faq-body"><ul>
+        <li><b>Итого к оплате</b> = к перечислению − логистика − штрафы − удержания − хранение − приёмка − возмещение издержек (формула WB).</li>
+        <li><b>Прибыль</b> = Итого к оплате − Себестоимость проданного − Реклама.</li>
+        <li><b>Маржинальность</b> = Прибыль ÷ Выручка.</li>
+        <li><b>ABC</b>: <b>A</b> — товары, дающие ~80% прибыли; <b>B</b> — ещё ~15%; <b>C</b> — хвост; <b>убыток</b> — минусовые. Наведите на любую цифру-плитку — покажу расшифровку.</li>
+      </ul></div>
+    </details>
+
+    <details class="faq"><summary>Почему цифры сходятся между вкладками</summary>
+      <div class="faq-body">
+        Все вкладки считаются из одних и тех же данных, поэтому за <b>один и тот же период</b> Главная, Финансы и Аналитика показывают одинаковые итоги.
+        <ul>
+          <li>По умолчанию период разный: Главная — 30 дней, Аналитика — весь период. Чтобы сравнивать точно, поставьте одинаковый период вверху вкладок.</li>
+          <li>В списках товаров показаны только те, у кого были продажи, возвраты или реклама. Служебные удержания без продаж (например мелкое возмещение по непроданному артикулу) в список не попадают, но полностью учтены в итоговых суммах.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details class="faq"><summary>Код доступа и приватность</summary>
+      <div class="faq-body">
+        Данные зашифрованы и расшифровываются только после ввода кода — в исходниках сайта лежит лишь шифр. Галочка «Запомнить на этом устройстве» сохраняет код локально, кнопка <b>«Выйти»</b> в шапке сбрасывает его. Все расчёты идут в браузере, наружу ничего не уходит.
+      </div>
+    </details>
   </section>
 
   <footer>
@@ -1788,6 +1928,11 @@ function finSeriesByDate(dates,catFilter,q){
     const cp=costOf(r.sku); if(cp!=null) cogs[i]+=(r.qty-r.returnsQty)*cp; });
   return {revenue,net,cogs};
 }
+/* Единое правило «товар был активен в периоде» — по нему формируются ВСЕ таблицы
+   по товарам (Главная, Финансы, Аналитика), чтобы число товаров совпадало между
+   вкладками. Служебные строки без продаж (напр. возмещение издержек по непроданному
+   артикулу) в списки не попадают, но полностью учтены в итоговых суммах (finAggregate). */
+const hasActivity = r => (r.qty||0)>0 || (r.returnsQty||0)>0 || (r.ad||0)>0;
 /* ---- свод P&L по каждому товару за период ----
    Одна точка истины: объединяем артикулы с продажами и артикулы только с рекламой,
    считаем себестоимость, чистую выплату, прибыль (до и после рекламы), маржу, % возврата.
@@ -1912,8 +2057,8 @@ function renderHomeTab(){
   if(netQty>0) unitStack(document.getElementById("ch-home-unit"),unitParts);
   else document.getElementById("ch-home-unit").innerHTML=`<div class="empty-hint">Нет продаж за период</div>`;
 
-  // строки таблицы (единый свод P&L по товарам)
-  let rows=productPnL(dates,cat,q);
+  // строки таблицы (единый свод P&L по товарам; только активные — как в Аналитике)
+  let rows=productPnL(dates,cat,q).filter(hasActivity);
   if(homeNoCostOnly) rows=rows.filter(r=>!r.hasCost);
   rows=sortRows(rows,homeSortState,{
     name:r=>r.name, category:r=>r.category, qty:r=>r.net, revenue:r=>r.revenue,
@@ -1940,7 +2085,7 @@ function exportHomeCSV(){
   const cat=catSel.value, q=document.getElementById("homeSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
   let csv="Артикул;Название;Категория;Продано шт;Выручка;Итого к оплате;Себестоимость;Удержания WB;Реклама;Прибыль;Маржа\n";
-  productPnL(dates,cat,q).forEach(r=>{
+  productPnL(dates,cat,q).filter(hasActivity).forEach(r=>{
     const margin=r.revenue?(r.margin*100).toFixed(1):"";
     csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,r.net,Math.round(r.revenue),Math.round(r.payoutNet),r.hasCost?Math.round(r.cogs):"",Math.round(r.wbHold),Math.round(r.ad),Math.round(r.profit),margin].join(";")+"\n";
   });
@@ -1976,7 +2121,7 @@ function renderAnalyticsTab(){
   const catSel=document.getElementById("anCat"); if(!catSel.options.length) fillCategorySelect(catSel);
   const cat=catSel.value, q=document.getElementById("anSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,analyticsPeriodN);
-  const all=productPnL(dates,cat,q).filter(r=>r.qty>0||r.returnsQty>0||r.ad>0);
+  const all=productPnL(dates,cat,q).filter(hasActivity);
   const hasAds=ADS_CACHE.length>0;
   const {ranked,totalPos}=classifyABC(all);
 
@@ -2100,7 +2245,7 @@ function renderFinanceTab(){
     {name:"Выручка, ₽",color:cssv("--s1"),data:series.revenue},
     {name:"Итого к оплате, ₽",color:cssv("--s2"),negColor:cssv("--crit"),data:series.net}]);
 
-  let rows=finAggBySku(now.rows).map(r=>({...r,net:finNet(r)}));
+  let rows=finAggBySku(now.rows).filter(hasActivity).map(r=>({...r,net:finNet(r)}));
   rows=sortRows(rows,finSortState,{
     name:r=>r.name, category:r=>r.category, qty:r=>r.qty, returnsQty:r=>r.returnsQty,
     revenue:r=>r.revenue, logistics:r=>r.logistics, reimb:r=>r.reimb, payout:r=>r.net,
@@ -2253,7 +2398,7 @@ function renderProductPeriods(){
 /* =========================================================================
    13. ВКЛАДКИ
    ========================================================================= */
-const TABS=["home","dynamics","turnover","product","finance","analytics"];
+const TABS=["home","dynamics","turnover","product","finance","analytics","guide"];
 function switchTab(name){
   TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
   document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
