@@ -1500,19 +1500,21 @@ let financeIsBaked=false;
 // фильтр по выпадающему списку (там — категории каталога) не находил такие товары.
 // Нормализуем в одном месте — и фильтры, и таблицы, и разбивка «Продано» становятся согласованы.
 function normFinCategory(sku,fallback){ return catalogCatBySku[sku] || fallback || ""; }
+let financeHasBaked=false;   // зашитый снимок присутствует в текущем своде (в т.ч. в миксе с загрузками)
 async function fdbRefreshFinanceCache(){
   const raw=await fdbGetAll(FINANCE_STORE);
-  // если свои отчёты ещё не загружали — показываем зашитый снимок (wb-reports.js)
-  if(!raw.length && typeof BAKED_FINANCE!=="undefined"){
-    financeIsBaked=true;
-    FINANCE_ROW_COUNT=(typeof BAKED_FINANCE_ROWS!=="undefined"? BAKED_FINANCE_ROWS : BAKED_FINANCE.length);
-    FINANCE_CACHE=BAKED_FINANCE.map(r=>({...r,category:normFinCategory(r.sku,r.category)})).sort((a,b)=>a.date<b.date?-1:1);
-    return;
-  }
-  financeIsBaked=false;
-  FINANCE_ROW_COUNT=raw.length;
-  FINANCE_CACHE=aggregateFinanceRows(raw).sort((a,b)=>a.date<b.date?-1:1);
-  FINANCE_CACHE.forEach(r=>{ r.category=normFinCategory(r.sku,r.category); });
+  // Зашитый снимок — базовый слой, который присутствует ВСЕГДА. Ваши загрузки
+  // ложатся поверх: даты из загрузок перекрывают те же даты снимка (без задвоения),
+  // а даты, которых в загрузках нет, остаются из снимка. Поэтому загрузка новой недели
+  // не «затирает» прежние недели снимка — они складываются.
+  const baked=(typeof BAKED_FINANCE!=="undefined")? BAKED_FINANCE : [];
+  const uploaded=aggregateFinanceRows(raw);
+  const upDates=new Set(uploaded.map(r=>r.date));
+  const bakedKept=baked.filter(r=>!upDates.has(r.date));
+  financeIsBaked=(raw.length===0 && baked.length>0);   // чисто снимок (свои отчёты не грузили)
+  financeHasBaked=(bakedKept.length>0);
+  FINANCE_ROW_COUNT=raw.length + (bakedKept.length && typeof BAKED_FINANCE_ROWS!=="undefined"? BAKED_FINANCE_ROWS : 0);
+  FINANCE_CACHE=bakedKept.concat(uploaded).map(r=>({...r,category:normFinCategory(r.sku,r.category)})).sort((a,b)=>a.date<b.date?-1:1);
 }
 
 /* ---- реклама (WB Продвижение): расход по (дата+артикул) ---- */
@@ -1524,18 +1526,17 @@ function aggregateAdRows(raw){
     b.spend+=r.spend||0; }
   return Object.values(byKey);
 }
-let adsIsBaked=false;
+let adsIsBaked=false, adsHasBaked=false;
 async function fdbRefreshAdsCache(){
   const raw=await fdbGetAll(ADS_STORE);
-  if(!raw.length && typeof BAKED_ADS!=="undefined"){
-    adsIsBaked=true;
-    ADS_ROW_COUNT=(typeof BAKED_ADS_ROWS!=="undefined"? BAKED_ADS_ROWS : BAKED_ADS.length);
-    ADS_CACHE=BAKED_ADS.slice().sort((a,b)=>a.date<b.date?-1:1);
-    return;
-  }
-  adsIsBaked=false;
-  ADS_ROW_COUNT=raw.length;
-  ADS_CACHE=aggregateAdRows(raw).sort((a,b)=>a.date<b.date?-1:1);
+  const baked=(typeof BAKED_ADS!=="undefined")? BAKED_ADS : [];
+  const uploaded=aggregateAdRows(raw);
+  const upDates=new Set(uploaded.map(r=>r.date));
+  const bakedKept=baked.filter(r=>!upDates.has(r.date));   // снимок как базовый слой, даты загрузок перекрывают
+  adsIsBaked=(raw.length===0 && baked.length>0);
+  adsHasBaked=(bakedKept.length>0);
+  ADS_ROW_COUNT=raw.length + (bakedKept.length && typeof BAKED_ADS_ROWS!=="undefined"? BAKED_ADS_ROWS : 0);
+  ADS_CACHE=bakedKept.concat(uploaded).sort((a,b)=>a.date<b.date?-1:1);
 }
 // расход рекламы по артикулам за набор дат (строки без даты относим к последнему дню периода)
 function adSpendBySku(dates){
@@ -1872,7 +1873,7 @@ function renderAdsHistoryInfo(){
   const skus=new Set(ADS_CACHE.map(r=>r.sku)).size;
   const spend=ADS_CACHE.reduce((s,r)=>s+(r.spend||0),0);
   el.innerHTML=`<span class="dot"></span>Реклама: ${dates.length} дн., ${skus} артикулов, расход ${rub(spend)}`
-    + (adsIsBaked? ` · <span class="muted">зашитый снимок</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`);
+    + (adsIsBaked? ` · <span class="muted">зашитый снимок</span>` : adsHasBaked? ` · <span class="muted">снимок + ваши загрузки</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`);
 }
 
 async function handleCostFiles(fileList){
@@ -1906,7 +1907,7 @@ function renderFinanceHistoryInfo(){
   const dates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   const skuCount=new Set(FINANCE_CACHE.map(r=>r.sku)).size;
   el.innerHTML=`<span class="dot"></span>Финансы: ${dates.length} дн., с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров · ${fmt(FINANCE_ROW_COUNT)} строк учтено`
-    + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`);
+    + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`);
 }
 
 let finPeriodN=30;
@@ -1990,7 +1991,7 @@ function renderHomeTab(){
   document.getElementById("homeContent").hidden=false;
   const allDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   fresh.innerHTML=`<span class="dot"></span>Финансы обновлены по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])}`
-    + (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}; загрузите свои отчёты на «Финансах», чтобы заменить</span>` : "");
+    + (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}; загрузите свои отчёты на «Финансах», они добавятся к снимку</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : "");
 
   const catSel=document.getElementById("homeCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
@@ -2141,7 +2142,7 @@ function renderAnalyticsTab(){
   document.getElementById("anEmpty").hidden=true; document.getElementById("anContent").hidden=false;
   const allDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   fresh.innerHTML=`<span class="dot"></span>Финансы по ${fmtDateLong(allDates[allDates.length-1])} · с ${fmtDateLong(allDates[0])}`
-    + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : "");
+    + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок + загрузки</span>` : "");
   const catSel=document.getElementById("anCat"); if(!catSel.options.length) fillCategorySelect(catSel);
   const cat=catSel.value, q=document.getElementById("anSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,analyticsPeriodN);
