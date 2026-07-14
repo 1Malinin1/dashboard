@@ -451,9 +451,16 @@
     padding:6px;display:flex;flex-direction:column;gap:1px;max-height:288px;overflow-y:auto}
   .uisel-panel[hidden]{display:none}
   .uisel-opt{border:0;background:none;color:var(--text-1);font:inherit;font-size:13px;text-align:left;
-    padding:8px 12px;border-radius:7px;cursor:pointer;white-space:nowrap}
+    padding:8px 12px;border-radius:7px;cursor:pointer;white-space:nowrap;
+    display:flex;align-items:center;gap:9px;width:100%}
   .uisel-opt:hover{background:var(--surface-2)}
   .uisel-opt.selected{background:var(--accent-weak);color:var(--accent);font-weight:560}
+  .uisel-check{width:15px;height:15px;flex:none;border:1.5px solid var(--border-2);border-radius:4px;
+    display:grid;place-items:center;transition:background .12s,border-color .12s}
+  .uisel-opt.selected .uisel-check{background:var(--accent);border-color:var(--accent)}
+  .uisel-opt.selected .uisel-check::after{content:"";width:4px;height:8px;border:solid #fff;
+    border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-1px)}
+  .uisel-opt.uisel-all{border-bottom:1px solid var(--grid);border-radius:6px 6px 0 0;margin-bottom:2px;padding-bottom:9px}
   .period-compare{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--grid)}
   .period-box{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:12px 15px;flex:1;min-width:240px}
   .period-box .lbl{font-size:12px;color:var(--muted);margin-bottom:7px;font-weight:620;letter-spacing:.01em}
@@ -562,7 +569,7 @@
       </div>
       <div class="toolbar" style="padding:0 18px 12px">
         <input type="search" id="homeSearch" placeholder="Поиск по артикулу или названию…">
-        <select id="homeCat"></select>
+        <select id="homeCat" multiple></select>
         <span class="count" id="homeCount"></span>
         <button class="btn" id="homeExportBtn">Скачать CSV</button>
       </div>
@@ -601,7 +608,7 @@
       </div>
       <div class="toolbar" style="padding:0 18px 12px">
         <input type="search" id="dynSearch" placeholder="Поиск по артикулу или названию…">
-        <select id="dynCat"></select>
+        <select id="dynCat" multiple></select>
         <span class="count" id="dynCount"></span>
       </div>
       <div class="table-scroll"><table class="rnp" id="dynTable"></table></div>
@@ -613,7 +620,7 @@
     <div class="kpis4" id="turnKpis"></div>
     <div class="toolbar">
       <input type="search" id="turnSearch" placeholder="Поиск по артикулу или названию…">
-      <select id="turnCat"></select>
+      <select id="turnCat" multiple></select>
       <select id="turnStatus">
         <option value="">Все статусы</option>
         <option value="critical">Критично — нет в пути</option>
@@ -666,7 +673,7 @@
       <h3>Карточка товара</h3>
       <div class="cap">Найдите товар и сравните два периода — что изменилось в воронке</div>
       <div class="toolbar" style="margin-bottom:0">
-        <select id="prodCatFilter" title="Категория"></select>
+        <select id="prodCatFilter" title="Категория" multiple></select>
         <div class="combo" id="prodSkuCombo" style="flex:2;min-width:280px">
           <button type="button" class="combo-trigger" id="prodSkuTrigger">Выберите артикул…</button>
           <div class="combo-panel" id="prodSkuPanel" hidden>
@@ -743,7 +750,7 @@
       </div>
       <div class="toolbar" style="padding:0 18px 12px">
         <input type="search" id="finSearch" placeholder="Поиск по артикулу или названию…">
-        <select id="finCat"></select>
+        <select id="finCat" multiple></select>
         <span class="count" id="finCount"></span>
       </div>
       <div class="table-scroll"><table class="rnp" id="finTable"></table></div>
@@ -777,7 +784,7 @@
         </div>
         <div class="toolbar" style="padding:0 18px 12px">
           <input type="search" id="anSearch" placeholder="Поиск по артикулу или названию…">
-          <select id="anCat"></select>
+          <select id="anCat" multiple></select>
           <span class="count" id="anCount"></span>
           <button class="btn" id="anExportBtn">Скачать CSV</button>
         </div>
@@ -1061,8 +1068,17 @@ function seriesFor(sku){ return RSERIES[sku] || null; }
 function sumRange(sku,fromIdx,toIdx){ const s=seriesFor(sku); if(!s) return 0;
   let sum=0; for(let i=fromIdx;i<=toIdx;i++) sum+=s[i]||0; return sum; }
 function categories(){ return [...new Set(RCAT.map(c=>c.category))].sort((a,b)=>a.localeCompare(b,"ru")); }
-function fillCategorySelect(sel){ sel.innerHTML='<option value="">Все категории</option>'+
+function fillCategorySelect(sel){ sel.innerHTML=(sel.multiple?"":'<option value="">Все категории</option>')+
   categories().map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(""); }
+// множественный выбор категорий: набор выбранных из мультиселекта ([] = все)
+function selCats(id){ const s=document.getElementById(id); return s? [...s.selectedOptions].map(o=>o.value).filter(Boolean) : []; }
+// предикат по категории: null = без фильтра (все). Принимает строку ИЛИ массив категорий.
+function catPred(cat){
+  if(cat==null||cat===""||(Array.isArray(cat)&&!cat.length)) return null;
+  const set=Array.isArray(cat)? new Set(cat) : new Set([cat]);
+  return c=>set.has(c);
+}
+function plural(n,one,few,many){ const a=n%10,b=n%100; return (a===1&&b!==11)?one:(a>=2&&a<=4&&(b<12||b>14))?few:many; }
 function renderNoData(tableId){
   document.getElementById(tableId).innerHTML=`<tbody><tr><td class="empty-hint">
     Нет загруженных данных по товарам. Пришлите вашу таблицу WB (или обновлённую выгрузку) —
@@ -1150,10 +1166,10 @@ function renderTurnoverTab(){
   if(!catSel.options.length) fillCategorySelect(catSel);
   const all=turnoverList();
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
-  const cat=catSel.value, statusF=document.getElementById("turnStatus").value;
+  const cp=catPred(selCats("turnCat")), statusF=document.getElementById("turnStatus").value;
   let rows=all;
   if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
-  if(cat) rows=rows.filter(r=>r.category===cat);
+  if(cp) rows=rows.filter(r=>cp(r.category));
   if(statusF) rows=rows.filter(r=>r.status===statusF);
   const statusRank={critical:0,ordered:1,warning:2,good:3,nodata:4,discontinued:5};
   const dl=v=>v===Infinity?1e9:v;
@@ -1228,8 +1244,8 @@ function dynRange(){
 }
 function dynFilteredSkus(){
   const q=document.getElementById("dynSearch").value.trim().toLowerCase();
-  const cat=document.getElementById("dynCat").value;
-  return RCAT.filter(c=>(!q||c.sku.includes(q)||c.name.toLowerCase().includes(q))&&(!cat||c.category===cat));
+  const cp=catPred(selCats("dynCat"));
+  return RCAT.filter(c=>(!q||c.sku.includes(q)||c.name.toLowerCase().includes(q))&&(!cp||cp(c.category)));
 }
 function dynSeriesTotals(skus,from,to){
   const totals=new Array(Math.max(0,to-from+1)).fill(0);
@@ -1550,11 +1566,11 @@ let catalogSkuSet=new Set(RCAT.map(c=>c.sku));
 const catalogCatBySku={}, catalogNameBySku={}; RCAT.forEach(c=>{ catalogCatBySku[c.sku]=c.category; catalogNameBySku[c.sku]=c.name; });
 // расход рекламы за период с учётом фильтра категория/поиск: {bySku, total, series[по дням]}
 function adAggregate(dates,cat,q){
-  const bySku={}, series=new Array(dates.length).fill(0); let total=0;
+  const bySku={}, series=new Array(dates.length).fill(0); let total=0; const cp=catPred(cat);
   if(ADS_CACHE.length && dates.length){
     const set=new Set(dates), maxD=dates[dates.length-1], idx={}; dates.forEach((d,i)=>idx[d]=i);
     ADS_CACHE.forEach(r=>{ const d=r.date||maxD; if(!set.has(d)) return;
-      if(cat && catalogCatBySku[r.sku]!==cat) return;
+      if(cp && !cp(catalogCatBySku[r.sku])) return;
       if(q && !r.sku.includes(q) && !(catalogNameBySku[r.sku]||"").toLowerCase().includes(q)) return;
       bySku[r.sku]=(bySku[r.sku]||0)+(r.spend||0); total+=r.spend||0;
       const i=idx[d]; if(i!=null) series[i]+=r.spend||0; });
@@ -1924,8 +1940,8 @@ function dateRangeFromCache(cache,periodN){
 function finRange(){ return dateRangeFromCache(FINANCE_CACHE,finPeriodN); }
 const FIN_MONEY=["revenue","payout","logistics","penalty","storage","reimb","deduction","priyomka","loyalty","loyaltyPts"];
 function finAggregate(dates,catFilter,q){
-  const set=new Set(dates);
-  const rows=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!catFilter||r.category===catFilter)&&(!q||r.sku.includes(q)||r.name.toLowerCase().includes(q)));
+  const set=new Set(dates), cp=catPred(catFilter);
+  const rows=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!cp||cp(r.category))&&(!q||r.sku.includes(q)||r.name.toLowerCase().includes(q)));
   const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
   const cogs=rows.reduce((a,r)=>{ const cp=costOf(r.sku); return a+(cp!=null?(r.qty-r.returnsQty)*cp:0); },0);
   const agg={qty:sum("qty"),returnsQty:sum("returnsQty"),cogs,rows};
@@ -1944,10 +1960,10 @@ function finAggBySku(rows){
   return Object.values(m);
 }
 function finSeriesByDate(dates,catFilter,q){
-  const idx={}; dates.forEach((d,i)=>idx[d]=i);
+  const idx={}; dates.forEach((d,i)=>idx[d]=i); const catP=catPred(catFilter);
   const revenue=new Array(dates.length).fill(0), net=new Array(dates.length).fill(0), cogs=new Array(dates.length).fill(0);
   FINANCE_CACHE.forEach(r=>{ const i=idx[r.date]; if(i==null) return;
-    if(catFilter&&r.category!==catFilter) return;
+    if(catP&&!catP(r.category)) return;
     if(q&&!r.sku.includes(q)&&!r.name.toLowerCase().includes(q)) return;
     revenue[i]+=r.revenue||0; net[i]+=finNet(r);
     const cp=costOf(r.sku); if(cp!=null) cogs[i]+=(r.qty-r.returnsQty)*cp; });
@@ -1995,7 +2011,7 @@ function renderHomeTab(){
 
   const catSel=document.getElementById("homeCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
-  const cat=catSel.value, q=document.getElementById("homeSearch").value.trim().toLowerCase();
+  const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
   const {dates,prevDates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
   const now=finAggregate(dates,cat,q);
   const prev=prevDates.length? finAggregate(prevDates,cat,q) : null;
@@ -2107,7 +2123,7 @@ function renderHomeTab(){
 }
 function exportHomeCSV(){
   const catSel=document.getElementById("homeCat");
-  const cat=catSel.value, q=document.getElementById("homeSearch").value.trim().toLowerCase();
+  const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
   let csv="Артикул;Название;Категория;Продано шт;Выручка;Итого к оплате;Себестоимость;Удержания WB;Реклама;Прибыль;Маржа\n";
   productPnL(dates,cat,q).filter(hasActivity).forEach(r=>{
@@ -2144,7 +2160,7 @@ function renderAnalyticsTab(){
   fresh.innerHTML=`<span class="dot"></span>Финансы по ${fmtDateLong(allDates[allDates.length-1])} · с ${fmtDateLong(allDates[0])}`
     + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок + загрузки</span>` : "");
   const catSel=document.getElementById("anCat"); if(!catSel.options.length) fillCategorySelect(catSel);
-  const cat=catSel.value, q=document.getElementById("anSearch").value.trim().toLowerCase();
+  const cat=selCats("anCat"), q=document.getElementById("anSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,analyticsPeriodN);
   const all=productPnL(dates,cat,q).filter(hasActivity);
   const hasAds=ADS_CACHE.length>0;
@@ -2224,7 +2240,7 @@ function renderAnalyticsTab(){
       : `<tbody><tr><td class="empty-hint">Реклама окупается везде 👍</td></tr></tbody>`);
 }
 function exportAnalyticsCSV(){
-  const cat=document.getElementById("anCat").value, q=document.getElementById("anSearch").value.trim().toLowerCase();
+  const cat=selCats("anCat"), q=document.getElementById("anSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,analyticsPeriodN);
   const all=productPnL(dates,cat,q).filter(r=>r.qty>0||r.returnsQty>0||r.ad>0);
   const {ranked,totalPos}=classifyABC(all);
@@ -2246,7 +2262,7 @@ function renderFinanceTab(){
   }
   const catSel=document.getElementById("finCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
-  const cat=catSel.value, q=document.getElementById("finSearch").value.trim().toLowerCase();
+  const cat=selCats("finCat"), q=document.getElementById("finSearch").value.trim().toLowerCase();
   const {dates,prevDates}=finRange();
   const now=finAggregate(dates,cat,q);
   const prev=prevDates.length? finAggregate(prevDates,cat,q) : null;
@@ -2303,9 +2319,9 @@ function fillProdCatFilter(){
   sel.innerHTML='<option value="">Все категории</option>'+categories().map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join("");
 }
 function prodFilteredCatalog(){
-  const cat=document.getElementById("prodCatFilter").value;
+  const cp=catPred(selCats("prodCatFilter"));
   const q=document.getElementById("prodSkuSearch").value.trim().toLowerCase();
-  return RCAT.filter(c=>(!cat||c.category===cat)&&(!q||c.sku.includes(q)||c.name.toLowerCase().includes(q)))
+  return RCAT.filter(c=>(!cp||cp(c.category))&&(!q||c.sku.includes(q)||c.name.toLowerCase().includes(q)))
     .sort((a,b)=>a.name.localeCompare(b.name,"ru"));
 }
 function selectSkuTriggerLabel(){
@@ -2364,14 +2380,45 @@ function enhanceSelect(sel){
   if(sel.title) trig.title=sel.title;
   const panel=document.createElement("div"); panel.className="uisel-panel"; panel.hidden=true; panel.setAttribute("role","listbox");
   wrap.appendChild(trig); wrap.appendChild(panel);
-  const syncLabel=()=>{ const o=sel.options[sel.selectedIndex]; trig.textContent=o?o.textContent:""; if(!sel.title) trig.title=o?o.textContent:""; };
+  const isMulti=sel.multiple;
+  const syncLabel=()=>{
+    if(isMulti){
+      const s=[...sel.selectedOptions];
+      const label = s.length===0? "Все категории" : s.length===1? s[0].textContent : s.length+" "+plural(s.length,"категория","категории","категорий");
+      trig.textContent=label; trig.title = s.length? s.map(o=>o.textContent).join(", ") : "Все категории";
+    } else {
+      const o=sel.options[sel.selectedIndex]; trig.textContent=o?o.textContent:""; if(!sel.title) trig.title=o?o.textContent:"";
+    }
+  };
+  const optRow=(label,selected,onClick,extraCls)=>{
+    const b=document.createElement("button"); b.type="button";
+    b.className="uisel-opt"+(extraCls?" "+extraCls:"")+(selected?" selected":""); b.setAttribute("role","option");
+    b.innerHTML = isMulti? `<span class="uisel-check"></span><span class="uisel-txt">${esc(label)}</span>` : esc(label);
+    b.addEventListener("click",onClick); return b;
+  };
   const build=()=>{ panel.innerHTML="";
-    [...sel.options].forEach((o,i)=>{
-      const b=document.createElement("button"); b.type="button"; b.className="uisel-opt"+(i===sel.selectedIndex?" selected":"");
-      b.setAttribute("role","option"); b.textContent=o.textContent;
-      b.addEventListener("click",()=>{ sel.selectedIndex=i; syncLabel(); sel.dispatchEvent(new Event("change",{bubbles:true})); close(); });
-      panel.appendChild(b);
-    });
+    if(isMulti){
+      // строка сброса: снять все (пустой выбор = все категории)
+      panel.appendChild(optRow("Все категории", sel.selectedOptions.length===0, e=>{
+        e.stopPropagation(); [...sel.options].forEach(o=>o.selected=false);
+        [...panel.querySelectorAll(".uisel-opt")].forEach((el,i)=>el.classList.toggle("selected", i===0));
+        syncLabel(); sel.dispatchEvent(new Event("change",{bubbles:true}));
+      }, "uisel-all"));
+      [...sel.options].forEach(o=>{
+        const row=optRow(o.textContent, o.selected, e=>{
+          e.stopPropagation(); o.selected=!o.selected; row.classList.toggle("selected",o.selected);
+          const allb=panel.querySelector(".uisel-all"); if(allb) allb.classList.toggle("selected", sel.selectedOptions.length===0);
+          syncLabel(); sel.dispatchEvent(new Event("change",{bubbles:true}));
+        });
+        panel.appendChild(row);
+      });
+    } else {
+      [...sel.options].forEach((o,i)=>{
+        panel.appendChild(optRow(o.textContent, i===sel.selectedIndex, ()=>{
+          sel.selectedIndex=i; syncLabel(); sel.dispatchEvent(new Event("change",{bubbles:true})); close();
+        }));
+      });
+    }
   };
   // панель позиционируем как position:fixed по координатам кнопки — так её НЕ обрезает
   // overflow:hidden родителей (напр. короткая карточка таблицы при выборе категории с
