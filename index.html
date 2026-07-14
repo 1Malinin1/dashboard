@@ -2373,7 +2373,15 @@ function enhanceSelect(sel){
       panel.appendChild(b);
     });
   };
-  const open=()=>{ closeAllUisel(wrap); build(); panel.hidden=false; trig.setAttribute("aria-expanded","true"); };
+  // панель позиционируем как position:fixed по координатам кнопки — так её НЕ обрезает
+  // overflow:hidden родителей (напр. короткая карточка таблицы при выборе категории с
+  // малым числом товаров), и она всегда открывается вниз и полностью кликабельна.
+  const place=()=>{ const r=trig.getBoundingClientRect();
+    panel.style.position="fixed"; panel.style.left=r.left+"px"; panel.style.top=(r.bottom+6)+"px";
+    panel.style.minWidth=r.width+"px";
+    const avail=window.innerHeight-r.bottom-16;
+    panel.style.maxHeight=Math.max(160,Math.min(300,avail))+"px"; };
+  const open=()=>{ closeAllUisel(wrap); build(); panel.hidden=false; place(); trig.setAttribute("aria-expanded","true"); };
   const close=()=>{ panel.hidden=true; trig.setAttribute("aria-expanded","false"); };
   wrap._closeUisel=close;
   trig.addEventListener("click",e=>{ e.stopPropagation(); panel.hidden? open() : close(); });
@@ -2383,6 +2391,9 @@ function enhanceSelect(sel){
 }
 document.addEventListener("click",()=>closeAllUisel());
 document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeAllUisel(); });
+// прокрутка/ресайз сбивают позицию fixed-панели — просто закрываем
+window.addEventListener("scroll",()=>closeAllUisel());
+window.addEventListener("resize",()=>closeAllUisel());
 // заменяем ВСЕ выпадающие списки на кастомные (открываются вниз)
 document.querySelectorAll("select").forEach(enhanceSelect);
 
