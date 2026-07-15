@@ -119,7 +119,7 @@
 
   /* ===== Панель фильтров / сегмент-контрол ===== */
   .filters{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin:14px 0 22px}
-  .seg{display:inline-flex;background:var(--surface-2);border:1px solid var(--border);
+  .seg{display:inline-flex;flex-wrap:wrap;background:var(--surface-2);border:1px solid var(--border);
     border-radius:var(--r-sm);padding:3px;gap:2px;box-shadow:var(--shadow-sm)}
   .seg button{border:0;background:transparent;color:var(--text-2);font:inherit;
     font-size:13px;font-weight:530;padding:6px 13px;border-radius:7px;cursor:pointer;
@@ -187,7 +187,10 @@
   .table-head{display:flex;align-items:center;justify-content:space-between;
     padding:17px 20px 13px;flex-wrap:wrap;gap:8px}
   .table-head h3{margin:0;font-size:15px;font-weight:640;letter-spacing:-.015em}
-  .table-scroll{overflow-x:auto}
+  /* Таблица прокручивается внутри своей области, а шапка (thead) остаётся закреплённой
+     сверху (position:sticky работает относительно этого скролл-контейнера). Так при
+     прокрутке длинной таблицы названия колонок всегда видны. */
+  .table-scroll{overflow:auto;max-height:74vh}
   table.rnp{border-collapse:separate;border-spacing:0;width:100%;font-size:13px;font-variant-numeric:tabular-nums}
   table.rnp th,table.rnp td{padding:11px 15px;text-align:right;white-space:nowrap;
     border-bottom:1px solid var(--grid)}
@@ -538,10 +541,15 @@
   <div class="freshness" id="homeFreshness"></div>
   <div class="filters">
     <div class="seg" id="homePeriodSeg" role="group" aria-label="Период">
-      <button data-n="7">7 дней</button>
-      <button data-n="30" aria-pressed="true">30 дней</button>
-      <button data-n="90">90 дней</button>
-      <button data-n="0">Весь период</button>
+      <button data-n="7">7 дн</button>
+      <button data-n="14">14 дн</button>
+      <button data-n="21">21 дн</button>
+      <button data-n="28" aria-pressed="true">28 дн</button>
+      <button data-n="60">2 мес</button>
+      <button data-n="90">3 мес</button>
+      <button data-n="120">4 мес</button>
+      <button data-n="150">5 мес</button>
+      <button data-n="180">6 мес</button>
     </div>
   </div>
 
@@ -738,10 +746,15 @@
 
     <div class="toolbar">
       <div class="seg" id="finPeriodSeg" role="group" aria-label="Период">
-        <button data-n="7">7 дней</button>
-        <button data-n="30" aria-pressed="true">30 дней</button>
-        <button data-n="90">90 дней</button>
-        <button data-n="0">Весь период</button>
+        <button data-n="7">7 дн</button>
+        <button data-n="14">14 дн</button>
+        <button data-n="21">21 дн</button>
+        <button data-n="28" aria-pressed="true">28 дн</button>
+        <button data-n="60">2 мес</button>
+        <button data-n="90">3 мес</button>
+        <button data-n="120">4 мес</button>
+        <button data-n="150">5 мес</button>
+        <button data-n="180">6 мес</button>
       </div>
     </div>
     <div class="kpis4" id="finKpis"></div>
@@ -769,10 +782,15 @@
     <div class="freshness" id="anFreshness"></div>
     <div class="filters">
       <div class="seg" id="anPeriodSeg" role="group" aria-label="Период">
-        <button data-n="7">7 дней</button>
-        <button data-n="30">30 дней</button>
-        <button data-n="90">90 дней</button>
-        <button data-n="0" aria-pressed="true">Весь период</button>
+        <button data-n="7">7 дн</button>
+        <button data-n="14">14 дн</button>
+        <button data-n="21">21 дн</button>
+        <button data-n="28">28 дн</button>
+        <button data-n="60">2 мес</button>
+        <button data-n="90">3 мес</button>
+        <button data-n="120">4 мес</button>
+        <button data-n="150">5 мес</button>
+        <button data-n="180" aria-pressed="true">6 мес</button>
       </div>
     </div>
 
@@ -1934,7 +1952,7 @@ function renderFinanceHistoryInfo(){
     + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`);
 }
 
-let finPeriodN=30;
+let finPeriodN=28;
 let finSortState={key:"revenue",dir:-1};
 function dateRangeFromCache(cache,periodN){
   const dates=[...new Set(cache.map(r=>r.date))].sort();
@@ -2000,7 +2018,7 @@ function productPnL(dates,cat,q){
 }
 
 /* ---- главная: сводный P&L на основе загруженной "Финансы" ---- */
-let homePeriodN=30;
+let homePeriodN=28;
 let homeSortState={key:"profit",dir:-1};
 let homeNoCostOnly=false;   // показывать только товары без себестоимости (по клику на баннер)
 function renderHomeTab(){
@@ -2144,7 +2162,7 @@ function exportHomeCSV(){
 /* =========================================================================
    ВКЛАДКА «АНАЛИТИКА» — ABC-анализ, убыточные товары, реклама-не-окупается
    ========================================================================= */
-let analyticsPeriodN=0;                    // по умолчанию — весь период (ABC нагляднее на всём)
+let analyticsPeriodN=180;                  // по умолчанию — 6 мес (ABC нагляднее на всех данных)
 let anSortState={key:"profit",dir:-1};
 const ABC_ORDER={A:0,B:1,C:2,loss:3};
 // классификация ABC по прибыли: ранжируем по убыванию, копим долю среди прибыльных
