@@ -128,6 +128,15 @@
   .seg button[aria-pressed="true"]{background:var(--surface);color:var(--text-1);font-weight:620;
     box-shadow:var(--shadow-sm);border:1px solid var(--border)}
   .filters .spacer{flex:1}
+  /* календарь-диапазон (Динамика заказов) */
+  .daterange{display:inline-flex;align-items:center;gap:7px;flex-wrap:wrap}
+  .daterange .dr-label{font-size:12.5px;color:var(--muted)}
+  .daterange .dr-dash{color:var(--muted)}
+  .daterange input[type="date"]{border:1px solid var(--border);background:var(--surface);color:var(--text-1);
+    font:inherit;font-size:13px;padding:7px 10px;border-radius:var(--r-sm);color-scheme:light dark;
+    box-shadow:var(--shadow-sm);cursor:pointer}
+  .daterange input[type="date"]:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring)}
+  .daterange.active input[type="date"]{border-color:var(--accent)}
 
   /* ===== KPI-плитки ===== */
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
@@ -603,6 +612,12 @@
         <button data-n="30">30 дней</button>
         <button data-n="90">90 дней</button>
         <button data-n="0">Весь период</button>
+      </div>
+      <div class="daterange" id="dynDateRange">
+        <span class="dr-label">или период:</span>
+        <input type="date" id="dynFrom" aria-label="Дата с">
+        <span class="dr-dash">–</span>
+        <input type="date" id="dynTo" aria-label="Дата по">
       </div>
     </div>
     <div class="kpis4" id="dynKpis"></div>
@@ -1261,12 +1276,31 @@ function exportTurnoverCSV(){
 
 /* ---- динамика заказов: диапазон дат, агрегация, график ---- */
 let dynPeriodN=7; // 0 = весь период
+let dynCustom=null; // {from,to} индексы в RDATES, если период выбран календарём
 let dynSortState={key:"qty",dir:-1};
 function dynRange(){
   const n=RDATES.length; if(!n) return {from:0,to:-1,prevFrom:0,prevTo:-1,hasPrev:false};
-  const win=dynPeriodN===0? n : Math.min(dynPeriodN,n);
-  const to=n-1, from=n-win, prevTo=from-1, prevFrom=Math.max(0,prevTo-win+1);
+  let from,to;
+  if(dynCustom){ from=Math.max(0,dynCustom.from); to=Math.min(n-1,dynCustom.to); }
+  else { const win=dynPeriodN===0? n : Math.min(dynPeriodN,n); to=n-1; from=n-win; }
+  const win=to-from+1, prevTo=from-1, prevFrom=Math.max(0,prevTo-win+1);
   return {from,to,prevFrom,prevTo,hasPrev:prevTo>=prevFrom};
+}
+// дата (ISO) → индекс в RDATES: 'from' = первый день ≥ даты, 'to' = последний ≤ даты
+function dynDateToIdx(d,mode){ if(!RDATES.length) return 0;
+  if(mode==='from'){ for(let i=0;i<RDATES.length;i++) if(RDATES[i]>=d) return i; return RDATES.length-1; }
+  for(let i=RDATES.length-1;i>=0;i--) if(RDATES[i]<=d) return i; return 0; }
+function initDynDateBounds(){ const f=document.getElementById("dynFrom"),t=document.getElementById("dynTo");
+  if(!f||!RDATES.length) return; f.min=t.min=RDATES[0]; f.max=t.max=RDATES[RDATES.length-1]; }
+function syncDynDateInputs(){ const {from,to}=dynRange(); const f=document.getElementById("dynFrom"),t=document.getElementById("dynTo");
+  if(f&&RDATES[from]) f.value=RDATES[from]; if(t&&RDATES[to]) t.value=RDATES[to]; }
+function applyDynCustom(){
+  const f=document.getElementById("dynFrom").value, t=document.getElementById("dynTo").value;
+  if(!f||!t) return;
+  let from=dynDateToIdx(f,'from'), to=dynDateToIdx(t,'to'); if(from>to){ const x=from; from=to; to=x; }
+  dynCustom={from,to};
+  [...document.getElementById("dynPeriodSeg").children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  renderDynamicsTab();
 }
 function dynFilteredSkus(){
   const q=document.getElementById("dynSearch").value.trim().toLowerCase();
@@ -1363,6 +1397,9 @@ function renderDynamicsTab(){
     ? `<span class="dot"></span>Заказы обновлены по ${fmtDateLong(RLAST)} · история с ${fmtDateLong(RDATES[0])}`
     : "";
   if(!RD){ renderNoData("dynTable"); document.getElementById("dynKpis").innerHTML=""; document.getElementById("ch-dyn").innerHTML=""; return; }
+  initDynDateBounds();
+  if(!dynCustom) syncDynDateInputs();   // при активном пресете — календарь отражает показанный диапазон
+  document.getElementById("dynDateRange").classList.toggle("active", !!dynCustom);
   const catSel=document.getElementById("dynCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
   const skus=dynFilteredSkus();
@@ -2570,8 +2607,10 @@ document.getElementById("tabs").addEventListener("click",e=>{
 document.getElementById("dynPeriodSeg").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
-  b.setAttribute("aria-pressed","true"); dynPeriodN=+b.dataset.n; renderDynamicsTab();
+  b.setAttribute("aria-pressed","true"); dynPeriodN=+b.dataset.n; dynCustom=null; renderDynamicsTab();
 });
+document.getElementById("dynFrom").addEventListener("change",applyDynCustom);
+document.getElementById("dynTo").addEventListener("change",applyDynCustom);
 document.getElementById("dynSearch").addEventListener("input",renderDynamicsTab);
 document.getElementById("dynCat").addEventListener("change",renderDynamicsTab);
 document.getElementById("turnSearch").addEventListener("input",renderTurnoverTab);
