@@ -1,0 +1,8 @@
+{
+  "name": "wb-dashboard-scripts",
+  "private": true,
+  "description": "Офлайн-инструменты для обслуживания зашифрованного снимка данных дашборда (wb-secure.js). Не используются самим сайтом.",
+  "dependencies": {
+    "xlsx": "0.18.5"
+  }
+}
