@@ -39,6 +39,10 @@ const dIdx={};dates.forEach((d,i)=>dIdx[d]=i);
 Object.keys(ord.byDateArt).map(k=>k.slice(11)).forEach(a=>ensure(a)); // артикулы с заказами
 const byArt={}; ozCat.forEach(c=>{ byArt[c.sku]=new Array(dates.length).fill(0); });
 Object.entries(ord.byDateArt).forEach(([k,q])=>{ const d=k.slice(0,10),a=k.slice(11); byArt[a][dIdx[d]]=q; });
+// ₽ по дням: money = {дата:{арт:[заказано₽,выкуплено₽]}} (выкуплено = статус «Доставлен»)
+const ozMoney={};
+Object.entries(ord.byDateArtRub||{}).forEach(([k,v])=>{ const d=k.slice(0,10),a=k.slice(11); (ozMoney[d]||(ozMoney[d]={}))[a]=[Math.round(v),0]; });
+Object.entries(ord.byDateArtBuyRub||{}).forEach(([k,v])=>{ const d=k.slice(0,10),a=k.slice(11); const m=(ozMoney[d]||(ozMoney[d]={})); if(!m[a])m[a]=[0,0]; m[a][1]=Math.round(v); });
 
 // 4) Остатки (лист «Товары»): 0 Артикул · 9 Доступно к продаже · 19 В поставках в пути
 //    6 Дней до конца остатка (озоновский) · 7 Среднесут. продажи 28д
@@ -79,7 +83,7 @@ const buyoutWindow = winDates.length ? winDates[0]+'…'+winDates[winDates.lengt
 
 RD.ozon={
   catalog:ozCat,
-  orderSeries:{dates,byArt},
+  orderSeries:{dates,byArt,money:ozMoney},
   ordersMeta:{period:dates[0]+'…'+dates[dates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
   meta:{ stockDate: stockFile? stockDate : (RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||null, buyoutAll:+buyoutAll.toFixed(4), buyoutWindow }
 };

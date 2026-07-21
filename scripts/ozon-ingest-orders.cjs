@@ -20,10 +20,11 @@ function iso(o){return o.y+'-'+String(o.m).padStart(2,'0')+'-'+String(o.d).padSt
 function detectFmt(strs){const r={};for(const f of ['MD','DM']){let ok=true,mn=null,mx=null;for(const s of strs){const o=parts(s,f);if(!o){ok=false;break;}const t=Date.UTC(o.y,o.m-1,o.d);if(mn==null||t<mn)mn=t;if(mx==null||t>mx)mx=t;}if(ok)r[f]=(mx-mn)/864e5;}const k=Object.keys(r);return k.length?k.sort((a,b)=>r[a]-r[b])[0]:'MD';}
 const seen=new Set();
 const byDateArt={},byDateArtNet={},byDate={},byDateNet={},perArt={},perArtNet={},statuses={};
+const byDateArtRub={},byDateArtBuyRub={};  // ₽: заказано (все) / выкуплено (статус «Доставлен»)
 let ours=0;
 for(const f of files){
   const wb=load(f);const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
-  const H=rows[0];const iOtpr=H.indexOf('Номер отправления'),iAcc=H.indexOf('Принят в обработку'),iStatus=H.indexOf('Статус'),iArt=H.indexOf('Артикул'),iSku=H.indexOf('SKU'),iQty=H.indexOf('Количество');
+  const H=rows[0];const iOtpr=H.indexOf('Номер отправления'),iAcc=H.indexOf('Принят в обработку'),iStatus=H.indexOf('Статус'),iArt=H.indexOf('Артикул'),iSku=H.indexOf('SKU'),iQty=H.indexOf('Количество'),iPrice=H.indexOf('Ваша цена');
   const ds=[];for(let i=1;i<rows.length;i++){const a=(''+(rows[i][iArt]||'')).trim();if(wbSup.has(a)){const s=(''+(rows[i][iAcc]||'')).trim();if(s)ds.push(s);}}
   const fmt=detectFmt(ds);
   for(let i=1;i<rows.length;i++){const r=rows[i];const a=(''+(r[iArt]||'')).trim();if(!wbSup.has(a))continue;
@@ -32,10 +33,13 @@ for(const f of files){
     const net = st!=='Отменён';
     statuses[st]=(statuses[st]||0)+q; ours++;
     byDate[d]=(byDate[d]||0)+q; byDateArt[d+'_'+a]=(byDateArt[d+'_'+a]||0)+q; perArt[a]=(perArt[a]||0)+q;
+    const rub=num(r[iPrice]);   // «Ваша цена» = стоимость заказа (qty на Озоне = 1)
+    byDateArtRub[d+'_'+a]=(byDateArtRub[d+'_'+a]||0)+rub;
+    if(st==='Доставлен') byDateArtBuyRub[d+'_'+a]=(byDateArtBuyRub[d+'_'+a]||0)+rub;   // выкуплено = доставлено
     if(net){ byDateNet[d]=(byDateNet[d]||0)+q; perArtNet[a]=(perArtNet[a]||0)+q; byDateArtNet[d+'_'+a]=(byDateArtNet[d+'_'+a]||0)+q; }
   }
   process.stderr.write('.'+f.split('/').pop().slice(0,8)+'('+fmt+')');
 }
-fs.writeFileSync(path.join(OUT,'ozon-orders.json'),JSON.stringify({byDateArt,byDateArtNet,byDate,byDateNet,perArt,perArtNet,statuses,builtAt:new Date().toISOString()}));
+fs.writeFileSync(path.join(OUT,'ozon-orders.json'),JSON.stringify({byDateArt,byDateArtNet,byDateArtRub,byDateArtBuyRub,byDate,byDateNet,perArt,perArtNet,statuses,builtAt:new Date().toISOString()}));
 const tot=Object.values(statuses).reduce((a,b)=>a+b,0),totNet=Object.values(byDateNet).reduce((a,b)=>a+b,0);
 console.log('\nozon-orders.json: строк',ours,'· заказано',tot,'· выкуп(net)',totNet,'· выкуп%',(totNet/tot*100).toFixed(1),'· артикулов',Object.keys(perArt).length);

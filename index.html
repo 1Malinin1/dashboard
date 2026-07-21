@@ -975,7 +975,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721e"></script>
+<script src="wb-secure.js?v=20260721f"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1418,19 +1418,27 @@ function dailyBars(mount,isoDates,values){
   mount.innerHTML="";mount.appendChild(svg);
 }
 
-/* ---- сумма заказов/выкупа по дням — источник: воронка продаж (FUNNEL_CACHE, IndexedDB) ---- */
+/* ---- ₽ заказано/выкуплено по дням — из снимка (money={дата:{ключ:[о,в]}}), MP-aware ----
+   ВБ: снимок orderSeries.money + загруженная воронка FUNNEL_CACHE поверх (дни, которых нет в снимке).
+   Озон: ozon.orderSeries.money. «Всего»: пусто (₽ считаем по площадкам отдельно). ---- */
+function mpMoney(){
+  if(_appliedMp==="ozon") return (RD&&RD.ozon&&RD.ozon.orderSeries.money)||{};
+  if(_appliedMp==="all") return {};
+  const snap=(RD&&RD.orderSeries.money)||{}, m={};
+  for(const d in snap){ m[d]={}; for(const s in snap[d]) m[d][s]=snap[d][s].slice(); }
+  FUNNEL_CACHE.forEach(r=>{ if(snap[r.date]) return; const dm=m[r.date]||(m[r.date]={});
+    const cur=dm[r.sku]||(dm[r.sku]=[0,0]); cur[0]+=r.ordersSum||0; cur[1]+=r.buyoutSum||0; });
+  return m;
+}
 function moneySumsForSkus(skus,fromDate,toDate){
-  const skuSet=new Set(skus.map(c=>c.sku));
-  let ordersSum=0,buyoutSum=0;
-  FUNNEL_CACHE.forEach(r=>{ if(skuSet.has(r.sku)&&r.date>=fromDate&&r.date<=toDate){ ordersSum+=r.ordersSum||0; buyoutSum+=r.buyoutSum||0; } });
+  const set=new Set(skus.map(c=>c.sku)), m=mpMoney(); let ordersSum=0,buyoutSum=0;
+  for(const d in m){ if(d<fromDate||d>toDate) continue; for(const s in m[d]){ if(!set.has(s)) continue; ordersSum+=m[d][s][0]||0; buyoutSum+=m[d][s][1]||0; } }
   return {ordersSum,buyoutSum};
 }
 function moneySeriesForSkus(skus,isoDates){
-  const skuSet=new Set(skus.map(c=>c.sku));
+  const set=new Set(skus.map(c=>c.sku)), m=mpMoney(), idx={}; isoDates.forEach((d,i)=>idx[d]=i);
   const ordersSum=new Array(isoDates.length).fill(0), buyoutSum=new Array(isoDates.length).fill(0);
-  const idx={}; isoDates.forEach((d,i)=>idx[d]=i);
-  FUNNEL_CACHE.forEach(r=>{ if(!skuSet.has(r.sku))return; const i=idx[r.date]; if(i==null)return;
-    ordersSum[i]+=r.ordersSum||0; buyoutSum[i]+=r.buyoutSum||0; });
+  for(const d in m){ const i=idx[d]; if(i==null) continue; for(const s in m[d]){ if(!set.has(s)) continue; ordersSum[i]+=m[d][s][0]||0; buyoutSum[i]+=m[d][s][1]||0; } }
   return {ordersSum,buyoutSum};
 }
 /* ---- график: сгруппированные столбцы по дням (2 серии, много точек) ---- */
@@ -1507,8 +1515,8 @@ function renderDynamicsTab(){
     {lbl:"Активных товаров",val:activeSkuCount+" из "+skus.length},
     {lbl:"Топ-категория",val:esc(topCat)+(topCatQty&&periodTotal?` (${Math.round(topCatQty/periodTotal*100)}%)`:"")},
   ];
-  // суммы ₽ — только по данным воронки ВБ; для Озона/Всего их пока нет
-  if(_appliedMp==="wb") dynKpiCards.push(
+  // суммы ₽ по дням: ВБ и Озон — из снимка; в «Всего» по площадкам не сводим
+  if(_appliedMp!=="all") dynKpiCards.push(
     {lbl:"Заказано на сумму, ₽",val:rub(moneyNow.ordersSum),delta:moneyPrev?delta(moneyNow.ordersSum,moneyPrev.ordersSum,true):""},
     {lbl:"Выкуплено на сумму, ₽",val:rub(moneyNow.buyoutSum),delta:moneyPrev?delta(moneyNow.buyoutSum,moneyPrev.buyoutSum,true):""});
   document.getElementById("dynKpis").innerHTML=dynKpiCards.map(kpiCard).join("");
@@ -1520,15 +1528,16 @@ function renderDynamicsTab(){
 
   legend(document.getElementById("dynMoneyLegend"),[
     {name:"Заказано, ₽",color:cssv("--s1")},{name:"Выкуплено, ₽",color:cssv("--s2")}]);
-  const hasMoneyData = FUNNEL_CACHE.length && isoDates.some(d=>FUNNEL_CACHE.some(r=>r.date===d));
+  const _mm=mpMoney();
+  const hasMoneyData = _appliedMp!=="all" && isoDates.some(d=>_mm[d]);
   if(hasMoneyData){
     const money=moneySeriesForSkus(skus,isoDates);
     dailyGroupedBars(document.getElementById("ch-dyn-money"),isoDates,[
       {name:"Заказано, ₽",color:cssv("--s1"),data:money.ordersSum},
       {name:"Выкуплено, ₽",color:cssv("--s2"),data:money.buyoutSum}]);
-    document.getElementById("dynMoneyCap").textContent="₽ в день · по данным воронки продаж (вкладка «Товар»)";
+    document.getElementById("dynMoneyCap").textContent="₽ в день · заказано и выкуплено (выкуп «дозревает», свежие дни ниже)";
   } else {
-    document.getElementById("ch-dyn-money").innerHTML=`<div class="empty-hint">За выбранный период нет загруженной воронки продаж — суммы появятся, как только загрузите отчёт на вкладке «Товар» за эти дни.</div>`;
+    document.getElementById("ch-dyn-money").innerHTML=`<div class="empty-hint">${_appliedMp==="all"?"Суммы ₽ смотрите по каждой площадке отдельно — выберите «Wildberries» или «Ozon».":"За выбранный период нет данных по суммам заказов."}</div>`;
   }
 
   const moneyMap = isoDates.length? moneyBySkuMap(isoDates[0],isoDates[isoDates.length-1]) : {};
@@ -1552,10 +1561,10 @@ function renderDynamicsTab(){
   document.getElementById("dynTable").innerHTML=html;
 }
 function moneyBySkuMap(fromDate,toDate){
-  const map={};
-  FUNNEL_CACHE.forEach(r=>{ if(r.date<fromDate||r.date>toDate) return;
-    if(!map[r.sku]) map[r.sku]={ordersSum:0,buyoutSum:0};
-    map[r.sku].ordersSum+=r.ordersSum||0; map[r.sku].buyoutSum+=r.buyoutSum||0; });
+  const m=mpMoney(), map={};
+  for(const d in m){ if(d<fromDate||d>toDate) continue; for(const s in m[d]){
+    if(!map[s]) map[s]={ordersSum:0,buyoutSum:0};
+    map[s].ordersSum+=m[d][s][0]||0; map[s].buyoutSum+=m[d][s][1]||0; } }
   return map;
 }
 
