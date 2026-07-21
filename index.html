@@ -329,6 +329,10 @@
   #homeTable th.metric,#homeTable td.metric,#finTable th.metric,#finTable td.metric{min-width:0;max-width:150px;padding-left:14px}
   #homeTable td.name-cell,#finTable td.name-cell{max-width:150px}
   #homeTable td.name-cell .sku,#finTable td.name-cell .sku{font-size:10.5px}
+  /* компактная таблица оборачиваемости — чтобы «Дозаказать»/«Статус» влезали без прокрутки вбок */
+  #turnTable th,#turnTable td{padding:8px 9px}
+  #turnTable td.name-cell{max-width:210px}
+  #turnTable td.name-cell .sku{font-size:10.5px}
   #homeTable input.cost-input{width:64px}
   table.rnp tbody tr.row-critical td{background:color-mix(in srgb,var(--crit) 6%,var(--surface))}
   table.rnp tbody tr.row-critical:hover td{background:color-mix(in srgb,var(--crit) 10%,var(--surface))}
@@ -669,6 +673,7 @@
     <div class="toolbar">
       <input type="search" id="turnSearch" placeholder="Поиск по артикулу или названию…">
       <select id="turnCat" multiple></select>
+      <select id="turnProduct" multiple data-all="Все товары" data-plural="товар,товара,товаров"></select>
       <select id="turnStatus">
         <option value="">Все статусы</option>
         <option value="critical">Критично — нет в пути</option>
@@ -1132,6 +1137,9 @@ function sumRange(sku,fromIdx,toIdx){ const s=seriesFor(sku); if(!s) return 0;
 function categories(){ return [...new Set(RCAT.map(c=>c.category))].sort((a,b)=>a.localeCompare(b,"ru")); }
 function fillCategorySelect(sel){ sel.innerHTML=(sel.multiple?"":'<option value="">Все категории</option>')+
   categories().map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(""); }
+// мультивыбор конкретных товаров (по активному каталогу RCAT); value = sku
+function fillProductSelect(sel){ sel.innerHTML=RCAT.slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"","ru"))
+  .map(c=>`<option value="${esc(c.sku)}">${esc(c.name||c.sku)} · ${esc(c.sku)}</option>`).join(""); }
 // множественный выбор категорий: набор выбранных из мультиселекта ([] = все)
 function selCats(id){ const s=document.getElementById(id); return s? [...s.selectedOptions].map(o=>o.value).filter(Boolean) : []; }
 // предикат по категории: null = без фильтра (все). Принимает строку ИЛИ массив категорий.
@@ -1265,12 +1273,15 @@ function simpleTurnList(){
 }
 function renderTurnoverSimple(){
   const oz = _appliedMp==="ozon";
-  const all=simpleTurnList();
+  const prodSel=document.getElementById("turnProduct"); if(prodSel && !prodSel.options.length) fillProductSelect(prodSel);
+  const all=simpleTurnList().filter(r=>r.status!=="discontinued");   // товары «На вывод» убираем из таблицы совсем
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), statusF=document.getElementById("turnStatus").value;
+  const selProd=selCats("turnProduct");
   let rows=all;
   if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
   if(cp) rows=rows.filter(r=>cp(r.category));
+  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
   if(statusF) rows=rows.filter(r=>r.status===statusF);
   const rank={critical:0,warning:1,good:2,nodata:3,discontinued:4}, dl=v=>v===Infinity?1e9:v;
   rows=sortRows(rows,turnSortState,{
@@ -1292,13 +1303,12 @@ function renderTurnoverSimple(){
   else bwTxt="% выкупа — 14-дневный из каталога";
   document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров · заказы за 7 дн · "+bwTxt;
   if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
-  let html=`<thead><tr>${thSort("Товар","name",turnSortState,"metric")}${thSort("Категория","category",turnSortState)}
-    ${thSort("Остаток "+(oz?"Ozon":"WB"),"currentStock",turnSortState)}${thSort("Заказов/дн (7д)","avgD",turnSortState)}${thSort("% выкупа","buyout",turnSortState)}
+  let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}
+    ${thSort("Остаток "+(oz?"Ozon":"WB"),"currentStock",turnSortState)}${thSort("Заказов/дн","avgD",turnSortState)}${thSort("% выкупа","buyout",turnSortState)}
     ${thSort("Продаж/дн","sales",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Дозаказать","reorder",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
-      <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>
-      <td>${esc(r.category)}</td>
+      <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${esc(r.sku)}</span></td>
       <td>${fmt(r.stock)}${r.transit?` <span style="color:var(--accent);font-weight:600">+${fmt(r.transit)} в пути</span>`:""}</td>
       <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${Math.round(r.buyout*100)}%</td>
@@ -2519,11 +2529,13 @@ function enhanceSelect(sel){
   const panel=document.createElement("div"); panel.className="uisel-panel"; panel.hidden=true; panel.setAttribute("role","listbox");
   wrap.appendChild(trig); wrap.appendChild(panel);
   const isMulti=sel.multiple;
+  const allLabel = sel.dataset.all || "Все категории";                       // подпись «ничего не выбрано»
+  const pl = (sel.dataset.plural || "категория,категории,категорий").split(","); // формы множественного числа
   const syncLabel=()=>{
     if(isMulti){
       const s=[...sel.selectedOptions];
-      const label = s.length===0? "Все категории" : s.length===1? s[0].textContent : s.length+" "+plural(s.length,"категория","категории","категорий");
-      trig.textContent=label; trig.title = s.length? s.map(o=>o.textContent).join(", ") : "Все категории";
+      const label = s.length===0? allLabel : s.length===1? s[0].textContent : s.length+" "+plural(s.length,pl[0],pl[1],pl[2]);
+      trig.textContent=label; trig.title = s.length? s.map(o=>o.textContent).join(", ") : allLabel;
     } else {
       const o=sel.options[sel.selectedIndex]; trig.textContent=o?o.textContent:""; if(!sel.title) trig.title=o?o.textContent:"";
     }
@@ -2537,7 +2549,7 @@ function enhanceSelect(sel){
   const build=()=>{ panel.innerHTML="";
     if(isMulti){
       // строка сброса: снять все (пустой выбор = все категории)
-      panel.appendChild(optRow("Все категории", sel.selectedOptions.length===0, e=>{
+      panel.appendChild(optRow(allLabel, sel.selectedOptions.length===0, e=>{
         e.stopPropagation(); [...sel.options].forEach(o=>o.selected=false);
         [...panel.querySelectorAll(".uisel-opt")].forEach((el,i)=>el.classList.toggle("selected", i===0));
         syncLabel(); sel.dispatchEvent(new Event("change",{bubbles:true}));
@@ -2572,6 +2584,7 @@ function enhanceSelect(sel){
   trig.addEventListener("click",e=>{ e.stopPropagation(); panel.hidden? open() : close(); });
   // если опции наполнят позже (fillCategorySelect) — держим подпись в актуальном виде
   new MutationObserver(syncLabel).observe(sel,{childList:true});
+  sel.addEventListener("change",syncLabel);   // подпись актуальна и при программном изменении выбора
   syncLabel();
 }
 document.addEventListener("click",()=>closeAllUisel());
@@ -2705,6 +2718,7 @@ document.getElementById("dynSearch").addEventListener("input",renderDynamicsTab)
 document.getElementById("dynCat").addEventListener("change",renderDynamicsTab);
 document.getElementById("turnSearch").addEventListener("input",renderTurnoverTab);
 document.getElementById("turnCat").addEventListener("change",renderTurnoverTab);
+document.getElementById("turnProduct").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnStatus").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnWindow").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnExportBtn").addEventListener("click",exportTurnoverCSV);
@@ -2815,7 +2829,7 @@ function applyMpData(mp){
   RLAST = RDATES.length ? RDATES[RDATES.length-1] : null;
   rebuildCatalogMaps();
   if(_appliedMp!==mp){ _appliedMp=mp; dynCustom=null;
-    ["dynCat","turnCat"].forEach(id=>{const cs=document.getElementById(id); if(cs) cs.innerHTML="";}); }  // категории перезаполнятся под площадку
+    ["dynCat","turnCat","turnProduct"].forEach(id=>{const cs=document.getElementById(id); if(cs) cs.innerHTML="";}); }  // категории/товары перезаполнятся под площадку
 }
 function hydrateData(){
   RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
