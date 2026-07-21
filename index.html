@@ -970,7 +970,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721"></script>
+<script src="wb-secure.js?v=20260721b"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1112,7 +1112,7 @@ let RD = null, RCAT = [], RSERIES = {}, RDATES = [], RLAST = null;
 // Мультиплощадочность: датасеты по площадкам и активный выбор.
 // RCAT/RSERIES/RDATES ниже «перенаводятся» на выбранную площадку (см. applyMpData).
 let WBDATA = null, OZDATA = null, activeMp = "wb", _appliedMp = null;
-const MP_TABS = { dynamics: true };   // вкладки, где работает выбор площадки (пока только «Динамика»)
+const MP_TABS = { dynamics: true, turnover: true };   // вкладки, где работает выбор площадки
 const catalogCostBySku = {}; // заполняется в hydrateData из RCAT
 // ручные/загруженные правки себестоимости (перекрывают каталог), хранятся в браузере
 const COST_OV_KEY="wb_cost_overrides_v1";
@@ -1160,12 +1160,12 @@ function computeTurnover(c,windowDays){
   const lastIdx=RDATES.length-1;
   const avgD = RDATES.length ? sumRange(c.sku,Math.max(0,lastIdx-windowDays+1),lastIdx)/Math.min(windowDays,RDATES.length) : 0;
   const leadTimeDays=getLeadTime(c.sku), targetBufferDays=getBuffer(c.sku);
-  const currentStock=(c.wbStock||0)+(c.ownWarehouseStock||0);
+  const currentStock=(c.wbStock||0)+(c.ownWarehouseStock||0)+(c.ozStock||0);
   // плановая дата поставки уже прошла (относительно последней известной даты) — считаем партию уже пришедшей,
   // а не всё ещё «в пути», чтобы не задваивать её с фактическим остатком
   const pending = (c.pending && RLAST && c.pending.arrivalDate>=RLAST) ? c.pending : null;
   const isDiscontinued = c.productionStatus==="На вывод";
-  const inTransit=c.inTransitToWB||0, pendingQty=pending? pending.qty:0;
+  const inTransit=(c.inTransitToWB||0)+(c.ozTransit||0), pendingQty=pending? pending.qty:0;
   const covered=currentStock+inTransit+pendingQty;
   const daysLeft = avgD>0 ? currentStock/avgD : (currentStock>0? Infinity:0);
   const targetStock = avgD*targetBufferDays;
@@ -1220,10 +1220,19 @@ function turnoverList(){
 }
 
 function renderTurnoverTab(){
+  const oz = _appliedMp==="ozon";
+  const stockDate = oz ? (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate) : (RD&&RD.meta&&RD.meta.stockSnapshotDate);
   document.getElementById("turnFreshness").innerHTML = RD
-    ? `<span class="dot"></span>Остатки WB обновлены на ${fmtDateLong(RD.meta.stockSnapshotDate)} · заказы — по ${fmtDateLong(RLAST)}`
+    ? `<span class="dot"></span>Остатки ${oz?"Ozon":"WB"}${stockDate?" обновлены на "+fmtDateLong(stockDate):""} · заказы — по ${fmtDateLong(RLAST)}`
     : "";
   if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML=""; return; }
+  // «Всего»: реплан по площадкам раздельный — остатки и поставки у ВБ и Озона свои
+  if(_appliedMp==="all"){
+    document.getElementById("turnKpis").innerHTML="";
+    document.getElementById("turnCount").textContent="";
+    document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Оборачиваемость и дозаказ считаются по каждой площадке отдельно — остатки и поставки у ВБ и Озона свои. Выберите «Wildberries» или «Ozon» вверху.</td></tr></tbody>`;
+    return;
+  }
   const catSel=document.getElementById("turnCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
   const all=turnoverList();
@@ -1236,7 +1245,7 @@ function renderTurnoverTab(){
   const statusRank={critical:0,ordered:1,warning:2,good:3,nodata:4,discontinued:5};
   const dl=v=>v===Infinity?1e9:v;
   rows=sortRows(rows,turnSortState,{
-    name:r=>r.name, category:r=>r.category, wbStock:r=>r.wbStock||0, ownStock:r=>r.ownWarehouseStock||0,
+    name:r=>r.name, category:r=>r.category, wbStock:r=>r.wbStock||0, ownStock:r=>r.ownWarehouseStock||0, currentStock:r=>r.currentStock||0,
     avgD:r=>r.avgD, daysLeft:r=>dl(r.daysLeft), leadTime:r=>r.leadTimeDays, buffer:r=>r.targetBufferDays,
     pending:r=>r.pendingQty||r.inTransit||0, arrival:r=>(r.pending&&r.pending.arrivalDate)||"",
     need:r=>r.needRounded, status:r=>statusRank[r.status]*1e9+dl(r.daysLeft),
@@ -1256,21 +1265,23 @@ function renderTurnoverTab(){
 
   if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
 
+  const stockHead = oz
+    ? thSort("Остаток Ozon","currentStock",turnSortState)
+    : thSort("Остаток WB","wbStock",turnSortState)+thSort("Свой склад","ownStock",turnSortState);
   let html=`<thead><tr>${thSort("Товар","name",turnSortState,"metric")}
-    ${thSort("Категория","category",turnSortState)}${thSort("Остаток WB","wbStock",turnSortState)}${thSort("Свой склад","ownStock",turnSortState)}
+    ${thSort("Категория","category",turnSortState)}${stockHead}
     ${thSort("Заказов/дн","avgD",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Срок пост., дн","leadTime",turnSortState)}${thSort("Буфер, дн","buffer",turnSortState)}
     ${thSort("Едет/заказано","pending",turnSortState)}${thSort("Прибудет","arrival",turnSortState)}${thSort("Дозаказать","need",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
       <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>
       <td>${esc(r.category)}</td>
-      <td>${fmt(r.wbStock||0)}</td>
-      <td>${fmt(r.ownWarehouseStock||0)}</td>
+      ${oz? `<td>${fmt(r.currentStock||0)}</td>` : `<td>${fmt(r.wbStock||0)}</td><td>${fmt(r.ownWarehouseStock||0)}</td>`}
       <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${r.daysLeft===Infinity?"∞":Math.round(r.daysLeft)}</td>
       <td><input class="edit-num" type="number" min="0" step="1" value="${r.leadTimeDays}" data-field="leadTimeDays" data-sku="${esc(r.sku)}"></td>
       <td><input class="edit-num" type="number" min="0" step="1" value="${r.targetBufferDays}" data-field="targetBufferDays" data-sku="${esc(r.sku)}"></td>
-      <td>${r.pendingQty? fmt(r.pendingQty)+" шт" : (r.inTransit? fmt(r.inTransit)+" шт (на WB)":"—")}</td>
+      <td>${r.pendingQty? fmt(r.pendingQty)+" шт" : (r.inTransit? fmt(r.inTransit)+" шт"+(oz?" (в пути на Ozon)":" (на WB)"):"—")}</td>
       <td>${r.pending? fmtDate(r.pending.arrivalDate) : "—"}</td>
       <td style="font-weight:650">${r.needRounded>0? fmt(r.needRounded)+" шт"+(r.containers?` (${r.containers} конт.)`:"") : "—"}</td>
       <td>${statusBadge(r.status)}</td>
