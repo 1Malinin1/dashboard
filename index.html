@@ -915,7 +915,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721m"></script>
+<script src="wb-secure.js?v=20260721n"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1367,7 +1367,7 @@ function dailyBars(mount,isoDates,values){
       showTip(`<div class="t-hd">${fmtDateLong(isoDates[i])}</div><div class="t-row"><span class="k"><i style="background:${cssv('--s1')}"></i>Заказы</span><span class="v">${fmt(v)}</span></div>`,ev.clientX,ev.clientY); });
     rect.addEventListener("pointerleave",()=>{ rect.setAttribute("opacity",1); hideTip(); });
     svg.appendChild(rect);
-    if(i%stride===0||i===n-1){ const tx=el("text",{x:cx,y:H-12,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
+    if((i%stride===0 && (n-1-i)>=stride) || i===n-1){ const tx=el("text",{x:cx,y:H-12,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
       tx.textContent=fmtDate(isoDates[i]); svg.appendChild(tx); }
   }
   mount.innerHTML="";mount.appendChild(svg);
@@ -1412,7 +1412,7 @@ function dailyGroupedBars(mount,isoDates,series){
   for(let v=sc.min;v<=sc.max+1e-6;v+=sc.step){const y=Y(v);
     svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":Math.abs(v)<1e-9?1.3:.8}));
     const tx=el("text",{x:m.l-7,y:y+4,"text-anchor":"end","font-size":11.5,fill:cssv("--muted")});tx.textContent=fmtAxis(v);svg.appendChild(tx);}
-  const maxLabels=n<=10?n:9, stride=Math.max(1,Math.round(n/maxLabels)), groupW=bw*series.length;
+  const maxLabels=n<=10?n:7, stride=Math.max(1,Math.round(n/maxLabels)), groupW=bw*series.length;   // узкий график — меньше подписей, чтобы не липли
   for(let i=0;i<n;i++){
     const cx=m.l+band*i+band/2;
     series.forEach((s,si)=>{
@@ -1427,7 +1427,7 @@ function dailyGroupedBars(mount,isoDates,series){
       rect.addEventListener("pointerleave",hideTip);
       svg.appendChild(rect);
     });
-    if(i%stride===0||i===n-1){ const tx=el("text",{x:cx,y:H-11,"text-anchor":"middle","font-size":11,fill:cssv("--muted")});
+    if((i%stride===0 && (n-1-i)>=stride) || i===n-1){ const tx=el("text",{x:cx,y:H-11,"text-anchor":"middle","font-size":11,fill:cssv("--muted")});
       tx.textContent=fmtDate(isoDates[i]); svg.appendChild(tx); }
   }
   mount.innerHTML="";mount.appendChild(svg);
@@ -2873,7 +2873,7 @@ function metricBars(mount,isoDates,values,label,fmtFn,color){
       showTip(`<div class="t-hd">${fmtDateLong(isoDates[i])}</div><div class="t-row"><span class="k"><i style="background:${color}"></i>${label}</span><span class="v">${fmtFn(v)}</span></div>`,ev.clientX,ev.clientY); });
     rect.addEventListener("pointerleave",()=>{ rect.setAttribute("opacity",1); hideTip(); });
     svg.appendChild(rect);
-    if(i%stride===0||i===n-1){ const tx=el("text",{x:cx,y:H-12,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
+    if((i%stride===0 && (n-1-i)>=stride) || i===n-1){ const tx=el("text",{x:cx,y:H-12,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
       tx.textContent=fmtDate(isoDates[i]); svg.appendChild(tx); }
   }
   mount.innerHTML="";mount.appendChild(svg);
