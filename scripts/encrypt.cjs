@@ -19,7 +19,9 @@ const ctx = {}; vm.createContext(ctx);
 vm.runInContext(
   fs.readFileSync(path.join(OUT, 'wb-data.js'), 'utf8') + '\n'
   + fs.readFileSync(path.join(OUT, 'wb-reports.js'), 'utf8') + '\n'
-  + 'globalThis.__OUT = {REAL_DATA, BAKED_AT, BAKED_PERIOD, BAKED_FINANCE_ROWS, BAKED_ADS_ROWS, BAKED_FINANCE, BAKED_ADS};',
+  + 'globalThis.__OUT = {REAL_DATA, BAKED_AT, BAKED_PERIOD, BAKED_FINANCE_ROWS, BAKED_ADS_ROWS, BAKED_FINANCE, BAKED_ADS,'
+  + ' BAKED_FUNNEL: (typeof BAKED_FUNNEL!=="undefined"? BAKED_FUNNEL : []),'
+  + ' BAKED_FUNNEL_ROWS: (typeof BAKED_FUNNEL_ROWS!=="undefined"? BAKED_FUNNEL_ROWS : 0)};',
   ctx
 );
 const out = ctx.__OUT;
@@ -52,5 +54,6 @@ const ok = back.BAKED_FINANCE.length === out.BAKED_FINANCE.length && back.REAL_D
 
 console.log('wb-secure.js записан:', (js.length / 1024 | 0), 'KB · каталог', out.REAL_DATA.catalog.length,
   '· фин.агрегатов', out.BAKED_FINANCE.length, '· рекл.агрегатов', out.BAKED_ADS.length,
+  '· строк воронки', out.BAKED_FUNNEL.length,
   '· период', out.BAKED_PERIOD, '· roundtrip', ok ? 'OK' : 'FAILED');
 if (!ok) process.exit(1);

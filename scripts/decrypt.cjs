@@ -36,13 +36,16 @@ fs.mkdirSync(OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, 'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
   + 'const REAL_DATA = ' + JSON.stringify(payload.REAL_DATA) + ';\n');
+const bakedFunnel = payload.BAKED_FUNNEL || [];              // может отсутствовать в старом снимке
+const bakedFunnelRows = payload.BAKED_FUNNEL_ROWS || 0;
 fs.writeFileSync(path.join(OUT, 'wb-reports.js'),
-  '// Зашитый снимок отчётов (финансы + реклама) по нашим артикулам.\n'
+  '// Зашитый снимок отчётов (финансы + реклама + воронка) по нашим артикулам.\n'
   + 'const BAKED_AT="' + payload.BAKED_AT + '", BAKED_PERIOD="' + payload.BAKED_PERIOD + '";\n'
-  + 'const BAKED_FINANCE_ROWS=' + payload.BAKED_FINANCE_ROWS + ', BAKED_ADS_ROWS=' + payload.BAKED_ADS_ROWS + ';\n'
+  + 'const BAKED_FINANCE_ROWS=' + payload.BAKED_FINANCE_ROWS + ', BAKED_ADS_ROWS=' + payload.BAKED_ADS_ROWS + ', BAKED_FUNNEL_ROWS=' + bakedFunnelRows + ';\n'
   + 'const BAKED_FINANCE=' + JSON.stringify(payload.BAKED_FINANCE) + ';\n'
-  + 'const BAKED_ADS=' + JSON.stringify(payload.BAKED_ADS) + ';\n');
+  + 'const BAKED_ADS=' + JSON.stringify(payload.BAKED_ADS) + ';\n'
+  + 'const BAKED_FUNNEL=' + JSON.stringify(bakedFunnel) + ';\n');
 
 console.log('OK: decrypted/wb-data.js (' + payload.REAL_DATA.catalog.length + ' товаров) + wb-reports.js '
-  + '(' + payload.BAKED_FINANCE.length + ' фин.агрегатов, ' + payload.BAKED_ADS.length + ' рекл.агрегатов)'
+  + '(' + payload.BAKED_FINANCE.length + ' фин.агрегатов, ' + payload.BAKED_ADS.length + ' рекл.агрегатов, ' + bakedFunnel.length + ' строк воронки)'
   + ' · период снимка: ' + payload.BAKED_PERIOD);
