@@ -970,7 +970,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721c"></script>
+<script src="wb-secure.js?v=20260721d"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1262,7 +1262,9 @@ function renderTurnoverOzon(){
     {lbl:"Товаров с продажами",val:activeSku+" из "+all.length},
     {lbl:"Критично — мало/нет остатка",val:crit,valColor:crit>0?"var(--crit-txt)":"var(--text-1)"},
   ].map(kpiCard).join("");
-  document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров · заказы усреднены за 7 дней";
+  const _m=RD.ozon&&RD.ozon.meta, _bw=_m&&_m.buyoutWindow;
+  const _bwTxt=_bw? (fmtDate(_bw.split("…")[0])+"–"+fmtDate(_bw.split("…")[1])) : "период";
+  document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров · заказы за 7 дн · % выкупа за "+_bwTxt;
   if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар","name",turnSortState,"metric")}${thSort("Категория","category",turnSortState)}
     ${thSort("Остаток Ozon","currentStock",turnSortState)}${thSort("Заказов/дн (7д)","avgD",turnSortState)}${thSort("% выкупа","buyout",turnSortState)}
