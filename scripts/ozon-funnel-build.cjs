@@ -59,10 +59,13 @@ function readReport(f){
     const category=(wb&&wb.category)||(oz&&oz.category)||'Без категории';
     const imp=num(r[cImp]),card=num(r[cCard]),cart=num(r[cCart]),ord=num(r[cOrd]),deliv=num(r[cDeliv]),
       cancel=cCancel>=0?num(r[cCancel]):0, sum=cSum>=0?num(r[cSum]):0;
+    // отчёт Озона не отдаёт «Доставлено на сумму» — ОЦЕНКА: доставлено × средний чек заказа (sum/ord)
+    const avg = ord>0 ? sum/ord : 0;
+    const buyoutSum = Math.round(deliv*avg);
     recs.push({id:day+'_'+art,date:day,sku:art,name,category,
       impressions:imp,cardViews:card,addCart:cart,addFav:0,
       ordersQty:ord,buyoutQty:deliv,cancelQty:cancel,
-      ordersSum:Math.round(sum),buyoutSum:0,cancelSum:0,wbStock:0,ownStock:0});
+      ordersSum:Math.round(sum),buyoutSum,cancelSum:0,wbStock:0,ownStock:0});
     matched++;
     tot.imp+=imp;tot.card+=card;tot.cart+=cart;tot.ord+=ord;tot.deliv+=deliv;tot.sum+=sum;
   }
