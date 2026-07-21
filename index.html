@@ -699,30 +699,6 @@
   <section id="tab-product" class="tab-panel" hidden>
     <div class="freshness" id="prodFreshness"></div>
     <div class="card" style="margin-bottom:14px">
-      <h3>Себестоимость товаров</h3>
-      <div class="cap">Файл с колонками «Артикул wb» и «себестоимость» (₽ за штуку, налог уже внутри). Загрузите здесь, если себестоимость поменялась — прибыль на «Главной» пересчитается автоматически. Можно также вписывать вручную прямо в таблице на «Главной» (жёлтый баннер → заполнить).</div>
-      <div class="freshness" id="costInfo" style="margin:8px 0 0"></div>
-      <div class="drop" id="costDrop" style="margin-top:10px">
-        <div class="drop-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg></div>
-        <div>Перетащите файл себестоимости или <b>нажмите, чтобы выбрать</b></div>
-        <div style="font-size:12px;color:var(--muted);margin-top:6px">Артикул wb + себестоимость · только .xlsx</div>
-        <input type="file" id="costFileInput" accept=".xlsx,.xls" multiple hidden>
-      </div>
-      <div class="msg" id="costUploadMsg"></div>
-    </div>
-    <div class="card" style="margin-bottom:14px">
-      <h3>Загрузка воронки продаж по дням</h3>
-      <div class="cap">Ежедневный отчёт WB «Детальный отчёт воронки продаж по карточкам» (Аналитика → Воронка продаж → экспорт за 1 день). Каждый день — отдельный файл; данные накапливаются, ничего не затирается. Храним последние 90 дней.</div>
-      <div class="drop" id="prodDrop" style="margin-top:6px">
-        <div class="drop-ic"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M12 16V4m0 0L8 8m4-4l4 4M4 16v3a1 1 0 001 1h14a1 1 0 001-1v-3"/></svg></div>
-        <div>Перетащите файл(ы) сюда или <b>нажмите, чтобы выбрать</b></div>
-        <div style="font-size:12px;color:var(--muted);margin-top:6px">Можно выбрать сразу несколько дней · только .xlsx</div>
-        <input type="file" id="prodFileInput" accept=".xlsx,.xls" multiple hidden>
-      </div>
-      <div class="msg" id="prodUploadMsg"></div>
-    </div>
-
-    <div class="card" style="margin-bottom:14px">
       <h3>Карточка товара</h3>
       <div class="cap">Найдите товар и сравните два периода — что изменилось в воронке</div>
       <div class="toolbar" style="margin-bottom:0">
@@ -908,7 +884,7 @@
         <li><b>Главная</b> — сводный P&amp;L за период: прибыль, выручка, расходы WB, реклама, маржа и таблица по товарам.</li>
         <li><b>Динамика заказов</b> — заказы в штуках и деньгах по дням, процент выкупа.</li>
         <li><b>Оборачиваемость</b> — сколько дней до обнуления остатка и сколько дозаказать.</li>
-        <li><b>Товар</b> — карточка одного товара, сравнение двух периодов, загрузка воронки и себестоимости.</li>
+        <li><b>Товар</b> — карточка одного товара: сравнение воронки за два периода.</li>
         <li><b>Финансы</b> — загрузка отчётов WB и детальная реализация по товарам за период.</li>
         <li><b>Аналитика</b> — ABC-анализ, убыточные товары, где реклама не окупается, процент возвратов.</li>
       </ul></div>
@@ -2745,20 +2721,11 @@ document.getElementById("anCat").addEventListener("change",renderAnalyticsTab);
 document.getElementById("anExportBtn").addEventListener("click",exportAnalyticsCSV);
 wireSortable("anTable",anSortState,renderAnalyticsTab);
 
-const prodDrop=document.getElementById("prodDrop"), prodFileInput=document.getElementById("prodFileInput");
-prodDrop.onclick=()=>prodFileInput.click();
-prodFileInput.onchange=e=>{ if(e.target.files.length) handleFunnelFiles(e.target.files); };
-["dragenter","dragover"].forEach(ev=>prodDrop.addEventListener(ev,e=>{e.preventDefault();prodDrop.classList.add("hover");}));
-["dragleave","drop"].forEach(ev=>prodDrop.addEventListener(ev,e=>{e.preventDefault();prodDrop.classList.remove("hover");}));
-prodDrop.addEventListener("drop",e=>{ if(e.dataTransfer.files.length) handleFunnelFiles(e.dataTransfer.files); });
+// Загрузочные блоки на вкладке «Товар» убраны — данные (воронка, себестоимость)
+// заливаются офлайн через диалог и запекаются в снимок, а не через браузер
+// (браузерная загрузка жила только локально до чистки кэша). Обработчики
+// handleFunnelFiles/handleCostFiles больше не вызываются из UI.
 ["prodAFrom","prodATo","prodBFrom","prodBTo"].forEach(id=>document.getElementById(id).addEventListener("change",renderProductPeriods));
-
-const costDrop=document.getElementById("costDrop"), costFileInput=document.getElementById("costFileInput");
-costDrop.onclick=()=>costFileInput.click();
-costFileInput.onchange=e=>{ if(e.target.files.length) handleCostFiles(e.target.files); };
-["dragenter","dragover"].forEach(ev=>costDrop.addEventListener(ev,e=>{e.preventDefault();costDrop.classList.add("hover");}));
-["dragleave","drop"].forEach(ev=>costDrop.addEventListener(ev,e=>{e.preventDefault();costDrop.classList.remove("hover");}));
-costDrop.addEventListener("drop",e=>{ if(e.dataTransfer.files.length) handleCostFiles(e.dataTransfer.files); });
 
 const finDrop=document.getElementById("finDrop"), finFileInput=document.getElementById("finFileInput");
 finDrop.onclick=()=>finFileInput.click();
