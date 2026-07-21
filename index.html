@@ -535,6 +535,16 @@
     border-radius:6px;padding:1px 8px;font-size:11px;font-weight:660}
   .prod-chart-head{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:4px}
   .prod-chart-head h3{margin:0}
+  /* --- «куда уходит выручка» (Финансы) --- */
+  .fin-struct-bar{display:flex;height:32px;border-radius:8px;overflow:hidden;margin:10px 0 14px;background:var(--surface-2)}
+  .fin-struct-bar .seg{min-width:2px;transition:flex .4s cubic-bezier(.4,0,.2,1)}
+  .fin-struct-list{display:flex;flex-direction:column;gap:7px}
+  .fin-struct-row{display:grid;grid-template-columns:14px 1fr auto 44px;gap:10px;align-items:center;font-size:13px}
+  .fin-struct-row .dot2{width:11px;height:11px;border-radius:3px}
+  .fin-struct-row .nm{color:var(--text-2)}
+  .fin-struct-row.net .nm{color:var(--text-1);font-weight:620}
+  .fin-struct-row .amt{font-weight:660;color:var(--text-1);font-variant-numeric:tabular-nums}
+  .fin-struct-row .pc{color:var(--muted);font-size:12px;text-align:right;font-variant-numeric:tabular-nums}
   @media(max-width:720px){
     .fn-row,.fn-conv{grid-template-columns:88px 1fr 104px}
     .fn-label{font-size:11.5px}
@@ -623,7 +633,7 @@
   <div id="homeEmpty" class="empty-state" hidden>
     <div class="es-ic"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M3 3v18h18"/><path d="M7 14l3-4 3 3 4-6"/></svg></div>
     <h3>Сводка появится после первого отчёта</h3>
-    <p>Загрузите отчёт о реализации на вкладке «Финансы» — здесь автоматически соберётся реальная прибыль, маржинальность и разбивка по товарам.</p>
+    <p>Пришлите отчёт о реализации WB в диалог с ассистентом — он зашьёт его в снимок, и здесь автоматически соберётся реальная прибыль, маржинальность и разбивка по товарам.</p>
   </div>
 
   <div id="homeContent" hidden>
@@ -813,15 +823,22 @@
       </div>
     </div>
     <div class="kpis4" id="finKpis"></div>
-    <div class="card" style="margin-bottom:14px">
-      <h3>Выручка и к перечислению по дням</h3>
-      <div class="cap" id="finChartCap"></div>
-      <div class="legend" id="finLegend"></div>
-      <div id="ch-fin"></div>
+    <div class="grid2">
+      <div class="card">
+        <h3>Выручка и «Итого к оплате» по дням</h3>
+        <div class="cap" id="finChartCap"></div>
+        <div class="legend" id="finLegend"></div>
+        <div id="ch-fin"></div>
+      </div>
+      <div class="card">
+        <h3>Куда уходит выручка</h3>
+        <div class="cap">Из чего складывается выплата: что удержала WB и что придёт на счёт</div>
+        <div id="ch-fin-struct"></div>
+      </div>
     </div>
     <div class="table-card">
       <div class="table-head">
-        <h3>Финансы по товарам за период</h3>
+        <h3>Сверка по товарам: что удержано и сколько к оплате</h3>
         <span class="muted" id="finTblNote"></span>
       </div>
       <div class="toolbar" style="padding:0 18px 12px">
@@ -852,7 +869,7 @@
     <div id="anEmpty" class="empty-state" hidden>
       <div class="es-ic"><svg viewBox="0 0 24 24" width="28" height="28" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20V10M10 20V4M16 20v-7M20 20H2"/></svg></div>
       <h3>Аналитика появится после первого отчёта</h3>
-      <p>Загрузите отчёт о реализации на вкладке «Финансы» — здесь соберётся ABC-анализ, список убыточных товаров и товаров, где реклама не окупается.</p>
+      <p>Пришлите отчёт о реализации WB в диалог с ассистентом — здесь соберётся ABC-анализ, список убыточных товаров и товаров, где реклама не окупается.</p>
     </div>
 
     <div id="anContent" hidden>
@@ -2454,35 +2471,76 @@ function renderFinanceTab(){
   const netQty=now.qty-now.returnsQty;
   const series=finSeriesByDate(dates,cat,q);
 
-  const otherHold=now.penalty+now.storage+now.deduction+now.priyomka+now.loyalty+now.loyaltyPts;
+  // Финансы = сверка с WB: «сколько придёт на счёт и за что удержано».
+  // Выручка = Комиссия WB + Логистика + Хранение/приёмка + Штрафы/удержания + Возмещение + Итого к оплате.
+  const commission=now.revenue-now.payout;          // комиссия WB (кВВ+эквайринг, внутри «к перечислению за товар»)
+  const storagePriyomka=now.storage+now.priyomka;
+  const finesDed=now.penalty+now.deduction+now.loyalty+now.loyaltyPts;
+  const wbHold=now.revenue-now.net;                  // всё, что WB забрала из выручки
+  const sep=`border-top:1px solid var(--grid);margin-top:5px;padding-top:6px`;
+  const tr=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  const netTip=`<div class="t-hd">Итого к оплате — из чего складывается</div>`+
+    tr("Выручка",rub(now.revenue))+tr("− Комиссия WB","−"+rub(commission))+
+    tr("− Логистика","−"+rub(now.logistics))+tr("− Хранение и приёмка","−"+rub(storagePriyomka))+
+    tr("− Штрафы и удержания","−"+rub(finesDed))+tr("− Возмещение издержек","−"+rub(now.reimb))+
+    `<div class="t-row" style="${sep}"><span class="k">= Придёт на счёт</span><span class="v">${rub(now.net)}</span></div>`;
+  const commTip=`<div class="t-hd">Комиссия WB</div>`+tr("Выручка − «к перечислению за товар»")+
+    tr(`${rub(now.revenue)} − ${rub(now.payout)}`,rub(commission));
+  const holdTip=`<div class="t-hd">Доля удержаний WB</div>`+tr("Сколько из выручки забрала WB (всё, кроме того, что придёт на счёт)")+
+    tr(`${rub(wbHold)} ÷ ${rub(now.revenue)}`,now.revenue?pct(wbHold/now.revenue):"—");
   document.getElementById("finKpis").innerHTML=[
-    {lbl:"Выручка за период",val:rub(now.revenue),delta:prev?delta(now.revenue,prev.revenue,true):"",hero:true,
-      spark:series.revenue.length>1? spark(series.revenue,cssv("--s1")):""},
-    {lbl:"Итого к оплате от WB, ₽",val:rub(now.net),delta:prev?delta(now.net,prev.net,true):""},
+    {lbl:"Итого к оплате от WB, ₽",val:rub(now.net),delta:prev?delta(now.net,prev.net,true):"",hero:true,tip:netTip,
+      valColor:now.net>=0?"var(--good-txt)":"var(--crit-txt)",
+      spark:series.net.length>1? spark(series.net,cssv("--s2")):""},
+    {lbl:"Выручка (до удержаний), ₽",val:rub(now.revenue),delta:prev?delta(now.revenue,prev.revenue,true):""},
+    {lbl:"Комиссия WB, ₽",val:rub(commission),tip:commTip},
     {lbl:"Логистика, ₽",val:rub(now.logistics)},
+    {lbl:"Хранение и приёмка, ₽",val:rub(storagePriyomka)},
+    {lbl:"Штрафы и удержания, ₽",val:rub(finesDed)},
     {lbl:"Возмещение издержек, ₽",val:rub(now.reimb)},
-    {lbl:"Штрафы, хранение, удержания, ₽",val:rub(otherHold)},
-    {lbl:"Продано / возвраты, шт",val:fmt(netQty)+" / "+fmt(now.returnsQty)},
+    {lbl:"Доля удержаний WB",val:now.revenue?pct(wbHold/now.revenue):"—",tip:holdTip},
   ].map(kpiCard).join("");
+  wireKpiTips("finKpis");
 
-  document.getElementById("finChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · «Итого к оплате» = к перечислению − логистика − штрафы − удержания − возмещение` : "нет данных";
+  document.getElementById("finChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · «Итого к оплате» = что WB реально переведёт на счёт` : "нет данных";
   legend(document.getElementById("finLegend"),[{name:"Выручка, ₽",color:cssv("--s1")},{name:"Итого к оплате, ₽",color:cssv("--s2")}]);
   dailyGroupedBars(document.getElementById("ch-fin"),dates,[
     {name:"Выручка, ₽",color:cssv("--s1"),data:series.revenue},
     {name:"Итого к оплате, ₽",color:cssv("--s2"),negColor:cssv("--crit"),data:series.net}]);
 
-  let rows=finAggBySku(now.rows).filter(hasActivity).map(r=>({...r,net:finNet(r)}));
+  // «Куда уходит выручка»: горизонтальная 100%-полоса + разбивка (что удержано + что придёт)
+  const struct=[
+    {name:"Придёт на счёт (Итого к оплате)",v:now.net,color:cssv("--s2"),cls:"net"},
+    {name:"Комиссия WB",v:commission,color:cssv("--s1")},
+    {name:"Логистика",v:now.logistics,color:cssv("--s3")},
+    {name:"Хранение и приёмка",v:storagePriyomka,color:"color-mix(in srgb, var(--s3) 55%, var(--s1))"},
+    {name:"Штрафы и удержания",v:finesDed,color:cssv("--crit")},
+    {name:"Возмещение издержек",v:now.reimb,color:"color-mix(in srgb, var(--crit) 55%, var(--muted))"},
+  ];
+  const structPos=struct.filter(p=>Math.round(p.v)>0);
+  const bar=structPos.map(p=>`<div class="seg" style="flex:${Math.max(0.0001,p.v)};background:${p.color}" title="${esc(p.name)} — ${rub(p.v)}"></div>`).join("");
+  const list=struct.filter(p=>Math.round(p.v)!==0).map(p=>`<div class="fin-struct-row ${p.cls||""}"><span class="dot2" style="background:${p.color}"></span><span class="nm">${esc(p.name)}</span><span class="amt">${rub(p.v)}</span><span class="pc">${now.revenue?Math.round(p.v/now.revenue*100):0}%</span></div>`).join("");
+  document.getElementById("ch-fin-struct").innerHTML=`<div class="fin-struct-bar">${bar}</div><div class="fin-struct-list">${list}</div>`;
+
+  let rows=finAggBySku(now.rows).filter(hasActivity).map(r=>{
+    const net=finNet(r);
+    return {...r, net, commission:(r.revenue||0)-(r.payout||0), storageAll:(r.storage||0)+(r.priyomka||0),
+      finesAll:(r.penalty||0)+(r.deduction||0)+(r.loyalty||0)+(r.loyaltyPts||0)};
+  });
   rows=sortRows(rows,finSortState,{
-    name:r=>r.name, category:r=>r.category, qty:r=>r.qty, returnsQty:r=>r.returnsQty,
-    revenue:r=>r.revenue, logistics:r=>r.logistics, reimb:r=>r.reimb, payout:r=>r.net,
+    name:r=>r.name, qty:r=>r.qty, revenue:r=>r.revenue, commission:r=>r.commission,
+    logistics:r=>r.logistics, storageAll:r=>r.storageAll, finesAll:r=>r.finesAll, reimb:r=>r.reimb, payout:r=>r.net,
   });
   document.getElementById("finCount").textContent=rows.length+" товаров";
-  document.getElementById("finTblNote").textContent=`период: ${dates.length} дн.`;
+  document.getElementById("finTblNote").textContent=`период: ${dates.length} дн. · «Итого к оплате» = что придёт на счёт`;
   if(!rows.length){ document.getElementById("finTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; return; }
-  let html=`<thead><tr>${thSort("Товар","name",finSortState,"metric")}${thSort("Категория","category",finSortState)}
-    ${thSort("Продано, шт","qty",finSortState)}${thSort("Возвраты, шт","returnsQty",finSortState)}${thSort("Выручка, ₽","revenue",finSortState)}${thSort("Логистика, ₽","logistics",finSortState)}${thSort("Возмещение, ₽","reimb",finSortState)}${thSort("Итого к оплате, ₽","payout",finSortState)}</tr></thead><tbody>`;
+  const cell=v=>v?rub(v):"—";
+  let html=`<thead><tr>${thSort("Товар / категория","name",finSortState,"metric")}${thSort("Продано / возвр.","qty",finSortState)}${thSort("Выручка, ₽","revenue",finSortState)}${thSort("Комиссия WB, ₽","commission",finSortState)}${thSort("Логистика, ₽","logistics",finSortState)}${thSort("Хранение, ₽","storageAll",finSortState)}${thSort("Штрафы/удерж., ₽","finesAll",finSortState)}${thSort("Возмещение, ₽","reimb",finSortState)}${thSort("Итого к оплате, ₽","payout",finSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
-    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${fmt(r.returnsQty)}</td><td>${rub(r.revenue)}</td><td>${r.logistics?rub(r.logistics):"—"}</td><td>${r.reimb?rub(r.reimb):"—"}</td><td>${rub(r.net)}</td></tr>`;
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)} · ${esc(r.category||"—")}</span></td>`
+      +`<td>${fmt(r.qty)}${r.returnsQty?` / <span class="muted">${fmt(r.returnsQty)}</span>`:""}</td>`
+      +`<td>${cell(r.revenue)}</td><td>${cell(r.commission)}</td><td>${cell(r.logistics)}</td><td>${cell(r.storageAll)}</td><td>${cell(r.finesAll)}</td><td>${cell(r.reimb)}</td>`
+      +`<td style="font-weight:640">${rub(r.net)}</td></tr>`;
   });
   html+="</tbody>";
   document.getElementById("finTable").innerHTML=html;
