@@ -913,7 +913,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721h"></script>
+<script src="wb-secure.js?v=20260721i"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -2839,8 +2839,10 @@ function renderProdChart(){
   const key=document.getElementById("prodChartMetric").value||"ordersQty", M=CHART_METRICS[key]||CHART_METRICS.ordersQty;
   const {dates,acc}=funnelDailyAgg(skuSet);
   const values=acc.map(a=>M.v(a));
+  // у Озона «Выкуплено ₽» — оценка (доставлено × ср. чек), отчёт не отдаёт «доставлено на сумму»
+  const estNote = (_appliedMp==="ozon" && key==="buyoutSum") ? " · ≈ оценка (доставлено × ср. чек)" : "";
   document.getElementById("prodChartCap").textContent = dates.length
-    ? `${M.l} · ${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · ${prodScopeTitle()}`
+    ? `${M.l} · ${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · ${prodScopeTitle()}${estNote}`
     : "нет данных воронки";
   metricBars(document.getElementById("prodChart"),dates,values,M.l,M.f,cssv(M.c));
 }
@@ -2869,9 +2871,13 @@ function renderProductPeriods(){
   // график по дням
   chartCard.hidden=false;
   renderProdChart();
-  // полная таблица метрик A/B
+  // полная таблица метрик A/B (на Озоне — свои подписи и без ВБ-остатков/полей, которых нет)
+  const metrics = _appliedMp==="ozon"
+    ? FUNNEL_METRICS.filter(m=>!["addFav","cancelSum","wbStock","ownStock"].includes(m.k))
+        .map(m=>({buyoutQty:"Доставлено, шт",buyoutSum:"Доставлено, ₽ (оценка)",buyoutPct:"Доля доставки, %"}[m.k]? {...m,l:{buyoutQty:"Доставлено, шт",buyoutSum:"Доставлено, ₽ (оценка)",buyoutPct:"Доля доставки, %"}[m.k]} : m))
+    : FUNNEL_METRICS;
   let html=`<thead><tr><th class="metric">Метрика</th><th>Период A</th><th>Период B</th><th>Δ</th><th>Δ %</th></tr></thead><tbody>`;
-  FUNNEL_METRICS.forEach(m=>{
+  metrics.forEach(m=>{
     const av=A?A[m.k]:null, bv=B?B[m.k]:null;
     const has = av!=null && bv!=null;
     const d = has? av-bv : null;
