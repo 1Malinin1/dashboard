@@ -1222,39 +1222,57 @@ function turnoverList(){
 // Упрощённая оборачиваемость Озона: среднее заказов за 7 дней × % выкупа = продаж/день;
 // остаток ÷ продаж/день = на сколько дней хватит. Дозаказ: держим минимум OZ_MIN_DAYS
 // дней запаса; как только меньше — заказываем фикс. партию на OZ_COVER_DAYS продаж (6 мес).
-const OZ_MIN_DAYS=130, OZ_COVER_DAYS=180;
-const OZ_STATUS={critical:"Критично — нет остатка",warning:"Пора дозаказать",good:"Норма",nodata:"Нет продаж"};
-function ozBadge(s){ return `<span class="badge ${s}"><span class="d"></span>${OZ_STATUS[s]}</span>`; }
-function ozTurnList(){
+const TURN_MIN_DAYS=130, TURN_COVER_DAYS=180;   // держим минимум 130 дн запаса; партия дозаказа = 6 мес продаж
+const TURN_STATUS={critical:"Критично — нет остатка",warning:"Пора дозаказать",good:"Норма",nodata:"Нет продаж",discontinued:"На вывод"};
+function turnBadge(s){ return `<span class="badge ${s==='discontinued'?'nodata':s}"><span class="d"></span>${TURN_STATUS[s]}</span>`; }
+// Простая оборачиваемость — ОДНА логика для ВБ и Озона (отличаются только источники полей):
+//   ВБ: wbStock · pending(в пути) · buyoutPct14d · containerQty · productionStatus(«На вывод»);
+//   Озон: ozStock · ozTransit · ozBuyout; размер контейнера — из связанного ВБ-товара (кратность общая).
+// продаж/день = ср.заказов(7д) × выкуп; хватит = (остаток+в пути) ÷ продаж/день;
+// дозаказ при <130 дн = партия на 6 мес (ceil(продаж×180)), округляем ВВЕРХ до контейнера.
+function simpleTurnList(){
+  const oz = _appliedMp==="ozon";
   const win=7, lastIdx=RDATES.length-1, days=Math.min(win,RDATES.length);
+  const buyoutAvg = oz ? ((RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutAll)||1)
+    : (()=>{ const v=RCAT.map(c=>c.buyoutPct14d).filter(x=>x>0); return v.length? v.reduce((a,b)=>a+b,0)/v.length/100 : 1; })();
+  let contBySku=null;   // для Озона: размер контейнера берём из связанного ВБ-товара
+  if(oz && WBDATA){ contBySku={}; WBDATA.catalog.forEach(w=>{ if(w.containerQty) contBySku[w.sku]=w.containerQty; }); }
   return RCAT.map(c=>{
     const s=seriesFor(c.sku); let sum=0;
     if(s) for(let i=Math.max(0,lastIdx-win+1);i<=lastIdx;i++) sum+=s[i]||0;
     const avgD = days? sum/days : 0;
-    const buyout = c.ozBuyout!=null? c.ozBuyout : 1;
+    const buyout = oz ? (c.ozBuyout!=null? c.ozBuyout : buyoutAvg)
+      : (c.buyoutPct14d>0 ? c.buyoutPct14d/100 : buyoutAvg);
     const salesPerDay = avgD*buyout;
-    const stock = c.ozStock||0, transit = c.ozTransit||0, covered = stock+transit;
-    const daysBase = stock>0 ? (salesPerDay>0? stock/salesPerDay : Infinity) : 0;      // только на руках
-    const daysLeft = covered>0 ? (salesPerDay>0? covered/salesPerDay : Infinity) : 0;  // с учётом «в пути»
-    // дозаказ: если суммарного покрытия < 130 дней — партия на 6 месяцев продаж (фикс., ничего не вычитаем)
-    const reorder = (salesPerDay>0 && daysLeft<OZ_MIN_DAYS) ? Math.ceil(salesPerDay*OZ_COVER_DAYS) : 0;
+    const stock = oz ? (c.ozStock||0) : ((c.wbStock||0)+(c.ownWarehouseStock||0));
+    const transit = oz ? (c.ozTransit||0) : (c.pending? (c.pending.qty||0) : 0);   // ВБ: pending = «в пути» (дату игнорируем)
+    const covered = stock+transit;
+    const contQty = oz ? (c.wbSku&&contBySku? (contBySku[c.wbSku]||0) : 0) : (c.containerQty||0);
+    const discontinued = !oz && c.productionStatus==="На вывод";
+    const daysBase = stock>0 ? (salesPerDay>0? stock/salesPerDay : Infinity) : 0;
+    const daysLeft = covered>0 ? (salesPerDay>0? covered/salesPerDay : Infinity) : 0;
+    let reorder = (!discontinued && salesPerDay>0 && daysLeft<TURN_MIN_DAYS) ? Math.ceil(salesPerDay*TURN_COVER_DAYS) : 0;
+    let containers=0;
+    if(reorder>0 && contQty>0){ containers=Math.ceil(reorder/contQty); reorder=containers*contQty; }
     let status;
-    if(salesPerDay<=0) status = "nodata";                    // продаж нет (неважно, есть ли остаток)
-    else if(covered<=0) status="critical";                   // продажи есть, а ни остатка, ни поставки
-    else if(daysLeft<OZ_MIN_DAYS) status="warning";          // покрытие < 130 дн — дозаказать
+    if(discontinued) status="discontinued";
+    else if(salesPerDay<=0) status="nodata";
+    else if(covered<=0) status="critical";
+    else if(daysLeft<TURN_MIN_DAYS) status="warning";
     else status="good";
-    return {sku:c.sku,name:c.name,category:c.category,stock,transit,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,status};
+    return {sku:c.sku,name:c.name,category:c.category,stock,transit,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,containers,contQty,status};
   });
 }
-function renderTurnoverOzon(){
-  const all=ozTurnList();
+function renderTurnoverSimple(){
+  const oz = _appliedMp==="ozon";
+  const all=simpleTurnList();
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), statusF=document.getElementById("turnStatus").value;
   let rows=all;
   if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(statusF) rows=rows.filter(r=>r.status===statusF);
-  const rank={critical:0,warning:1,good:2,nodata:3}, dl=v=>v===Infinity?1e9:v;
+  const rank={critical:0,warning:1,good:2,nodata:3,discontinued:4}, dl=v=>v===Infinity?1e9:v;
   rows=sortRows(rows,turnSortState,{
     name:r=>r.name, category:r=>r.category, currentStock:r=>r.stock,
     avgD:r=>r.avgD, buyout:r=>r.buyout, sales:r=>r.salesPerDay, daysLeft:r=>dl(r.daysLeft),
@@ -1268,12 +1286,14 @@ function renderTurnoverOzon(){
     {lbl:"Критично — нет остатка",val:crit,valColor:crit>0?"var(--crit-txt)":"var(--text-1)"},
     {lbl:"Суммарный остаток, шт",val:fmt(stockSum)},
   ].map(kpiCard).join("");
-  const _m=RD.ozon&&RD.ozon.meta, _bw=_m&&_m.buyoutWindow;
-  const _bwTxt=_bw? (fmtDate(_bw.split("…")[0])+"–"+fmtDate(_bw.split("…")[1])) : "период";
-  document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров · заказы за 7 дн · % выкупа за "+_bwTxt;
+  let bwTxt;
+  if(oz){ const _m=RD.ozon&&RD.ozon.meta, _bw=_m&&_m.buyoutWindow;
+    bwTxt="% выкупа за "+(_bw? (fmtDate(_bw.split("…")[0])+"–"+fmtDate(_bw.split("…")[1])) : "период"); }
+  else bwTxt="% выкупа — 14-дневный из каталога";
+  document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров · заказы за 7 дн · "+bwTxt;
   if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар","name",turnSortState,"metric")}${thSort("Категория","category",turnSortState)}
-    ${thSort("Остаток Ozon","currentStock",turnSortState)}${thSort("Заказов/дн (7д)","avgD",turnSortState)}${thSort("% выкупа","buyout",turnSortState)}
+    ${thSort("Остаток "+(oz?"Ozon":"WB"),"currentStock",turnSortState)}${thSort("Заказов/дн (7д)","avgD",turnSortState)}${thSort("% выкупа","buyout",turnSortState)}
     ${thSort("Продаж/дн","sales",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Дозаказать","reorder",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
@@ -1284,8 +1304,8 @@ function renderTurnoverOzon(){
       <td>${Math.round(r.buyout*100)}%</td>
       <td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : (Math.round(r.daysBase)+((r.transit&&r.daysLeft!==r.daysBase&&r.daysLeft!==Infinity)?` <span style="color:var(--accent);font-weight:600">→ ${Math.round(r.daysLeft)}</span>`:""))}</td>
-      <td style="font-weight:650">${r.reorder>0? fmt(r.reorder)+" шт":"—"}</td>
-      <td>${ozBadge(r.status)}</td>
+      <td style="font-weight:650">${r.reorder>0? fmt(r.reorder)+" шт"+(r.containers?` <span class="muted" style="font-weight:400">(${r.containers} конт.)</span>`:"") : "—"}</td>
+      <td>${turnBadge(r.status)}</td>
     </tr>`;
   });
   html+="</tbody>";
@@ -1298,10 +1318,10 @@ function renderTurnoverTab(){
     ? `<span class="dot"></span>Остатки ${oz?"Ozon":"WB"}${stockDate?" обновлены на "+fmtDateLong(stockDate):""} · заказы — по ${fmtDateLong(RLAST)}`
     : "";
   if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML=""; return; }
-  // для Озона прячем ВБ-контролы: селектор «Скорость» (там фикс. 7 дней) и CSV-дозаказ
+  // простая модель (ВБ и Озон) считает по фикс. окну 7 дней — прячем селектор «Скорость» и старый CSV-дозаказ
   const winWrap=document.getElementById("turnWindow").closest(".uisel");
-  if(winWrap) winWrap.style.display = oz? "none" : "";
-  const expBtn=document.getElementById("turnExportBtn"); if(expBtn) expBtn.style.display = oz? "none" : "";
+  if(winWrap) winWrap.style.display = "none";
+  const expBtn=document.getElementById("turnExportBtn"); if(expBtn) expBtn.style.display = "none";
   // «Всего»: реплан по площадкам раздельный — остатки и поставки у ВБ и Озона свои
   if(_appliedMp==="all"){
     document.getElementById("turnKpis").innerHTML="";
@@ -1311,68 +1331,7 @@ function renderTurnoverTab(){
   }
   const catSel=document.getElementById("turnCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
-  if(oz){ renderTurnoverOzon(); return; }   // Озон — упрощённый расчёт (остаток / выкупы в день)
-  const all=turnoverList();
-  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
-  const cp=catPred(selCats("turnCat")), statusF=document.getElementById("turnStatus").value;
-  let rows=all;
-  if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
-  if(cp) rows=rows.filter(r=>cp(r.category));
-  if(statusF) rows=rows.filter(r=>r.status===statusF);
-  const statusRank={critical:0,ordered:1,warning:2,good:3,nodata:4,discontinued:5};
-  const dl=v=>v===Infinity?1e9:v;
-  rows=sortRows(rows,turnSortState,{
-    name:r=>r.name, category:r=>r.category, wbStock:r=>r.wbStock||0, ownStock:r=>r.ownWarehouseStock||0, currentStock:r=>r.currentStock||0,
-    avgD:r=>r.avgD, daysLeft:r=>dl(r.daysLeft), leadTime:r=>r.leadTimeDays, buffer:r=>r.targetBufferDays,
-    pending:r=>r.pendingQty||r.inTransit||0, arrival:r=>(r.pending&&r.pending.arrivalDate)||"",
-    need:r=>r.needRounded, status:r=>statusRank[r.status]*1e9+dl(r.daysLeft),
-  });
-
-  const critCount=all.filter(r=>r.status==="critical").length;
-  const orderedCount=all.filter(r=>r.status==="ordered").length;
-  const needTotal=all.reduce((s,r)=>s+r.needRounded,0);
-  const activeSku=all.filter(r=>r.avgD>0).length;
-  document.getElementById("turnKpis").innerHTML=[
-    {lbl:"Критично — нет в пути",val:critCount,valColor:critCount>0?"var(--crit-txt)":"var(--text-1)"},
-    {lbl:"Мало, но уже заказано",val:orderedCount,valColor:orderedCount>0?"var(--accent)":"var(--text-1)"},
-    {lbl:"Нужно дозаказать всего, шт",val:fmt(needTotal)},
-    {lbl:"Товаров с продажами",val:activeSku+" из "+all.length},
-  ].map(kpiCard).join("");
-  document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров";
-
-  if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
-
-  const stockHead = oz
-    ? thSort("Остаток Ozon","currentStock",turnSortState)
-    : thSort("Остаток WB","wbStock",turnSortState)+thSort("Свой склад","ownStock",turnSortState);
-  let html=`<thead><tr>${thSort("Товар","name",turnSortState,"metric")}
-    ${thSort("Категория","category",turnSortState)}${stockHead}
-    ${thSort("Заказов/дн","avgD",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Срок пост., дн","leadTime",turnSortState)}${thSort("Буфер, дн","buffer",turnSortState)}
-    ${thSort("Едет/заказано","pending",turnSortState)}${thSort("Прибудет","arrival",turnSortState)}${thSort("Дозаказать","need",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
-  rows.forEach(r=>{
-    html+=`<tr class="${r.status==='critical'?'row-critical':''}">
-      <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>
-      <td>${esc(r.category)}</td>
-      ${oz? `<td>${fmt(r.currentStock||0)}</td>` : `<td>${fmt(r.wbStock||0)}</td><td>${fmt(r.ownWarehouseStock||0)}</td>`}
-      <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
-      <td>${r.daysLeft===Infinity?"∞":Math.round(r.daysLeft)}</td>
-      <td><input class="edit-num" type="number" min="0" step="1" value="${r.leadTimeDays}" data-field="leadTimeDays" data-sku="${esc(r.sku)}"></td>
-      <td><input class="edit-num" type="number" min="0" step="1" value="${r.targetBufferDays}" data-field="targetBufferDays" data-sku="${esc(r.sku)}"></td>
-      <td>${r.pendingQty? fmt(r.pendingQty)+" шт" : (r.inTransit? fmt(r.inTransit)+" шт"+(oz?" (в пути на Ozon)":" (на WB)"):"—")}</td>
-      <td>${r.pending? fmtDate(r.pending.arrivalDate) : "—"}</td>
-      <td style="font-weight:650">${r.needRounded>0? fmt(r.needRounded)+" шт"+(r.containers?` (${r.containers} конт.)`:"") : "—"}</td>
-      <td>${statusBadge(r.status)}</td>
-    </tr>`;
-  });
-  html+="</tbody>";
-  document.getElementById("turnTable").innerHTML=html;
-  document.getElementById("turnTable").querySelectorAll("input.edit-num").forEach(inp=>{
-    inp.addEventListener("change",e=>{
-      let val=parseFloat(e.target.value); if(isNaN(val)||val<0) val=0;
-      setOverride(e.target.dataset.sku,e.target.dataset.field,val);
-      renderTurnoverTab();
-    });
-  });
+  renderTurnoverSimple();   // единая простая модель для ВБ и Озона
 }
 function exportTurnoverCSV(){
   const rows=turnoverList().filter(r=>r.needRounded>0).sort((a,b)=>b.needRounded-a.needRounded);
