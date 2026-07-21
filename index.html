@@ -913,7 +913,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721g"></script>
+<script src="wb-secure.js?v=20260721h"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1055,7 +1055,7 @@ let RD = null, RCAT = [], RSERIES = {}, RDATES = [], RLAST = null;
 // Мультиплощадочность: датасеты по площадкам и активный выбор.
 // RCAT/RSERIES/RDATES ниже «перенаводятся» на выбранную площадку (см. applyMpData).
 let WBDATA = null, OZDATA = null, activeMp = "wb", _appliedMp = null;
-const MP_TABS = { dynamics: true, turnover: true };   // вкладки, где работает выбор площадки
+const MP_TABS = { dynamics: true, turnover: true, product: true };   // вкладки, где работает выбор площадки
 const catalogCostBySku = {}; // заполняется в hydrateData из RCAT
 // ручные/загруженные правки себестоимости (перекрывают каталог), хранятся в браузере
 const COST_OV_KEY="wb_cost_overrides_v1";
@@ -1568,8 +1568,11 @@ function fdbDeleteOlderThan(store,cutoffDate){
 }
 function addDays(dateStr,n){ const d=new Date(dateStr+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
 
-let FUNNEL_CACHE=[]; // весь набор дней в памяти, отсортирован по дате, обновляется после загрузки
+let FUNNEL_CACHE=[]; // воронка ВБ: зашитый снимок + браузерные загрузки
+let OZ_FUNNEL=[];    // воронка Озона (зашита в REAL_DATA.ozon.funnel), та же форма записей
 let funnelIsBaked=false, funnelHasBaked=false;
+// воронка активной площадки: ВБ (FUNNEL_CACHE) или Озон (OZ_FUNNEL); для «Всего» — пусто (смотреть по площадкам)
+function activeFunnel(){ if(_appliedMp==="ozon") return OZ_FUNNEL; if(_appliedMp==="all") return []; return FUNNEL_CACHE; }
 async function fdbRefreshCache(){
   // Зашитая воронка (BAKED_FUNNEL) — базовый слой; браузерные загрузки IndexedDB ложатся
   // поверх (даты загрузок перекрывают те же даты снимка). Аналогично финансам/рекламе.
@@ -2459,6 +2462,13 @@ function renderFinanceTab(){
 
 function renderProductHistoryInfo(){
   const el=document.getElementById("prodFreshness");
+  if(_appliedMp==="all"){ el.innerHTML="<span class=\"dot\"></span>Воронку смотрите по каждой площадке отдельно — выберите «Wildberries» или «Ozon» вверху."; return; }
+  if(_appliedMp==="ozon"){   // воронка Озона — целиком зашитый снимок
+    if(!OZ_FUNNEL.length){ el.innerHTML="<span class=\"dot\"></span>Воронка Озона не загружена — пришлите отчёт «Аналитика → По товарам» в диалог."; return; }
+    const d=[...new Set(OZ_FUNNEL.map(r=>r.date))].sort(), skus=new Set(OZ_FUNNEL.map(r=>r.sku)).size;
+    el.innerHTML=`<span class="dot"></span>Воронка Озона: ${d.length} дн., с ${fmtDateLong(d[0])} по ${fmtDateLong(d[d.length-1])} · ${skus} товаров · <span class="muted">зашитый снимок</span>`;
+    return;
+  }
   if(!FUNNEL_CACHE.length){ el.innerHTML="<span class=\"dot\"></span>Воронка пока не загружена — пришлите отчёты «Воронка продаж» в диалог, я заведу их в снимок."; return; }
   const baked=(typeof BAKED_FUNNEL!=="undefined"&&BAKED_FUNNEL)?BAKED_FUNNEL:[];
   const bakedDates=[...new Set(baked.map(r=>r.date))].sort();
@@ -2468,7 +2478,7 @@ function renderProductHistoryInfo(){
   if(bakedDates.length){
     // зашитый снимок — то, что видно у всех; браузерные загрузки помечаем отдельно (видны только тут)
     const skus=new Set(baked.map(r=>r.sku)).size;
-    let txt=`<span class="dot"></span>Воронка в снимке: ${bakedDates.length} дн., с ${fmtDateLong(bakedDates[0])} по ${fmtDateLong(bakedDates[bakedDates.length-1])} · ${skus} товаров`;
+    let txt=`<span class="dot"></span>Воронка ВБ в снимке: ${bakedDates.length} дн., с ${fmtDateLong(bakedDates[0])} по ${fmtDateLong(bakedDates[bakedDates.length-1])} · ${skus} товаров`;
     if(localDates.length){ txt+=` · <span class="muted">+ ваши браузерные загрузки за ${fmtDate(localDates[0])}–${fmtDate(localDates[localDates.length-1])} (видны только в этом браузере)</span>`; }
     el.innerHTML=txt; return;
   }
@@ -2528,8 +2538,16 @@ function updateProdControls(){
   catWrap.style.display = prodScope==="all"? "none" : "";
 }
 function refreshProductView(){
+  const scopeCard=document.getElementById("prodScopeSeg").closest(".card");
+  if(_appliedMp==="all"){   // «Всего» — воронку не сводим, показываем подсказку
+    if(scopeCard) scopeCard.style.display="none";
+    document.getElementById("prodPeriods").hidden=true;
+    ["prodFunnelCard","prodChartCard","prodTableCard"].forEach(id=>document.getElementById(id).hidden=true);
+    return;
+  }
+  if(scopeCard) scopeCard.style.display="";
   updateProdControls();
-  const ready=prodScopeReady() && FUNNEL_CACHE.length;
+  const ready=prodScopeReady() && activeFunnel().length;
   document.getElementById("prodPeriods").hidden = !ready;
   if(!ready){ ["prodFunnelCard","prodChartCard","prodTableCard"].forEach(id=>document.getElementById(id).hidden=true); return; }
   initProductPeriods();
@@ -2655,19 +2673,21 @@ window.addEventListener("resize",()=>closeAllUisel());
 document.querySelectorAll("select").forEach(enhanceSelect);
 
 /* ---- период A / период B ---- */
-function funnelDates(){ return [...new Set(FUNNEL_CACHE.map(r=>r.date))].sort(); }
+function funnelDates(){ return [...new Set(activeFunnel().map(r=>r.date))].sort(); }
+let _prodPeriodsMp=null;   // для какой площадки выставлены даты (сброс при смене ВБ↔Озон)
 function initProductPeriods(){
-  if(!FUNNEL_CACHE.length) return;
-  const dates=funnelDates();
+  const dates=funnelDates(); if(!dates.length) return;
   const last=dates[dates.length-1], prev=dates.length>1? dates[dates.length-2] : last;
   const A_from=document.getElementById("prodAFrom"), A_to=document.getElementById("prodATo");
   const B_from=document.getElementById("prodBFrom"), B_to=document.getElementById("prodBTo");
-  if(!A_from.value){ A_from.value=last; A_to.value=last; B_from.value=prev; B_to.value=prev; }
+  if(_prodPeriodsMp!==_appliedMp || !A_from.value){
+    A_from.value=last; A_to.value=last; B_from.value=prev; B_to.value=prev; _prodPeriodsMp=_appliedMp;
+  }
 }
 // свод воронки по набору sku (skuSet=null → все товары) за период [from,to]
 function aggregateFunnel(skuSet,from,to){
   if(!from||!to) return null;
-  const recs=FUNNEL_CACHE.filter(r=>(!skuSet||skuSet.has(r.sku)) && r.date>=from && r.date<=to);
+  const recs=activeFunnel().filter(r=>(!skuSet||skuSet.has(r.sku)) && r.date>=from && r.date<=to);
   if(!recs.length) return null;
   const sum=k=>recs.reduce((a,r)=>a+(r[k]||0),0);
   const impressions=sum("impressions"),cardViews=sum("cardViews"),addCart=sum("addCart"),addFav=sum("addFav"),
@@ -2717,6 +2737,8 @@ const FUNNEL_STAGES=[
   {k:"buyoutQty",l:"Выкуп"},
 ];
 const STAGE_COLORS=["--s1","--s1","--s3","--s2","--s2"];
+// подпись ступени: у Озона последняя ступень — «Доставлено» (в buyoutQty лежит «Доставлено товаров»)
+function stLabel(i){ const s=FUNNEL_STAGES[i]; return (s.k==="buyoutQty" && _appliedMp==="ozon")? "Доставлено" : s.l; }
 function ppFmt(v){ return (v>=0?"+":"−")+Math.abs(v).toFixed(1); }
 function connectorConv(o,i){ const a=o[FUNNEL_STAGES[i].k]||0, b=o[FUNNEL_STAGES[i+1].k]||0; return a? b/a*100 : null; }
 let weakStepIndex=-1;   // шаг с наибольшей просадкой конверсии vs B (для подсветки в визуале)
@@ -2731,14 +2753,15 @@ function renderFunnelDiag(A,B){
   weakStepIndex=weakestDeclineIndex(A,B);
   const lines=[];
   if(A){ const imp=A.impressions||0, buy=A.buyoutQty||0, overall=imp? buy/imp*100:0;
-    lines.push({cls:"",ic:"▸",html:`Из <b>${fmt(imp)}</b> показов до выкупа дошло <b>${fmt(buy)}</b> шт — сквозная конверсия <b>${overall.toFixed(2)}%</b>. Средний чек заказа ${rub(A.avgPrice)}.`}); }
+    const fin=_appliedMp==="ozon"?"доставки":"выкупа";
+    lines.push({cls:"",ic:"▸",html:`Из <b>${fmt(imp)}</b> показов до ${fin} дошло <b>${fmt(buy)}</b> шт — сквозная конверсия <b>${overall.toFixed(2)}%</b>. Средний чек заказа ${rub(A.avgPrice)}.`}); }
   if(B){
     if(weakStepIndex>=0){ const i=weakStepIndex, ca=connectorConv(A,i), cb=connectorConv(B,i);
-      lines.push({cls:"warn",ic:"⚠",html:`Сильнее всего просело: <b>${FUNNEL_STAGES[i].l} → ${FUNNEL_STAGES[i+1].l}</b> — ${ca.toFixed(1)}% против ${cb.toFixed(1)}% в периоде B (<b>${ppFmt(ca-cb)} п.п.</b>). Это узкое место периода.`}); }
+      lines.push({cls:"warn",ic:"⚠",html:`Сильнее всего просело: <b>${stLabel(i)} → ${stLabel(i+1)}</b> — ${ca.toFixed(1)}% против ${cb.toFixed(1)}% в периоде B (<b>${ppFmt(ca-cb)} п.п.</b>). Это узкое место периода.`}); }
     let gi=-1, best=0.05; for(let i=0;i<FUNNEL_STAGES.length-1;i++){ const ca=connectorConv(A,i), cb=connectorConv(B,i);
       if(ca==null||cb==null) continue; const dpp=ca-cb; if(dpp>best){ best=dpp; gi=i; } }
     if(gi>=0){ const ca=connectorConv(A,gi), cb=connectorConv(B,gi);
-      lines.push({cls:"good",ic:"✓",html:`Выросло: <b>${FUNNEL_STAGES[gi].l} → ${FUNNEL_STAGES[gi+1].l}</b> — ${ca.toFixed(1)}% против ${cb.toFixed(1)}% (<b>+${(ca-cb).toFixed(1)} п.п.</b>).`}); }
+      lines.push({cls:"good",ic:"✓",html:`Выросло: <b>${stLabel(gi)} → ${stLabel(gi+1)}</b> — ${ca.toFixed(1)}% против ${cb.toFixed(1)}% (<b>+${(ca-cb).toFixed(1)} п.п.</b>).`}); }
     if(weakStepIndex<0 && gi<0){ lines.push({cls:"",ic:"▸",html:`Конверсии по шагам почти не изменились относительно периода B.`}); }
   } else { lines.push({cls:"",ic:"▸",html:`Заполните <b>Период B</b> — покажу, какой шаг воронки просел, а какой вырос.`}); }
   document.getElementById("prodDiag").innerHTML = lines.map(l=>
@@ -2752,16 +2775,16 @@ function renderFunnelVis(A,B){
     let sub=`<span class="sub">${base? (v/base*100).toFixed(1)+"% от показов" : "—"}</span>`;
     if(B){ const bv=B[s.k]||0; if(bv){ const d=(v-bv)/bv*100; sub+=`<span class="dl ${d>=0?"up":"down"}">${d>=0?"▲ +":"▼ "}${d.toFixed(0)}% к пред.</span>`; } }
     html+=`<div class="fn-row">
-      <div class="fn-label">${s.l}</div>
+      <div class="fn-label">${stLabel(i)}</div>
       <div class="fn-bar-track"><div class="fn-bar" style="width:${w}%;background:${col}"></div></div>
       <div class="fn-side"><span class="val-main">${fmt(v)}</span>${sub}</div>
     </div>`;
     if(i<FUNNEL_STAGES.length-1){
-      const next=FUNNEL_STAGES[i+1], conv=connectorConv(A,i)||0, narrow=(weakStepIndex===i);
+      const conv=connectorConv(A,i)||0, narrow=(weakStepIndex===i);
       let cmp="";
       if(B){ const cb=connectorConv(B,i); if(cb!=null){ const dpp=conv-cb; cmp=`<span class="cmp ${dpp>=0?"up":"down"}">${ppFmt(dpp)} п.п. к B</span>`; } }
       html+=`<div class="fn-conv"><div class="fn-conv-mid${narrow?" narrow":""}">
-        <span class="arw">↓</span><span class="pct">${conv.toFixed(1)}%</span> доходят до «${next.l}» ${cmp}
+        <span class="arw">↓</span><span class="pct">${conv.toFixed(1)}%</span> доходят до «${stLabel(i+1)}» ${cmp}
         ${narrow?'<span class="tag">узкое место</span>':''}</div></div>`;
     }
   });
@@ -2779,7 +2802,7 @@ const CHART_METRICS={
 function funnelDailyAgg(skuSet){
   const dates=funnelDates(), idx={}; dates.forEach((d,i)=>idx[d]=i);
   const acc=dates.map(()=>({impressions:0,cardViews:0,addCart:0,ordersQty:0,buyoutQty:0,cancelQty:0,ordersSum:0,buyoutSum:0}));
-  FUNNEL_CACHE.forEach(r=>{ if(skuSet&&!skuSet.has(r.sku)) return; const i=idx[r.date]; if(i==null) return;
+  activeFunnel().forEach(r=>{ if(skuSet&&!skuSet.has(r.sku)) return; const i=idx[r.date]; if(i==null) return;
     const a=acc[i]; a.impressions+=r.impressions||0; a.cardViews+=r.cardViews||0; a.addCart+=r.addCart||0;
     a.ordersQty+=r.ordersQty||0; a.buyoutQty+=r.buyoutQty||0; a.cancelQty+=r.cancelQty||0;
     a.ordersSum+=r.ordersSum||0; a.buyoutSum+=r.buyoutSum||0; });
@@ -2839,7 +2862,7 @@ function renderProductPeriods(){
   if(A){
     funCard.hidden=false;
     document.getElementById("prodFunnelTitle").textContent=`Воронка: ${title}`;
-    document.getElementById("prodFunnelCap").textContent=`Период A · ${fmt(A.days)} дн.${A.skus>1?` · ${A.skus} товаров`:""}. Ширина полосы — доля от показов. «Выкуп» дозревает: свежие заказы ещё в пути.`;
+    document.getElementById("prodFunnelCap").textContent=`Период A · ${fmt(A.days)} дн.${A.skus>1?` · ${A.skus} товаров`:""}. Ширина полосы — доля от показов. «${_appliedMp==="ozon"?"Доставлено":"Выкуп"}» дозревает: свежие заказы ещё в пути.`;
     renderFunnelDiag(A,B);
     renderFunnelVis(A,B);
   } else { funCard.hidden=true; }
@@ -3006,10 +3029,13 @@ function applyMpData(mp){
   RLAST = RDATES.length ? RDATES[RDATES.length-1] : null;
   rebuildCatalogMaps();
   if(_appliedMp!==mp){ _appliedMp=mp; dynCustom=null;
+    if(typeof selectedSku!=="undefined") selectedSku=null;   // выбор товара/периодов свой на каждой площадке
+    _prodPeriodsMp=null;
     ["dynCat","turnCat","turnProduct"].forEach(id=>{const cs=document.getElementById(id); if(cs) cs.innerHTML="";}); }  // категории/товары перезаполнятся под площадку
 }
 function hydrateData(){
   RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
+  OZ_FUNNEL = (RD && RD.ozon && RD.ozon.funnel) ? RD.ozon.funnel : [];
   buildMpDatasets();
   _appliedMp=null; applyMpData("wb");
 }
