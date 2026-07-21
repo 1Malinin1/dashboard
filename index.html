@@ -2491,12 +2491,20 @@ function renderFinanceTab(){
 function renderProductHistoryInfo(){
   const el=document.getElementById("prodFreshness");
   if(!FUNNEL_CACHE.length){ el.innerHTML="<span class=\"dot\"></span>Воронка пока не загружена — пришлите отчёты «Воронка продаж» в диалог, я заведу их в снимок."; return; }
-  const dates=[...new Set(FUNNEL_CACHE.map(r=>r.date))].sort();
+  const baked=(typeof BAKED_FUNNEL!=="undefined"&&BAKED_FUNNEL)?BAKED_FUNNEL:[];
+  const bakedDates=[...new Set(baked.map(r=>r.date))].sort();
+  const bakedSet=new Set(bakedDates);
+  const allDates=[...new Set(FUNNEL_CACHE.map(r=>r.date))].sort();
+  const localDates=allDates.filter(d=>!bakedSet.has(d));
+  if(bakedDates.length){
+    // зашитый снимок — то, что видно у всех; браузерные загрузки помечаем отдельно (видны только тут)
+    const skus=new Set(baked.map(r=>r.sku)).size;
+    let txt=`<span class="dot"></span>Воронка в снимке: ${bakedDates.length} дн., с ${fmtDateLong(bakedDates[0])} по ${fmtDateLong(bakedDates[bakedDates.length-1])} · ${skus} товаров`;
+    if(localDates.length){ txt+=` · <span class="muted">+ ваши браузерные загрузки за ${fmtDate(localDates[0])}–${fmtDate(localDates[localDates.length-1])} (видны только в этом браузере)</span>`; }
+    el.innerHTML=txt; return;
+  }
   const skuCount=new Set(FUNNEL_CACHE.map(r=>r.sku)).size;
-  const src = funnelIsBaked? " · <span class=\"muted\">зашитый снимок</span>"
-    : funnelHasBaked? " · <span class=\"muted\">снимок + ваши загрузки</span>"
-    : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`;
-  el.innerHTML=`<span class="dot"></span>Воронка: ${dates.length} дн., с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров${src}`;
+  el.innerHTML=`<span class="dot"></span>Воронка: ${allDates.length} дн., с ${fmtDateLong(allDates[0])} по ${fmtDateLong(allDates[allDates.length-1])} · ${skuCount} товаров · <span class="muted">только в этом браузере — пришлите отчёты в диалог, чтобы зашить в снимок</span>`;
 }
 
 /* ---- область разбора (товар / категория / весь магазин), фильтры, выбор товара ---- */
