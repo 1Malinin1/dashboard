@@ -324,6 +324,8 @@
   table.rnp input.edit-num:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring);background:var(--surface)}
   table.rnp td.name-cell{text-align:left;max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:520}
   table.rnp td.name-cell .sku{color:var(--muted);font-size:11px;display:block;font-weight:450}
+  .sku-link{color:inherit;text-decoration:none;border-bottom:1px dashed color-mix(in srgb,var(--muted) 55%,transparent);cursor:pointer}
+  .sku-link:hover{color:var(--accent);border-bottom-color:var(--accent)}
   /* Плотные таблицы P&L (Главная/Финансы): узкие колонки, чтобы всё влезало без прокрутки вбок */
   #homeTable th,#homeTable td,#finTable th,#finTable td{padding:8px 7px}
   #homeTable th.metric,#homeTable td.metric,#finTable th.metric,#finTable td.metric{min-width:0;max-width:150px;padding-left:14px}
@@ -913,7 +915,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721l"></script>
+<script src="wb-secure.js?v=20260721m"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1061,6 +1063,21 @@ const catalogCostBySku = {}; // заполняется в hydrateData из RCAT
 const COST_OV_KEY="wb_cost_overrides_v1";
 let costOverrides={}; try{ costOverrides=JSON.parse(localStorage.getItem(COST_OV_KEY)||"{}"); }catch(e){ costOverrides={}; }
 function costOf(sku){ const o=costOverrides[sku]; if(o!=null) return o; const c=catalogCostBySku[sku]; return c!=null? c : null; }
+// Ссылка на карточку товара: ВБ → wildberries.ru; Озон → ozon.ru (по числовому SKU Озона,
+// иначе поиск по артикулу). «Всего» — без ссылки (артикул = код поставщика, не привязан к площадке).
+function productUrl(sku){
+  if(_appliedMp==="ozon"){
+    const c = (RD&&RD.ozon&&RD.ozon.catalog) ? RD.ozon.catalog.find(x=>String(x.sku)===String(sku)) : null;
+    return (c&&c.ozonSku) ? `https://www.ozon.ru/product/${encodeURIComponent(c.ozonSku)}/`
+      : `https://www.ozon.ru/search/?text=${encodeURIComponent(sku)}&from_global=true`;
+  }
+  if(_appliedMp==="all") return "";
+  return `https://www.wildberries.ru/catalog/${encodeURIComponent(sku)}/detail.aspx`;
+}
+function skuLink(sku){
+  const url=productUrl(sku);
+  return url ? `<a href="${url}" target="_blank" rel="noopener" class="sku-link" title="Открыть карточку на ${_appliedMp==="ozon"?"Ozon":"Wildberries"}">${esc(sku)}</a>` : esc(sku);
+}
 function saveCostOverrides(){ try{ localStorage.setItem(COST_OV_KEY,JSON.stringify(costOverrides)); }catch(e){} }
 function setCost(sku,val){ const n=parseFloat(val); if(!n||n<=0||isNaN(n)) delete costOverrides[sku]; else costOverrides[sku]=Math.round(n*100)/100; saveCostOverrides(); }
 
@@ -1246,7 +1263,7 @@ function renderTurnoverSimple(){
     ${thSort("Продаж/дн","sales",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Дозаказать","reorder",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
-      <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${esc(r.sku)}</span></td>
+      <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>
       <td>${fmt(r.stock)}${r.transit?` <span style="color:var(--accent);font-weight:600">+${fmt(r.transit)} в пути</span>`:""}</td>
       <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${Math.round(r.buyout*100)}%</td>
@@ -1493,7 +1510,7 @@ function renderDynamicsTab(){
     ${thSort("Заказы, шт","qty",dynSortState)}${thSort("Доля","share",dynSortState)}${thSort("Заказано, ₽","ordersSum",dynSortState)}${thSort("Выкуплено, ₽","buyoutSum",dynSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
     const share=periodTotal? (r.qty/periodTotal*100):0;
-    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${share.toFixed(1)}%</td><td>${r.ordersSum?rub(r.ordersSum):"—"}</td><td>${r.buyoutSum?rub(r.buyoutSum):"—"}</td></tr>`;
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${share.toFixed(1)}%</td><td>${r.ordersSum?rub(r.ordersSum):"—"}</td><td>${r.buyoutSum?rub(r.buyoutSum):"—"}</td></tr>`;
   });
   html+="</tbody>";
   document.getElementById("dynTable").innerHTML=html;
@@ -2253,7 +2270,7 @@ function renderHomeTab(){
       : `<input class="cost-input edit-num" type="number" min="0" step="0.01" data-sku="${esc(r.sku)}" value="" placeholder="с/с" title="Впишите себестоимость за штуку — прибыль пересчитается">`;
     const profitCell=r.hasCost? rub(r.profit) : `<span title="Без вычета себестоимости — она не указана для этого товара">${rub(r.profit)}*</span>`;
     const marginCell=r.hasCost? pct(r.margin) : "—";
-    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td><td>${costCell}</td><td>${rub(r.wbHold)}</td><td>${r.ad?rub(r.ad):"—"}</td><td class="heat ${r.profit<0?'neg':'pos'}" style="${heatBg(r.profit,maxAbsP)}">${profitCell}</td><td>${marginCell}</td></tr>`;
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td><td>${costCell}</td><td>${rub(r.wbHold)}</td><td>${r.ad?rub(r.ad):"—"}</td><td class="heat ${r.profit<0?'neg':'pos'}" style="${heatBg(r.profit,maxAbsP)}">${profitCell}</td><td>${marginCell}</td></tr>`;
   });
   html+="</tbody>";
   document.getElementById("homeTable").innerHTML=html;
@@ -2347,7 +2364,7 @@ function renderAnalyticsTab(){
     rows.slice(0,300).forEach(r=>{
       const profTxt=r.hasCost? rub(r.profit) : `<span title="Без вычета себестоимости — она не указана">${rub(r.profit)}*</span>`;
       const barW=maxShare&&r.share>0? (r.share/maxShare*100).toFixed(1) : 0;
-      html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>`+
+      html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td>`+
         `<td>${esc(r.category)}</td>`+
         `<td><span class="abc ${r.abc}">${abcLabel[r.abc]}</span></td>`+
         `<td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td>`+
@@ -2363,7 +2380,7 @@ function renderAnalyticsTab(){
   document.getElementById("anLossNote").textContent = lossers.length? `${lossers.length} шт · ${rub(lossSum)}` : "нет";
   document.getElementById("anLossTable").innerHTML = lossers.length
     ? `<thead><tr><th class="metric">Товар</th><th>Продано</th><th>Выручка</th><th>Прибыль, ₽</th></tr></thead><tbody>`
-      + lossers.slice(0,15).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td><td class="neg">${r.hasCost?rub(r.profit):rub(r.profit)+"*"}</td></tr>`).join("")
+      + lossers.slice(0,15).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td><td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td><td class="neg">${r.hasCost?rub(r.profit):rub(r.profit)+"*"}</td></tr>`).join("")
       + `</tbody>`
     : `<tbody><tr><td class="empty-hint">Убыточных товаров нет 🎉</td></tr></tbody>`;
 
@@ -2373,7 +2390,7 @@ function renderAnalyticsTab(){
     ? `<tbody><tr><td class="empty-hint">Загрузите отчёт по рекламе на «Финансах»</td></tr></tbody>`
     : (adWaste.length
       ? `<thead><tr><th class="metric">Товар</th><th>Реклама</th><th>ДРР</th><th>Прибыль, ₽</th></tr></thead><tbody>`
-        + adWaste.slice(0,15).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td><td>${rub(r.ad)}</td><td>${r.revenue?pct(r.ad/r.revenue):"—"}</td><td class="${r.profit<0?'neg':'pos'}">${rub(r.profit)}</td></tr>`).join("")
+        + adWaste.slice(0,15).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td><td>${rub(r.ad)}</td><td>${r.revenue?pct(r.ad/r.revenue):"—"}</td><td class="${r.profit<0?'neg':'pos'}">${rub(r.profit)}</td></tr>`).join("")
         + `</tbody>`
       : `<tbody><tr><td class="empty-hint">Реклама окупается везде 👍</td></tr></tbody>`);
 }
@@ -2479,7 +2496,7 @@ function renderFinanceTab(){
   let html=`<thead><tr>${thSort("Товар / категория","name",finSortState,"metric")}${thSort("Продано / возвр.","qty",finSortState)}${thSort("Выручка, ₽","revenue",finSortState)}${thSort("Комиссия WB","commission",finSortState)}${thSort("Логистика","logistics",finSortState)}${thSort("Хранение","storageAll",finSortState)}${thSort("Штрафы/удерж.","finesAll",finSortState)}${thSort("Возмещение","reimb",finSortState)}${thSort("Забирает WB","wbShare",finSortState)}${thSort("Итого к оплате, ₽","payout",finSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
     const rev=r.revenue||0;
-    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)} · ${esc(r.category||"—")}</span></td>`
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)} · ${esc(r.category||"—")}</span></td>`
       +`<td>${fmt(r.qty)}${r.returnsQty?` / <span class="muted">${fmt(r.returnsQty)}</span>`:""}</td>`
       +`<td>${rev?rub(rev):"—"}</td><td>${cel(r.commission,rev)}</td><td>${cel(r.logistics,rev)}</td><td>${cel(r.storageAll,rev)}</td><td>${cel(r.finesAll,rev)}</td><td>${cel(r.reimb,rev)}</td>`
       +`<td class="wb-share">${rub(r.wbHold)}<span class="pct-sub">${rev?Math.round(r.wbShare*100):0}%</span></td>`

@@ -193,6 +193,11 @@ git add wb-secure.js && git commit && git push
 
 - **Модель данных**: `REAL_DATA.ozon = {catalog[], orderSeries:{dates[], byArt{}, money{}}, funnel[], ordersMeta}`.
   `ozon.funnel[]` — воронка Озона (см. `ozon-funnel-build.cjs`), питает вкладку «Товар» на площадке Озон.
+  `ozon.catalog[].ozonSku` — числовой SKU Озона (из отчёта воронки, кол. «SKU»), нужен для прямой
+  ссылки на карточку `ozon.ru/product/{ozonSku}/`; проставляет `ozon-funnel-build.cjs`.
+- **Кликабельные артикулы**: `skuLink(sku)`/`productUrl(sku)` — артикул в таблицах ведёт на карточку
+  товара: ВБ → `wildberries.ru/catalog/{sku}/detail.aspx`; Озон → `ozon.ru/product/{ozonSku}/` (или
+  поиск по артикулу, если числового SKU нет); «Всего» — без ссылки. Площадка берётся из `_appliedMp`.
   `ozon.orderSeries.money` = `{iso:{арт:[заказано₽,выкуплено₽]}}` (заказано = «Ваша цена» всех строк,
   выкуплено = строки со статусом «Доставлен»; собирается в `ozon-build.cjs` из `byDateArtRub/byDateArtBuyRub`).
   Лежит в том же зашифрованном `wb-secure.js` (encrypt.cjs сериализует весь `REAL_DATA`).
