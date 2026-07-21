@@ -985,15 +985,14 @@
   </section>
 
   <footer>
-    Данные считаются в браузере, никуда не отправляются. «Главная» собирается из отчётов, загруженных на вкладке «Финансы».
-    <br>«Динамика заказов» и «Оборачиваемость» — по вашей таблице WB; «Товар»/«Финансы» — самостоятельная загрузка на месте.
-    <br>Автосохранение в этом браузере.
+    Данные зашиты в зашифрованный снимок и считаются прямо в браузере — никуда не отправляются.
+    <br>Обновление данных (финансы, реклама, воронка, заказы) — через диалог с ассистентом.
   </footer>
 </div>
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721f"></script>
+<script src="wb-secure.js?v=20260721g"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1649,7 +1648,18 @@ function fdbDeleteOlderThan(store,cutoffDate){
 function addDays(dateStr,n){ const d=new Date(dateStr+"T00:00:00Z"); d.setUTCDate(d.getUTCDate()+n); return d.toISOString().slice(0,10); }
 
 let FUNNEL_CACHE=[]; // весь набор дней в памяти, отсортирован по дате, обновляется после загрузки
-async function fdbRefreshCache(){ FUNNEL_CACHE=(await fdbGetAll(FUNNEL_STORE)).sort((a,b)=>a.date<b.date?-1:1); }
+let funnelIsBaked=false, funnelHasBaked=false;
+async function fdbRefreshCache(){
+  // Зашитая воронка (BAKED_FUNNEL) — базовый слой; браузерные загрузки IndexedDB ложатся
+  // поверх (даты загрузок перекрывают те же даты снимка). Аналогично финансам/рекламе.
+  const raw=(await fdbGetAll(FUNNEL_STORE));
+  const baked=(typeof BAKED_FUNNEL!=="undefined" && BAKED_FUNNEL)? BAKED_FUNNEL : [];
+  const upDates=new Set(raw.map(r=>r.date));
+  const bakedKept=baked.filter(r=>!upDates.has(r.date));
+  funnelIsBaked=(raw.length===0 && baked.length>0);
+  funnelHasBaked=(bakedKept.length>0);
+  FUNNEL_CACHE=bakedKept.concat(raw).sort((a,b)=>a.date<b.date?-1:1);
+}
 
 let FINANCE_CACHE=[];      // свод по (дата+артикул), пересобирается из построчных данных
 let FINANCE_ROW_COUNT=0;   // сколько уникальных строк отчёта учтено (для контроля полноты)
@@ -2480,10 +2490,13 @@ function renderFinanceTab(){
 
 function renderProductHistoryInfo(){
   const el=document.getElementById("prodFreshness");
-  if(!FUNNEL_CACHE.length){ el.innerHTML=""; return; }
+  if(!FUNNEL_CACHE.length){ el.innerHTML="<span class=\"dot\"></span>Воронка пока не загружена — пришлите отчёты «Воронка продаж» в диалог, я заведу их в снимок."; return; }
   const dates=[...new Set(FUNNEL_CACHE.map(r=>r.date))].sort();
   const skuCount=new Set(FUNNEL_CACHE.map(r=>r.sku)).size;
-  el.innerHTML=`<span class="dot"></span>Воронка: ${dates.length} дн. загружено, с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров · хранится последние ${FUNNEL_RETENTION_DAYS} дней`;
+  const src = funnelIsBaked? " · <span class=\"muted\">зашитый снимок</span>"
+    : funnelHasBaked? " · <span class=\"muted\">снимок + ваши загрузки</span>"
+    : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`;
+  el.innerHTML=`<span class="dot"></span>Воронка: ${dates.length} дн., с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров${src}`;
 }
 
 /* ---- область разбора (товар / категория / весь магазин), фильтры, выбор товара ---- */
@@ -3064,6 +3077,7 @@ async function unlock(pass,remember){
   window.REAL_DATA=d.REAL_DATA; window.BAKED_AT=d.BAKED_AT; window.BAKED_PERIOD=d.BAKED_PERIOD;
   window.BAKED_FINANCE_ROWS=d.BAKED_FINANCE_ROWS; window.BAKED_ADS_ROWS=d.BAKED_ADS_ROWS;
   window.BAKED_FINANCE=d.BAKED_FINANCE; window.BAKED_ADS=d.BAKED_ADS;
+  window.BAKED_FUNNEL=d.BAKED_FUNNEL||[];   // зашитая воронка (может отсутствовать в старом снимке)
   hydrateData();
   if(remember){ try{ localStorage.setItem(LOCK_KEY,pass); }catch(e){} }
   document.body.classList.remove("locked");
