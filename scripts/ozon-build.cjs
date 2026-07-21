@@ -18,7 +18,7 @@ function num(v){const n=parseFloat((''+v).replace(/[\s ]/g,'').replace(',','.')
 const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
 const RD=ctx.__RD;
-const supToWb={};RD.catalog.forEach(c=>{const s=(''+(c.supplierCode||'')).trim();if(s)supToWb[s]=c.sku;});
+const supToWb={}, wbCatBySku={};RD.catalog.forEach(c=>{const s=(''+(c.supplierCode||'')).trim();if(s)supToWb[s]=c.sku; wbCatBySku[c.sku]=c.category;});
 
 // 2) Озон-каталог из листа «Июль»
 const wb=XLSX.read(fs.readFileSync(catalogFile),{type:'buffer',cellStyles:false,cellFormula:false});
@@ -58,11 +58,22 @@ if(stockFile){
   }
 }
 
+// Категория: у связанных товаров берём ВБ-категорию — единая классификация на обеих
+// площадках (Озон-«вид товара» иначе не совпадает: «Пушкары»↔«Каталка» и т.п.).
+ozCat.forEach(c=>{ if(c.wbSku && wbCatBySku[c.wbSku]) c.category = wbCatBySku[c.wbSku]; });
+
+// Процент выкупа по товару (net/gross из заказов); при малых объёмах — общий по магазину.
+const grossAll=Object.values(ord.perArt||{}).reduce((a,b)=>a+b,0);
+const netAll=Object.values(ord.perArtNet||{}).reduce((a,b)=>a+b,0);
+const buyoutAll = grossAll>0 ? netAll/grossAll : 1;
+ozCat.forEach(c=>{ const g=(ord.perArt||{})[c.sku]||0, n=(ord.perArtNet||{})[c.sku]||0;
+  c.ozBuyout = g>=10 ? +(n/g).toFixed(4) : +buyoutAll.toFixed(4); });
+
 RD.ozon={
   catalog:ozCat,
   orderSeries:{dates,byArt},
   ordersMeta:{period:dates[0]+'…'+dates[dates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
-  meta:{ stockDate: stockFile? stockDate : (RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||null }
+  meta:{ stockDate: stockFile? stockDate : (RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||null, buyoutAll:+buyoutAll.toFixed(4) }
 };
 
 // 5) переписать wb-data.js

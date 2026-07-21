@@ -970,7 +970,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721b"></script>
+<script src="wb-secure.js?v=20260721c"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1219,6 +1219,69 @@ function turnoverList(){
   return RCAT.map(c=>computeTurnover(c,windowDays));
 }
 
+// Упрощённая оборачиваемость Озона: среднее заказов за 7 дней × % выкупа = продаж/день;
+// остаток ÷ продаж/день = на сколько дней хватит. Без реплана/контейнеров.
+function ozTurnList(){
+  const win=7, lastIdx=RDATES.length-1, days=Math.min(win,RDATES.length);
+  return RCAT.map(c=>{
+    const s=seriesFor(c.sku); let sum=0;
+    if(s) for(let i=Math.max(0,lastIdx-win+1);i<=lastIdx;i++) sum+=s[i]||0;
+    const avgD = days? sum/days : 0;
+    const buyout = c.ozBuyout!=null? c.ozBuyout : 1;
+    const salesPerDay = avgD*buyout;
+    const stock = c.ozStock||0;
+    const daysLeft = stock>0 ? (salesPerDay>0? stock/salesPerDay : Infinity) : 0;
+    let status;
+    if(salesPerDay<=0 && stock<=0) status="nodata";
+    else if(stock<=0) status="critical";
+    else if(daysLeft<14) status="critical";
+    else if(daysLeft<30) status="warning";
+    else status="good";
+    return {sku:c.sku,name:c.name,category:c.category,stock,avgD,buyout,salesPerDay,daysLeft,transit:c.ozTransit||0,status};
+  });
+}
+function renderTurnoverOzon(){
+  const all=ozTurnList();
+  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
+  const cp=catPred(selCats("turnCat")), statusF=document.getElementById("turnStatus").value;
+  let rows=all;
+  if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
+  if(cp) rows=rows.filter(r=>cp(r.category));
+  if(statusF) rows=rows.filter(r=>r.status===statusF);
+  const rank={critical:0,warning:1,good:2,nodata:3}, dl=v=>v===Infinity?1e9:v;
+  rows=sortRows(rows,turnSortState,{
+    name:r=>r.name, category:r=>r.category, currentStock:r=>r.stock,
+    avgD:r=>r.avgD, buyout:r=>r.buyout, sales:r=>r.salesPerDay, daysLeft:r=>dl(r.daysLeft),
+    status:r=>rank[r.status]*1e9+dl(r.daysLeft),
+  });
+  const withStock=all.filter(r=>r.stock>0).length, stockSum=all.reduce((a,r)=>a+r.stock,0);
+  const activeSku=all.filter(r=>r.avgD>0).length, crit=all.filter(r=>r.status==="critical").length;
+  document.getElementById("turnKpis").innerHTML=[
+    {lbl:"Суммарный остаток, шт",val:fmt(stockSum)},
+    {lbl:"Товаров с остатком",val:withStock+" из "+all.length},
+    {lbl:"Товаров с продажами",val:activeSku+" из "+all.length},
+    {lbl:"Критично — мало/нет остатка",val:crit,valColor:crit>0?"var(--crit-txt)":"var(--text-1)"},
+  ].map(kpiCard).join("");
+  document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров · заказы усреднены за 7 дней";
+  if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
+  let html=`<thead><tr>${thSort("Товар","name",turnSortState,"metric")}${thSort("Категория","category",turnSortState)}
+    ${thSort("Остаток Ozon","currentStock",turnSortState)}${thSort("Заказов/дн (7д)","avgD",turnSortState)}${thSort("% выкупа","buyout",turnSortState)}
+    ${thSort("Продаж/дн","sales",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
+  rows.forEach(r=>{
+    html+=`<tr class="${r.status==='critical'?'row-critical':''}">
+      <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>
+      <td>${esc(r.category)}</td>
+      <td>${fmt(r.stock)}${r.transit?` <span class="muted" style="font-size:11px">+${fmt(r.transit)} в пути</span>`:""}</td>
+      <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
+      <td>${Math.round(r.buyout*100)}%</td>
+      <td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
+      <td>${r.daysLeft===Infinity?"∞":Math.round(r.daysLeft)}</td>
+      <td>${statusBadge(r.status)}</td>
+    </tr>`;
+  });
+  html+="</tbody>";
+  document.getElementById("turnTable").innerHTML=html;
+}
 function renderTurnoverTab(){
   const oz = _appliedMp==="ozon";
   const stockDate = oz ? (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate) : (RD&&RD.meta&&RD.meta.stockSnapshotDate);
@@ -1226,6 +1289,10 @@ function renderTurnoverTab(){
     ? `<span class="dot"></span>Остатки ${oz?"Ozon":"WB"}${stockDate?" обновлены на "+fmtDateLong(stockDate):""} · заказы — по ${fmtDateLong(RLAST)}`
     : "";
   if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML=""; return; }
+  // для Озона прячем ВБ-контролы: селектор «Скорость» (там фикс. 7 дней) и CSV-дозаказ
+  const winWrap=document.getElementById("turnWindow").closest(".uisel");
+  if(winWrap) winWrap.style.display = oz? "none" : "";
+  const expBtn=document.getElementById("turnExportBtn"); if(expBtn) expBtn.style.display = oz? "none" : "";
   // «Всего»: реплан по площадкам раздельный — остатки и поставки у ВБ и Озона свои
   if(_appliedMp==="all"){
     document.getElementById("turnKpis").innerHTML="";
@@ -1235,6 +1302,7 @@ function renderTurnoverTab(){
   }
   const catSel=document.getElementById("turnCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
+  if(oz){ renderTurnoverOzon(); return; }   // Озон — упрощённый расчёт (остаток / выкупы в день)
   const all=turnoverList();
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), statusF=document.getElementById("turnStatus").value;
@@ -2779,7 +2847,7 @@ function applyMpData(mp){
   RLAST = RDATES.length ? RDATES[RDATES.length-1] : null;
   rebuildCatalogMaps();
   if(_appliedMp!==mp){ _appliedMp=mp; dynCustom=null;
-    const cs=document.getElementById("dynCat"); if(cs) cs.innerHTML=""; }  // категории перезаполнятся под площадку
+    ["dynCat","turnCat"].forEach(id=>{const cs=document.getElementById(id); if(cs) cs.innerHTML="";}); }  // категории перезаполнятся под площадку
 }
 function hydrateData(){
   RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
