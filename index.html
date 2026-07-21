@@ -1220,7 +1220,11 @@ function turnoverList(){
 }
 
 // Упрощённая оборачиваемость Озона: среднее заказов за 7 дней × % выкупа = продаж/день;
-// остаток ÷ продаж/день = на сколько дней хватит. Без реплана/контейнеров.
+// остаток ÷ продаж/день = на сколько дней хватит. Дозаказ: держим минимум OZ_MIN_DAYS
+// дней запаса; как только меньше — заказываем фикс. партию на OZ_COVER_DAYS продаж (6 мес).
+const OZ_MIN_DAYS=130, OZ_COVER_DAYS=180;
+const OZ_STATUS={critical:"Критично — нет остатка",warning:"Пора дозаказать",good:"Норма",nodata:"Нет продаж"};
+function ozBadge(s){ return `<span class="badge ${s}"><span class="d"></span>${OZ_STATUS[s]}</span>`; }
 function ozTurnList(){
   const win=7, lastIdx=RDATES.length-1, days=Math.min(win,RDATES.length);
   return RCAT.map(c=>{
@@ -1231,13 +1235,14 @@ function ozTurnList(){
     const salesPerDay = avgD*buyout;
     const stock = c.ozStock||0;
     const daysLeft = stock>0 ? (salesPerDay>0? stock/salesPerDay : Infinity) : 0;
+    // дозаказ: если хватает < 130 дней — партия на 6 месяцев продаж (фикс., как решил пользователь)
+    const reorder = (salesPerDay>0 && daysLeft<OZ_MIN_DAYS) ? Math.ceil(salesPerDay*OZ_COVER_DAYS) : 0;
     let status;
-    if(salesPerDay<=0 && stock<=0) status="nodata";
-    else if(stock<=0) status="critical";
-    else if(daysLeft<14) status="critical";
-    else if(daysLeft<30) status="warning";
+    if(salesPerDay<=0) status = stock>0? "good":"nodata";   // продаж нет
+    else if(stock<=0) status="critical";                    // продажи есть, а остатка нет
+    else if(daysLeft<OZ_MIN_DAYS) status="warning";         // ниже порога 130 дн — дозаказать
     else status="good";
-    return {sku:c.sku,name:c.name,category:c.category,stock,avgD,buyout,salesPerDay,daysLeft,transit:c.ozTransit||0,status};
+    return {sku:c.sku,name:c.name,category:c.category,stock,avgD,buyout,salesPerDay,daysLeft,transit:c.ozTransit||0,reorder,status};
   });
 }
 function renderTurnoverOzon(){
@@ -1252,15 +1257,15 @@ function renderTurnoverOzon(){
   rows=sortRows(rows,turnSortState,{
     name:r=>r.name, category:r=>r.category, currentStock:r=>r.stock,
     avgD:r=>r.avgD, buyout:r=>r.buyout, sales:r=>r.salesPerDay, daysLeft:r=>dl(r.daysLeft),
-    status:r=>rank[r.status]*1e9+dl(r.daysLeft),
+    reorder:r=>r.reorder, status:r=>rank[r.status]*1e9+dl(r.daysLeft),
   });
-  const withStock=all.filter(r=>r.stock>0).length, stockSum=all.reduce((a,r)=>a+r.stock,0);
-  const activeSku=all.filter(r=>r.avgD>0).length, crit=all.filter(r=>r.status==="critical").length;
+  const toOrder=all.filter(r=>r.reorder>0), orderTotal=toOrder.reduce((a,r)=>a+r.reorder,0);
+  const crit=all.filter(r=>r.status==="critical").length, stockSum=all.reduce((a,r)=>a+r.stock,0);
   document.getElementById("turnKpis").innerHTML=[
+    {lbl:"Товаров к дозаказу (<130 дн)",val:toOrder.length+" из "+all.length,valColor:toOrder.length?"var(--accent)":"var(--text-1)"},
+    {lbl:"Дозаказать всего, шт",val:fmt(orderTotal)},
+    {lbl:"Критично — нет остатка",val:crit,valColor:crit>0?"var(--crit-txt)":"var(--text-1)"},
     {lbl:"Суммарный остаток, шт",val:fmt(stockSum)},
-    {lbl:"Товаров с остатком",val:withStock+" из "+all.length},
-    {lbl:"Товаров с продажами",val:activeSku+" из "+all.length},
-    {lbl:"Критично — мало/нет остатка",val:crit,valColor:crit>0?"var(--crit-txt)":"var(--text-1)"},
   ].map(kpiCard).join("");
   const _m=RD.ozon&&RD.ozon.meta, _bw=_m&&_m.buyoutWindow;
   const _bwTxt=_bw? (fmtDate(_bw.split("…")[0])+"–"+fmtDate(_bw.split("…")[1])) : "период";
@@ -1268,7 +1273,7 @@ function renderTurnoverOzon(){
   if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар","name",turnSortState,"metric")}${thSort("Категория","category",turnSortState)}
     ${thSort("Остаток Ozon","currentStock",turnSortState)}${thSort("Заказов/дн (7д)","avgD",turnSortState)}${thSort("% выкупа","buyout",turnSortState)}
-    ${thSort("Продаж/дн","sales",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
+    ${thSort("Продаж/дн","sales",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Дозаказать","reorder",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
       <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>
@@ -1278,7 +1283,8 @@ function renderTurnoverOzon(){
       <td>${Math.round(r.buyout*100)}%</td>
       <td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${r.daysLeft===Infinity?"∞":Math.round(r.daysLeft)}</td>
-      <td>${statusBadge(r.status)}</td>
+      <td style="font-weight:650">${r.reorder>0? fmt(r.reorder)+" шт":"—"}</td>
+      <td>${ozBadge(r.status)}</td>
     </tr>`;
   });
   html+="</tbody>";
