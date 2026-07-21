@@ -1233,16 +1233,17 @@ function ozTurnList(){
     const avgD = days? sum/days : 0;
     const buyout = c.ozBuyout!=null? c.ozBuyout : 1;
     const salesPerDay = avgD*buyout;
-    const stock = c.ozStock||0;
-    const daysLeft = stock>0 ? (salesPerDay>0? stock/salesPerDay : Infinity) : 0;
-    // дозаказ: если хватает < 130 дней — партия на 6 месяцев продаж (фикс., как решил пользователь)
+    const stock = c.ozStock||0, transit = c.ozTransit||0, covered = stock+transit;
+    const daysBase = stock>0 ? (salesPerDay>0? stock/salesPerDay : Infinity) : 0;      // только на руках
+    const daysLeft = covered>0 ? (salesPerDay>0? covered/salesPerDay : Infinity) : 0;  // с учётом «в пути»
+    // дозаказ: если суммарного покрытия < 130 дней — партия на 6 месяцев продаж (фикс., ничего не вычитаем)
     const reorder = (salesPerDay>0 && daysLeft<OZ_MIN_DAYS) ? Math.ceil(salesPerDay*OZ_COVER_DAYS) : 0;
     let status;
-    if(salesPerDay<=0) status = stock>0? "good":"nodata";   // продаж нет
-    else if(stock<=0) status="critical";                    // продажи есть, а остатка нет
-    else if(daysLeft<OZ_MIN_DAYS) status="warning";         // ниже порога 130 дн — дозаказать
+    if(salesPerDay<=0) status = "nodata";                    // продаж нет (неважно, есть ли остаток)
+    else if(covered<=0) status="critical";                   // продажи есть, а ни остатка, ни поставки
+    else if(daysLeft<OZ_MIN_DAYS) status="warning";          // покрытие < 130 дн — дозаказать
     else status="good";
-    return {sku:c.sku,name:c.name,category:c.category,stock,avgD,buyout,salesPerDay,daysLeft,transit:c.ozTransit||0,reorder,status};
+    return {sku:c.sku,name:c.name,category:c.category,stock,transit,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,status};
   });
 }
 function renderTurnoverOzon(){
@@ -1278,11 +1279,11 @@ function renderTurnoverOzon(){
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
       <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.sku)}</span></td>
       <td>${esc(r.category)}</td>
-      <td>${fmt(r.stock)}${r.transit?` <span class="muted" style="font-size:11px">+${fmt(r.transit)} в пути</span>`:""}</td>
+      <td>${fmt(r.stock)}${r.transit?` <span style="color:var(--accent);font-weight:600">+${fmt(r.transit)} в пути</span>`:""}</td>
       <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${Math.round(r.buyout*100)}%</td>
       <td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
-      <td>${r.daysLeft===Infinity?"∞":Math.round(r.daysLeft)}</td>
+      <td>${r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : (Math.round(r.daysBase)+((r.transit&&r.daysLeft!==r.daysBase&&r.daysLeft!==Infinity)?` <span style="color:var(--accent);font-weight:600">→ ${Math.round(r.daysLeft)}</span>`:""))}</td>
       <td style="font-weight:650">${r.reorder>0? fmt(r.reorder)+" шт":"—"}</td>
       <td>${ozBadge(r.status)}</td>
     </tr>`;
