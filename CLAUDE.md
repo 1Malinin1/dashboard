@@ -73,9 +73,10 @@ git add wb-secure.js && git commit && git push
 - **`missing-cost-report.cjs`** — генерит `decrypted/себестоимость-заполнить.xlsx`
   (товары без цены, сортировка по продажам) — отдать пользователю на заполнение.
 - **`wb-extend-orders.cjs <день1.xlsx> …`** — продлевает `REAL_DATA.orderSeries` заказами ВБ из
-  подённой аналитики (лист «Товары» → «Заказали товаров, шт», ключ «Артикул WB»; дата из «Общей
-  информации»). Даты из файлов перезаписывают те же дни ряда, прочие сохраняются; ряды всех sku
-  держатся одной длины с `dates`. Дальше `encrypt.cjs`.
+  подённой аналитики (лист «Товары» → «Заказали товаров, шт» кол.19, ключ «Артикул WB»; дата из «Общей
+  информации»). Заодно копит **₽ по дням** в `orderSeries.money` (кол.31 «Заказали на сумму, ₽»,
+  кол.34 «Выкупили на сумму, ₽»). Даты из файлов перезаписывают те же дни ряда, прочие сохраняются;
+  ряды всех sku держатся одной длины с `dates`. Дальше `encrypt.cjs`.
 - **`xlsx-xml-reader.cjs`** — резервный читатель .xlsx напрямую по XML (см. ниже,
   «когда SheetJS виснет»).
 - **`lib/parse-wb.cjs`** — общая логика (num/rowHash/парсеры/агрегация). **Если
@@ -95,9 +96,12 @@ git add wb-secure.js && git commit && git push
   wbStock, inTransitToWB, ownWarehouseStock, buyoutPct14d, containerQty,
   productionStatus, pending, costPrice}`. `costPrice: null` = себестоимость не задана
   (UI показывает предупреждение и позволяет вписать вручную/через файл).
-- **`REAL_DATA.orderSeries`**: `{dates:[iso...], bySku:{sku:[qty по дням, той же длины что dates]}}`.
-  Ряды должны быть строго одной длины с `dates` — при добавлении дней продлевай
-  ВСЕ существующие ряды (нулями, если для sku заказов не было), иначе графики съедут.
+- **`REAL_DATA.orderSeries`**: `{dates:[iso...], bySku:{sku:[qty по дням, той же длины что dates]}},
+  money:{iso:{sku:[заказано₽,выкуплено₽]}}}`. Ряды `bySku` должны быть строго одной длины с `dates` —
+  при добавлении дней продлевай ВСЕ существующие ряды (нулями, если для sku заказов не было), иначе
+  графики съедут. `money` — разреженная карта по дням (не по индексам), питает график «Сумма заказов
+  и выкупа по дням» (₽) на «Динамике». Аналогично у Озона: `ozon.orderSeries.money` (см. ниже).
+  В UI карту отдаёт MP-aware хелпер `mpMoney()`; на «Всего» деньги не суммируются (площадки раздельно).
 - **`BAKED_FINANCE[]`** — свод по (дата+артикул): `{id,date,sku,name,category,
   qty,returnsQty,revenue,payout,logistics,penalty,storage,reimb,deduction,
   priyomka,loyalty,loyaltyPts}`. `revenue`/`qty`/`returnsQty` — только из строк
@@ -124,7 +128,9 @@ git add wb-secure.js && git commit && git push
 
 Дашборд расширяется на второй маркетплейс (Ozon) рядом с WB. Сделано на данный момент:
 
-- **Модель данных**: `REAL_DATA.ozon = {catalog[], orderSeries:{dates[], byArt{}}, ordersMeta}`.
+- **Модель данных**: `REAL_DATA.ozon = {catalog[], orderSeries:{dates[], byArt{}, money{}}, ordersMeta}`.
+  `ozon.orderSeries.money` = `{iso:{арт:[заказано₽,выкуплено₽]}}` (заказано = «Ваша цена» всех строк,
+  выкуплено = строки со статусом «Доставлен»; собирается в `ozon-build.cjs` из `byDateArtRub/byDateArtBuyRub`).
   Лежит в том же зашифрованном `wb-secure.js` (encrypt.cjs сериализует весь `REAL_DATA`).
   `ozon.catalog[]`: `{sku, name, category, wbSku}` — здесь **`sku` = артикул Озона**.
 - **Связка ВБ↔Озон по арт. поставщика**: артикул Озона = `supplierCode` из WB-каталога
