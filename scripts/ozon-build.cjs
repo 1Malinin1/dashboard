@@ -62,18 +62,26 @@ if(stockFile){
 // площадках (Озон-«вид товара» иначе не совпадает: «Пушкары»↔«Каталка» и т.п.).
 ozCat.forEach(c=>{ if(c.wbSku && wbCatBySku[c.wbSku]) c.category = wbCatBySku[c.wbSku]; });
 
-// Процент выкупа по товару (net/gross из заказов); при малых объёмах — общий по магазину.
-const grossAll=Object.values(ord.perArt||{}).reduce((a,b)=>a+b,0);
-const netAll=Object.values(ord.perArtNet||{}).reduce((a,b)=>a+b,0);
-const buyoutAll = grossAll>0 ? netAll/grossAll : 1;
-ozCat.forEach(c=>{ const g=(ord.perArt||{})[c.sku]||0, n=(ord.perArtNet||{})[c.sku]||0;
+// Процент выкупа: окно 14 дней, заканчивающееся за 7 дней до последней даты.
+// Последние 7 дней пропускаем — заказы ещё в пути, выкуп «не дозрел» (статус «Доставляется»).
+// Если истории мало (< HOLD+1 дней) — берём весь период.
+const HOLD=7, WIN=14;
+const endIdx=dates.length-1-HOLD, startIdx=Math.max(0,endIdx-WIN+1);
+const winDates = endIdx>=0 ? dates.slice(startIdx,endIdx+1) : dates.slice();
+const winSet=new Set(winDates);
+const wGross={},wNet={}; let wGrossAll=0,wNetAll=0;
+Object.entries(ord.byDateArt||{}).forEach(([k,q])=>{ if(winSet.has(k.slice(0,10))){const a=k.slice(11);wGross[a]=(wGross[a]||0)+q;wGrossAll+=q;} });
+Object.entries(ord.byDateArtNet||{}).forEach(([k,q])=>{ if(winSet.has(k.slice(0,10))){const a=k.slice(11);wNet[a]=(wNet[a]||0)+q;wNetAll+=q;} });
+const buyoutAll = wGrossAll>0 ? wNetAll/wGrossAll : 1;
+ozCat.forEach(c=>{ const g=wGross[c.sku]||0, n=wNet[c.sku]||0;
   c.ozBuyout = g>=10 ? +(n/g).toFixed(4) : +buyoutAll.toFixed(4); });
+const buyoutWindow = winDates.length ? winDates[0]+'…'+winDates[winDates.length-1] : null;
 
 RD.ozon={
   catalog:ozCat,
   orderSeries:{dates,byArt},
   ordersMeta:{period:dates[0]+'…'+dates[dates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
-  meta:{ stockDate: stockFile? stockDate : (RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||null, buyoutAll:+buyoutAll.toFixed(4) }
+  meta:{ stockDate: stockFile? stockDate : (RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||null, buyoutAll:+buyoutAll.toFixed(4), buyoutWindow }
 };
 
 // 5) переписать wb-data.js
@@ -87,3 +95,4 @@ console.log('  каталог Озона:',ozCat.length,'товаров · св�
 console.log('  заказы: дней',dates.length,'('+dates[0]+'…'+dates[dates.length-1]+') · товаров с заказами:',ozCat.filter(c=>byArt[c.sku]&&byArt[c.sku].some(x=>x>0)).length);
 console.log('  остатки:',stockFile?('строк '+stockRows+' · сумма «Доступно» '+stockSum+' шт · дата '+stockDate):'(файл не передан)');
 console.log('  товаров с остатком >0:',ozCat.filter(c=>c.ozStock>0).length);
+console.log('  % выкупа: окно',buyoutWindow,'· общий',Math.round(buyoutAll*100)+'%');
