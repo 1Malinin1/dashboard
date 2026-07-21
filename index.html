@@ -913,7 +913,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721k"></script>
+<script src="wb-secure.js?v=20260721l"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1554,6 +1554,32 @@ function fdbGetAllKeys(store){
     req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
   }));
 }
+function fdbClear(store){
+  return fdbOpen().then(db=>new Promise((resolve,reject)=>{
+    const tx=db.transaction(store,"readwrite");
+    tx.objectStore(store).clear();
+    tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
+  }));
+}
+// Сброс локальных данных браузера → показывать ТОЛЬКО зашитый снимок (единый у всех).
+// Нужен, когда в разных браузерах разные цифры из-за старых браузерных загрузок / ручных
+// правок себестоимости, оставшихся локально (загрузка отчётов из UI убрана — данные в снимке).
+async function resetLocalData(){
+  if(!confirm("Убрать локальные данные ЭТОГО браузера (старые загрузки отчётов и ручные правки себестоимости) и показывать только зашитый снимок?\n\nДанные снимка не пострадают — во всех браузерах станут одинаковые цифры.")) return;
+  try{ await Promise.all([fdbClear(FUNNEL_STORE),fdbClear(FINANCE_STORE),fdbClear(ADS_STORE)]); }catch(e){}
+  try{ localStorage.removeItem(COST_OV_KEY); }catch(e){}
+  location.reload();
+}
+// ссылка «сбросить локальные данные» — показываем только если в браузере есть локальные данные
+function localDataResetLink(){
+  // «есть локальные загрузки» = снимок присутствует, НО поверх лежат браузерные данные (не чистый снимок)
+  const hasUploads = (typeof financeHasBaked!=="undefined" && financeHasBaked && !financeIsBaked)
+    || (typeof adsHasBaked!=="undefined" && adsHasBaked && !adsIsBaked)
+    || (typeof funnelHasBaked!=="undefined" && funnelHasBaked && !funnelIsBaked);
+  const hasCostOv = Object.keys(costOverrides).length>0;
+  if(!hasUploads && !hasCostOv) return "";
+  return ` · <a href="#" onclick="resetLocalData();return false;" style="color:var(--accent);text-decoration:underline">сбросить локальные данные (показывать только снимок)</a>`;
+}
 function fdbDeleteOlderThan(store,cutoffDate){
   return fdbOpen().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(store,"readwrite");
@@ -2032,7 +2058,8 @@ function renderFinanceHistoryInfo(){
   const dates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   const skuCount=new Set(FINANCE_CACHE.map(r=>r.sku)).size;
   el.innerHTML=`<span class="dot"></span>Финансы: ${dates.length} дн., с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])} · ${skuCount} товаров · ${fmt(FINANCE_ROW_COUNT)} строк учтено`
-    + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`);
+    + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`)
+    + localDataResetLink();
 }
 
 let finPeriodN=28;
@@ -2116,7 +2143,8 @@ function renderHomeTab(){
   document.getElementById("homeContent").hidden=false;
   const allDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   fresh.innerHTML=`<span class="dot"></span>Финансы обновлены по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])}`
-    + (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}; загрузите свои отчёты на «Финансах», они добавятся к снимку</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : "");
+    + (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : "")
+    + localDataResetLink();
 
   const catSel=document.getElementById("homeCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
@@ -2267,7 +2295,8 @@ function renderAnalyticsTab(){
   document.getElementById("anEmpty").hidden=true; document.getElementById("anContent").hidden=false;
   const allDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   fresh.innerHTML=`<span class="dot"></span>Финансы по ${fmtDateLong(allDates[allDates.length-1])} · с ${fmtDateLong(allDates[0])}`
-    + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок + загрузки</span>` : "");
+    + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок + загрузки</span>` : "")
+    + localDataResetLink();
   const catSel=document.getElementById("anCat"); if(!catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("anCat"), q=document.getElementById("anSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,analyticsPeriodN);
