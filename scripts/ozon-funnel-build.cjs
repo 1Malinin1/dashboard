@@ -37,7 +37,7 @@ function readReport(f){
   let hr=-1; for(let i=0;i<20;i++){ if((''+(rows[i]&&rows[i][0])).trim()==='Товары'){hr=i;break;} }
   if(hr<0) throw new Error('не нашёл шапку («Товары») в '+f);
   const top=rows[hr], sub=rows[hr+1]||[];
-  const cArt=idxOf(top,v=>v==='Артикул'), cDay=idxOf(top,v=>v==='День');
+  const cArt=idxOf(top,v=>v==='Артикул'), cDay=idxOf(top,v=>v==='День'), cOzSku=idxOf(top,v=>v==='SKU');
   // метрики воронки — по под-строке шапки
   const cImp=idxOf(sub,v=>v.startsWith('Показы всего'));
   const cCard=idxOf(sub,v=>v.startsWith('Посещения карточки'));
@@ -48,12 +48,13 @@ function readReport(f){
   const cSum=idxOf(sub,v=>v.startsWith('Заказано на сумму'));
   if([cArt,cDay,cImp,cCard,cCart,cOrd,cDeliv].some(x=>x<0))
     throw new Error('не нашёл ключевые колонки воронки в '+f+' (арт='+cArt+' день='+cDay+' показы='+cImp+' карточка='+cCard+' корзина='+cCart+' заказы='+cOrd+' доставлено='+cDeliv+')');
-  const recs=[]; let matched=0, skipped=0;
+  const recs=[]; let matched=0, skipped=0; const ozSkuByArt={};   // артикул продавца → числовой SKU Озона (для ссылки)
   const tot={imp:0,card:0,cart:0,ord:0,deliv:0,sum:0};
   for(let i=hr+1;i<rows.length;i++){
     const r=rows[i]; const art=(''+(r[cArt]||'')).trim(); const day=(''+(r[cDay]||'')).trim();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;          // не строка данных (напр. «Итого и среднее»)
     if(!supSet.has(art)){ skipped++; continue; }            // не наш товар
+    if(cOzSku>=0 && !ozSkuByArt[art]){ const s=(''+(r[cOzSku]||'')).trim(); if(s) ozSkuByArt[art]=s; }
     const oz=ozBySku[art], wb=wbBySup[art];
     const name=(oz&&oz.name)||(wb&&wb.name)||(''+(r[0]||'')).trim()||art;
     const category=(wb&&wb.category)||(oz&&oz.category)||'Без категории';
@@ -69,16 +70,20 @@ function readReport(f){
     matched++;
     tot.imp+=imp;tot.card+=card;tot.cart+=cart;tot.ord+=ord;tot.deliv+=deliv;tot.sum+=sum;
   }
-  return {recs,matched,skipped,tot};
+  return {recs,matched,skipped,tot,ozSkuByArt};
 }
 
-const byDate={};
+const byDate={}; const ozSkuByArt={};
 for(const f of files){
-  const {recs,matched,skipped,tot}=readReport(f);
+  const {recs,matched,skipped,tot,ozSkuByArt:m}=readReport(f);
   recs.forEach(r=>{ (byDate[r.date]||(byDate[r.date]=[])).push(r); });
+  Object.assign(ozSkuByArt,m);
   console.log('  '+path.basename(f)+': строк наших '+matched+' (пропущено чужих '+skipped+') · показы '+tot.imp.toLocaleString('ru-RU')
     +' · заказы '+tot.ord+' · доставлено '+tot.deliv+' · заказано '+Math.round(tot.sum).toLocaleString('ru-RU')+' ₽');
 }
+// вписать числовой SKU Озона в каталог (для прямой ссылки на ozon.ru/product/{ozonSku})
+let ozLinked=0; ozCat.forEach(c=>{ const s=ozSkuByArt[String(c.sku)]; if(s){ c.ozonSku=s; ozLinked++; } });
+console.log('  SKU Озона проставлен у '+ozLinked+' товаров каталога (для ссылок)');
 
 // мерж: новые даты перекрывают старые дни снимка воронки Озона
 const old=(RD.ozon.funnel||[]);
