@@ -2518,9 +2518,11 @@ function renderHomeTab(){
 
   // Верхняя строка (выручка) — свой график; прибыль вынесена в отдельный блок «Прибыль по дням» ниже
   // (на общей шкале с выручкой прибыль превращалась в невидимую полоску у нуля).
+  // dailyGroupedBars с одной серией: viewBox ~560px под ширину узкой карточки grid2 — иначе SVG
+  // сжимается почти вдвое и подписи осей/дат становятся ~6px (нечитаемо). metricBars(W=1000) тут не годится.
   document.getElementById("homeChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · розничная выручка со скидкой, по дням` : "нет данных";
   legend(document.getElementById("homeChartLegend"),[{name:"Выручка, ₽",color:cssv("--s1")}]);
-  metricBars(document.getElementById("ch-home-money"),dates,series.revenue,"Выручка, ₽",rub,cssv("--s1"));
+  dailyGroupedBars(document.getElementById("ch-home-money"),dates,[{name:"Выручка, ₽",color:cssv("--s1"),data:series.revenue}]);
 
   // «Прибыль по дням отдельным акцентом» — прибыль на своей шкале + накопительная линия
   document.getElementById("homeProfitDayCap").textContent =
