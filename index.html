@@ -354,6 +354,23 @@
   .cat-prof-row .val{text-align:right;font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap}
   .cat-prof-row .val.pos{color:var(--good-txt)} .cat-prof-row .val.neg{color:var(--crit-txt)}
   @media(max-width:620px){ .cat-prof-row{grid-template-columns:96px 1fr 88px;font-size:12.5px} }
+  /* Плашка «Что двигает прибыль» — топ-3 в плюсе / топ-3 в минусе */
+  .drivers{display:grid;grid-template-columns:1fr 1fr;gap:9px 22px;margin-top:8px}
+  @media(max-width:640px){ .drivers{grid-template-columns:1fr} }
+  .drv-col{display:flex;flex-direction:column;gap:5px}
+  .drv-h{font-size:11.5px;font-weight:640;letter-spacing:.02em;text-transform:uppercase;
+    display:flex;align-items:center;gap:7px;margin-bottom:1px}
+  .drv-h::before{content:"";width:8px;height:8px;border-radius:50%;flex:none}
+  .drv-h.pos{color:var(--good-txt)} .drv-h.pos::before{background:var(--s2)}
+  .drv-h.neg{color:var(--crit-txt)} .drv-h.neg::before{background:var(--crit)}
+  .drv-row{display:flex;align-items:center;justify-content:space-between;gap:12px;
+    padding:8px 11px;border-radius:10px;background:var(--surface-2);border:1px solid var(--border)}
+  .drv-rank{flex:none;width:18px;height:18px;border-radius:6px;display:grid;place-items:center;
+    font-size:10.5px;font-weight:700;background:var(--surface-3);color:var(--muted)}
+  .drv-nm{min-width:0;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:13px;font-weight:540}
+  .drv-nm .drv-sku{display:block;font-size:10.5px;color:var(--muted);font-weight:450}
+  .drv-val{font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap;font-size:13.5px;letter-spacing:-.01em}
+  .drv-val.pos{color:var(--good-txt)} .drv-val.neg{color:var(--crit-txt)}
   /* Плотные таблицы P&L (Главная/Финансы): узкие колонки, чтобы всё влезало без прокрутки вбок */
   #homeTable th,#homeTable td,#finTable th,#finTable td{padding:8px 7px}
   #homeTable th.metric,#homeTable td.metric,#finTable th.metric,#finTable td.metric{min-width:0;max-width:150px;padding-left:14px}
@@ -688,6 +705,12 @@
     <div class="kpis4" id="homeKpis"></div>
     <div class="callout-warn" id="homeCostWarning" hidden></div>
 
+    <div class="card" id="homeDriversCard" style="margin:0 0 14px">
+      <h3>Что двигает прибыль</h3>
+      <div class="cap">Топ-3 в плюсе и топ-3 в минусе за период — где делается прибыль и что её съедает.</div>
+      <div class="drivers" id="homeDrivers"></div>
+    </div>
+
     <div class="grid2">
       <div class="card">
         <h3>Выручка и прибыль по дням</h3>
@@ -701,6 +724,13 @@
         <div class="legend" id="homeUnitLegend"></div>
         <div id="ch-home-unit"></div>
       </div>
+    </div>
+
+    <div class="card" id="homeProfitDayCard" style="margin:0 0 14px">
+      <h3>Прибыль по дням</h3>
+      <div class="cap" id="homeProfitDayCap"></div>
+      <div class="legend" id="homeProfitDayLegend"></div>
+      <div id="ch-home-profit"></div>
     </div>
 
     <div class="card" id="homeCatCard" style="margin-bottom:14px">
@@ -1151,6 +1181,20 @@ function renderHomeCatProfit(rows){
       +`<div class="cat-prof-bar"><div class="fill" style="width:${w}%;background:${pos?cssv('--s2'):cssv('--crit')}"></div></div>`
       +`<span class="val ${pos?'pos':'neg'}">${pos?'+':'−'}${rub(Math.abs(x.profit))}</span></div>`;
   }).join("");
+}
+// Плашка «Что двигает прибыль»: топ-3 прибыльных и топ-3 убыточных товара под KPI —
+// сразу видно, кто в плюсе, кто в минусе, без листания таблицы.
+function renderProfitDrivers(rows){
+  const el=document.getElementById("homeDrivers"); if(!el) return;
+  const top=rows.filter(r=>r.profit>0).sort((a,b)=>b.profit-a.profit).slice(0,3);
+  const bottom=rows.filter(r=>r.profit<0).sort((a,b)=>a.profit-b.profit).slice(0,3);   // самый убыточный первым
+  const item=(r,i,pos)=>`<div class="drv-row"><span class="drv-rank">${i+1}</span>`
+    +`<span class="drv-nm" title="${esc(r.name)}">${esc(r.name)}<span class="drv-sku">${skuLink(r.sku)}${r.hasCost?"":' · <span class="muted">без с/с</span>'}</span></span>`
+    +`<span class="drv-val ${pos?"pos":"neg"}">${pos?"+":"−"}${rub(Math.abs(r.profit))}</span></div>`;
+  const col=(title,items,pos,emptyTxt)=>`<div class="drv-col"><div class="drv-h ${pos?"pos":"neg"}">${title}</div>`
+    +(items.length? items.map((r,i)=>item(r,i,pos)).join("") : `<div class="empty-hint" style="padding:9px 2px">${emptyTxt}</div>`)+`</div>`;
+  el.innerHTML = col("Больше всего в плюсе",top,true,"Прибыльных товаров за период нет")
+    + col("Тянут в минус",bottom,false,"Убыточных товаров нет 👍");
 }
 function saveCostOverrides(){ try{ localStorage.setItem(COST_OV_KEY,JSON.stringify(costOverrides)); }catch(e){} }
 function setCost(sku,val){ const n=parseFloat(val); if(!n||n<=0||isNaN(n)) delete costOverrides[sku]; else costOverrides[sku]=Math.round(n*100)/100; saveCostOverrides(); }
@@ -1616,6 +1660,53 @@ function dailyGroupedBars(mount,isoDates,series){
     });
     if((i%stride===0 && (n-1-i)>=stride) || i===n-1){ const tx=el("text",{x:cx,y:H-11,"text-anchor":"middle","font-size":11,fill:cssv("--muted")});
       tx.textContent=fmtDate(isoDates[i]); svg.appendChild(tx); }
+  }
+  mount.innerHTML="";mount.appendChild(svg);
+}
+
+// «Прибыль по дням отдельным акцентом»: прибыль на СВОЁЙ шкале (не тонет под столбами выручки).
+// Столбцы = прибыль за день (зелёный плюс / красный минус); линия = накопительная прибыль периода.
+// Нули обеих шкал совмещены (линия и столбцы делят одну ось нуля), чтобы не путать.
+function profitDayChart(mount,isoDates,daily){
+  const W=1000,H=220,m={t:18,r:16,b:32,l:66};
+  const iw=W-m.l-m.r, ih=H-m.t-m.b, n=Math.max(1,isoDates.length);
+  const sc=niceScale(Math.min(...daily,0),Math.max(...daily,0),4), span=(sc.max-sc.min)||1;
+  const Y=v=>m.t+ih-((v-sc.min)/span)*ih, y0=Y(0);
+  // накопительная прибыль
+  const cum=[]; let run=0; for(let i=0;i<n;i++){ run+=daily[i]||0; cum[i]=run; }
+  const cMax=Math.max(0,...cum)||1, cMin=Math.min(0,...cum);
+  const upH=y0-m.t, dnH=(m.t+ih)-y0;                    // высота над/под нулём столбцов
+  const CY=v=> v>=0 ? y0 - v/cMax*upH : y0 + v/(cMin||-1)*dnH;   // ноль накопительной = ноль столбцов
+  const band=iw/n, bw=Math.max(1,Math.min(24,band-Math.max(2,band*0.3)));
+  const posC=cssv("--s2"), negC=cssv("--crit"), lineC=cssv("--s1");
+  const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
+  // сетка + левая ось (прибыль/день)
+  for(let v=sc.min;v<=sc.max+1e-6;v+=sc.step){const y=Y(v);
+    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":Math.abs(v)<1e-9?1.3:.8}));
+    const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});tx.textContent=fmtAxis(v);svg.appendChild(tx);}
+  const maxLabels=n<=12?n:9, stride=Math.max(1,Math.round(n/maxLabels));
+  for(let i=0;i<n;i++){
+    const cx=m.l+band*i+band/2, v=daily[i]||0, y=Math.min(Y(v),y0), h=Math.abs(Y(v)-y0);
+    const rect=el("rect",{x:cx-bw/2,y,width:bw,height:Math.max(1,h),rx:Math.min(3,bw/2),fill:v<0?negC:posC});
+    rect.style.cursor="pointer";
+    rect.addEventListener("pointermove",ev=>{ showTip(
+      `<div class="t-hd">${fmtDateLong(isoDates[i])}</div>`
+      +`<div class="t-row"><span class="k"><i style="background:${v<0?negC:posC}"></i>Прибыль за день</span><span class="v">${rub(v)}</span></div>`
+      +`<div class="t-row"><span class="k"><i style="background:${lineC}"></i>Накопительно</span><span class="v">${rub(cum[i])}</span></div>`,ev.clientX,ev.clientY); });
+    rect.addEventListener("pointerleave",hideTip);
+    svg.appendChild(rect);
+    if((i%stride===0 && (n-1-i)>=stride) || i===n-1){ const tx=el("text",{x:cx,y:H-11,"text-anchor":"middle","font-size":11,fill:cssv("--muted")});
+      tx.textContent=fmtDate(isoDates[i]); svg.appendChild(tx); }
+  }
+  // линия накопительной прибыли + точка/подпись итога на конце
+  if(n>1){
+    let d=""; for(let i=0;i<n;i++){ const cx=m.l+band*i+band/2; d+=(i?"L":"M")+cx.toFixed(1)+" "+CY(cum[i]).toFixed(1)+" "; }
+    svg.appendChild(el("path",{d,fill:"none",stroke:lineC,"stroke-width":2,"stroke-linejoin":"round","stroke-linecap":"round",opacity:.92}));
+    const lx=m.l+band*(n-1)+band/2, ly=CY(cum[n-1]);
+    svg.appendChild(el("circle",{cx:lx,cy:ly,r:3.2,fill:lineC}));
+    const lblY = ly>m.t+22 ? ly-8 : ly+16;   // есть место сверху — подпись над точкой, иначе под
+    const lbl=el("text",{x:lx-6,y:lblY,"text-anchor":"end","font-size":11.5,"font-weight":700,fill:lineC});
+    lbl.textContent=(cum[n-1]>=0?"+":"−")+fmtAxis(Math.abs(cum[n-1])); svg.appendChild(lbl);
   }
   mount.innerHTML="";mount.appendChild(svg);
 }
@@ -2431,6 +2522,15 @@ function renderHomeTab(){
     {name:"Выручка, ₽",color:cssv("--s1"),data:series.revenue},
     {name:"Прибыль, ₽",color:cssv("--s2"),negColor:cssv("--crit"),data:profitSeries}]);
 
+  // «Прибыль по дням отдельным акцентом» — прибыль на своей шкале + накопительная линия
+  document.getElementById("homeProfitDayCap").textContent =
+    (dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · ` : "")
+    + `прибыль за каждый день${hasAds?" (после рекламы)":""}, линия — накопительно за период`;
+  legend(document.getElementById("homeProfitDayLegend"),[
+    {name:"Прибыль за день",color:cssv("--s2")},{name:"Убыток за день",color:cssv("--crit")},{name:"Накопительно",color:cssv("--s1")}]);
+  if(dates.length) profitDayChart(document.getElementById("ch-home-profit"),dates,profitSeries);
+  else document.getElementById("ch-home-profit").innerHTML=`<div class="empty-hint">Нет данных за период</div>`;
+
   const unitParts=[{name:"Прибыль",v:profit/(netQty||1),color:cssv("--s2")}];
   if(hasAds) unitParts.push({name:"Реклама",v:ad.total/(netQty||1),color:cssv("--s1")});
   unitParts.push({name:"Удержания WB",v:wbHold/(netQty||1),color:cssv("--s3")});
@@ -2442,6 +2542,7 @@ function renderHomeTab(){
   // строки таблицы (единый свод P&L по товарам; только активные — как в Аналитике)
   let rows=productPnL(dates,cat,q).filter(hasActivity);
   renderHomeCatProfit(rows);
+  renderProfitDrivers(rows);
   if(homeNoCostOnly) rows=rows.filter(r=>!r.hasCost);
   rows=sortRows(rows,homeSortState,{
     name:r=>r.name, category:r=>r.category, qty:r=>r.net, revenue:r=>r.revenue,
