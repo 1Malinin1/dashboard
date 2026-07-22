@@ -537,7 +537,7 @@
   .colfilter-panel{overflow:hidden;min-width:210px;width:max-content;max-width:min(340px,92vw)}
   .colfilter-panel .cf-search{margin:0 2px 6px;padding:7px 10px;border:1px solid var(--border-2);border-radius:7px;
     background:var(--surface-2);color:var(--text-1);font:inherit;font-size:13px;width:calc(100% - 4px);flex:none}
-  .colfilter-panel .cf-list{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
+  .colfilter-panel .cf-list{flex:1 1 auto;min-height:0;overflow-y:auto;overscroll-behavior:contain;display:flex;flex-direction:column;gap:1px}
   .colfilter-panel .uisel-opt .cf-cnt{margin-left:auto;padding-left:12px;color:var(--muted);font-size:11px;font-weight:500}
   .colfilter-panel .uisel-opt.selected .cf-cnt{color:var(--accent)}
   .period-compare{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--grid)}
@@ -2967,7 +2967,9 @@ document.addEventListener("keydown",e=>{ if(e.key==="Escape"){closeAllUisel();cl
 // прокрутка/ресайз сбивают позицию fixed-панели — просто закрываем
 window.addEventListener("scroll",()=>{closeAllUisel();closeColFilter();});
 window.addEventListener("resize",()=>{closeAllUisel();closeColFilter();});
-document.addEventListener("scroll",closeColFilter,true);   // внутренний скролл таблицы (фаза захвата)
+// внутренний скролл таблицы закрывает панель (позиция fixed съедет), НО скролл
+// самого списка значений внутри панели — не трогаем, иначе не долистать до нижних значений.
+document.addEventListener("scroll",e=>{ if(_colFilterPanel && _colFilterPanel.contains(e.target)) return; closeColFilter(); },true);
 // заменяем ВСЕ выпадающие списки на кастомные (открываются вниз)
 document.querySelectorAll("select").forEach(enhanceSelect);
 
