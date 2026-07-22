@@ -93,6 +93,16 @@
   @media (prefers-reduced-motion:reduce){body::before{animation:none}}
   ::selection{background:color-mix(in srgb,var(--accent) 26%,transparent)}
   :focus-visible{outline:none;box-shadow:var(--ring);border-radius:8px}
+  /* Скроллбары — в цветах темы (через --muted), а не «кусок белого фона».
+     color-mix с --muted сам адаптируется под светлую/тёмную тему. */
+  *{scrollbar-width:thin;scrollbar-color:color-mix(in srgb,var(--muted) 55%,transparent) transparent}
+  ::-webkit-scrollbar{width:12px;height:12px}
+  ::-webkit-scrollbar-track{background:transparent}
+  ::-webkit-scrollbar-thumb{background:color-mix(in srgb,var(--muted) 46%,transparent);
+    border-radius:99px;border:3px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:color-mix(in srgb,var(--muted) 74%,transparent);
+    border:2px solid transparent;background-clip:padding-box}
+  ::-webkit-scrollbar-corner{background:transparent}
   .wrap{max-width:1200px;margin:0 auto;padding:24px 22px 96px}
   .num{font-variant-numeric:tabular-nums;letter-spacing:-.01em}
 
@@ -350,9 +360,18 @@
   #homeTable td.name-cell,#finTable td.name-cell{max-width:150px}
   #homeTable td.name-cell .sku,#finTable td.name-cell .sku{font-size:10.5px}
   /* компактная таблица оборачиваемости — чтобы «Дозаказать»/«Статус» влезали без прокрутки вбок */
-  #turnTable th,#turnTable td{padding:8px 9px}
-  #turnTable td.name-cell{max-width:210px}
+  /* плотная сетка: 9 колонок должны влезать без горизонтальной прокрутки */
+  #turnTable th,#turnTable td{padding:7px 5px}
+  #turnTable thead th{font-size:11px;letter-spacing:.005em}
+  #turnTable th.metric,#turnTable td.metric{min-width:150px}
+  #turnTable td.name-cell{max-width:150px}
   #turnTable td.name-cell .sku{font-size:10.5px}
+  #turnTable .col-filter{margin-left:2px}
+  #turnTable td .badge{padding:3px 8px 3px 7px;font-size:11px}
+  /* вторичная инфа (в пути / конт. / →дн) — 2-й строкой, а не вширь (ряд и так 2-строчный из-за названия) */
+  #turnTable td .sub2{display:block;font-size:10px;font-weight:500;line-height:1.25;margin-top:1px}
+  #turnTable td .sub2.acc{color:var(--accent);font-weight:600}
+  #turnTable td .sub2.mut{color:var(--muted)}
   #homeTable input.cost-input{width:64px}
   table.rnp tbody tr.row-critical td{background:color-mix(in srgb,var(--crit) 6%,var(--surface))}
   table.rnp tbody tr.row-critical:hover td{background:color-mix(in srgb,var(--crit) 10%,var(--surface))}
@@ -1243,7 +1262,9 @@ function turnoverList(){
 // дней запаса; как только меньше — заказываем фикс. партию на OZ_COVER_DAYS продаж (6 мес).
 const TURN_MIN_DAYS=130, TURN_COVER_DAYS=180;   // держим минимум 130 дн запаса; партия дозаказа = 6 мес продаж
 const TURN_STATUS={critical:"Критично — нет остатка",warning:"Пора дозаказать",good:"Норма",nodata:"Нет продаж",discontinued:"На вывод"};
-function turnBadge(s){ return `<span class="badge ${s==='discontinued'?'nodata':s}"><span class="d"></span>${TURN_STATUS[s]}</span>`; }
+// Короткие подписи для бейджа в таблице (полные — в фильтре/KPI). «Критично — нет остатка» широкий, режем.
+const TURN_STATUS_SHORT={critical:"Критично",warning:"Пора дозаказать",good:"Норма",nodata:"Нет продаж",discontinued:"На вывод"};
+function turnBadge(s){ return `<span class="badge ${s==='discontinued'?'nodata':s}" title="${esc(TURN_STATUS[s])}"><span class="d"></span>${TURN_STATUS_SHORT[s]}</span>`; }
 // Простая оборачиваемость — ОДНА логика для ВБ и Озона (отличаются только источники полей):
 //   ВБ: wbStock · pending(в пути) · buyoutPct14d · containerQty · productionStatus(«На вывод»);
 //   Озон: ozStock · ozTransit · ozBuyout; размер контейнера — из связанного ВБ-товара (кратность общая).
@@ -1390,10 +1411,11 @@ function renderTurnoverSimple(){
     avgD:r=>r.avgD, buyout:r=>r.buyout, sales:r=>r.salesPerDay, daysLeft:r=>dl(r.daysLeft),
     reorder:r=>r.reorder, whenOrder:r=>r.whenOrder==null?1e9:r.whenOrder, status:r=>rank[r.status]*1e9+dl(r.daysLeft),
   });
-  const toOrder=all.filter(r=>r.reorder>0), orderTotal=toOrder.reduce((a,r)=>a+r.reorder,0);
-  const crit=all.filter(r=>r.status==="critical").length, stockSum=all.reduce((a,r)=>a+r.stock,0);
+  // KPI считаем по ТЕКУЩЕЙ выборке (фильтры/категория), чтобы цифры менялись под выбранное — не по всему магазину.
+  const toOrder=rows.filter(r=>r.reorder>0), orderTotal=toOrder.reduce((a,r)=>a+r.reorder,0);
+  const crit=rows.filter(r=>r.status==="critical").length, stockSum=rows.reduce((a,r)=>a+r.stock,0);
   document.getElementById("turnKpis").innerHTML=[
-    {lbl:"Товаров к дозаказу (<130 дн)",val:toOrder.length+" из "+all.length,valColor:toOrder.length?"var(--accent)":"var(--text-1)"},
+    {lbl:"Товаров к дозаказу (<130 дн)",val:toOrder.length+" из "+rows.length,valColor:toOrder.length?"var(--accent)":"var(--text-1)"},
     {lbl:"Дозаказать всего, шт",val:fmt(orderTotal)},
     {lbl:"Критично — нет остатка",val:crit,valColor:crit>0?"var(--crit-txt)":"var(--text-1)"},
     {lbl:"Суммарный остаток, шт",val:fmt(stockSum)},
@@ -1410,12 +1432,12 @@ function renderTurnoverSimple(){
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
       <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>
-      <td>${fmt(r.stock)}${r.transit?` <span style="color:var(--accent);font-weight:600">+${fmt(r.transit)} в пути</span>`:""}</td>
+      <td>${fmt(r.stock)}${r.transit?`<span class="sub2 acc">+${fmt(r.transit)} в пути</span>`:""}</td>
       <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${Math.round(r.buyout*100)}%</td>
       <td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
-      <td>${r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : (Math.round(r.daysBase)+((r.transit&&r.daysLeft!==r.daysBase&&r.daysLeft!==Infinity)?` <span style="color:var(--accent);font-weight:600">→ ${Math.round(r.daysLeft)}</span>`:""))}</td>
-      <td style="font-weight:650">${r.reorder>0? fmt(r.reorder)+" шт"+(r.containers?` <span class="muted" style="font-weight:400">(${r.containers} конт.)</span>`:"") : "—"}</td>
+      <td>${r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : (Math.round(r.daysBase)+((r.transit&&r.daysLeft!==r.daysBase&&r.daysLeft!==Infinity)?`<span class="sub2 acc">→ ${Math.round(r.daysLeft)} с пути</span>`:""))}</td>
+      <td style="font-weight:650">${r.reorder>0? fmt(r.reorder)+" шт"+(r.containers?`<span class="sub2 mut">${r.containers} конт.</span>`:"") : "—"}</td>
       <td>${r.whenOrder==null?"—":(r.whenOrder<=0?`<span style="color:var(--accent);font-weight:650">сейчас</span>`:`<span class="muted">через ${fmt(r.whenOrder)} дн</span>`)}</td>
       <td>${turnBadge(r.status)}</td>
     </tr>`;
