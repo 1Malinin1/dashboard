@@ -37,7 +37,10 @@ function readDay(f){
   const m=per.match(/(\d{2})-(\d{2})-(\d{4})/); if(!m) throw new Error('нет даты периода в "'+per+'" ('+f+')');
   const iso=m[3]+'-'+m[2]+'-'+m[1];
   const rows=XLSX.utils.sheet_to_json(wb.Sheets['Товары'],{header:1,raw:false,defval:''});
-  const H=rows[0].map(x=>''+x);
+  // шапка не всегда в row 0: в новом формате row 0 — заголовок отчёта, а шапка в row 1
+  // (плюс появился лишний столбец «Артикул продавца» — читаем по ИМЕНИ через indexOf, сдвиг не важен).
+  let hr=0; for(let i=0;i<Math.min(8,rows.length);i++){ if(rows[i].map(x=>''+x).indexOf('Артикул WB')>=0){ hr=i; break; } }
+  const H=rows[hr].map(x=>''+x);
   const ix=n=>H.indexOf(n);
   const c={sku:ix('Артикул WB'),name:ix('Название'),cat:ix('Предмет'),
     imp:ix('Показы'),cv:ix('Переходы в карточку'),ac:ix('Положили в корзину'),af:ix('Добавили в отложенные'),
@@ -47,7 +50,7 @@ function readDay(f){
   if(c.sku<0||c.imp<0||c.oq<0) throw new Error('не нашёл ключевые колонки воронки в '+f+' (Артикул WB/Показы/Заказали)');
   const recs=[]; let matched=0;
   const tot={imp:0,cv:0,ac:0,oq:0,bq:0,cq:0,os:0,bs:0,cs:0};
-  for(let i=1;i<rows.length;i++){
+  for(let i=hr+1;i<rows.length;i++){
     const r=rows[i]; const sku=(''+(r[c.sku]||'')).trim(); if(!skuSet.has(sku)) continue; matched++;
     const rec={id:iso+'_'+sku,date:iso,sku,name:nameBySku[sku]||(''+(r[c.name]||'')).trim(),category:catBySku[sku]||(''+(r[c.cat]||'')).trim(),
       impressions:num(r[c.imp]),cardViews:num(r[c.cv]),addCart:num(r[c.ac]),addFav:c.af>=0?num(r[c.af]):0,

@@ -21,10 +21,13 @@ function readDay(f){
   const m=per.match(/(\d{2})-(\d{2})-(\d{4})/); if(!m) throw new Error('нет даты в "'+per+'" ('+f+')');
   const iso=m[3]+'-'+m[2]+'-'+m[1];
   const rows=XLSX.utils.sheet_to_json(wb.Sheets['Товары'],{header:1,raw:false,defval:''});
-  const H=rows[0],iA=H.indexOf('Артикул WB'),iQ=H.indexOf('Заказали товаров, шт'),
+  // шапка не всегда в row 0: в новом формате row 0 — заголовок отчёта, а шапка в row 1
+  // (плюс появился лишний столбец «Артикул продавца» — читаем по ИМЕНИ, так что сдвиг не важен).
+  let hr=0; for(let i=0;i<Math.min(8,rows.length);i++){ if(rows[i].map(x=>''+x).indexOf('Артикул WB')>=0){ hr=i; break; } }
+  const H=rows[hr].map(x=>''+x),iA=H.indexOf('Артикул WB'),iQ=H.indexOf('Заказали товаров, шт'),
     iOrdR=H.indexOf('Заказали на сумму, ₽'),iBuyR=H.indexOf('Выкупили на сумму, ₽');
   const bySku={},money={};let tot=0,ordR=0,buyR=0;
-  for(let i=1;i<rows.length;i++){const sku=(''+rows[i][iA]).trim();if(!catSet.has(sku))continue;
+  for(let i=hr+1;i<rows.length;i++){const sku=(''+rows[i][iA]).trim();if(!catSet.has(sku))continue;
     const q=num(rows[i][iQ]),o=num(rows[i][iOrdR]),b=num(rows[i][iBuyR]);
     bySku[sku]=(bySku[sku]||0)+q; tot+=q;
     if(o||b){ money[sku]=[Math.round(o),Math.round(b)]; ordR+=o; buyR+=b; }
