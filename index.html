@@ -210,6 +210,15 @@
   table.rnp th.sortable:hover{color:var(--text-1);background:var(--surface-3)}
   table.rnp th.sortable.active{color:var(--accent)}
   table.rnp th.sortable .sort-arrow{display:inline-block;min-width:11px;margin-left:2px;font-size:9px;color:var(--accent)}
+  table.rnp th.sortable .th-in{display:inline-flex;align-items:center;gap:1px}
+  table.rnp .col-filter{display:inline-flex;align-items:center;justify-content:center;margin-left:4px;
+    min-width:16px;height:16px;padding:0 2px;border-radius:4px;color:var(--muted);opacity:.5;cursor:pointer;
+    transition:opacity .12s,color .12s,background .12s}
+  table.rnp .col-filter svg{fill:currentColor}
+  table.rnp th.sortable:hover .col-filter{opacity:.85}
+  table.rnp .col-filter:hover{background:var(--surface-3);color:var(--text-1);opacity:1}
+  table.rnp .col-filter.active{color:var(--accent);opacity:1}
+  table.rnp .col-filter .cf-count{font-size:8.5px;font-weight:700;margin-left:1px;font-style:normal;line-height:1}
   table.rnp th.metric,table.rnp td.metric{text-align:left;position:sticky;left:0;
     background:var(--surface);z-index:1;color:var(--text-1);font-weight:520;min-width:210px}
   table.rnp thead th.metric{z-index:3;background:var(--surface-2)}
@@ -506,6 +515,12 @@
   .uisel-opt.selected .uisel-check::after{content:"";width:4px;height:8px;border:solid #fff;
     border-width:0 2px 2px 0;transform:rotate(45deg) translateY(-1px)}
   .uisel-opt.uisel-all{border-bottom:1px solid var(--grid);border-radius:6px 6px 0 0;margin-bottom:2px;padding-bottom:9px}
+  .colfilter-panel{overflow:hidden;min-width:210px;width:max-content;max-width:min(340px,92vw)}
+  .colfilter-panel .cf-search{margin:0 2px 6px;padding:7px 10px;border:1px solid var(--border-2);border-radius:7px;
+    background:var(--surface-2);color:var(--text-1);font:inherit;font-size:13px;width:calc(100% - 4px);flex:none}
+  .colfilter-panel .cf-list{flex:1 1 auto;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:1px}
+  .colfilter-panel .uisel-opt .cf-cnt{margin-left:auto;padding-left:12px;color:var(--muted);font-size:11px;font-weight:500}
+  .colfilter-panel .uisel-opt.selected .cf-cnt{color:var(--accent)}
   .period-compare{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--grid)}
   .period-box{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:12px 15px;flex:1;min-width:240px}
   .period-box .lbl{font-size:12px;color:var(--muted);margin-bottom:7px;font-weight:620;letter-spacing:.01em}
@@ -741,22 +756,13 @@
       <input type="search" id="turnSearch" placeholder="Поиск по артикулу или названию…">
       <select id="turnCat" multiple></select>
       <select id="turnProduct" multiple data-all="Все товары" data-plural="товар,товара,товаров"></select>
-      <select id="turnStatus">
-        <option value="">Все статусы</option>
-        <option value="critical">Критично — нет в пути</option>
-        <option value="ordered">Мало, но уже заказано</option>
-        <option value="warning">Скоро понадобится</option>
-        <option value="good">Запаса достаточно</option>
-        <option value="nodata">Нет продаж/данных</option>
-        <option value="discontinued">Выводится из ассортимента</option>
-      </select>
       <select id="turnWindow">
         <option value="14">Скорость: за 14 дней</option>
         <option value="30" selected>Скорость: за 30 дней</option>
         <option value="60">Скорость: за 60 дней</option>
       </select>
       <span class="count" id="turnCount"></span>
-      <button class="btn" id="turnExportBtn">Скачать список дозаказа CSV</button>
+      <button class="btn" id="turnExportBtn">Скачать таблицу CSV</button>
     </div>
     <div class="table-card">
       <div class="table-scroll"><table class="rnp" id="turnTable"></table></div>
@@ -1218,6 +1224,7 @@ function sortRows(rows,state,accessors){
 }
 function wireSortable(tableId,state,onChange){
   document.getElementById(tableId).addEventListener("click",e=>{
+    if(e.target.closest(".col-filter")) return;   // клик по кнопке-воронке — фильтр, не сортировка
     const th=e.target.closest("th[data-key]"); if(!th) return;
     const key=th.dataset.key;
     if(state.key===key) state.dir=-state.dir; else { state.key=key; state.dir=1; }
@@ -1282,18 +1289,101 @@ function simpleTurnList(){
     return {sku:c.sku,name:c.name,category:c.category,stock,transit,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,containers,contQty,status,whenOrder,reorderCost};
   });
 }
-function renderTurnoverSimple(){
-  const oz = _appliedMp==="ozon";
-  const prodSel=document.getElementById("turnProduct"); if(prodSel && !prodSel.options.length) fillProductSelect(prodSel);
-  const all=simpleTurnList().filter(r=>r.status!=="discontinued");   // товары «На вывод» убираем из таблицы совсем
+// ---- Фильтры по значениям в каждой колонке (Excel-стиль): комбинируются логическим И,
+//      влияют и на таблицу, и на выгрузку CSV. Работают одинаково для ВБ и Озона. ----
+// turnColFilters[ключ] = Set выбранных значений (строкой, как в подписи колонки). Пусто/нет = без фильтра.
+let turnColFilters={};
+const TURN_STATUS_RANK={"Критично — нет остатка":0,"Пора дозаказать":1,"Норма":2,"Нет продаж":3};
+// def.val(r) — каноничное значение строки для колонки (для фильтра и списка значений);
+// def.sortVal(v) — число для сортировки списка значений (спец-значения ∞/—/сейчас разложены осмысленно).
+function turnColDefs(){
+  const n1=x=>x.toLocaleString("ru-RU",{maximumFractionDigits:1});
+  const pnum=v=>{const n=parseFloat((""+v).replace(/\s/g,"").replace(/[^\d.,-]/g,"").replace(",","."));return isNaN(n)?0:n;};
+  return [
+    {key:"currentStock", val:r=>fmt(r.stock), sortVal:pnum},
+    {key:"avgD",         val:r=>n1(r.avgD), sortVal:pnum},
+    {key:"buyout",       val:r=>Math.round(r.buyout*100)+"%", sortVal:pnum},
+    {key:"sales",        val:r=>n1(r.salesPerDay), sortVal:pnum},
+    {key:"daysLeft",     val:r=> r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : String(Math.round(r.daysBase)),
+                         sortVal:v=> v==="∞"?1e12 : v==="—"? -1 : pnum(v)},
+    {key:"reorder",      val:r=> r.reorder>0? fmt(r.reorder)+" шт" : "—", sortVal:v=> v==="—"?0:pnum(v)},
+    {key:"whenOrder",    val:r=> r.whenOrder==null?"—":(r.whenOrder<=0?"сейчас":"через "+r.whenOrder+" дн"),
+                         sortVal:v=> v==="сейчас"?0 : v==="—"?1e12 : pnum(v)},
+    {key:"status",       val:r=>TURN_STATUS[r.status], sortVal:v=>TURN_STATUS_RANK[v]!=null?TURN_STATUS_RANK[v]:9},
+  ];
+}
+function turnColDef(key){ return turnColDefs().find(d=>d.key===key); }
+// строки с учётом фильтров панели (поиск/категории/товары) + всех колоночных фильтров, кроме exceptKey
+function turnFilteredRows(all, exceptKey){
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
-  const cp=catPred(selCats("turnCat")), statusF=document.getElementById("turnStatus").value;
-  const selProd=selCats("turnProduct");
+  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
   let rows=all;
   if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
-  if(statusF) rows=rows.filter(r=>r.status===statusF);
+  turnColDefs().forEach(def=>{ if(def.key===exceptKey) return;
+    const set=turnColFilters[def.key]; if(set&&set.size) rows=rows.filter(r=>set.has(def.val(r))); });
+  return rows;
+}
+// заголовок «сортируемый + фильтруемый» (кнопка-воронка). Ключ сортировки = ключ фильтра.
+function thSortF(label,key,state,extraClass){
+  const active=state.key===key, arrow=active?(state.dir===1?"▲":"▼"):"";
+  const fset=turnColFilters[key], fActive=fset&&fset.size;
+  return `<th class="sortable${active?" active":""}${extraClass?" "+extraClass:""}" data-key="${esc(key)}">`
+    +`<span class="th-in">${label}<span class="sort-arrow">${arrow}</span>`
+    +`<span class="col-filter${fActive?" active":""}" data-fkey="${esc(key)}" title="Фильтр по колонке" role="button" tabindex="0">`
+    +`<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M0.6 1.4h10.8L7.1 6.9v4.3L4.9 9.9V6.9z"/></svg>`
+    +(fActive?`<b class="cf-count">${fset.size}</b>`:"")+`</span></span></th>`;
+}
+let _colFilterKey=null, _colFilterPanel=null;
+function closeColFilter(){ if(_colFilterPanel){_colFilterPanel.remove();_colFilterPanel=null;} _colFilterKey=null; }
+function openColFilter(anchor,key){
+  if(_colFilterKey===key){ closeColFilter(); return; }   // повторный клик по той же колонке — закрыть
+  closeColFilter(); closeAllUisel();
+  const def=turnColDef(key); if(!def) return;
+  const all=simpleTurnList().filter(r=>r.status!=="discontinued");
+  const base=turnFilteredRows(all,key);                  // значения — с учётом ДРУГИХ активных фильтров
+  const counts=new Map();
+  base.forEach(r=>{ const v=def.val(r); counts.set(v,(counts.get(v)||0)+1); });
+  const vals=[...counts.keys()].sort((a,b)=>{ const d=def.sortVal(a)-def.sortVal(b); return d||(""+a).localeCompare(""+b,"ru"); });
+  const set=turnColFilters[key]||(turnColFilters[key]=new Set());
+  const panel=document.createElement("div"); panel.className="uisel-panel colfilter-panel";
+  panel.addEventListener("click",e=>e.stopPropagation());
+  const searchable=vals.length>12; let searchInput=null;
+  if(searchable){ searchInput=document.createElement("input"); searchInput.type="search"; searchInput.className="cf-search"; searchInput.placeholder="Поиск значения…"; panel.appendChild(searchInput); }
+  const listWrap=document.createElement("div"); listWrap.className="cf-list"; panel.appendChild(listWrap);
+  const allRow=document.createElement("button"); allRow.type="button"; allRow.className="uisel-opt uisel-all";
+  allRow.innerHTML=`<span class="uisel-check"></span><span class="uisel-txt">Все значения</span>`;
+  const syncAll=()=>allRow.classList.toggle("selected",set.size===0);
+  const apply=()=>{ if(set.size===0) delete turnColFilters[key]; else turnColFilters[key]=set; renderTurnoverSimple(); };
+  allRow.addEventListener("click",()=>{ set.clear(); [...listWrap.querySelectorAll(".uisel-opt")].forEach(el=>{ if(!el.classList.contains("uisel-all")) el.classList.remove("selected"); }); syncAll(); apply(); });
+  listWrap.appendChild(allRow);
+  vals.forEach(v=>{
+    const row=document.createElement("button"); row.type="button"; row.dataset.v=v;
+    row.className="uisel-opt"+(set.has(v)?" selected":"");
+    row.innerHTML=`<span class="uisel-check"></span><span class="uisel-txt">${esc(v)}</span><span class="cf-cnt">${counts.get(v)}</span>`;
+    row.addEventListener("click",()=>{ if(set.has(v)) set.delete(v); else set.add(v);
+      row.classList.toggle("selected",set.has(v)); syncAll(); apply(); });
+    listWrap.appendChild(row);
+  });
+  syncAll();
+  if(searchable) searchInput.addEventListener("input",()=>{ const t=searchInput.value.trim().toLowerCase();
+    [...listWrap.querySelectorAll(".uisel-opt")].forEach(el=>{ if(el.classList.contains("uisel-all")) return;
+      el.style.display=(!t||el.dataset.v.toLowerCase().includes(t))?"":"none"; }); });
+  document.body.appendChild(panel);
+  const r=anchor.getBoundingClientRect();
+  panel.style.position="fixed"; panel.style.top=(r.bottom+6)+"px";
+  const pw=Math.max(190,panel.offsetWidth); let left=r.left; if(left+pw>window.innerWidth-12) left=window.innerWidth-12-pw;
+  panel.style.left=Math.max(12,left)+"px";
+  panel.style.maxHeight=Math.max(180,Math.min(360,window.innerHeight-r.bottom-24))+"px";
+  _colFilterPanel=panel; _colFilterKey=key;
+  if(searchable) searchInput.focus();
+}
+function renderTurnoverSimple(){
+  const oz = _appliedMp==="ozon";
+  const prodSel=document.getElementById("turnProduct"); if(prodSel && !prodSel.options.length) fillProductSelect(prodSel);
+  const all=simpleTurnList().filter(r=>r.status!=="discontinued");   // товары «На вывод» убираем из таблицы совсем
+  let rows=turnFilteredRows(all,null);
   const rank={critical:0,warning:1,good:2,nodata:3,discontinued:4}, dl=v=>v===Infinity?1e9:v;
   rows=sortRows(rows,turnSortState,{
     name:r=>r.name, category:r=>r.category, currentStock:r=>r.stock,
@@ -1315,8 +1405,8 @@ function renderTurnoverSimple(){
   document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров · заказы за 7 дн · "+bwTxt;
   if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}
-    ${thSort("Остаток "+(oz?"Ozon":"WB"),"currentStock",turnSortState)}${thSort("Заказов/дн","avgD",turnSortState)}${thSort("% выкупа","buyout",turnSortState)}
-    ${thSort("Продаж/дн","sales",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Дозаказать","reorder",turnSortState)}${thSort("Заказать","whenOrder",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
+    ${thSortF("Остаток "+(oz?"Ozon":"WB"),"currentStock",turnSortState)}${thSortF("Заказов/дн","avgD",turnSortState)}${thSortF("% выкупа","buyout",turnSortState)}
+    ${thSortF("Продаж/дн","sales",turnSortState)}${thSortF("Хватит, дн","daysLeft",turnSortState)}${thSortF("Дозаказать","reorder",turnSortState)}${thSortF("Заказать","whenOrder",turnSortState)}${thSortF("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
       <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>
@@ -1355,21 +1445,31 @@ function renderTurnoverTab(){
   if(!catSel.options.length) fillCategorySelect(catSel);
   renderTurnoverSimple();   // единая простая модель для ВБ и Озона
 }
-// Экспорт списка дозаказа (простая модель): товары, где reorder>0, с суммой по себестоимости и сроком.
+// Экспорт таблицы оборачиваемости — СТРОГО по текущим фильтрам и сортировке (что видишь, то и качаешь).
 function exportTurnoverCSV(){
-  if(_appliedMp==="all"){ alert("Дозаказ считается по площадке — выберите «Wildberries» или «Ozon»."); return; }
+  if(_appliedMp==="all"){ alert("Оборачиваемость считается по площадке — выберите «Wildberries» или «Ozon»."); return; }
   const oz = _appliedMp==="ozon";
-  const rows=simpleTurnList().filter(r=>r.status!=="discontinued" && r.reorder>0).sort((a,b)=>b.reorder-a.reorder);
-  if(!rows.length){ alert("Нечего дозаказывать — по всем товарам запаса достаточно."); return; }
-  let csv="Артикул;Название;Категория;Продаж в день;Хватит дней;Дозаказать шт;Контейнеров;Сумма по себестоимости ₽;Когда заказать\n";
+  const all=simpleTurnList().filter(r=>r.status!=="discontinued");
+  const dl=v=>v===Infinity?1e9:v, rank={critical:0,warning:1,good:2,nodata:3};
+  let rows=turnFilteredRows(all,null);
+  rows=sortRows(rows,turnSortState,{
+    name:r=>r.name, category:r=>r.category, currentStock:r=>r.stock, avgD:r=>r.avgD, buyout:r=>r.buyout,
+    sales:r=>r.salesPerDay, daysLeft:r=>dl(r.daysLeft), reorder:r=>r.reorder,
+    whenOrder:r=>r.whenOrder==null?1e9:r.whenOrder, status:r=>rank[r.status]*1e9+dl(r.daysLeft) });
+  if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
+  const cols=["Артикул","Название","Категория","Остаток","В пути","Заказов в день (7д)","% выкупа",
+    "Продаж в день","Хватит дней","Дозаказать шт","Контейнеров","Сумма по себестоимости ₽","Когда заказать","Статус"];
+  let csv=cols.join(";")+"\n";
   let totQty=0,totSum=0;
   rows.forEach(r=>{ totQty+=r.reorder; totSum+=r.reorderCost||0;
     const when = r.whenOrder==null? "" : (r.whenOrder<=0? "сейчас" : ("через "+r.whenOrder+" дн"));
+    const daysTxt = r.salesPerDay<=0 ? (r.covered>0?"∞":"") : Math.round(r.daysBase);
     csv+=[r.sku,(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "),
-      r.salesPerDay.toFixed(1), r.daysLeft===Infinity?"":Math.round(r.daysLeft),
-      r.reorder, r.containers||"", r.reorderCost? Math.round(r.reorderCost) : "", when].join(";")+"\n"; });
-  csv+="ИТОГО;;;;;"+totQty+";;"+Math.round(totSum)+";\n";
-  downloadCSV((oz?"ozon":"wb")+"-дозаказ.csv",csv);
+      r.stock, r.transit||"", r.avgD.toFixed(1), Math.round(r.buyout*100)+"%", r.salesPerDay.toFixed(1),
+      daysTxt, r.reorder||"", r.containers||"", r.reorderCost?Math.round(r.reorderCost):"", when, TURN_STATUS[r.status]].join(";")+"\n"; });
+  const tot=Array(cols.length).fill(""); tot[0]="ИТОГО"; tot[9]=totQty; tot[11]=Math.round(totSum);
+  csv+=tot.join(";")+"\n";
+  downloadCSV((oz?"ozon":"wb")+"-оборачиваемость.csv",csv);
 }
 
 /* ---- динамика заказов: диапазон дат, агрегация, график ---- */
@@ -2463,16 +2563,18 @@ function renderAnalyticsTab(){
   renderReturns(all);
   renderBreakeven(all);
 }
-// Разбор возвратов: товары с возвратами, сортировка по числу возвратов; ₽ — валовая стоимость возвращённого.
+// Разбор возвратов: товары с возвратами; сортировка по любой колонке (по умолчанию — число возвратов).
+let anRetSortState={key:"returnsQty",dir:-1};
 function renderReturns(all){
-  const withRet=all.filter(r=>r.returnsQty>0)
-    .map(r=>({...r, lostRub:(r.net>0? r.revenue/r.net : 0)*r.returnsQty}))
-    .sort((a,b)=>b.returnsQty-a.returnsQty);
+  let withRet=all.filter(r=>r.returnsQty>0)
+    .map(r=>({...r, lostRub:(r.net>0? r.revenue/r.net : 0)*r.returnsQty}));
+  withRet=sortRows(withRet,anRetSortState,{
+    name:r=>r.name||"", qty:r=>r.qty, returnsQty:r=>r.returnsQty, returnRate:r=>r.returnRate, lostRub:r=>r.lostRub });
   document.getElementById("anRetNote").textContent = withRet.length
     ? `${withRet.length} товаров · всего ${fmt(withRet.reduce((a,r)=>a+r.returnsQty,0))} шт возвратов`
     : "возвратов нет";
   document.getElementById("anReturnsTable").innerHTML = withRet.length
-    ? `<thead><tr><th class="metric">Товар</th><th>Продано</th><th>Возвраты</th><th>% возврата</th><th>Возвращено ~₽</th></tr></thead><tbody>`
+    ? `<thead><tr>${thSort("Товар","name",anRetSortState,"metric")}${thSort("Продано","qty",anRetSortState)}${thSort("Возвраты","returnsQty",anRetSortState)}${thSort("% возврата","returnRate",anRetSortState)}${thSort("Возвращено ~₽","lostRub",anRetSortState)}</tr></thead><tbody>`
       + withRet.slice(0,300).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)} · ${esc(r.category||"—")}</span></td>`
         +`<td>${fmt(r.qty)}</td><td>${fmt(r.returnsQty)}</td>`
         +`<td class="${r.returnRate>=0.15?"delta-down":""}">${pct(r.returnRate)}</td>`
@@ -2486,18 +2588,20 @@ function renderReturns(all){
 // и комиссию WB (доля от цены). Реклама, хранение, штрафы — операционные расходы
 // периода: делить их на штуки бессмысленно (у малотиражных товаров цифра «улетает»),
 // поэтому в цену безубыточности их не включаем — это чистая юнит-экономика.
+let anBeSortState={key:"margin",dir:1};   // по умолчанию — у кого меньше запас до нуля (риск) выше
 function renderBreakeven(all){
-  const rows=all.filter(r=>r.hasCost && r.net>0 && r.revenue>0)
+  let rows=all.filter(r=>r.hasCost && r.net>0 && r.revenue>0)
     .map(r=>{
       const price=r.revenue/r.net, commRate=(r.revenue-r.payout)/r.revenue;
       const logPerUnit=(r.logistics||0)/r.net, cost=costOf(r.sku)||0;
       const be=(1-commRate)>0.01 ? (cost+logPerUnit)/(1-commRate) : null;
       return {sku:r.sku,name:r.name,category:r.category,price,cost,be,margin:be!=null? price-be : null};
     })
-    .filter(r=>r.be!=null)
-    .sort((a,b)=>a.margin-b.margin);   // у кого меньше запас до нуля — выше
+    .filter(r=>r.be!=null);
+  rows=sortRows(rows,anBeSortState,{
+    name:r=>r.name||"", price:r=>r.price, cost:r=>r.cost, be:r=>r.be, margin:r=>r.margin });
   document.getElementById("anBreakevenTable").innerHTML = rows.length
-    ? `<thead><tr><th class="metric">Товар</th><th>Тек. цена/шт</th><th>Себест.</th><th>Цена безубыт.</th><th>Запас до нуля/шт</th></tr></thead><tbody>`
+    ? `<thead><tr>${thSort("Товар","name",anBeSortState,"metric")}${thSort("Тек. цена/шт","price",anBeSortState)}${thSort("Себест.","cost",anBeSortState)}${thSort("Цена безубыт.","be",anBeSortState)}${thSort("Запас до нуля/шт","margin",anBeSortState)}</tr></thead><tbody>`
       + rows.slice(0,300).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)} · ${esc(r.category||"—")}</span></td>`
         +`<td>${rub(r.price)}</td><td>${rub(r.cost)}</td><td style="font-weight:640">${rub(r.be)}</td>`
         +`<td class="${r.margin<0?"delta-down":"delta-up"}">${r.margin>=0?"+":"−"}${rub(Math.abs(r.margin))}</td></tr>`).join("")
@@ -2836,11 +2940,12 @@ function enhanceSelect(sel){
   sel.addEventListener("change",syncLabel);   // подпись актуальна и при программном изменении выбора
   syncLabel();
 }
-document.addEventListener("click",()=>closeAllUisel());
-document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeAllUisel(); });
+document.addEventListener("click",()=>{closeAllUisel();closeColFilter();});
+document.addEventListener("keydown",e=>{ if(e.key==="Escape"){closeAllUisel();closeColFilter();} });
 // прокрутка/ресайз сбивают позицию fixed-панели — просто закрываем
-window.addEventListener("scroll",()=>closeAllUisel());
-window.addEventListener("resize",()=>closeAllUisel());
+window.addEventListener("scroll",()=>{closeAllUisel();closeColFilter();});
+window.addEventListener("resize",()=>{closeAllUisel();closeColFilter();});
+document.addEventListener("scroll",closeColFilter,true);   // внутренний скролл таблицы (фаза захвата)
 // заменяем ВСЕ выпадающие списки на кастомные (открываются вниз)
 document.querySelectorAll("select").forEach(enhanceSelect);
 
@@ -3154,10 +3259,14 @@ document.getElementById("dynCat").addEventListener("change",renderDynamicsTab);
 document.getElementById("turnSearch").addEventListener("input",renderTurnoverTab);
 document.getElementById("turnCat").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnProduct").addEventListener("change",renderTurnoverTab);
-document.getElementById("turnStatus").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnWindow").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnExportBtn").addEventListener("click",exportTurnoverCSV);
 wireSortable("turnTable",turnSortState,renderTurnoverTab);
+// клик по кнопке-воронке в заголовке → фильтр по значениям колонки (Excel-стиль)
+document.getElementById("turnTable").addEventListener("click",e=>{
+  const cf=e.target.closest(".col-filter"); if(!cf) return;
+  e.stopPropagation(); openColFilter(cf,cf.dataset.fkey);
+});
 wireSortable("dynTable",dynSortState,renderDynamicsTab);
 wireSortable("finTable",finSortState,renderFinanceTab);
 
@@ -3170,6 +3279,8 @@ document.getElementById("anSearch").addEventListener("input",renderAnalyticsTab)
 document.getElementById("anCat").addEventListener("change",renderAnalyticsTab);
 document.getElementById("anExportBtn").addEventListener("click",exportAnalyticsCSV);
 wireSortable("anTable",anSortState,renderAnalyticsTab);
+wireSortable("anReturnsTable",anRetSortState,renderAnalyticsTab);
+wireSortable("anBreakevenTable",anBeSortState,renderAnalyticsTab);
 
 // Загрузочные блоки на вкладке «Товар» убраны — данные (воронка, себестоимость)
 // заливаются офлайн через диалог и запекаются в снимок, а не через браузер
@@ -3247,6 +3358,7 @@ function applyMpData(mp){
   if(_appliedMp!==mp){ _appliedMp=mp; dynCustom=null;
     if(typeof selectedSku!=="undefined") selectedSku=null;   // выбор товара/периодов свой на каждой площадке
     _prodPeriodsMp=null;
+    if(typeof turnColFilters!=="undefined"){ turnColFilters={}; closeColFilter(); }   // фильтры колонок — свои на каждой площадке
     ["dynCat","turnCat","turnProduct"].forEach(id=>{const cs=document.getElementById(id); if(cs) cs.innerHTML="";}); }  // категории/товары перезаполнятся под площадку
 }
 function hydrateData(){
