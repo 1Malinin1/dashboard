@@ -326,6 +326,15 @@
   table.rnp td.name-cell .sku{color:var(--muted);font-size:11px;display:block;font-weight:450}
   .sku-link{color:inherit;text-decoration:none;border-bottom:1px dashed color-mix(in srgb,var(--muted) 55%,transparent);cursor:pointer}
   .sku-link:hover{color:var(--accent);border-bottom-color:var(--accent)}
+  /* прибыль по категориям (Главная) */
+  .cat-prof{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+  .cat-prof-row{display:grid;grid-template-columns:minmax(120px,190px) 1fr minmax(96px,130px);gap:12px;align-items:center;font-size:13.5px}
+  .cat-prof-row .nm{color:var(--text-2);font-weight:560;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cat-prof-bar{height:22px;background:var(--surface-2);border-radius:6px;position:relative;overflow:hidden}
+  .cat-prof-bar .fill{position:absolute;top:0;left:0;height:100%;border-radius:6px;min-width:2px;transition:width .4s cubic-bezier(.4,0,.2,1)}
+  .cat-prof-row .val{text-align:right;font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .cat-prof-row .val.pos{color:var(--good-txt)} .cat-prof-row .val.neg{color:var(--crit-txt)}
+  @media(max-width:620px){ .cat-prof-row{grid-template-columns:96px 1fr 88px;font-size:12.5px} }
   /* Плотные таблицы P&L (Главная/Финансы): узкие колонки, чтобы всё влезало без прокрутки вбок */
   #homeTable th,#homeTable td,#finTable th,#finTable td{padding:8px 7px}
   #homeTable th.metric,#homeTable td.metric,#finTable th.metric,#finTable td.metric{min-width:0;max-width:150px;padding-left:14px}
@@ -660,6 +669,12 @@
       </div>
     </div>
 
+    <div class="card" id="homeCatCard" style="margin-bottom:14px">
+      <h3>Прибыль по категориям</h3>
+      <div class="cap">За период · зелёное — в плюсе, красное — в минусе. Полоса — размер прибыли/убытка.</div>
+      <div id="homeCatBreakdown" class="cat-prof"></div>
+    </div>
+
     <div class="table-card">
       <div class="table-head">
         <h3>Прибыль по товарам за период</h3>
@@ -804,6 +819,11 @@
       <div id="prodChart"></div>
     </div>
 
+    <div class="table-card" id="prodBottleneckCard" hidden style="margin-bottom:14px">
+      <div class="table-head"><h3>Топ узких мест по товарам</h3><span class="muted">где товар конвертит хуже среднего по магазину · весь период воронки</span></div>
+      <div class="table-scroll"><table class="rnp" id="prodBottleneckTable"></table></div>
+    </div>
+
     <div class="table-card" id="prodTableCard" hidden>
       <div class="table-head"><h3 id="prodTableTitle">Все метрики за период</h3></div>
       <div class="table-scroll"><table class="rnp" id="prodTable"></table></div>
@@ -840,6 +860,11 @@
         <div class="cap">Из чего складывается выплата: что удержала WB и что придёт на счёт</div>
         <div id="ch-fin-struct"></div>
       </div>
+    </div>
+    <div class="card" id="finLogCatCard" style="margin-bottom:14px">
+      <h3>Логистика и хранение по категориям</h3>
+      <div class="cap">Где логистика и хранение съедают больше всего · % — от выручки категории</div>
+      <div class="table-scroll" style="margin-top:8px"><table class="rnp" id="finLogCatTable"></table></div>
     </div>
     <div class="table-card">
       <div class="table-head">
@@ -904,6 +929,16 @@
           <div class="table-scroll"><table class="rnp" id="anAdTable"></table></div>
         </div>
       </div>
+
+      <div class="table-card" style="margin-top:14px">
+        <div class="table-head"><h3>Разбор возвратов</h3><span class="muted" id="anRetNote"></span></div>
+        <div class="table-scroll"><table class="rnp" id="anReturnsTable"></table></div>
+      </div>
+
+      <div class="table-card" style="margin-top:14px">
+        <div class="table-head"><h3>Цена безубыточности по товарам</h3><span class="muted">минимальная цена, покрывающая себестоимость, логистику и комиссию WB (реклама и хранение — расходы периода, не в цене)</span></div>
+        <div class="table-scroll"><table class="rnp" id="anBreakevenTable"></table></div>
+      </div>
     </div>
   </section>
 
@@ -915,7 +950,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260721n"></script>
+<script src="wb-secure.js?v=20260721o"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1078,6 +1113,20 @@ function skuLink(sku){
   const url=productUrl(sku);
   return url ? `<a href="${url}" target="_blank" rel="noopener" class="sku-link" title="Открыть карточку на ${_appliedMp==="ozon"?"Ozon":"Wildberries"}">${esc(sku)}</a>` : esc(sku);
 }
+// разбивка прибыли по категориям (Главная): свод profit по категории, полоса ∝ |прибыли|
+function renderHomeCatProfit(rows){
+  const el=document.getElementById("homeCatBreakdown"); if(!el) return;
+  const byCat={}; rows.forEach(r=>{ const c=r.category||"—"; byCat[c]=(byCat[c]||0)+(r.profit||0); });
+  const arr=Object.entries(byCat).map(([cat,profit])=>({cat,profit})).sort((a,b)=>b.profit-a.profit);
+  if(!arr.length){ el.innerHTML=`<div class="empty-hint">Нет данных за период</div>`; return; }
+  const maxAbs=arr.reduce((m,x)=>Math.max(m,Math.abs(x.profit)),0)||1;
+  el.innerHTML=arr.map(x=>{
+    const w=Math.max(2,Math.abs(x.profit)/maxAbs*100), pos=x.profit>=0;
+    return `<div class="cat-prof-row"><span class="nm" title="${esc(x.cat)}">${esc(x.cat)}</span>`
+      +`<div class="cat-prof-bar"><div class="fill" style="width:${w}%;background:${pos?cssv('--s2'):cssv('--crit')}"></div></div>`
+      +`<span class="val ${pos?'pos':'neg'}">${pos?'+':'−'}${rub(Math.abs(x.profit))}</span></div>`;
+  }).join("");
+}
 function saveCostOverrides(){ try{ localStorage.setItem(COST_OV_KEY,JSON.stringify(costOverrides)); }catch(e){} }
 function setCost(sku,val){ const n=parseFloat(val); if(!n||n<=0||isNaN(n)) delete costOverrides[sku]; else costOverrides[sku]=Math.round(n*100)/100; saveCostOverrides(); }
 
@@ -1200,6 +1249,8 @@ function simpleTurnList(){
     : (()=>{ const v=RCAT.map(c=>c.buyoutPct14d).filter(x=>x>0); return v.length? v.reduce((a,b)=>a+b,0)/v.length/100 : 1; })();
   let contBySku=null;   // для Озона: размер контейнера берём из связанного ВБ-товара
   if(oz && WBDATA){ contBySku={}; WBDATA.catalog.forEach(w=>{ if(w.containerQty) contBySku[w.sku]=w.containerQty; }); }
+  let wbCostBySku=null; // для Озона: себестоимость берём у связанного ВБ-товара (общий товар)
+  if(oz){ wbCostBySku={}; (RD.catalog||[]).forEach(w=>{ if(w.costPrice!=null) wbCostBySku[w.sku]=w.costPrice; }); }
   return RCAT.map(c=>{
     const s=seriesFor(c.sku); let sum=0;
     if(s) for(let i=Math.max(0,lastIdx-win+1);i<=lastIdx;i++) sum+=s[i]||0;
@@ -1223,7 +1274,12 @@ function simpleTurnList(){
     else if(covered<=0) status="critical";
     else if(daysLeft<TURN_MIN_DAYS) status="warning";
     else status="good";
-    return {sku:c.sku,name:c.name,category:c.category,stock,transit,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,containers,contQty,status};
+    // когда размещать заказ: партия «созревает» ~TURN_MIN_DAYS дней (произв.→склад). Заказать нужно,
+    // когда запаса останется ровно на срок поставки → через (хватит − TURN_MIN_DAYS) дней; при дозаказе — сейчас.
+    const whenOrder = (discontinued||salesPerDay<=0)? null : (reorder>0? 0 : Math.max(0, Math.round(daysLeft)-TURN_MIN_DAYS));
+    const cost = oz ? (c.wbSku&&wbCostBySku? (wbCostBySku[c.wbSku]||0) : 0) : (costOf(c.sku)||0);
+    const reorderCost = reorder*cost;
+    return {sku:c.sku,name:c.name,category:c.category,stock,transit,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,containers,contQty,status,whenOrder,reorderCost};
   });
 }
 function renderTurnoverSimple(){
@@ -1242,7 +1298,7 @@ function renderTurnoverSimple(){
   rows=sortRows(rows,turnSortState,{
     name:r=>r.name, category:r=>r.category, currentStock:r=>r.stock,
     avgD:r=>r.avgD, buyout:r=>r.buyout, sales:r=>r.salesPerDay, daysLeft:r=>dl(r.daysLeft),
-    reorder:r=>r.reorder, status:r=>rank[r.status]*1e9+dl(r.daysLeft),
+    reorder:r=>r.reorder, whenOrder:r=>r.whenOrder==null?1e9:r.whenOrder, status:r=>rank[r.status]*1e9+dl(r.daysLeft),
   });
   const toOrder=all.filter(r=>r.reorder>0), orderTotal=toOrder.reduce((a,r)=>a+r.reorder,0);
   const crit=all.filter(r=>r.status==="critical").length, stockSum=all.reduce((a,r)=>a+r.stock,0);
@@ -1260,7 +1316,7 @@ function renderTurnoverSimple(){
   if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}
     ${thSort("Остаток "+(oz?"Ozon":"WB"),"currentStock",turnSortState)}${thSort("Заказов/дн","avgD",turnSortState)}${thSort("% выкупа","buyout",turnSortState)}
-    ${thSort("Продаж/дн","sales",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Дозаказать","reorder",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
+    ${thSort("Продаж/дн","sales",turnSortState)}${thSort("Хватит, дн","daysLeft",turnSortState)}${thSort("Дозаказать","reorder",turnSortState)}${thSort("Заказать","whenOrder",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
       <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>
@@ -1270,6 +1326,7 @@ function renderTurnoverSimple(){
       <td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : (Math.round(r.daysBase)+((r.transit&&r.daysLeft!==r.daysBase&&r.daysLeft!==Infinity)?` <span style="color:var(--accent);font-weight:600">→ ${Math.round(r.daysLeft)}</span>`:""))}</td>
       <td style="font-weight:650">${r.reorder>0? fmt(r.reorder)+" шт"+(r.containers?` <span class="muted" style="font-weight:400">(${r.containers} конт.)</span>`:"") : "—"}</td>
+      <td>${r.whenOrder==null?"—":(r.whenOrder<=0?`<span style="color:var(--accent);font-weight:650">сейчас</span>`:`<span class="muted">через ${fmt(r.whenOrder)} дн</span>`)}</td>
       <td>${turnBadge(r.status)}</td>
     </tr>`;
   });
@@ -1286,7 +1343,7 @@ function renderTurnoverTab(){
   // простая модель (ВБ и Озон) считает по фикс. окну 7 дней — прячем селектор «Скорость» и старый CSV-дозаказ
   const winWrap=document.getElementById("turnWindow").closest(".uisel");
   if(winWrap) winWrap.style.display = "none";
-  const expBtn=document.getElementById("turnExportBtn"); if(expBtn) expBtn.style.display = "none";
+  const expBtn=document.getElementById("turnExportBtn"); if(expBtn) expBtn.style.display = (_appliedMp==="all"? "none" : "");
   // «Всего»: реплан по площадкам раздельный — остатки и поставки у ВБ и Озона свои
   if(_appliedMp==="all"){
     document.getElementById("turnKpis").innerHTML="";
@@ -1298,13 +1355,21 @@ function renderTurnoverTab(){
   if(!catSel.options.length) fillCategorySelect(catSel);
   renderTurnoverSimple();   // единая простая модель для ВБ и Озона
 }
+// Экспорт списка дозаказа (простая модель): товары, где reorder>0, с суммой по себестоимости и сроком.
 function exportTurnoverCSV(){
-  const rows=turnoverList().filter(r=>r.needRounded>0).sort((a,b)=>b.needRounded-a.needRounded);
-  let csv="Артикул;Название;Категория;Остаток WB;Свой склад;Заказов в день;Хватит дн;Нужно дозаказать шт;Контейнеров;Уже едет шт;Прибудет\n";
-  rows.forEach(r=>{ csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,r.wbStock||0,r.ownWarehouseStock||0,
-    r.avgD.toFixed(1),r.daysLeft===Infinity?"":Math.round(r.daysLeft),r.needRounded,r.containers||"",r.pendingQty||"",
-    r.pending?r.pending.arrivalDate:""].join(";")+"\n"; });
-  downloadCSV("wb-дозаказ.csv",csv);
+  if(_appliedMp==="all"){ alert("Дозаказ считается по площадке — выберите «Wildberries» или «Ozon»."); return; }
+  const oz = _appliedMp==="ozon";
+  const rows=simpleTurnList().filter(r=>r.status!=="discontinued" && r.reorder>0).sort((a,b)=>b.reorder-a.reorder);
+  if(!rows.length){ alert("Нечего дозаказывать — по всем товарам запаса достаточно."); return; }
+  let csv="Артикул;Название;Категория;Продаж в день;Хватит дней;Дозаказать шт;Контейнеров;Сумма по себестоимости ₽;Когда заказать\n";
+  let totQty=0,totSum=0;
+  rows.forEach(r=>{ totQty+=r.reorder; totSum+=r.reorderCost||0;
+    const when = r.whenOrder==null? "" : (r.whenOrder<=0? "сейчас" : ("через "+r.whenOrder+" дн"));
+    csv+=[r.sku,(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "),
+      r.salesPerDay.toFixed(1), r.daysLeft===Infinity?"":Math.round(r.daysLeft),
+      r.reorder, r.containers||"", r.reorderCost? Math.round(r.reorderCost) : "", when].join(";")+"\n"; });
+  csv+="ИТОГО;;;;;"+totQty+";;"+Math.round(totSum)+";\n";
+  downloadCSV((oz?"ozon":"wb")+"-дозаказ.csv",csv);
 }
 
 /* ---- динамика заказов: диапазон дат, агрегация, график ---- */
@@ -2254,6 +2319,7 @@ function renderHomeTab(){
 
   // строки таблицы (единый свод P&L по товарам; только активные — как в Аналитике)
   let rows=productPnL(dates,cat,q).filter(hasActivity);
+  renderHomeCatProfit(rows);
   if(homeNoCostOnly) rows=rows.filter(r=>!r.hasCost);
   rows=sortRows(rows,homeSortState,{
     name:r=>r.name, category:r=>r.category, qty:r=>r.net, revenue:r=>r.revenue,
@@ -2387,12 +2453,56 @@ function renderAnalyticsTab(){
   // --- Реклама съедает прибыль (топ 15) ---
   document.getElementById("anAdNote").textContent = !hasAds? "нет отчёта" : (adWaste.length? `${adWaste.length} шт` : "нет");
   document.getElementById("anAdTable").innerHTML = !hasAds
-    ? `<tbody><tr><td class="empty-hint">Загрузите отчёт по рекламе на «Финансах»</td></tr></tbody>`
+    ? `<tbody><tr><td class="empty-hint">Отчёт по рекламе ещё не заведён в снимок — пришлите «Историю затрат» в диалог</td></tr></tbody>`
     : (adWaste.length
       ? `<thead><tr><th class="metric">Товар</th><th>Реклама</th><th>ДРР</th><th>Прибыль, ₽</th></tr></thead><tbody>`
         + adWaste.slice(0,15).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td><td>${rub(r.ad)}</td><td>${r.revenue?pct(r.ad/r.revenue):"—"}</td><td class="${r.profit<0?'neg':'pos'}">${rub(r.profit)}</td></tr>`).join("")
         + `</tbody>`
       : `<tbody><tr><td class="empty-hint">Реклама окупается везде 👍</td></tr></tbody>`);
+
+  renderReturns(all);
+  renderBreakeven(all);
+}
+// Разбор возвратов: товары с возвратами, сортировка по числу возвратов; ₽ — валовая стоимость возвращённого.
+function renderReturns(all){
+  const withRet=all.filter(r=>r.returnsQty>0)
+    .map(r=>({...r, lostRub:(r.net>0? r.revenue/r.net : 0)*r.returnsQty}))
+    .sort((a,b)=>b.returnsQty-a.returnsQty);
+  document.getElementById("anRetNote").textContent = withRet.length
+    ? `${withRet.length} товаров · всего ${fmt(withRet.reduce((a,r)=>a+r.returnsQty,0))} шт возвратов`
+    : "возвратов нет";
+  document.getElementById("anReturnsTable").innerHTML = withRet.length
+    ? `<thead><tr><th class="metric">Товар</th><th>Продано</th><th>Возвраты</th><th>% возврата</th><th>Возвращено ~₽</th></tr></thead><tbody>`
+      + withRet.slice(0,300).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)} · ${esc(r.category||"—")}</span></td>`
+        +`<td>${fmt(r.qty)}</td><td>${fmt(r.returnsQty)}</td>`
+        +`<td class="${r.returnRate>=0.15?"delta-down":""}">${pct(r.returnRate)}</td>`
+        +`<td>${r.lostRub? rub(r.lostRub) : "—"}</td></tr>`).join("")
+      + `</tbody>`
+    : `<tbody><tr><td class="empty-hint">Возвратов за период нет 👍</td></tr></tbody>`;
+}
+// Цена безубыточности: при какой цене товар перестаёт терять деньги на единице.
+// P_бу = (себестоимость + логистика/ед) ÷ (1 − доля комиссии WB от цены).
+// Берём только то, что масштабируется на единицу товара: себестоимость, логистику
+// и комиссию WB (доля от цены). Реклама, хранение, штрафы — операционные расходы
+// периода: делить их на штуки бессмысленно (у малотиражных товаров цифра «улетает»),
+// поэтому в цену безубыточности их не включаем — это чистая юнит-экономика.
+function renderBreakeven(all){
+  const rows=all.filter(r=>r.hasCost && r.net>0 && r.revenue>0)
+    .map(r=>{
+      const price=r.revenue/r.net, commRate=(r.revenue-r.payout)/r.revenue;
+      const logPerUnit=(r.logistics||0)/r.net, cost=costOf(r.sku)||0;
+      const be=(1-commRate)>0.01 ? (cost+logPerUnit)/(1-commRate) : null;
+      return {sku:r.sku,name:r.name,category:r.category,price,cost,be,margin:be!=null? price-be : null};
+    })
+    .filter(r=>r.be!=null)
+    .sort((a,b)=>a.margin-b.margin);   // у кого меньше запас до нуля — выше
+  document.getElementById("anBreakevenTable").innerHTML = rows.length
+    ? `<thead><tr><th class="metric">Товар</th><th>Тек. цена/шт</th><th>Себест.</th><th>Цена безубыт.</th><th>Запас до нуля/шт</th></tr></thead><tbody>`
+      + rows.slice(0,300).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)} · ${esc(r.category||"—")}</span></td>`
+        +`<td>${rub(r.price)}</td><td>${rub(r.cost)}</td><td style="font-weight:640">${rub(r.be)}</td>`
+        +`<td class="${r.margin<0?"delta-down":"delta-up"}">${r.margin>=0?"+":"−"}${rub(Math.abs(r.margin))}</td></tr>`).join("")
+      + `</tbody>`
+    : `<tbody><tr><td class="empty-hint">Нужна себестоимость и продажи за период</td></tr></tbody>`;
 }
 function exportAnalyticsCSV(){
   const cat=selCats("anCat"), q=document.getElementById("anSearch").value.trim().toLowerCase();
@@ -2407,6 +2517,20 @@ function exportAnalyticsCSV(){
   downloadCSV("wb-аналитика.csv",csv);
 }
 
+// Логистика и хранение по категориям (Финансы): свод по нормализованной категории каталога.
+function renderFinLogByCat(now){
+  const byCat={};
+  now.rows.forEach(r=>{ const c=normFinCategory(r.sku,r.category)||"—";
+    const b=byCat[c]||(byCat[c]={cat:c,logistics:0,storage:0,revenue:0});
+    b.logistics+=r.logistics||0; b.storage+=(r.storage||0)+(r.priyomka||0); b.revenue+=r.revenue||0; });
+  const arr=Object.values(byCat).map(b=>({...b,total:b.logistics+b.storage,pct:b.revenue?(b.logistics+b.storage)/b.revenue:0}))
+    .filter(b=>Math.round(b.total)>0).sort((a,b)=>b.total-a.total);
+  document.getElementById("finLogCatTable").innerHTML = arr.length
+    ? `<thead><tr><th class="metric">Категория</th><th>Логистика, ₽</th><th>Хранение/приёмка, ₽</th><th>Всего, ₽</th><th>% от выручки</th></tr></thead><tbody>`
+      + arr.map(b=>`<tr><td class="metric">${esc(b.cat)}</td><td>${rub(b.logistics)}</td><td>${b.storage?rub(b.storage):"—"}</td><td style="font-weight:640">${rub(b.total)}</td><td class="${b.pct>=0.1?"delta-down":""}">${pct(b.pct)}</td></tr>`).join("")
+      + `</tbody>`
+    : `<tbody><tr><td class="empty-hint">Нет логистики и хранения за период</td></tr></tbody>`;
+}
 function renderFinanceTab(){
   renderFinanceHistoryInfo();
   if(!FINANCE_CACHE.length){
@@ -2423,6 +2547,7 @@ function renderFinanceTab(){
   const prev=prevDates.length? finAggregate(prevDates,cat,q) : null;
   const netQty=now.qty-now.returnsQty;
   const series=finSeriesByDate(dates,cat,q);
+  renderFinLogByCat(now);
 
   // Финансы = сверка с WB: «сколько придёт на счёт и за что удержано».
   // Выручка = Комиссия WB + Логистика + Хранение/приёмка + Штрафы/удержания + Возмещение + Итого к оплате.
@@ -2585,6 +2710,7 @@ function updateProdControls(){
 }
 function refreshProductView(){
   const scopeCard=document.getElementById("prodScopeSeg").closest(".card");
+  renderBottlenecks();   // «топ узких мест» — по всему магазину, сам прячется на «Всего»/без данных
   if(_appliedMp==="all"){   // «Всего» — воронку не сводим, показываем подсказку
     if(scopeCard) scopeCard.style.display="none";
     document.getElementById("prodPeriods").hidden=true;
@@ -2845,6 +2971,44 @@ const CHART_METRICS={
   orderConv:{l:"Конверсия в заказ (заказы/корзина), %",f:v=>v.toFixed(1)+"%",c:"--s3",v:a=>a.addCart?a.ordersQty/a.addCart*100:0},
   buyoutPct:{l:"Процент выкупа, %",f:v=>v.toFixed(1)+"%",c:"--s2",v:a=>(a.buyoutQty+a.cancelQty)?a.buyoutQty/(a.buyoutQty+a.cancelQty)*100:0},
 };
+// свод воронки по каждому sku за период [from,to] (для «топ узких мест»)
+function funnelAggBySku(from,to){
+  const acc={};
+  activeFunnel().forEach(r=>{ if(from&&(r.date<from||r.date>to)) return;
+    const a=acc[r.sku]||(acc[r.sku]={sku:r.sku,name:r.name,category:r.category,impressions:0,cardViews:0,addCart:0,ordersQty:0,buyoutQty:0});
+    a.impressions+=r.impressions||0;a.cardViews+=r.cardViews||0;a.addCart+=r.addCart||0;a.ordersQty+=r.ordersQty||0;a.buyoutQty+=r.buyoutQty||0; });
+  return Object.values(acc);
+}
+// Топ узких мест: для каждого товара ищем шаг, где он конвертит хуже среднего по магазину,
+// «теряет» = (средняя конверсия − его конверсия) × объём на входе в шаг (в единицах товара).
+function renderBottlenecks(){
+  const card=document.getElementById("prodBottleneckCard"); if(!card) return;
+  if(_appliedMp==="all" || !activeFunnel().length){ card.hidden=true; return; }
+  const list=funnelAggBySku("","").filter(a=>a.impressions>=300);   // по всему периоду воронки — надёжнее
+  const T=list.reduce((o,a)=>{o.imp+=a.impressions;o.card+=a.cardViews;o.cart+=a.addCart;o.ord+=a.ordersQty;o.buy+=a.buyoutQty;return o;},{imp:0,card:0,cart:0,ord:0,buy:0});
+  const avg=[ T.imp?T.card/T.imp:0, T.card?T.cart/T.card:0, T.cart?T.ord/T.cart:0, T.ord?T.buy/T.ord:0 ];
+  const worst=[];
+  list.forEach(a=>{ const v=[a.impressions,a.cardViews,a.addCart,a.ordersQty,a.buyoutQty]; let best=null;
+    for(let i=0;i<4;i++){ const prev=v[i], next=v[i+1]; if(prev<=0||avg[i]<=0) continue;
+      const conv=next/prev; if(conv>=avg[i]) continue;                 // не хуже среднего — не узкое место
+      // «теряет» переводим в ЗАКАЗЫ: доп. объём на след. ступени × средние конверсии до «Заказов»
+      const extraNext=prev*(avg[i]-conv); let factor=1; for(let j=i+1;j<=2;j++) factor*=avg[j];
+      const lostOrders=extraNext*factor;
+      if(!best||lostOrders>best.lost) best={i,conv,avgConv:avg[i],lost:lostOrders}; }
+    if(best && best.lost>=0.5) worst.push({sku:a.sku,name:a.name,step:best}); });
+  worst.sort((x,y)=>y.step.lost-x.step.lost);
+  const rows=worst.slice(0,12);
+  if(!rows.length){ card.hidden=true; return; }
+  card.hidden=false;
+  let html=`<thead><tr><th class="metric">Товар</th><th>Узкий шаг</th><th>Его конверсия</th><th>В среднем</th><th>Теряет ~ заказов</th></tr></thead><tbody>`;
+  rows.forEach(r=>{ const i=r.step.i;
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td>`
+      +`<td>${stLabel(i)} → ${stLabel(i+1)}</td>`
+      +`<td class="delta-down">${(r.step.conv*100).toFixed(1)}%</td>`
+      +`<td class="muted">${(r.step.avgConv*100).toFixed(1)}%</td>`
+      +`<td style="font-weight:640">${fmt(Math.round(r.step.lost))}</td></tr>`; });
+  html+="</tbody>"; document.getElementById("prodBottleneckTable").innerHTML=html;
+}
 function funnelDailyAgg(skuSet){
   const dates=funnelDates(), idx={}; dates.forEach((d,i)=>idx[d]=i);
   const acc=dates.map(()=>({impressions:0,cardViews:0,addCart:0,ordersQty:0,buyoutQty:0,cancelQty:0,ordersSum:0,buyoutSum:0}));
