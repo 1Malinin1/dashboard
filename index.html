@@ -713,7 +713,7 @@
 
     <div class="grid2">
       <div class="card">
-        <h3>Выручка и прибыль по дням</h3>
+        <h3>Выручка по дням</h3>
         <div class="cap" id="homeChartCap"></div>
         <div class="legend" id="homeChartLegend"></div>
         <div id="ch-home-money"></div>
@@ -2516,11 +2516,11 @@ function renderHomeTab(){
       if(homeNoCostOnly) document.querySelector("#homeContent .table-card").scrollIntoView({behavior:"smooth",block:"start"}); };
   } else { warnEl.hidden=true; homeNoCostOnly=false; warnEl.onclick=null; }
 
-  document.getElementById("homeChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])}${hasAds?" · прибыль за вычетом рекламы":""}` : "нет данных";
-  legend(document.getElementById("homeChartLegend"),[{name:"Выручка, ₽",color:cssv("--s1")},{name:"Прибыль, ₽",color:cssv("--s2")}]);
-  dailyGroupedBars(document.getElementById("ch-home-money"),dates,[
-    {name:"Выручка, ₽",color:cssv("--s1"),data:series.revenue},
-    {name:"Прибыль, ₽",color:cssv("--s2"),negColor:cssv("--crit"),data:profitSeries}]);
+  // Верхняя строка (выручка) — свой график; прибыль вынесена в отдельный блок «Прибыль по дням» ниже
+  // (на общей шкале с выручкой прибыль превращалась в невидимую полоску у нуля).
+  document.getElementById("homeChartCap").textContent = dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · розничная выручка со скидкой, по дням` : "нет данных";
+  legend(document.getElementById("homeChartLegend"),[{name:"Выручка, ₽",color:cssv("--s1")}]);
+  metricBars(document.getElementById("ch-home-money"),dates,series.revenue,"Выручка, ₽",rub,cssv("--s1"));
 
   // «Прибыль по дням отдельным акцентом» — прибыль на своей шкале + накопительная линия
   document.getElementById("homeProfitDayCap").textContent =
