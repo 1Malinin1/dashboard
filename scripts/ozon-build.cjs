@@ -10,8 +10,14 @@
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const XLSX=require('./node_modules/xlsx');
 const ROOT=path.join(__dirname,'..'), OUT=path.join(ROOT,'decrypted');
-const catalogFile=process.argv[2], stockFile=process.argv[3], stockDate=process.argv[4]||new Date().toISOString().slice(0,10);
-if(!catalogFile){console.error('usage: node scripts/ozon-build.cjs <файл_с_листом_Июль.xlsx> [остатки.xlsx] [дата]');process.exit(1);}
+// Первый арг — файл с листом «Июль» (пересобрать каталог) ИЛИ «--reuse» (взять существующий
+// каталог Озона из снимка: сохранить name/category/wbSku/ozonSku, обновить только заказы+остатки).
+let _args=process.argv.slice(2), reuse=false;
+if(_args[0]==='--reuse'){ reuse=true; _args=_args.slice(1); }
+const catalogFile = reuse? null : _args[0];
+const stockFile = reuse? _args[0] : _args[1];
+const stockDate = (reuse? _args[1] : _args[2]) || new Date().toISOString().slice(0,10);
+if(!reuse && !catalogFile){console.error('usage: node scripts/ozon-build.cjs (<файл_Июль.xlsx> | --reuse) [остатки.xlsx] [дата]');process.exit(1);}
 function num(v){const n=parseFloat((''+v).replace(/[\s ]/g,'').replace(',','.'));return isNaN(n)?0:n;}
 
 // 1) WB каталог → карта supplierCode → sku
@@ -20,16 +26,24 @@ vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThi
 const RD=ctx.__RD;
 const supToWb={}, wbCatBySku={};RD.catalog.forEach(c=>{const s=(''+(c.supplierCode||'')).trim();if(s)supToWb[s]=c.sku; wbCatBySku[c.sku]=c.category;});
 
-// 2) Озон-каталог из листа «Июль»
-const wb=XLSX.read(fs.readFileSync(catalogFile),{type:'buffer',cellStyles:false,cellFormula:false});
-const rows=XLSX.utils.sheet_to_json(wb.Sheets['Июль'],{header:1,raw:false,defval:''});
+// 2) Озон-каталог: из листа «Июль» (обычный режим) ИЛИ из существующего снимка (--reuse)
 const ozCat=[]; const byA={}; const seen=new Set();
 function ensure(art){ if(seen.has(art)) return byA[art]; seen.add(art);
   const c={sku:art, name:art, category:'Без категории', wbSku:supToWb[art]||null, ozStock:0, ozTransit:0};
   byA[art]=c; ozCat.push(c); return c; }
-for(let i=1;i<rows.length;i++){
-  const art=(''+(rows[i][0]||'')).trim(); if(!art||art==='Всего') continue;
-  const c=ensure(art); c.name=(''+(rows[i][1]||art)).trim(); c.category=(''+(rows[i][2]||'')).trim()||'Без категории';
+if(reuse){
+  // сохраняем существующий каталог целиком (name/category/wbSku/ozonSku и пр.), обнуляем только
+  // остатки — их зальёт отчёт остатков ниже; товар без остатка в отчёте останется с 0.
+  const prev=(RD.ozon&&RD.ozon.catalog)||[];
+  if(!prev.length){ console.error('--reuse: в снимке нет каталога Озона. Соберите его один раз из файла «Июль».'); process.exit(1); }
+  prev.forEach(c=>{ const cc=Object.assign({},c); cc.ozStock=0; cc.ozTransit=0; byA[cc.sku]=cc; ozCat.push(cc); seen.add(cc.sku); });
+} else {
+  const wb=XLSX.read(fs.readFileSync(catalogFile),{type:'buffer',cellStyles:false,cellFormula:false});
+  const rows=XLSX.utils.sheet_to_json(wb.Sheets['Июль'],{header:1,raw:false,defval:''});
+  for(let i=1;i<rows.length;i++){
+    const art=(''+(rows[i][0]||'')).trim(); if(!art||art==='Всего') continue;
+    const c=ensure(art); c.name=(''+(rows[i][1]||art)).trim(); c.category=(''+(rows[i][2]||'')).trim()||'Без категории';
+  }
 }
 
 // 3) Заказы по дням из свода

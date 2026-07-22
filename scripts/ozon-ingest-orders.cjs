@@ -21,6 +21,7 @@ function detectFmt(strs){const r={};for(const f of ['MD','DM']){let ok=true,mn=n
 const seen=new Set();
 const byDateArt={},byDateArtNet={},byDate={},byDateNet={},perArt={},perArtNet={},statuses={};
 const byDateArtRub={},byDateArtBuyRub={};  // ₽: заказано (все) / выкуплено (статус «Доставлен»)
+const newDates=new Set();   // дни, встреченные в переданных файлах — их данные ПЕРЕЗАПИШУТ те же дни снимка
 let ours=0;
 for(const f of files){
   const wb=load(f);const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
@@ -29,7 +30,7 @@ for(const f of files){
   const fmt=detectFmt(ds);
   for(let i=1;i<rows.length;i++){const r=rows[i];const a=(''+(r[iArt]||'')).trim();if(!wbSup.has(a))continue;
     const key=(''+(r[iOtpr]||''))+'|'+(''+(r[iSku]||''));if(seen.has(key))continue;seen.add(key);
-    const o=parts(r[iAcc],fmt);if(!o)continue;const d=iso(o);const q=num(r[iQty])||1;const st=(''+(r[iStatus]||'')).trim();
+    const o=parts(r[iAcc],fmt);if(!o)continue;const d=iso(o);newDates.add(d);const q=num(r[iQty])||1;const st=(''+(r[iStatus]||'')).trim();
     const net = st!=='Отменён';
     statuses[st]=(statuses[st]||0)+q; ours++;
     byDate[d]=(byDate[d]||0)+q; byDateArt[d+'_'+a]=(byDateArt[d+'_'+a]||0)+q; perArt[a]=(perArt[a]||0)+q;
@@ -40,6 +41,26 @@ for(const f of files){
   }
   process.stderr.write('.'+f.split('/').pop().slice(0,8)+'('+fmt+')');
 }
-fs.writeFileSync(path.join(OUT,'ozon-orders.json'),JSON.stringify({byDateArt,byDateArtNet,byDateArtRub,byDateArtBuyRub,byDate,byDateNet,perArt,perArtNet,statuses,builtAt:new Date().toISOString()}));
-const tot=Object.values(statuses).reduce((a,b)=>a+b,0),totNet=Object.values(byDateNet).reduce((a,b)=>a+b,0);
-console.log('\nozon-orders.json: строк',ours,'· заказано',tot,'· выкуп(net)',totNet,'· выкуп%',(totNet/tot*100).toFixed(1),'· артикулов',Object.keys(perArt).length);
+// Мерж по дням в существующий снимок (как у ВБ): дни из файлов ПЕРЕЗАПИСЫВАЮТ те же дни,
+// прочие дни снимка сохраняются. Так подённые выгрузки Озона накапливаются, а не затирают историю.
+const outPath=path.join(OUT,'ozon-orders.json');
+let ex={}; try{ if(fs.existsSync(outPath)) ex=JSON.parse(fs.readFileSync(outPath,'utf8')); }catch(e){ ex={}; }
+const mergeDA=(base,add)=>{ const o={}; for(const [k,v] of Object.entries(base||{})){ if(!newDates.has(k.slice(0,10))) o[k]=v; } for(const [k,v] of Object.entries(add)) o[k]=(o[k]||0)+v; return o; };
+const mergeD =(base,add)=>{ const o={}; for(const [k,v] of Object.entries(base||{})){ if(!newDates.has(k)) o[k]=v; } for(const [k,v] of Object.entries(add)) o[k]=(o[k]||0)+v; return o; };
+const M={
+  byDateArt:mergeDA(ex.byDateArt,byDateArt), byDateArtNet:mergeDA(ex.byDateArtNet,byDateArtNet),
+  byDateArtRub:mergeDA(ex.byDateArtRub,byDateArtRub), byDateArtBuyRub:mergeDA(ex.byDateArtBuyRub,byDateArtBuyRub),
+  byDate:mergeD(ex.byDate,byDate), byDateNet:mergeD(ex.byDateNet,byDateNet),
+};
+// perArt/perArtNet пересобираем из слитых по-дневных карт (кросс-датные — иначе накопится задвоение)
+M.perArt={}; for(const [k,v] of Object.entries(M.byDateArt)){ const a=k.slice(11); M.perArt[a]=(M.perArt[a]||0)+v; }
+M.perArtNet={}; for(const [k,v] of Object.entries(M.byDateArtNet)){ const a=k.slice(11); M.perArtNet[a]=(M.perArtNet[a]||0)+v; }
+// statuses по статусам не раскладывается по дням — держим как best-effort (для новых дней аддитивно);
+// метрики дашборда (всего/отменено/выкуп%) считаются из byDate/byDateNet, а не из statuses.
+M.statuses=Object.assign({},ex.statuses||{}); for(const [k,v] of Object.entries(statuses)) M.statuses[k]=(M.statuses[k]||0)+v;
+M.builtAt=new Date().toISOString();
+fs.writeFileSync(outPath,JSON.stringify(M));
+const totG=Object.values(M.byDate).reduce((a,b)=>a+b,0), totN=Object.values(M.byDateNet).reduce((a,b)=>a+b,0);
+const allDates=[...new Set(Object.keys(M.byDateArt).map(k=>k.slice(0,10)))].sort();
+console.log('\nozon-orders.json (мерж): строк из файлов',ours,'· новые дни:',[...newDates].sort().join(', '));
+console.log('  итог снимка: дней',allDates.length,'['+allDates[0]+' … '+allDates[allDates.length-1]+'] · заказано',totG,'· net',totN,'· выкуп%',(totN/totG*100).toFixed(1),'· артикулов',Object.keys(M.perArt).length);
