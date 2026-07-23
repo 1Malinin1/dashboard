@@ -1305,6 +1305,10 @@ function turnoverList(){
 // остаток ÷ продаж/день = на сколько дней хватит. Дозаказ: держим минимум OZ_MIN_DAYS
 // дней запаса; как только меньше — заказываем фикс. партию на OZ_COVER_DAYS продаж (6 мес).
 const TURN_MIN_DAYS=130, TURN_COVER_DAYS=180;   // держим минимум 130 дн запаса; партия дозаказа = 6 мес продаж
+// «В пути» ВБ = вся заказанная партия. Доля OZ_RESERVE_SHARE зарезервирована под Озон (лежит на
+// своём складе, ещё НЕ едет на Озон → в отчёте остатков Озона её нет). У ВБ показываем остаток доли
+// (1−share) «в пути», а долю share добавляем к покрытию Озона отдельной строкой «со склада».
+const OZ_RESERVE_SHARE=0.35;
 const TURN_STATUS={critical:"Критично — нет остатка",warning:"Пора дозаказать",good:"Норма",nodata:"Нет продаж",discontinued:"На вывод"};
 // Короткие подписи для бейджа в таблице (полные — в фильтре/KPI). «Критично — нет остатка» широкий, режем.
 const TURN_STATUS_SHORT={critical:"Критично",warning:"Пора дозаказать",good:"Норма",nodata:"Нет продаж",discontinued:"На вывод"};
@@ -1323,6 +1327,8 @@ function simpleTurnList(){
   if(oz && WBDATA){ contBySku={}; WBDATA.catalog.forEach(w=>{ if(w.containerQty) contBySku[w.sku]=w.containerQty; }); }
   let wbCostBySku=null; // для Озона: себестоимость берём у связанного ВБ-товара (общий товар)
   if(oz){ wbCostBySku={}; (RD.catalog||[]).forEach(w=>{ if(w.costPrice!=null) wbCostBySku[w.sku]=w.costPrice; }); }
+  let wbPendingBySku=null; // для Озона: 35% партии «в пути» связанного ВБ-товара лежит на своём складе под Озон
+  if(oz){ wbPendingBySku={}; (RD.catalog||[]).forEach(w=>{ if(w.pending && w.pending.qty) wbPendingBySku[w.sku]=w.pending.qty; }); }
   return RCAT.map(c=>{
     const s=seriesFor(c.sku); let sum=0;
     if(s) for(let i=Math.max(0,lastIdx-win+1);i<=lastIdx;i++) sum+=s[i]||0;
@@ -1331,8 +1337,11 @@ function simpleTurnList(){
       : (c.buyoutPct14d>0 ? c.buyoutPct14d/100 : buyoutAvg);
     const salesPerDay = avgD*buyout;
     const stock = oz ? (c.ozStock||0) : ((c.wbStock||0)+(c.ownWarehouseStock||0));
-    const transit = oz ? (c.ozTransit||0) : (c.pending? (c.pending.qty||0) : 0);   // ВБ: pending = «в пути» (дату игнорируем)
-    const covered = stock+transit;
+    const rawPending = c.pending? (c.pending.qty||0) : 0;
+    // ВБ: показываем только свою долю партии в пути (1−share); Озон: реальный ozTransit + доля share со своего склада
+    const transit = oz ? (c.ozTransit||0) : Math.round(rawPending*(1-OZ_RESERVE_SHARE));
+    const ozReserve = oz ? Math.round((c.wbSku&&wbPendingBySku? (wbPendingBySku[c.wbSku]||0):0)*OZ_RESERVE_SHARE) : 0;
+    const covered = stock+transit+ozReserve;
     const contQty = oz ? (c.wbSku&&contBySku? (contBySku[c.wbSku]||0) : 0) : (c.containerQty||0);
     const discontinued = !oz && c.productionStatus==="На вывод";
     const daysBase = stock>0 ? (salesPerDay>0? stock/salesPerDay : Infinity) : 0;
@@ -1351,7 +1360,7 @@ function simpleTurnList(){
     const whenOrder = (discontinued||salesPerDay<=0)? null : (reorder>0? 0 : Math.max(0, Math.round(daysLeft)-TURN_MIN_DAYS));
     const cost = oz ? (c.wbSku&&wbCostBySku? (wbCostBySku[c.wbSku]||0) : 0) : (costOf(c.sku)||0);
     const reorderCost = reorder*cost;
-    return {sku:c.sku,name:c.name,category:c.category,stock,transit,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,containers,contQty,status,whenOrder,reorderCost};
+    return {sku:c.sku,name:c.name,category:c.category,stock,transit,ozReserve,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,containers,contQty,status,whenOrder,reorderCost};
   });
 }
 // ---- Фильтры по значениям в каждой колонке (Excel-стиль): комбинируются логическим И,
@@ -1476,11 +1485,11 @@ function renderTurnoverSimple(){
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
       <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>
-      <td>${fmt(r.stock)}${r.transit?`<span class="sub2 acc">+${fmt(r.transit)} в пути</span>`:""}</td>
+      <td>${fmt(r.stock)}${r.transit?`<span class="sub2 acc">+${fmt(r.transit)} в пути</span>`:""}${r.ozReserve?`<span class="sub2 acc" title="35% партии на вашем складе, зарезервировано под Озон">+${fmt(r.ozReserve)} со склада</span>`:""}</td>
       <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${Math.round(r.buyout*100)}%</td>
       <td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
-      <td>${r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : (Math.round(r.daysBase)+((r.transit&&r.daysLeft!==r.daysBase&&r.daysLeft!==Infinity)?`<span class="sub2 acc">→ ${Math.round(r.daysLeft)} с пути</span>`:""))}</td>
+      <td>${r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : (Math.round(r.daysBase)+(((r.transit||r.ozReserve)&&r.daysLeft!==r.daysBase&&r.daysLeft!==Infinity)?`<span class="sub2 acc">→ ${Math.round(r.daysLeft)}</span>`:""))}</td>
       <td style="font-weight:650">${r.reorder>0? fmt(r.reorder)+" шт"+(r.containers?`<span class="sub2 mut">${r.containers} конт.</span>`:"") : "—"}</td>
       <td>${r.whenOrder==null?"—":(r.whenOrder<=0?`<span style="color:var(--accent);font-weight:650">сейчас</span>`:`<span class="muted">через ${fmt(r.whenOrder)} дн</span>`)}</td>
       <td>${turnBadge(r.status)}</td>
@@ -1523,17 +1532,21 @@ function exportTurnoverCSV(){
     sales:r=>r.salesPerDay, daysLeft:r=>dl(r.daysLeft), reorder:r=>r.reorder,
     whenOrder:r=>r.whenOrder==null?1e9:r.whenOrder, status:r=>rank[r.status]*1e9+dl(r.daysLeft) });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
-  const cols=["Артикул","Название","Категория","Остаток","В пути","Заказов в день (7д)","% выкупа",
-    "Продаж в день","Хватит дней","Дозаказать шт","Контейнеров","Сумма по себестоимости ₽","Когда заказать","Статус"];
+  const cols=["Артикул","Название","Категория","Остаток","В пути"];
+  if(oz) cols.push("Со склада (резерв Озон)");
+  cols.push("Заказов в день (7д)","% выкупа","Продаж в день","Хватит дней","Дозаказать шт","Контейнеров","Сумма по себестоимости ₽","Когда заказать","Статус");
+  const iReorder=cols.indexOf("Дозаказать шт"), iSum=cols.indexOf("Сумма по себестоимости ₽");
   let csv=cols.join(";")+"\n";
   let totQty=0,totSum=0;
   rows.forEach(r=>{ totQty+=r.reorder; totSum+=r.reorderCost||0;
     const when = r.whenOrder==null? "" : (r.whenOrder<=0? "сейчас" : ("через "+r.whenOrder+" дн"));
     const daysTxt = r.salesPerDay<=0 ? (r.covered>0?"∞":"") : Math.round(r.daysBase);
-    csv+=[r.sku,(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "),
-      r.stock, r.transit||"", r.avgD.toFixed(1), Math.round(r.buyout*100)+"%", r.salesPerDay.toFixed(1),
-      daysTxt, r.reorder||"", r.containers||"", r.reorderCost?Math.round(r.reorderCost):"", when, TURN_STATUS[r.status]].join(";")+"\n"; });
-  const tot=Array(cols.length).fill(""); tot[0]="ИТОГО"; tot[9]=totQty; tot[11]=Math.round(totSum);
+    const base=[r.sku,(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "), r.stock, r.transit||""];
+    if(oz) base.push(r.ozReserve||"");
+    base.push(r.avgD.toFixed(1), Math.round(r.buyout*100)+"%", r.salesPerDay.toFixed(1),
+      daysTxt, r.reorder||"", r.containers||"", r.reorderCost?Math.round(r.reorderCost):"", when, TURN_STATUS[r.status]);
+    csv+=base.join(";")+"\n"; });
+  const tot=Array(cols.length).fill(""); tot[0]="ИТОГО"; tot[iReorder]=totQty; tot[iSum]=Math.round(totSum);
   csv+=tot.join(";")+"\n";
   downloadCSV((oz?"ozon":"wb")+"-оборачиваемость.csv",csv);
 }
