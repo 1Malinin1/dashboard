@@ -1005,7 +1005,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260727a"></script>
+<script src="wb-secure.js?v=20260727b"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1305,10 +1305,14 @@ function turnoverList(){
 // остаток ÷ продаж/день = на сколько дней хватит. Дозаказ: держим минимум OZ_MIN_DAYS
 // дней запаса; как только меньше — заказываем фикс. партию на OZ_COVER_DAYS продаж (6 мес).
 const TURN_MIN_DAYS=130, TURN_COVER_DAYS=180;   // держим минимум 130 дн запаса; партия дозаказа = 6 мес продаж
-// «В пути» ВБ = вся заказанная партия. Доля OZ_RESERVE_SHARE зарезервирована под Озон (лежит на
-// своём складе, ещё НЕ едет на Озон → в отчёте остатков Озона её нет). У ВБ показываем остаток доли
-// (1−share) «в пути», а долю share добавляем к покрытию Озона отдельной строкой «со склада».
+// «В пути» по площадкам. Приоритет — ТОЧНЫЕ данные из рабочего файла продавца («на оптовых»):
+// у ВБ это `pending.qty` (свои склады «должно уехать» + едущие партии), у Озона — `ozIncoming`
+// (то же самое для Озона, ДОПОЛНИТЕЛЬНО к `ozTransit`, который Озон сам показывает по своим поставкам).
+// Признак наличия точных данных — RD.meta.transitDate.
+// Фолбэк для старых снимков без этих данных: «в пути» ВБ = вся партия, из которой доля
+// OZ_RESERVE_SHARE считается резервом под Озон.
 const OZ_RESERVE_SHARE=0.35;
+function transitIsReal(){ return !!(RD && RD.meta && RD.meta.transitDate); }
 const TURN_STATUS={critical:"Критично — нет остатка",warning:"Пора дозаказать",good:"Норма",nodata:"Нет продаж",discontinued:"На вывод"};
 // Короткие подписи для бейджа в таблице (полные — в фильтре/KPI). «Критично — нет остатка» широкий, режем.
 const TURN_STATUS_SHORT={critical:"Критично",warning:"Пора дозаказать",good:"Норма",nodata:"Нет продаж",discontinued:"На вывод"};
@@ -1327,8 +1331,9 @@ function simpleTurnList(){
   if(oz && WBDATA){ contBySku={}; WBDATA.catalog.forEach(w=>{ if(w.containerQty) contBySku[w.sku]=w.containerQty; }); }
   let wbCostBySku=null; // для Озона: себестоимость берём у связанного ВБ-товара (общий товар)
   if(oz){ wbCostBySku={}; (RD.catalog||[]).forEach(w=>{ if(w.costPrice!=null) wbCostBySku[w.sku]=w.costPrice; }); }
-  let wbPendingBySku=null; // для Озона: 35% партии «в пути» связанного ВБ-товара лежит на своём складе под Озон
-  if(oz){ wbPendingBySku={}; (RD.catalog||[]).forEach(w=>{ if(w.pending && w.pending.qty) wbPendingBySku[w.sku]=w.pending.qty; }); }
+  const REAL_TRANSIT=transitIsReal();   // есть точные «в пути» по площадкам из файла продавца
+  let wbPendingBySku=null; // фолбэк для Озона: 35% партии «в пути» связанного ВБ-товара
+  if(oz && !REAL_TRANSIT){ wbPendingBySku={}; (RD.catalog||[]).forEach(w=>{ if(w.pending && w.pending.qty) wbPendingBySku[w.sku]=w.pending.qty; }); }
   return RCAT.map(c=>{
     const s=seriesFor(c.sku); let sum=0;
     if(s) for(let i=Math.max(0,lastIdx-win+1);i<=lastIdx;i++) sum+=s[i]||0;
@@ -1338,9 +1343,12 @@ function simpleTurnList(){
     const salesPerDay = avgD*buyout;
     const stock = oz ? (c.ozStock||0) : ((c.wbStock||0)+(c.ownWarehouseStock||0));
     const rawPending = c.pending? (c.pending.qty||0) : 0;
-    // ВБ: показываем только свою долю партии в пути (1−share); Озон: реальный ozTransit + доля share со своего склада
-    const transit = oz ? (c.ozTransit||0) : Math.round(rawPending*(1-OZ_RESERVE_SHARE));
-    const ozReserve = oz ? Math.round((c.wbSku&&wbPendingBySku? (wbPendingBySku[c.wbSku]||0):0)*OZ_RESERVE_SHARE) : 0;
+    // ВБ: точное «в пути» из файла продавца (иначе — доля 1−share от партии).
+    // Озон: `ozTransit` (поставки, которые видит сам Озон) + `ozIncoming` (наши, ещё не отгруженные) —
+    // это РАЗНЫЕ величины, они складываются; в фолбэке вместо ozIncoming — доля share от партии ВБ.
+    const transit = oz ? (c.ozTransit||0) : (REAL_TRANSIT? rawPending : Math.round(rawPending*(1-OZ_RESERVE_SHARE)));
+    const ozReserve = !oz ? 0 : (REAL_TRANSIT ? (c.ozIncoming||0)
+      : Math.round((c.wbSku&&wbPendingBySku? (wbPendingBySku[c.wbSku]||0):0)*OZ_RESERVE_SHARE));
     const covered = stock+transit+ozReserve;
     const contQty = oz ? (c.wbSku&&contBySku? (contBySku[c.wbSku]||0) : 0) : (c.containerQty||0);
     const discontinued = !oz && c.productionStatus==="На вывод";
@@ -1485,7 +1493,7 @@ function renderTurnoverSimple(){
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
       <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>
-      <td>${fmt(r.stock)}${r.transit?`<span class="sub2 acc">+${fmt(r.transit)} в пути</span>`:""}${r.ozReserve?`<span class="sub2 acc" title="35% партии на вашем складе, зарезервировано под Озон">+${fmt(r.ozReserve)} со склада</span>`:""}</td>
+      <td>${fmt(r.stock)}${r.transit?`<span class="sub2 acc">+${fmt(r.transit)} в пути</span>`:""}${r.ozReserve?`<span class="sub2 acc" title="Ваши данные: товар на своих складах под Озон + едущие партии. Дополнительно к «в пути», которое показывает сам Озон.">+${fmt(r.ozReserve)} ожидается</span>`:""}</td>
       <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${Math.round(r.buyout*100)}%</td>
       <td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
@@ -1533,7 +1541,7 @@ function exportTurnoverCSV(){
     whenOrder:r=>r.whenOrder==null?1e9:r.whenOrder, status:r=>rank[r.status]*1e9+dl(r.daysLeft) });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
   const cols=["Артикул","Название","Категория","Остаток","В пути"];
-  if(oz) cols.push("Со склада (резерв Озон)");
+  if(oz) cols.push("Ожидается (наши поставки)");
   cols.push("Заказов в день (7д)","% выкупа","Продаж в день","Хватит дней","Дозаказать шт","Контейнеров","Сумма по себестоимости ₽","Когда заказать","Статус");
   const iReorder=cols.indexOf("Дозаказать шт"), iSum=cols.indexOf("Сумма по себестоимости ₽");
   let csv=cols.join(";")+"\n";
