@@ -1122,6 +1122,13 @@ function downloadCSV(filename,text){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
 }
+// Число для CSV: разделитель дробной части — ЗАПЯТАЯ (русская локаль Excel).
+// С точкой Excel принимает «29.1» за дату и превращает в «29.янв» — отсюда каша в выгрузке.
+// Разделитель полей у нас «;», поэтому запятая внутри числа не ломает разбор.
+function csvNum(v,dec){ const n=Number(v); if(!isFinite(n)) return "";
+  return (dec!=null? n.toFixed(dec) : String(n)).replace(".",","); }
+// Проценты выгружаем числом (без знака %) — Excel сразу считает по ним, а не хранит текст.
+function csvPct(v,dec){ return csvNum(v,dec==null?1:dec); }
 
 /* =========================================================================
    UI-СОБЫТИЯ: тема
@@ -1542,8 +1549,8 @@ function exportTurnoverCSV(){
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
   const cols=["Артикул","Название","Категория","Остаток","В пути"];
   if(oz) cols.push("Ожидается (наши поставки)");
-  cols.push("Заказов в день (7д)","% выкупа","Продаж в день","Хватит дней","Дозаказать шт","Контейнеров","Сумма по себестоимости ₽","Когда заказать","Статус");
-  const iReorder=cols.indexOf("Дозаказать шт"), iSum=cols.indexOf("Сумма по себестоимости ₽");
+  cols.push("Заказов в день (7д)","Выкуп, %","Продаж в день","Хватит дней","Дозаказать шт","Контейнеров","Сумма по себестоимости, ₽","Когда заказать","Статус");
+  const iReorder=cols.indexOf("Дозаказать шт"), iSum=cols.indexOf("Сумма по себестоимости, ₽");
   let csv=cols.join(";")+"\n";
   let totQty=0,totSum=0;
   rows.forEach(r=>{ totQty+=r.reorder; totSum+=r.reorderCost||0;
@@ -1551,7 +1558,7 @@ function exportTurnoverCSV(){
     const daysTxt = r.salesPerDay<=0 ? (r.covered>0?"∞":"") : Math.round(r.daysBase);
     const base=[r.sku,(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "), r.stock, r.transit||""];
     if(oz) base.push(r.ozReserve||"");
-    base.push(r.avgD.toFixed(1), Math.round(r.buyout*100)+"%", r.salesPerDay.toFixed(1),
+    base.push(csvNum(r.avgD,1), Math.round(r.buyout*100), csvNum(r.salesPerDay,1),
       daysTxt, r.reorder||"", r.containers||"", r.reorderCost?Math.round(r.reorderCost):"", when, TURN_STATUS[r.status]);
     csv+=base.join(";")+"\n"; });
   const tot=Array(cols.length).fill(""); tot[0]="ИТОГО"; tot[iReorder]=totQty; tot[iSum]=Math.round(totSum);
@@ -2591,9 +2598,9 @@ function exportHomeCSV(){
   const catSel=document.getElementById("homeCat");
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
-  let csv="Артикул;Название;Категория;Продано шт;Выручка;Итого к оплате;Себестоимость;Удержания WB;Реклама;Прибыль;Маржа\n";
+  let csv="Артикул;Название;Категория;Продано шт;Выручка, ₽;Итого к оплате, ₽;Себестоимость, ₽;Удержания WB, ₽;Реклама, ₽;Прибыль, ₽;Маржа, %\n";
   productPnL(dates,cat,q).filter(hasActivity).forEach(r=>{
-    const margin=r.revenue?(r.margin*100).toFixed(1):"";
+    const margin=r.revenue?csvPct(r.margin*100):"";
     csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,r.net,Math.round(r.revenue),Math.round(r.payoutNet),r.hasCost?Math.round(r.cogs):"",Math.round(r.wbHold),Math.round(r.ad),Math.round(r.profit),margin].join(";")+"\n";
   });
   downloadCSV("wb-главная.csv",csv);
@@ -2759,10 +2766,10 @@ function exportAnalyticsCSV(){
   const {dates}=dateRangeFromCache(FINANCE_CACHE,analyticsPeriodN);
   const all=productPnL(dates,cat,q).filter(r=>r.qty>0||r.returnsQty>0||r.ad>0);
   const {ranked,totalPos}=classifyABC(all);
-  let csv="Артикул;Название;Категория;Класс;Продано шт;Выручка;Прибыль;Доля прибыли %;Маржа %;Возврат %\n";
+  let csv="Артикул;Название;Категория;Класс;Продано шт;Выручка, ₽;Прибыль, ₽;Доля прибыли, %;Маржа, %;Возврат, %\n";
   ranked.forEach(r=>{
     csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,r.abc,r.net,Math.round(r.revenue),Math.round(r.profit),
-      r.profit>0?(r.profit/totalPos*100).toFixed(1):"",r.hasCost?(r.margin*100).toFixed(1):"",(r.returnRate*100).toFixed(1)].join(";")+"\n";
+      r.profit>0?csvPct(r.profit/totalPos*100):"",r.hasCost?csvPct(r.margin*100):"",csvPct(r.returnRate*100)].join(";")+"\n";
   });
   downloadCSV("wb-аналитика.csv",csv);
 }
