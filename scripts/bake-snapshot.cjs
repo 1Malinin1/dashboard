@@ -22,8 +22,13 @@ const OUT = path.join(ROOT, 'decrypted');
 const newPeriod = process.argv[2];
 
 const ctx = {}; vm.createContext(ctx);
+// BAKED_FUNNEL держим отдельно и переносим КАК ЕСТЬ: воронку печёт bake-funnel.cjs,
+// этот скрипт её не трогает. Без переноса пересборка wb-reports.js молча стирала
+// воронку (и ломала вкладку «Товар») — этот скрипт старше, чем воронка.
 vm.runInContext(fs.readFileSync(path.join(OUT, 'wb-reports.js'), 'utf8')
-  + '\nglobalThis.__O = {BAKED_FINANCE, BAKED_ADS, BAKED_FINANCE_ROWS, BAKED_ADS_ROWS, BAKED_PERIOD};', ctx);
+  + '\nglobalThis.__O = {BAKED_FINANCE, BAKED_ADS, BAKED_FINANCE_ROWS, BAKED_ADS_ROWS, BAKED_PERIOD,'
+  + ' BAKED_FUNNEL: (typeof BAKED_FUNNEL!=="undefined"? BAKED_FUNNEL : []),'
+  + ' BAKED_FUNNEL_ROWS: (typeof BAKED_FUNNEL_ROWS!=="undefined"? BAKED_FUNNEL_ROWS : 0)};', ctx);
 const old = ctx.__O;
 
 function load(f) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return {}; } }
@@ -54,13 +59,14 @@ const period = newPeriod || old.BAKED_PERIOD;
 if (!newPeriod) console.log('  ⚠ Подпись периода НЕ передана аргументом — оставляю старую:', period, '(вероятно, нужно передать новую!)');
 const at = new Date().toISOString().slice(0, 10);
 
-const js = '// Зашитый снимок отчётов (финансы + реклама) по нашим артикулам.\n'
+const js = '// Зашитый снимок отчётов (финансы + реклама + воронка) по нашим артикулам.\n'
   + '// Собран автоматически из выгрузок WB. Показывается на «Главной»/«Финансах» как базовый слой.\n'
   + 'const BAKED_AT="' + at + '", BAKED_PERIOD="' + period + '";\n'
-  + 'const BAKED_FINANCE_ROWS=' + finRows + ', BAKED_ADS_ROWS=' + adsRows + ';\n'
+  + 'const BAKED_FINANCE_ROWS=' + finRows + ', BAKED_ADS_ROWS=' + adsRows + ', BAKED_FUNNEL_ROWS=' + old.BAKED_FUNNEL_ROWS + ';\n'
   + 'const BAKED_FINANCE=' + JSON.stringify(mergedFin) + ';\n'
-  + 'const BAKED_ADS=' + JSON.stringify(mergedAds) + ';\n';
+  + 'const BAKED_ADS=' + JSON.stringify(mergedAds) + ';\n'
+  + 'const BAKED_FUNNEL=' + JSON.stringify(old.BAKED_FUNNEL) + ';\n';
 fs.writeFileSync(path.join(OUT, 'wb-reports.js'), js);
 console.log('\ndecrypted/wb-reports.js пересобран:', (js.length / 1024 | 0), 'KB · finance агрегатов', mergedFin.length,
-  '· ads агрегатов', mergedAds.length, '· период', period);
+  '· ads агрегатов', mergedAds.length, '· строк воронки', old.BAKED_FUNNEL.length, '(перенесены без изменений) · период', period);
 console.log('Далее: node scripts/encrypt.cjs <код>, затем git add wb-secure.js && git commit && git push.');
