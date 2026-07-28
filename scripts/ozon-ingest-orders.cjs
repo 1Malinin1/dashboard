@@ -15,7 +15,9 @@ const wbSup=new Set(ctx.__C.map(x=>(''+(x.supplierCode||'')).trim()).filter(Bool
 function num(v){const n=parseFloat((''+v).replace(/\s/g,'').replace(',','.'));return isNaN(n)?0:n;}
 function load(f){ if(f.endsWith('.csv')){const t=fs.readFileSync(f,'utf8');const sep=(t.split(/\r?\n/)[0].split(';').length>2)?';':',';return XLSX.read(t,{type:'string',FS:sep,raw:false});}
   return XLSX.read(fs.readFileSync(f),{type:'buffer',cellStyles:false,cellFormula:false}); }
-function parts(s,fmt){const p=(''+s).trim().split(' ')[0].split('/');if(p.length!==3)return null;let a=+p[0],b=+p[1],y=+p[2];if(y<100)y+=2000;const m=fmt==='MD'?a:b,d=fmt==='MD'?b:a;if(!(m>=1&&m<=12&&d>=1&&d<=31))return null;return{y,m,d};}
+// Разделитель даты бывает и «/» (7/24/26), и «.» (22.07.2026) — зависит от выгрузки.
+// Порядок полей (MD/DM) определяется отдельно, пофайлово, через detectFmt.
+function parts(s,fmt){const p=(''+s).trim().split(' ')[0].split(/[/.]/);if(p.length!==3)return null;let a=+p[0],b=+p[1],y=+p[2];if(!(a>0&&b>0&&y>0))return null;if(y<100)y+=2000;const m=fmt==='MD'?a:b,d=fmt==='MD'?b:a;if(!(m>=1&&m<=12&&d>=1&&d<=31))return null;return{y,m,d};}
 function iso(o){return o.y+'-'+String(o.m).padStart(2,'0')+'-'+String(o.d).padStart(2,'0');}
 function detectFmt(strs){const r={};for(const f of ['MD','DM']){let ok=true,mn=null,mx=null;for(const s of strs){const o=parts(s,f);if(!o){ok=false;break;}const t=Date.UTC(o.y,o.m-1,o.d);if(mn==null||t<mn)mn=t;if(mx==null||t>mx)mx=t;}if(ok)r[f]=(mx-mn)/864e5;}const k=Object.keys(r);return k.length?k.sort((a,b)=>r[a]-r[b])[0]:'MD';}
 const seen=new Set();

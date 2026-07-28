@@ -58,17 +58,29 @@ const ozMoney={};
 Object.entries(ord.byDateArtRub||{}).forEach(([k,v])=>{ const d=k.slice(0,10),a=k.slice(11); (ozMoney[d]||(ozMoney[d]={}))[a]=[Math.round(v),0]; });
 Object.entries(ord.byDateArtBuyRub||{}).forEach(([k,v])=>{ const d=k.slice(0,10),a=k.slice(11); const m=(ozMoney[d]||(ozMoney[d]={})); if(!m[a])m[a]=[0,0]; m[a][1]=Math.round(v); });
 
-// 4) Остатки (лист «Товары»): 0 Артикул · 9 Доступно к продаже · 19 В поставках в пути
+// 4) Остатки (лист «Товары»): 0 Артикул · 9 Доступно к продаже
 //    6 Дней до конца остатка (озоновский) · 7 Среднесут. продажи 28д
-let stockRows=0, stockSum=0;
+// «В пути на склад Ozon» — родительская шапка над ДВУМЯ подколонками:
+//   [18] «В заявках на поставку»  — заявка создана, товар назначен на отгрузку;
+//   [19] «В поставках в пути»     — партия физически едет на склад Озона.
+// Это две непересекающиеся стадии одного пути, поэтому `ozTransit` = их СУММА
+// (решение продавца: заявка = «товар уже направлен на Озон»). НЕ путать с `ozIncoming` —
+// это наши данные из файла «на оптовых» (то, что ещё только собираемся отправить).
+let stockRows=0, stockSum=0, sumZayav=0, sumPath=0;
 if(stockFile){
   const swb=XLSX.read(fs.readFileSync(stockFile),{type:'buffer',cellStyles:false,cellFormula:false});
   const sr=XLSX.utils.sheet_to_json(swb.Sheets['Товары'],{header:1,raw:false,defval:''});
+  // ищем колонки по имени в двухэтажной шапке (индексы «плывут» между версиями отчёта)
+  const h0=(sr[0]||[]).map(x=>(''+x).replace(/\s+/g,' ').trim()), h1=(sr[1]||[]).map(x=>(''+x).replace(/\s+/g,' ').trim());
+  const findCol=(re,def)=>{ for(let i=0;i<Math.max(h0.length,h1.length);i++){ if(re.test(h1[i]||'')||re.test(h0[i]||'')) return i; } return def; };
+  const cAvail=findCol(/^Доступно к.продаже/i,9), cZayav=findCol(/^В.заявках на.поставку/i,18), cPath=findCol(/^В.поставках в.пути/i,19);
   for(let i=4;i<sr.length;i++){ const r=sr[i]; const art=(''+(r[0]||'')).trim(); if(!art) continue;
     // берём только наши: уже в каталоге Озона ИЛИ есть как арт.поставщика ВБ
     if(!byA[art] && !supToWb[art]) continue;
     const c=ensure(art); if(c.name===art){ const nm=(''+(r[1]||'')).trim(); if(nm) c.name=nm; }
-    c.ozStock=num(r[9]); c.ozTransit=num(r[19]);
+    const zayav=num(r[cZayav]), path=num(r[cPath]);
+    sumZayav+=zayav; sumPath+=path;
+    c.ozStock=num(r[cAvail]); c.ozTransit=zayav+path;
     const dl=num(r[6]); if(dl>0) c.ozDaysLeftReport=Math.round(dl);
     const av=num(r[7]); if(av>0) c.ozAvg28=av;
     stockRows++; stockSum+=c.ozStock;
@@ -112,5 +124,6 @@ console.log('REAL_DATA.ozon собран:');
 console.log('  каталог Озона:',ozCat.length,'товаров · связано с ВБ:',linked,'· без связки:',ozCat.length-linked);
 console.log('  заказы: дней',dates.length,'('+dates[0]+'…'+dates[dates.length-1]+') · товаров с заказами:',ozCat.filter(c=>byArt[c.sku]&&byArt[c.sku].some(x=>x>0)).length);
 console.log('  остатки:',stockFile?('строк '+stockRows+' · сумма «Доступно» '+stockSum+' шт · дата '+stockDate):'(файл не передан)');
+if(stockFile) console.log('  в пути на Озон:',(sumZayav+sumPath),'шт = заявки на поставку '+sumZayav+' + физически в пути '+sumPath);
 console.log('  товаров с остатком >0:',ozCat.filter(c=>c.ozStock>0).length);
 console.log('  % выкупа: окно',buyoutWindow,'· общий',Math.round(buyoutAll*100)+'%');
