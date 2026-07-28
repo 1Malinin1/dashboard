@@ -39,7 +39,13 @@ if (!finRaw.length && !adsRaw.length) {
   process.exit(1);
 }
 
-const weekFin = aggregateFinanceRows(finRaw);
+// Пустые агрегаты (ни штук, ни денег) отбрасываем: в выгрузках попадаются нулевые
+// строки со старой датой, из-за них в снимке появлялась фантомная дата и «Главная»
+// показывала «история с …» на месяцы раньше реальных данных.
+const MONEY = ['payout', 'logistics', 'penalty', 'storage', 'reimb', 'deduction', 'priyomka', 'loyalty', 'loyaltyPts'];
+const isEmptyAgg = a => !a.qty && !a.returnsQty && !Math.round(a.revenue)
+  && !MONEY.some(f => Math.round(a[f] || 0));
+const weekFin = aggregateFinanceRows(finRaw).filter(a => !isEmptyAgg(a));
 const weekAds = aggregateAdRows(adsRaw);
 const wDates = [...new Set(weekFin.map(r => r.date))].sort();
 console.log('НОВЫЕ ДАННЫЕ:', JSON.stringify(controlTotals(weekFin)),

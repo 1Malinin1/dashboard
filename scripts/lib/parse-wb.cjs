@@ -147,25 +147,64 @@ function parseCostSheet(XLSX, wb) {
 
 // Агрегация построчных финансовых записей в свод по (дата+артикул) — как FINANCE_CACHE
 // на сайте. Штуки/выручка только по Продажа(+)/Возврат(−); деньги — сырыми суммами.
+//
+// Строки БЕЗ даты. WB не проставляет «Дата продажи» строкам, не привязанным к продаже
+// (прежде всего «Возмещение издержек»): в отчёте у них пусты ВСЕ колонки с датами.
+// Раньше такие строки целиком падали на последний день периода (`r.date || maxDate`) —
+// сумма за период выходила верной, но день-приёмник получал весь расход разом и
+// проваливался на графике «Прибыль по дням» (напр. 26.07: 404 487 ₽ вместо ~810 000 ₽).
+// Теперь расход РАЗМАЗЫВАЕТСЯ по датам того же артикула пропорционально его выручке
+// за день. Итог за период не меняется (это те же деньги), а подённая картина
+// перестаёт врать. Если у артикула нет ни одного дня с выручкой — кладём на maxDate.
+const MONEY_FIELDS = ['payout', 'logistics', 'penalty', 'storage', 'reimb', 'deduction', 'priyomka', 'loyalty', 'loyaltyPts'];
 function aggregateFinanceRows(raw) {
   const dated = raw.map(r => r.date).filter(Boolean).sort();
   const maxDate = dated.length ? dated[dated.length - 1] : '';
   const byKey = {};
+  const mkBucket = (d, r) => ({
+    id: d + '_' + r.sku, date: d, sku: r.sku, name: r.name, category: r.category,
+    qty: 0, returnsQty: 0, revenue: 0, payout: 0, logistics: 0, penalty: 0, storage: 0,
+    reimb: 0, deduction: 0, priyomka: 0, loyalty: 0, loyaltyPts: 0,
+  });
+  const undated = [];
   for (const r of raw) {
-    const d = r.date || maxDate, key = d + '_' + r.sku;
-    let b = byKey[key];
-    if (!b) b = byKey[key] = {
-      id: key, date: d, sku: r.sku, name: r.name, category: r.category,
-      qty: 0, returnsQty: 0, revenue: 0, payout: 0, logistics: 0, penalty: 0, storage: 0,
-      reimb: 0, deduction: 0, priyomka: 0, loyalty: 0, loyaltyPts: 0,
-    };
+    if (!r.date) { undated.push(r); continue; }          // отложим — разложим ниже
+    const key = r.date + '_' + r.sku;
+    let b = byKey[key]; if (!b) b = byKey[key] = mkBucket(r.date, r);
     if (r.docType === 'Продажа') { b.qty += r.qty || 0; b.revenue += (r.retail || 0) * (r.qty || 0); }
     else if (r.docType === 'Возврат') { b.returnsQty += r.qty || 0; b.revenue -= (r.retail || 0) * (r.qty || 0); }
-    b.payout += r.payout || 0; b.logistics += r.logistics || 0; b.penalty += r.penalty || 0; b.storage += r.storage || 0;
-    b.reimb += r.reimb || 0; b.deduction += r.deduction || 0; b.priyomka += r.priyomka || 0;
-    b.loyalty += r.loyalty || 0; b.loyaltyPts += r.loyaltyPts || 0;
+    for (const f of MONEY_FIELDS) b[f] += r[f] || 0;
     if ((!b.name || b.name === b.sku) && r.name && r.name !== r.sku) b.name = r.name;
     if (!b.category && r.category) b.category = r.category;
+  }
+  // суммируем недатированные деньги по артикулу, затем размазываем по дням этого артикула
+  const bySku = {};
+  for (const r of undated) {
+    let s = bySku[r.sku]; if (!s) s = bySku[r.sku] = { sku: r.sku, name: r.name, category: r.category, sums: {} };
+    for (const f of MONEY_FIELDS) if (r[f]) s.sums[f] = (s.sums[f] || 0) + r[f];
+    if ((!s.name || s.name === s.sku) && r.name && r.name !== r.sku) s.name = r.name;
+  }
+  const buckets = Object.values(byKey);
+  for (const s of Object.values(bySku)) {
+    const total = Object.values(s.sums).reduce((a, b) => a + b, 0);
+    if (!total) continue;
+    const mine = buckets.filter(b => b.sku === s.sku && b.revenue > 0);
+    if (!mine.length) {                                   // нет дней с выручкой — кладём на последний день
+      const key = maxDate + '_' + s.sku;
+      let b = byKey[key]; if (!b) b = byKey[key] = mkBucket(maxDate, s);
+      for (const f of MONEY_FIELDS) b[f] += s.sums[f] || 0;
+      continue;
+    }
+    const rev = mine.reduce((a, b) => a + b.revenue, 0);
+    for (const f of MONEY_FIELDS) {
+      const amount = s.sums[f]; if (!amount) continue;
+      let placed = 0;
+      mine.forEach((b, i) => {
+        // последнему отдаём остаток — чтобы сумма сошлась до копейки без потерь на округлении
+        const part = (i === mine.length - 1) ? amount - placed : amount * (b.revenue / rev);
+        b[f] += part; placed += part;
+      });
+    }
   }
   return Object.values(byKey);
 }
