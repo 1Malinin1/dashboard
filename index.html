@@ -354,6 +354,24 @@
   .cat-prof-row .val{text-align:right;font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap}
   .cat-prof-row .val.pos{color:var(--good-txt)} .cat-prof-row .val.neg{color:var(--crit-txt)}
   @media(max-width:620px){ .cat-prof-row{grid-template-columns:96px 1fr 88px;font-size:12.5px} }
+  /* Сводка «товар × дни» на «Динамике»: узкие колонки-дни, залипающие товар и итог */
+  #dynTable.pivot th,#dynTable.pivot td{padding:6px 7px;font-size:12.5px}
+  #dynTable.pivot thead th{font-size:11px;letter-spacing:0}
+  #dynTable.pivot th.metric,#dynTable.pivot td.metric{min-width:210px;max-width:210px}
+  #dynTable.pivot td.metric .sku{font-size:10.5px}
+  #dynTable.pivot .d-col{min-width:44px;text-align:right;font-variant-numeric:tabular-nums}
+  #dynTable.pivot .d-zero{color:var(--muted);opacity:.45}
+  /* «Итого» — залипает справа, чтобы при прокрутке дней总 всегда был виден */
+  #dynTable.pivot .tot-col{position:sticky;right:0;z-index:2;background:var(--surface);
+    font-weight:680;border-left:1px solid var(--border-2)}
+  #dynTable.pivot thead .tot-col{z-index:4;background:var(--surface-2)}
+  #dynTable.pivot tbody tr:hover .tot-col{background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
+  /* строка итогов по дням — закреплена под шапкой */
+  #dynTable.pivot tr.pivot-total td{position:sticky;top:29px;z-index:3;background:var(--surface-2);
+    font-weight:700;border-bottom:1px solid var(--border-2)}
+  #dynTable.pivot tr.pivot-total td.metric{z-index:5}
+  #dynTable.pivot tr.pivot-total td.tot-col{z-index:5;background:var(--surface-3)}
+  #dynTable.pivot .wk{border-left:1px dashed var(--border-2)}   /* граница недели */
   /* Плашка «Что двигает прибыль» — топ-3 в плюсе / топ-3 в минусе */
   .drivers{display:grid;grid-template-columns:1fr 1fr;gap:9px 22px;margin-top:8px}
   @media(max-width:640px){ .drivers{grid-template-columns:1fr} }
@@ -792,6 +810,10 @@
       <div class="toolbar" style="padding:0 18px 12px">
         <input type="search" id="dynSearch" placeholder="Поиск по артикулу или названию…">
         <select id="dynCat" multiple></select>
+        <div class="seg" id="dynViewSeg" role="group" aria-label="Вид таблицы">
+          <button data-view="days" aria-pressed="true">По дням</button>
+          <button data-view="sum">Свод</button>
+        </div>
         <span class="count" id="dynCount"></span>
       </div>
       <div class="table-scroll"><table class="rnp" id="dynTable"></table></div>
@@ -1579,6 +1601,7 @@ function exportTurnoverCSV(){
 let dynPeriodN=7; // 0 = весь период
 let dynCustom=null; // {from,to} индексы в RDATES, если период выбран календарём
 let dynSortState={key:"qty",dir:-1};
+let dynView="days";   // «По дням» (сводка товар×дни) или «Свод» (прежняя таблица)
 function dynRange(){
   const n=RDATES.length; if(!n) return {from:0,to:-1,prevFrom:0,prevTo:-1,hasPrev:false};
   let from,to;
@@ -1821,6 +1844,8 @@ function renderDynamicsTab(){
   document.getElementById("dynCount").textContent=rows.length+" товаров с заказами";
   document.getElementById("dynTblNote").textContent=`период: ${isoDates.length} дн.`;
   if(!rows.length){ document.getElementById("dynTable").innerHTML=`<tbody><tr><td class="empty-hint">За этот период заказов не найдено</td></tr></tbody>`; return; }
+  if(dynView==="days"){ renderDynPivot(rows,skus,isoDates,from,hasMoneyData); return; }
+  document.getElementById("dynTable").className="rnp";
   let html=`<thead><tr>${thSort("Товар","name",dynSortState,"metric")}${thSort("Категория","category",dynSortState)}
     ${thSort("Заказы, шт","qty",dynSortState)}${thSort("Доля","share",dynSortState)}${thSort("Заказано, ₽","ordersSum",dynSortState)}${thSort("Выкуплено, ₽","buyoutSum",dynSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
@@ -1829,6 +1854,45 @@ function renderDynamicsTab(){
   });
   html+="</tbody>";
   document.getElementById("dynTable").innerHTML=html;
+}
+// Сводка «товар × дни» — как в рабочем файле продавца, но живая: заливка показывает
+// динамику ВНУТРИ товара (относительно его же лучшего дня), закреплённая строка сверху
+// даёт итог по магазину за каждый день, «Итого» залипает справа при прокрутке дней.
+function renderDynPivot(rows,skus,isoDates,from,hasMoneyData){
+  const tbl=document.getElementById("dynTable"); tbl.className="rnp pivot";
+  const n=isoDates.length;
+  const seriesBySku={}; skus.forEach(c=>{ const s=seriesFor(c.sku); if(s) seriesBySku[c.sku]=s; });
+  const cell=(sku,i)=>{ const s=seriesBySku[sku]; return s? (s[from+i]||0) : 0; };
+  // итог по магазину за каждый день (для закреплённой строки)
+  const dayTot=new Array(n).fill(0);
+  rows.forEach(r=>{ for(let i=0;i<n;i++) dayTot[i]+=cell(r.sku,i); });
+  const dayTotMax=Math.max(...dayTot,0)||1;
+  const money=hasMoneyData;
+  const dLabel=d=>{ const p=d.split("-"); return p[2]+"."+p[1]; };
+  const isMon=d=>new Date(d+"T00:00:00Z").getUTCDay()===1;   // понедельник → граница недели
+  let html=`<thead><tr>${thSort("Товар","name",dynSortState,"metric")}`;
+  for(let i=0;i<n;i++) html+=`<th class="d-col${isMon(isoDates[i])&&i?" wk":""}" title="${esc(fmtDateLong(isoDates[i]))}">${dLabel(isoDates[i])}</th>`;
+  html+=`${thSort("Итого","qty",dynSortState,"tot-col")}`;
+  if(money) html+=`${thSort("Заказано, ₽","ordersSum",dynSortState)}${thSort("Выкуплено, ₽","buyoutSum",dynSortState)}`;
+  html+=`</tr></thead><tbody>`;
+  // строка «Всего по дням»
+  html+=`<tr class="pivot-total"><td class="metric">Всего по дням</td>`;
+  for(let i=0;i<n;i++) html+=`<td class="d-col${isMon(isoDates[i])&&i?" wk":""}" style="${heatBg(dayTot[i],dayTotMax)}">${fmt(dayTot[i])}</td>`;
+  html+=`<td class="tot-col">${fmt(dayTot.reduce((a,b)=>a+b,0))}</td>`;
+  if(money) html+=`<td>${rub(rows.reduce((a,r)=>a+r.ordersSum,0))}</td><td>${rub(rows.reduce((a,r)=>a+r.buyoutSum,0))}</td>`;
+  html+=`</tr>`;
+  rows.slice(0,300).forEach(r=>{
+    const vals=[]; let mx=0;
+    for(let i=0;i<n;i++){ const v=cell(r.sku,i); vals.push(v); if(v>mx) mx=v; }
+    html+=`<tr><td class="name-cell metric" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>`;
+    for(let i=0;i<n;i++){ const v=vals[i];
+      html+=`<td class="d-col${v?"":" d-zero"}${isMon(isoDates[i])&&i?" wk":""}" style="${v&&mx?heatBg(v,mx):""}">${v?fmt(v):"·"}</td>`; }
+    html+=`<td class="tot-col">${fmt(r.qty)}</td>`;
+    if(money) html+=`<td>${r.ordersSum?rub(r.ordersSum):"—"}</td><td>${r.buyoutSum?rub(r.buyoutSum):"—"}</td>`;
+    html+=`</tr>`;
+  });
+  html+="</tbody>";
+  tbl.innerHTML=html;
 }
 function moneyBySkuMap(fromDate,toDate){
   const m=mpMoney(), map={};
@@ -3432,6 +3496,11 @@ document.getElementById("turnTable").addEventListener("click",e=>{
   e.stopPropagation(); openColFilter(cf,cf.dataset.fkey);
 });
 wireSortable("dynTable",dynSortState,renderDynamicsTab);
+document.getElementById("dynViewSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); dynView=b.dataset.view; renderDynamicsTab();
+});
 wireSortable("finTable",finSortState,renderFinanceTab);
 
 document.getElementById("anPeriodSeg").addEventListener("click",e=>{
