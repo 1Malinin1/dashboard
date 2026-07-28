@@ -14,16 +14,30 @@ vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThi
 const RD=ctx.__RD;
 const catSet=new Set(RD.catalog.map(x=>x.sku));
 function num(v){const n=parseFloat((''+v).replace(/\s/g,'').replace(',','.'));return isNaN(n)?0:n;}
+// Ищет лист детального отчёта воронки: в шапке должны быть и «Артикул WB», и «Заказали
+// товаров, шт». Лист «Промосервисы …» тоже содержит «Заказали товаров, шт», но в нём нет
+// «Показы» — поэтому дополнительно требуем «Показы», чтобы не взять его по ошибке.
+function findSheet(wb){
+  for(const name of wb.SheetNames){
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:false,defval:''});
+    for(let i=0;i<Math.min(8,rows.length);i++){
+      const H=(rows[i]||[]).map(x=>''+x);
+      if(H.indexOf('Артикул WB')>=0 && H.indexOf('Показы')>=0) return {rows,hr:i,name};
+    }
+  }
+  return {rows:null,hr:0,name:null};
+}
 function readDay(f){
   const wb=XLSX.read(fs.readFileSync(f),{type:'buffer',cellStyles:false,cellFormula:false});
   const oi=XLSX.utils.sheet_to_json(wb.Sheets['Общая информация'],{header:1,raw:false,defval:''});
   let per='';oi.forEach(r=>{ if((''+r[0]).toLowerCase().includes('текущий')) per=''+r[1]; });
   const m=per.match(/(\d{2})-(\d{2})-(\d{4})/); if(!m) throw new Error('нет даты в "'+per+'" ('+f+')');
   const iso=m[3]+'-'+m[2]+'-'+m[1];
-  const rows=XLSX.utils.sheet_to_json(wb.Sheets['Товары'],{header:1,raw:false,defval:''});
-  // шапка не всегда в row 0: в новом формате row 0 — заголовок отчёта, а шапка в row 1
-  // (плюс появился лишний столбец «Артикул продавца» — читаем по ИМЕНИ, так что сдвиг не важен).
-  let hr=0; for(let i=0;i<Math.min(8,rows.length);i++){ if(rows[i].map(x=>''+x).indexOf('Артикул WB')>=0){ hr=i; break; } }
+  // Лист с товарами ищем ПО СОДЕРЖИМОМУ, а не по имени: он называется «Товары», но если
+  // выгрузка отфильтрована по бренду — «Vulpes» (и «Промосервисы Vulpes» рядом, его надо
+  // пропустить — там нет «Показы»). Берём первый лист, где в шапке есть «Артикул WB».
+  const {rows,hr}=findSheet(wb);
+  if(!rows) throw new Error('не нашёл лист с колонкой «Артикул WB» в '+f+' (листы: '+wb.SheetNames.join(', ')+')');
   const H=rows[hr].map(x=>''+x),iA=H.indexOf('Артикул WB'),iQ=H.indexOf('Заказали товаров, шт'),
     iOrdR=H.indexOf('Заказали на сумму, ₽'),iBuyR=H.indexOf('Выкупили на сумму, ₽');
   const bySku={},money={};let tot=0,ordR=0,buyR=0;

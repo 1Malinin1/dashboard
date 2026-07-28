@@ -30,16 +30,27 @@ vm.runInContext(fs.readFileSync(path.join(OUT,'wb-reports.js'),'utf8')
 const B=rd.__B;
 
 // 3) парсим подённые файлы воронки
+// Лист детального отчёта ищем ПО СОДЕРЖИМОМУ: он называется «Товары», но в выгрузке,
+// отфильтрованной по бренду, — «Vulpes». Требуем И «Артикул WB», И «Показы», чтобы не
+// схватить соседний лист «Промосервисы …» (там есть «Заказали товаров, шт», но нет показов).
+function findSheet(wb){
+  for(const name of wb.SheetNames){
+    const rows=XLSX.utils.sheet_to_json(wb.Sheets[name],{header:1,raw:false,defval:''});
+    for(let i=0;i<Math.min(8,rows.length);i++){
+      const H=(rows[i]||[]).map(x=>''+x);
+      if(H.indexOf('Артикул WB')>=0 && H.indexOf('Показы')>=0) return {rows,hr:i};
+    }
+  }
+  return {rows:null,hr:0};
+}
 function readDay(f){
   const wb=XLSX.read(fs.readFileSync(f),{type:'buffer',cellStyles:false,cellFormula:false});
   const oi=XLSX.utils.sheet_to_json(wb.Sheets['Общая информация'],{header:1,raw:false,defval:''});
   let per='';oi.forEach(r=>{ if((''+r[0]).toLowerCase().includes('текущий')) per=''+r[1]; });
   const m=per.match(/(\d{2})-(\d{2})-(\d{4})/); if(!m) throw new Error('нет даты периода в "'+per+'" ('+f+')');
   const iso=m[3]+'-'+m[2]+'-'+m[1];
-  const rows=XLSX.utils.sheet_to_json(wb.Sheets['Товары'],{header:1,raw:false,defval:''});
-  // шапка не всегда в row 0: в новом формате row 0 — заголовок отчёта, а шапка в row 1
-  // (плюс появился лишний столбец «Артикул продавца» — читаем по ИМЕНИ через indexOf, сдвиг не важен).
-  let hr=0; for(let i=0;i<Math.min(8,rows.length);i++){ if(rows[i].map(x=>''+x).indexOf('Артикул WB')>=0){ hr=i; break; } }
+  const {rows,hr}=findSheet(wb);
+  if(!rows) throw new Error('не нашёл лист с воронкой в '+f+' (листы: '+wb.SheetNames.join(', ')+')');
   const H=rows[hr].map(x=>''+x);
   const ix=n=>H.indexOf(n);
   const c={sku:ix('Артикул WB'),name:ix('Название'),cat:ix('Предмет'),
