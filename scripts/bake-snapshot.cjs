@@ -28,7 +28,9 @@ const ctx = {}; vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT, 'wb-reports.js'), 'utf8')
   + '\nglobalThis.__O = {BAKED_FINANCE, BAKED_ADS, BAKED_FINANCE_ROWS, BAKED_ADS_ROWS, BAKED_PERIOD,'
   + ' BAKED_FUNNEL: (typeof BAKED_FUNNEL!=="undefined"? BAKED_FUNNEL : []),'
-  + ' BAKED_FUNNEL_ROWS: (typeof BAKED_FUNNEL_ROWS!=="undefined"? BAKED_FUNNEL_ROWS : 0)};', ctx);
+  + ' BAKED_FUNNEL_ROWS: (typeof BAKED_FUNNEL_ROWS!=="undefined"? BAKED_FUNNEL_ROWS : 0),'
+  + ' BAKED_ACC_FIN: (typeof BAKED_ACC_FIN!=="undefined"? BAKED_ACC_FIN : 0),'
+  + ' BAKED_ACC_ADS: (typeof BAKED_ACC_ADS!=="undefined"? BAKED_ACC_ADS : 0)};', ctx);
 const old = ctx.__O;
 
 function load(f) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return {}; } }
@@ -59,8 +61,12 @@ const mergedFin = old.BAKED_FINANCE.filter(r => !wDateSet.has(r.date)).concat(we
 const mergedAds = old.BAKED_ADS.filter(r => !wAdDateSet.has(r.date)).concat(weekAds).sort((a, b) => a.date < b.date ? -1 : 1);
 console.log('СНИМОК ИТОГО:', JSON.stringify(controlTotals(mergedFin)), '| реклама', Math.round(mergedAds.reduce((a, r) => a + r.spend, 0)));
 
-const finRows = old.BAKED_FINANCE_ROWS + finRaw.length;
-const adsRows = old.BAKED_ADS_ROWS + adsRaw.length;
+// Счётчик исходных строк («N строк учтено» в шапке «Финансов») делаем ИДЕМПОТЕНТНЫМ:
+// запоминаем, сколько строк накопителя было учтено прошлым запеканием, и заменяем этот
+// вклад текущим. Иначе повторный прогон на том же накопителе (например, дозалили рекламу
+// и печём снова) задваивал счётчик.
+const finRows = (old.BAKED_FINANCE_ROWS - (old.BAKED_ACC_FIN || 0)) + finRaw.length;
+const adsRows = (old.BAKED_ADS_ROWS - (old.BAKED_ACC_ADS || 0)) + adsRaw.length;
 const period = newPeriod || old.BAKED_PERIOD;
 if (!newPeriod) console.log('  ⚠ Подпись периода НЕ передана аргументом — оставляю старую:', period, '(вероятно, нужно передать новую!)');
 const at = new Date().toISOString().slice(0, 10);
@@ -69,6 +75,8 @@ const js = '// Зашитый снимок отчётов (финансы + ре
   + '// Собран автоматически из выгрузок WB. Показывается на «Главной»/«Финансах» как базовый слой.\n'
   + 'const BAKED_AT="' + at + '", BAKED_PERIOD="' + period + '";\n'
   + 'const BAKED_FINANCE_ROWS=' + finRows + ', BAKED_ADS_ROWS=' + adsRows + ', BAKED_FUNNEL_ROWS=' + old.BAKED_FUNNEL_ROWS + ';\n'
+  + '// сколько строк накопителя учтено этим запеканием (чтобы повторный прогон не задваивал счётчик)\n'
+  + 'const BAKED_ACC_FIN=' + finRaw.length + ', BAKED_ACC_ADS=' + adsRaw.length + ';\n'
   + 'const BAKED_FINANCE=' + JSON.stringify(mergedFin) + ';\n'
   + 'const BAKED_ADS=' + JSON.stringify(mergedAds) + ';\n'
   + 'const BAKED_FUNNEL=' + JSON.stringify(old.BAKED_FUNNEL) + ';\n';
