@@ -1493,7 +1493,16 @@ function renderTurnoverSimple(){
     bwTxt="% выкупа за "+(_bw? (fmtDate(_bw.split("…")[0])+"–"+fmtDate(_bw.split("…")[1])) : "период"); }
   else bwTxt="% выкупа — 14-дневный из каталога";
   document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров · заказы за 7 дн · "+bwTxt;
-  if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
+  if(!rows.length){
+    // Товары «На вывод» намеренно убраны со вкладки целиком (см. CLAUDE.md) — если запрос ничего не
+    // нашёл именно из-за этого, не молчим «ничего не найдено», а объясняем, где искать дальше.
+    const q=document.getElementById("turnSearch").value.trim().toLowerCase();
+    let hint="Ничего не найдено по текущим фильтрам";
+    if(q){
+      const discMatch=RCAT.find(c=>c.productionStatus==="На вывод" && (c.sku.includes(q)||c.name.toLowerCase().includes(q)));
+      if(discMatch) hint=`Товар «${esc(discMatch.name)}» (${esc(discMatch.sku)}) найден, но у него статус «На вывод» — такие товары не показываются на «Оборачиваемости». Ищите на «Динамике заказов» или «Товаре».`;
+    }
+    document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">${hint}</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}
     ${thSortF("Остаток "+(oz?"Ozon":"WB"),"currentStock",turnSortState)}${thSortF("Заказов/дн","avgD",turnSortState)}${thSortF("% выкупа","buyout",turnSortState)}
     ${thSortF("Продаж/дн","sales",turnSortState)}${thSortF("Хватит, дн","daysLeft",turnSortState)}${thSortF("Дозаказать","reorder",turnSortState)}${thSortF("Заказать","whenOrder",turnSortState)}${thSortF("Статус","status",turnSortState)}</tr></thead><tbody>`;
