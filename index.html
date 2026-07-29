@@ -824,7 +824,7 @@
     <div class="freshness" id="turnFreshness"></div>
     <div class="kpis4" id="turnKpis"></div>
     <div class="toolbar">
-      <input type="search" id="turnSearch" placeholder="Поиск по артикулу или названию…">
+      <input type="search" id="turnSearch" placeholder="Поиск: артикул, код 1С или название…">
       <select id="turnCat" multiple></select>
       <select id="turnProduct" multiple data-all="Все товары" data-plural="товар,товара,товаров"></select>
       <select id="turnWindow">
@@ -1436,7 +1436,7 @@ function turnFilteredRows(all, exceptKey){
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
   let rows=all;
-  if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
+  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
   turnColDefs().forEach(def=>{ if(def.key===exceptKey) return;
@@ -1571,7 +1571,7 @@ function renderTurnPurchase(base){
   let rows=purchaseRows(base);
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
-  if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
+  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
   rows=sortRows(rows,turnSortState,{ name:r=>r.name, baseQty:r=>r.baseQty, salesPerDay:r=>r.salesPerDay,
@@ -1587,7 +1587,7 @@ function renderTurnPurchase(base){
     +`${thSort("Есть сейчас","covered",turnSortState)}${thSort("К закупу","buy",turnSortState)}`
     +`${thSort("Сумма, ₽","buyCost",turnSortState)}</tr></thead><tbody>`;
   rows.slice(0,400).forEach(r=>{
-    html+=`<tr><td class="name-cell metric" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>`
+    html+=`<tr><td class="name-cell metric" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}${code1c(r.sku)?" · 1С "+esc(code1c(r.sku)):""}</span></td>`
       +`<td>${fmt(r.baseQty)} шт<span class="sub2 mut">${esc(r.baseLabel)}${r.basePartial?" (неполный)":""}</span></td>`
       +`<td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>`
       +`<td>${fmt(r.need)}</td>`
@@ -1601,24 +1601,24 @@ function exportPurchaseCSV(base){
   let rows=purchaseRows(base);
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
-  if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
+  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
   rows=sortRows(rows,turnSortState,{ name:r=>r.name, baseQty:r=>r.baseQty, salesPerDay:r=>r.salesPerDay,
     need:r=>r.need, covered:r=>r.covered, buy:r=>r.buy, buyCost:r=>r.buyCost });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
   const bt = base==="peak"? "пиковому месяцу (без декабря)" : "среднему месяцу";
-  const cols=["Артикул","Название","Категория",
+  const cols=["Артикул","Код 1С","Название","Категория",
     base==="peak"?"Пиковый месяц, шт":"Средний месяц, шт", base==="peak"?"Какой месяц":"Месяцев в расчёте",
     "Продаж в день (выкуп "+Math.round(TURN_PEAK_BUYOUT*100)+"%)","Нужно на 6 мес, шт",
     "Есть сейчас (остаток+в пути+ожидается)","К закупу, шт","Контейнеров","Сумма по себестоимости, ₽"];
   let csv="Расчёт закупа по "+bt+"\n"+cols.join(";")+"\n";
   let tq=0,ts=0;
   rows.forEach(r=>{ tq+=r.buy; ts+=r.buyCost;
-    csv+=[r.sku,(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "),
+    csv+=[r.sku,code1c(r.sku),(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "),
       r.baseQty, r.baseLabel+(r.basePartial?" (неполный)":""), csvNum(r.salesPerDay,1),
       r.need, r.covered, r.buy||"", r.cont||"", r.buy&&r.hasCost? Math.round(r.buyCost):""].join(";")+"\n"; });
-  const tot=Array(cols.length).fill(""); tot[0]="ИТОГО"; tot[8]=tq; tot[10]=Math.round(ts);
+  const tot=Array(cols.length).fill(""); tot[0]="ИТОГО"; tot[9]=tq; tot[11]=Math.round(ts);
   csv+=tot.join(";")+"\n";
   downloadCSV((_appliedMp==="ozon"?"ozon":"wb")+"-закуп-"+(base==="peak"?"по-пику":"по-среднему")+".csv",csv);
 }
@@ -1629,7 +1629,7 @@ function renderTurnMonths(){
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
   let rows=all;
-  if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
+  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
   rows=sortRows(rows,turnSortState,{
@@ -1648,7 +1648,7 @@ function renderTurnMonths(){
   months.forEach((m,i)=>{ html+=`<td class="d-col" style="${heatBg(monTot[i],monTotMax)}">${fmt(monTot[i])}</td>`; });
   html+=`<td class="tot-col">${fmt(monTot.reduce((a,b)=>a+b,0))}</td><td colspan="3"></td></tr>`;
   rows.slice(0,400).forEach(r=>{
-    html+=`<tr><td class="name-cell metric" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>`;
+    html+=`<tr><td class="name-cell metric" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}${code1c(r.sku)?" · 1С "+esc(code1c(r.sku)):""}</span></td>`;
     r.vals.forEach((v,i)=>{ const isPeak=i===r.peakIdx&&v>0;
       html+=`<td class="d-col${v?"":" d-zero"}" style="${v&&r.peak?heatBg(v,r.peak):""}${isPeak?";font-weight:750;color:var(--accent)":""}"${isPeak?' title="Пиковый месяц"':''}>${v?fmt(v):"·"}</td>`; });
     html+=`<td class="tot-col">${fmt(r.total)}</td>`
@@ -1694,7 +1694,7 @@ function renderTurnoverSimple(){
     const q=document.getElementById("turnSearch").value.trim().toLowerCase();
     let hint="Ничего не найдено по текущим фильтрам";
     if(q){
-      const discMatch=RCAT.find(c=>c.productionStatus==="На вывод" && (c.sku.includes(q)||c.name.toLowerCase().includes(q)));
+      const discMatch=RCAT.find(c=>c.productionStatus==="На вывод" && matchQ(c.sku,c.name,q));
       if(discMatch) hint=`Товар «${esc(discMatch.name)}» (${esc(discMatch.sku)}) найден, но у него статус «На вывод» — такие товары не показываются на «Оборачиваемости». Ищите на «Динамике заказов» или «Товаре».`;
     }
     document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">${hint}</td></tr></tbody>`; return; }
@@ -1703,7 +1703,7 @@ function renderTurnoverSimple(){
     ${thSortF("Продаж/дн","sales",turnSortState)}${thSortF("Хватит, дн","daysLeft",turnSortState)}${thSortF("Дозаказать","reorder",turnSortState)}${thSortF("Заказать","whenOrder",turnSortState)}${thSortF("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
-      <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>
+      <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}${code1c(r.sku)?" · 1С "+esc(code1c(r.sku)):""}</span></td>
       <td>${fmt(r.stock)}${r.transit?`<span class="sub2 acc">+${fmt(r.transit)} в пути</span>`:""}${r.ozReserve?`<span class="sub2 acc" title="Ваши данные: товар на своих складах под Озон + едущие партии. Дополнительно к «в пути», которое показывает сам Озон.">+${fmt(r.ozReserve)} ожидается</span>`:""}</td>
       <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${Math.round(r.buyout*100)}%</td>
@@ -1754,7 +1754,7 @@ function exportTurnoverCSV(){
     sales:r=>r.salesPerDay, daysLeft:r=>dl(r.daysLeft), reorder:r=>r.reorder,
     whenOrder:r=>r.whenOrder==null?1e9:r.whenOrder, status:r=>rank[r.status]*1e9+dl(r.daysLeft) });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
-  const cols=["Артикул","Название","Категория","Остаток","В пути"];
+  const cols=["Артикул","Код 1С","Название","Категория","Остаток","В пути"];
   if(oz) cols.push("Ожидается (наши поставки)");
   cols.push("Заказов в день (7д)","Выкуп, %","Продаж в день","Хватит дней","Дозаказать шт","Контейнеров","Сумма по себестоимости, ₽","Когда заказать","Статус");
   const iReorder=cols.indexOf("Дозаказать шт"), iSum=cols.indexOf("Сумма по себестоимости, ₽");
@@ -1763,7 +1763,7 @@ function exportTurnoverCSV(){
   rows.forEach(r=>{ totQty+=r.reorder; totSum+=r.reorderCost||0;
     const when = r.whenOrder==null? "" : (r.whenOrder<=0? "сейчас" : ("через "+r.whenOrder+" дн"));
     const daysTxt = r.salesPerDay<=0 ? (r.covered>0?"∞":"") : Math.round(r.daysBase);
-    const base=[r.sku,(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "), r.stock, r.transit||""];
+    const base=[r.sku,code1c(r.sku),(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "), r.stock, r.transit||""];
     if(oz) base.push(r.ozReserve||"");
     base.push(csvNum(r.avgD,1), Math.round(r.buyout*100), csvNum(r.salesPerDay,1),
       daysTxt, r.reorder||"", r.containers||"", r.reorderCost?Math.round(r.reorderCost):"", when, TURN_STATUS[r.status]);
@@ -1779,20 +1779,20 @@ function exportTurnMonthsCSV(){
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
   let rows=all;
-  if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
+  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
   rows=sortRows(rows,turnSortState,{ name:r=>r.name, total:r=>r.total, peak:r=>r.peak, avg:r=>r.avg,
     peakSales:r=>r.peakSales, ...Object.fromEntries(months.map((m,i)=>["m"+i,r=>r.vals[i]])) });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
-  const cols=["Артикул","Название","Категория",...months.map(m=>m.label+(m.partial?" (неполный)":"")),
+  const cols=["Артикул","Код 1С","Название","Категория",...months.map(m=>m.label+(m.partial?" (неполный)":"")),
     "Итого","Пик за месяц","Месяц пика","Месяцев с продажами","В среднем за месяц","Продаж в день в пик (выкуп "+Math.round(TURN_PEAK_BUYOUT*100)+"%)"];
   let csv=cols.join(";")+"\n";
-  rows.forEach(r=>{ csv+=[r.sku,(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "),
+  rows.forEach(r=>{ csv+=[r.sku,code1c(r.sku),(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "),
     ...r.vals, r.total, r.peak, r.peakLabel, r.active, Math.round(r.avg), csvNum(r.peakSales,1)].join(";")+"\n"; });
   const tot=Array(cols.length).fill(""); tot[0]="ИТОГО";
-  months.forEach((m,i)=>{ tot[3+i]=rows.reduce((a,r)=>a+r.vals[i],0); });
-  tot[3+months.length]=rows.reduce((a,r)=>a+r.total,0);
+  months.forEach((m,i)=>{ tot[4+i]=rows.reduce((a,r)=>a+r.vals[i],0); });
+  tot[4+months.length]=rows.reduce((a,r)=>a+r.total,0);
   csv+=tot.join(";")+"\n";
   downloadCSV((_appliedMp==="ozon"?"ozon":"wb")+"-заказы-по-месяцам.csv",csv);
 }
@@ -1829,7 +1829,7 @@ function applyDynCustom(){
 function dynFilteredSkus(){
   const q=document.getElementById("dynSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("dynCat"));
-  return RCAT.filter(c=>(!q||c.sku.includes(q)||c.name.toLowerCase().includes(q))&&(!cp||cp(c.category)));
+  return RCAT.filter(c=>matchQ(c.sku,c.name,q)&&(!cp||cp(c.category)));
 }
 function dynSeriesTotals(skus,from,to){
   const totals=new Array(Math.max(0,to-from+1)).fill(0);
@@ -2084,7 +2084,7 @@ function renderDynPivot(rows,skus,isoDates,from,hasMoneyData){
   rows.slice(0,300).forEach(r=>{
     const vals=[]; let mx=0;
     for(let i=0;i<n;i++){ const v=cell(r.sku,i); vals.push(v); if(v>mx) mx=v; }
-    html+=`<tr><td class="name-cell metric" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>`;
+    html+=`<tr><td class="name-cell metric" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}${code1c(r.sku)?" · 1С "+esc(code1c(r.sku)):""}</span></td>`;
     for(let i=0;i<n;i++){ const v=vals[i];
       html+=`<td class="d-col${v?"":" d-zero"}${isMon(isoDates[i])&&i?" wk":""}" style="${v&&mx?heatBg(v,mx):""}">${v?fmt(v):"·"}</td>`; }
     html+=`<td class="tot-col">${fmt(r.qty)}</td>`;
@@ -2295,6 +2295,13 @@ function adSpendBySku(dates){
 
 let catalogSkuSet=new Set(RCAT.map(c=>c.sku));
 const catalogCatBySku={}, catalogNameBySku={}; RCAT.forEach(c=>{ catalogCatBySku[c.sku]=c.category; catalogNameBySku[c.sku]=c.name; });
+// Код 1С (он же «артикул поставщика», `supplierCode`) — по нему продавец ищет товар и
+// сверяется с фабрикой. На Озоне артикул товара И ЕСТЬ этот код, поэтому там дублировать нечего.
+const catalog1cBySku={}; RCAT.forEach(c=>{ const s=(''+(c.supplierCode||'')).trim(); if(s) catalog1cBySku[c.sku]=s; });
+function code1c(sku){ return catalog1cBySku[sku]||""; }
+// единый предикат поиска: артикул площадки · код 1С · название
+function matchQ(sku,name,q){ if(!q) return true;
+  return (''+sku).includes(q) || code1c(sku).toLowerCase().includes(q) || (''+(name||"")).toLowerCase().includes(q); }
 // расход рекламы за период с учётом фильтра категория/поиск: {bySku, total, series[по дням]}
 function adAggregate(dates,cat,q){
   const bySku={}, series=new Array(dates.length).fill(0); let total=0; const cp=catPred(cat);
@@ -2302,7 +2309,7 @@ function adAggregate(dates,cat,q){
     const set=new Set(dates), maxD=dates[dates.length-1], idx={}; dates.forEach((d,i)=>idx[d]=i);
     ADS_CACHE.forEach(r=>{ const d=r.date||maxD; if(!set.has(d)) return;
       if(cp && !cp(catalogCatBySku[r.sku])) return;
-      if(q && !r.sku.includes(q) && !(catalogNameBySku[r.sku]||"").toLowerCase().includes(q)) return;
+      if(!matchQ(r.sku,catalogNameBySku[r.sku],q)) return;
       bySku[r.sku]=(bySku[r.sku]||0)+(r.spend||0); total+=r.spend||0;
       const i=idx[d]; if(i!=null) series[i]+=r.spend||0; });
   }
@@ -2673,7 +2680,7 @@ function finRange(){ return dateRangeFromCache(FINANCE_CACHE,finPeriodN); }
 const FIN_MONEY=["revenue","payout","logistics","penalty","storage","reimb","deduction","priyomka","loyalty","loyaltyPts"];
 function finAggregate(dates,catFilter,q){
   const set=new Set(dates), cp=catPred(catFilter);
-  const rows=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!cp||cp(r.category))&&(!q||r.sku.includes(q)||r.name.toLowerCase().includes(q)));
+  const rows=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!cp||cp(r.category))&&matchQ(r.sku,r.name,q));
   const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
   const cogs=rows.reduce((a,r)=>{ const cp=costOf(r.sku); return a+(cp!=null?(r.qty-r.returnsQty)*cp:0); },0);
   const agg={qty:sum("qty"),returnsQty:sum("returnsQty"),cogs,rows};
@@ -2696,7 +2703,7 @@ function finSeriesByDate(dates,catFilter,q){
   const revenue=new Array(dates.length).fill(0), net=new Array(dates.length).fill(0), cogs=new Array(dates.length).fill(0);
   FINANCE_CACHE.forEach(r=>{ const i=idx[r.date]; if(i==null) return;
     if(catP&&!catP(r.category)) return;
-    if(q&&!r.sku.includes(q)&&!r.name.toLowerCase().includes(q)) return;
+    if(!matchQ(r.sku,r.name,q)) return;
     revenue[i]+=r.revenue||0; net[i]+=finNet(r);
     const cp=costOf(r.sku); if(cp!=null) cogs[i]+=(r.qty-r.returnsQty)*cp; });
   return {revenue,net,cogs};
@@ -2871,10 +2878,10 @@ function exportHomeCSV(){
   const catSel=document.getElementById("homeCat");
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
   const {dates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
-  let csv="Артикул;Название;Категория;Продано шт;Выручка, ₽;Итого к оплате, ₽;Себестоимость, ₽;Удержания WB, ₽;Реклама, ₽;Прибыль, ₽;Маржа, %\n";
+  let csv="Артикул;Код 1С;Название;Категория;Продано шт;Выручка, ₽;Итого к оплате, ₽;Себестоимость, ₽;Удержания WB, ₽;Реклама, ₽;Прибыль, ₽;Маржа, %\n";
   productPnL(dates,cat,q).filter(hasActivity).forEach(r=>{
     const margin=r.revenue?csvPct(r.margin*100):"";
-    csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,r.net,Math.round(r.revenue),Math.round(r.payoutNet),r.hasCost?Math.round(r.cogs):"",Math.round(r.wbHold),Math.round(r.ad),Math.round(r.profit),margin].join(";")+"\n";
+    csv+=[r.sku,code1c(r.sku),(r.name||"").replace(/;/g,","),r.category,r.net,Math.round(r.revenue),Math.round(r.payoutNet),r.hasCost?Math.round(r.cogs):"",Math.round(r.wbHold),Math.round(r.ad),Math.round(r.profit),margin].join(";")+"\n";
   });
   downloadCSV("wb-главная.csv",csv);
 }
@@ -3039,9 +3046,9 @@ function exportAnalyticsCSV(){
   const {dates}=dateRangeFromCache(FINANCE_CACHE,analyticsPeriodN);
   const all=productPnL(dates,cat,q).filter(r=>r.qty>0||r.returnsQty>0||r.ad>0);
   const {ranked,totalPos}=classifyABC(all);
-  let csv="Артикул;Название;Категория;Класс;Продано шт;Выручка, ₽;Прибыль, ₽;Доля прибыли, %;Маржа, %;Возврат, %\n";
+  let csv="Артикул;Код 1С;Название;Категория;Класс;Продано шт;Выручка, ₽;Прибыль, ₽;Доля прибыли, %;Маржа, %;Возврат, %\n";
   ranked.forEach(r=>{
-    csv+=[r.sku,(r.name||"").replace(/;/g,","),r.category,r.abc,r.net,Math.round(r.revenue),Math.round(r.profit),
+    csv+=[r.sku,code1c(r.sku),(r.name||"").replace(/;/g,","),r.category,r.abc,r.net,Math.round(r.revenue),Math.round(r.profit),
       r.profit>0?csvPct(r.profit/totalPos*100):"",r.hasCost?csvPct(r.margin*100):"",csvPct(r.returnRate*100)].join(";")+"\n";
   });
   downloadCSV("wb-аналитика.csv",csv);
@@ -3198,7 +3205,7 @@ function fillProdCatFilter(){
 function prodFilteredCatalog(){
   const cp=catPred(selCats("prodCatFilter"));
   const q=document.getElementById("prodSkuSearch").value.trim().toLowerCase();
-  return RCAT.filter(c=>(!cp||cp(c.category))&&(!q||c.sku.includes(q)||c.name.toLowerCase().includes(q)))
+  return RCAT.filter(c=>(!cp||cp(c.category))&&matchQ(c.sku,c.name,q))
     .sort((a,b)=>a.name.localeCompare(b.name,"ru"));
 }
 function selectSkuTriggerLabel(){
@@ -3764,8 +3771,10 @@ function rebuildCatalogMaps(){
   for(const k in catalogCostBySku) delete catalogCostBySku[k];
   for(const k in catalogCatBySku) delete catalogCatBySku[k];
   for(const k in catalogNameBySku) delete catalogNameBySku[k];
+  for(const k in catalog1cBySku) delete catalog1cBySku[k];
   RCAT.forEach(c=>{ if(c.costPrice!=null) catalogCostBySku[c.sku]=c.costPrice;
-    catalogCatBySku[c.sku]=c.category; catalogNameBySku[c.sku]=c.name; });
+    catalogCatBySku[c.sku]=c.category; catalogNameBySku[c.sku]=c.name;
+    const s=(''+(c.supplierCode||'')).trim(); if(s) catalog1cBySku[c.sku]=s; });
 }
 // собрать датасеты по площадкам из REAL_DATA (ВБ + Озон, если есть)
 function buildMpDatasets(){
