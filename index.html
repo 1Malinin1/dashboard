@@ -355,23 +355,23 @@
   .cat-prof-row .val.pos{color:var(--good-txt)} .cat-prof-row .val.neg{color:var(--crit-txt)}
   @media(max-width:620px){ .cat-prof-row{grid-template-columns:96px 1fr 88px;font-size:12.5px} }
   /* Сводка «товар × дни» на «Динамике»: узкие колонки-дни, залипающие товар и итог */
-  #dynTable.pivot th,#dynTable.pivot td{padding:6px 7px;font-size:12.5px}
-  #dynTable.pivot thead th{font-size:11px;letter-spacing:0}
-  #dynTable.pivot th.metric,#dynTable.pivot td.metric{min-width:210px;max-width:210px}
-  #dynTable.pivot td.metric .sku{font-size:10.5px}
-  #dynTable.pivot .d-col{min-width:44px;text-align:right;font-variant-numeric:tabular-nums}
-  #dynTable.pivot .d-zero{color:var(--muted);opacity:.45}
+  .rnp.pivot th,.rnp.pivot td{padding:6px 7px;font-size:12.5px}
+  .rnp.pivot thead th{font-size:11px;letter-spacing:0}
+  .rnp.pivot th.metric,.rnp.pivot td.metric{min-width:210px;max-width:210px}
+  .rnp.pivot td.metric .sku{font-size:10.5px}
+  .rnp.pivot .d-col{min-width:44px;text-align:right;font-variant-numeric:tabular-nums}
+  .rnp.pivot .d-zero{color:var(--muted);opacity:.45}
   /* «Итого» — залипает справа, чтобы при прокрутке дней总 всегда был виден */
-  #dynTable.pivot .tot-col{position:sticky;right:0;z-index:2;background:var(--surface);
+  .rnp.pivot .tot-col{position:sticky;right:0;z-index:2;background:var(--surface);
     font-weight:680;border-left:1px solid var(--border-2)}
-  #dynTable.pivot thead .tot-col{z-index:4;background:var(--surface-2)}
-  #dynTable.pivot tbody tr:hover .tot-col{background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
+  .rnp.pivot thead .tot-col{z-index:4;background:var(--surface-2)}
+  .rnp.pivot tbody tr:hover .tot-col{background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
   /* строка итогов по дням — закреплена под шапкой */
-  #dynTable.pivot tr.pivot-total td{position:sticky;top:29px;z-index:3;background:var(--surface-2);
+  .rnp.pivot tr.pivot-total td{position:sticky;top:29px;z-index:3;background:var(--surface-2);
     font-weight:700;border-bottom:1px solid var(--border-2)}
-  #dynTable.pivot tr.pivot-total td.metric{z-index:5}
-  #dynTable.pivot tr.pivot-total td.tot-col{z-index:5;background:var(--surface-3)}
-  #dynTable.pivot .wk{border-left:1px dashed var(--border-2)}   /* граница недели */
+  .rnp.pivot tr.pivot-total td.metric{z-index:5}
+  .rnp.pivot tr.pivot-total td.tot-col{z-index:5;background:var(--surface-3)}
+  .rnp.pivot .wk{border-left:1px dashed var(--border-2)}   /* граница недели */
   /* Плашка «Что двигает прибыль» — топ-3 в плюсе / топ-3 в минусе */
   .drivers{display:grid;grid-template-columns:1fr 1fr;gap:9px 22px;margin-top:8px}
   @media(max-width:640px){ .drivers{grid-template-columns:1fr} }
@@ -832,6 +832,10 @@
         <option value="30" selected>Скорость: за 30 дней</option>
         <option value="60">Скорость: за 60 дней</option>
       </select>
+      <div class="seg" id="turnViewSeg" role="group" aria-label="Вид таблицы">
+        <button data-view="reorder" aria-pressed="true">Дозаказ</button>
+        <button data-view="months">По месяцам</button>
+      </div>
       <span class="count" id="turnCount"></span>
       <button class="btn" id="turnExportBtn">Скачать таблицу CSV</button>
     </div>
@@ -1325,6 +1329,7 @@ function wireSortable(tableId,state,onChange){
 }
 
 let turnSortState={key:"status",dir:1};
+let turnView="reorder";   // «Дозаказ» (простая модель) или «По месяцам» (история заказов)
 function turnoverList(){
   const windowDays=parseInt(document.getElementById("turnWindow").value,10)||30;
   return RCAT.map(c=>computeTurnover(c,windowDays));
@@ -1490,9 +1495,78 @@ function openColFilter(anchor,key){
   _colFilterPanel=panel; _colFilterKey=key;
   if(searchable) searchInput.focus();
 }
+// ---- Вид «По месяцам»: история заказов по артикулу помесячно ----
+// Зачем: фиксированное окно (7 дн) врёт — у новинок в старых месяцах нули, а у товара,
+// который был в ауте, ноль не потому что не покупают. Продавцу нужно видеть ПИК и всю
+// историю, чтобы решать дозаказ самому. Выкуп здесь берём фиксированный (см. константу) —
+// у месяцев с нулевыми продажами свой % выкупа не показателен.
+const TURN_PEAK_BUYOUT=0.85;
+const MON_RU=["янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+function monthlyOrders(){
+  const dates=RDATES||[], months=[], idx={};
+  dates.forEach((d,i)=>{ const k=d.slice(0,7);
+    if(idx[k]==null){ idx[k]=months.length; months.push({key:k,days:0,from:i,to:i}); }
+    const m=months[idx[k]]; m.days++; m.to=i; });
+  months.forEach(m=>{ const [y,mm]=m.key.split("-");
+    m.label=MON_RU[+mm-1]+" "+y.slice(2);
+    // сколько дней в календарном месяце — чтобы отметить неполный (текущий/первый) месяц
+    m.full=new Date(Date.UTC(+y,+mm,0)).getUTCDate();
+    m.partial=m.days<m.full;
+  });
+  const rows=RCAT.map(c=>{
+    const s=seriesFor(c.sku); const vals=months.map(m=>{ let t=0; if(s) for(let i=m.from;i<=m.to;i++) t+=s[i]||0; return t; });
+    const total=vals.reduce((a,b)=>a+b,0);
+    let peak=0,peakIdx=-1; vals.forEach((v,i)=>{ if(v>peak){peak=v;peakIdx=i;} });
+    // месяцы, где товар реально продавался — по ним считаем «в среднем», иначе новинки занижены
+    const active=vals.filter(v=>v>0).length;
+    const avg= active? total/active : 0;
+    const pm= peakIdx>=0? months[peakIdx] : null;
+    const peakPerDay = pm && pm.days? peak/pm.days : 0;
+    return {sku:c.sku,name:c.name,category:c.category,vals,total,peak,peakIdx,peakLabel:pm?pm.label:"—",
+      active,avg,peakSales:peakPerDay*TURN_PEAK_BUYOUT};
+  }).filter(r=>r.total>0);
+  return {months,rows};
+}
+function renderTurnMonths(){
+  const tbl=document.getElementById("turnTable"); tbl.className="rnp pivot";
+  const {months,rows:all}=monthlyOrders();
+  // те же фильтры, что и на «Дозаказе»: поиск, категории, список товаров
+  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
+  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
+  let rows=all;
+  if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
+  if(cp) rows=rows.filter(r=>cp(r.category));
+  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
+  rows=sortRows(rows,turnSortState,{
+    name:r=>r.name, total:r=>r.total, peak:r=>r.peak, avg:r=>r.avg, peakSales:r=>r.peakSales,
+    ...Object.fromEntries(months.map((m,i)=>["m"+i,r=>r.vals[i]])) });
+  const partial=months.filter(m=>m.partial).map(m=>m.label);
+  document.getElementById("turnCount").textContent=rows.length+" товаров с заказами · выкуп "+Math.round(TURN_PEAK_BUYOUT*100)+"%"
+    +(partial.length? " · неполные месяцы: "+partial.join(", ") : "");
+  if(!rows.length){ tbl.innerHTML=`<tbody><tr><td class="empty-hint">Нет заказов за историю по текущим фильтрам</td></tr></tbody>`; return; }
+  const monTot=months.map((m,i)=>rows.reduce((a,r)=>a+r.vals[i],0));
+  const monTotMax=Math.max(...monTot,0)||1;
+  let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}`;
+  months.forEach((m,i)=>{ html+=thSort(m.label+(m.partial?"*":""),"m"+i,turnSortState); });
+  html+=`${thSort("Итого","total",turnSortState,"tot-col")}${thSort("Пик/мес","peak",turnSortState)}${thSort("Ср/мес","avg",turnSortState)}${thSort("Продаж/дн в пик","peakSales",turnSortState)}</tr></thead><tbody>`;
+  html+=`<tr class="pivot-total"><td class="metric">Всего по месяцам</td>`;
+  months.forEach((m,i)=>{ html+=`<td class="d-col" style="${heatBg(monTot[i],monTotMax)}">${fmt(monTot[i])}</td>`; });
+  html+=`<td class="tot-col">${fmt(monTot.reduce((a,b)=>a+b,0))}</td><td colspan="3"></td></tr>`;
+  rows.slice(0,400).forEach(r=>{
+    html+=`<tr><td class="name-cell metric" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${esc(r.category)} · ${skuLink(r.sku)}</span></td>`;
+    r.vals.forEach((v,i)=>{ const isPeak=i===r.peakIdx&&v>0;
+      html+=`<td class="d-col${v?"":" d-zero"}" style="${v&&r.peak?heatBg(v,r.peak):""}${isPeak?";font-weight:750;color:var(--accent)":""}"${isPeak?' title="Пиковый месяц"':''}>${v?fmt(v):"·"}</td>`; });
+    html+=`<td class="tot-col">${fmt(r.total)}</td>`
+      +`<td><b>${fmt(r.peak)}</b><span class="sub2 mut">${esc(r.peakLabel)}</span></td>`
+      +`<td>${fmt(Math.round(r.avg))}<span class="sub2 mut">${r.active} мес</span></td>`
+      +`<td style="font-weight:640">${r.peakSales.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td></tr>`;
+  });
+  html+="</tbody>"; tbl.innerHTML=html;
+}
 function renderTurnoverSimple(){
   const oz = _appliedMp==="ozon";
   const prodSel=document.getElementById("turnProduct"); if(prodSel && !prodSel.options.length) fillProductSelect(prodSel);
+  document.getElementById("turnTable").className="rnp";
   const all=simpleTurnList().filter(r=>r.status!=="discontinued");   // товары «На вывод» убираем из таблицы совсем
   let rows=turnFilteredRows(all,null);
   const rank={critical:0,warning:1,good:2,nodata:3,discontinued:4}, dl=v=>v===Infinity?1e9:v;
@@ -1510,6 +1584,8 @@ function renderTurnoverSimple(){
     {lbl:"Критично — нет остатка",val:crit,valColor:crit>0?"var(--crit-txt)":"var(--text-1)"},
     {lbl:"Суммарный остаток, шт",val:fmt(stockSum)},
   ].map(kpiCard).join("");
+  // KPI посчитаны — дальше можно уйти в помесячный вид (там своя таблица и своя подпись счётчика)
+  if(turnView==="months"){ renderTurnMonths(); return; }
   let bwTxt;
   if(oz){ const _m=RD.ozon&&RD.ozon.meta, _bw=_m&&_m.buyoutWindow;
     bwTxt="% выкупа за "+(_bw? (fmtDate(_bw.split("…")[0])+"–"+fmtDate(_bw.split("…")[1])) : "период"); }
@@ -1568,6 +1644,7 @@ function renderTurnoverTab(){
 }
 // Экспорт таблицы оборачиваемости — СТРОГО по текущим фильтрам и сортировке (что видишь, то и качаешь).
 function exportTurnoverCSV(){
+  if(turnView==="months"){ exportTurnMonthsCSV(); return; }
   if(_appliedMp==="all"){ alert("Оборачиваемость считается по площадке — выберите «Wildberries» или «Ozon»."); return; }
   const oz = _appliedMp==="ozon";
   const all=simpleTurnList().filter(r=>r.status!=="discontinued");
@@ -1595,6 +1672,30 @@ function exportTurnoverCSV(){
   const tot=Array(cols.length).fill(""); tot[0]="ИТОГО"; tot[iReorder]=totQty; tot[iSum]=Math.round(totSum);
   csv+=tot.join(";")+"\n";
   downloadCSV((oz?"ozon":"wb")+"-оборачиваемость.csv",csv);
+}
+
+// Выгрузка помесячной истории — те же фильтры и сортировка, что на экране.
+function exportTurnMonthsCSV(){
+  const {months,rows:all}=monthlyOrders();
+  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
+  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
+  let rows=all;
+  if(q) rows=rows.filter(r=>r.sku.includes(q)||r.name.toLowerCase().includes(q));
+  if(cp) rows=rows.filter(r=>cp(r.category));
+  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
+  rows=sortRows(rows,turnSortState,{ name:r=>r.name, total:r=>r.total, peak:r=>r.peak, avg:r=>r.avg,
+    peakSales:r=>r.peakSales, ...Object.fromEntries(months.map((m,i)=>["m"+i,r=>r.vals[i]])) });
+  if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
+  const cols=["Артикул","Название","Категория",...months.map(m=>m.label+(m.partial?" (неполный)":"")),
+    "Итого","Пик за месяц","Месяц пика","Месяцев с продажами","В среднем за месяц","Продаж в день в пик (выкуп "+Math.round(TURN_PEAK_BUYOUT*100)+"%)"];
+  let csv=cols.join(";")+"\n";
+  rows.forEach(r=>{ csv+=[r.sku,(r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "),
+    ...r.vals, r.total, r.peak, r.peakLabel, r.active, Math.round(r.avg), csvNum(r.peakSales,1)].join(";")+"\n"; });
+  const tot=Array(cols.length).fill(""); tot[0]="ИТОГО";
+  months.forEach((m,i)=>{ tot[3+i]=rows.reduce((a,r)=>a+r.vals[i],0); });
+  tot[3+months.length]=rows.reduce((a,r)=>a+r.total,0);
+  csv+=tot.join(";")+"\n";
+  downloadCSV((_appliedMp==="ozon"?"ozon":"wb")+"-заказы-по-месяцам.csv",csv);
 }
 
 /* ---- динамика заказов: диапазон дат, агрегация, график ---- */
@@ -3489,6 +3590,14 @@ document.getElementById("turnCat").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnProduct").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnWindow").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnExportBtn").addEventListener("click",exportTurnoverCSV);
+document.getElementById("turnViewSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); turnView=b.dataset.view;
+  // у видов разные наборы колонок — сбрасываем сортировку на осмысленную по умолчанию
+  turnSortState = turnView==="months" ? {key:"total",dir:-1} : {key:"status",dir:1};
+  renderTurnoverTab();
+});
 wireSortable("turnTable",turnSortState,renderTurnoverTab);
 // клик по кнопке-воронке в заголовке → фильтр по значениям колонки (Excel-стиль)
 document.getElementById("turnTable").addEventListener("click",e=>{
