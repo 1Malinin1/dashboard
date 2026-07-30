@@ -1539,7 +1539,12 @@ function monthlyOrders(){
       active,avg,peakSales:peakPerDay*TURN_PEAK_BUYOUT,
       pkQty: pkIdx>=0? vals[pkIdx]:0, pkLabel: pkM?pkM.label:"—", pkRate, pkPartial: pkM?pkM.partial:false,
       avgRate, avgMonths:cnt, avgQty: avgRate*30.4};
-  }).filter(r=>r.total>0);
+  })
+  // Товары «На вывод» исключаем из ВСЕХ видов вкладки — так же, как в «Дозаказе».
+  // Иначе таблицы закупа предлагали докупить то, что выводится из ассортимента
+  // (было 31 позиция на 13 444 шт — прямая ошибка в заказе на фабрику).
+  .filter(r=>{ const c=RCAT.find(x=>x.sku===r.sku); return !(c && c.productionStatus==="На вывод"); })
+  .filter(r=>r.total>0);
   return {months,rows};
 }
 // Закуп на основе выбранной базы: 'peak' — пиковый месяц (без декабря), 'avg' — средний месяц.
