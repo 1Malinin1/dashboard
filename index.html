@@ -1459,7 +1459,7 @@ function openColFilter(anchor,key){
   if(_colFilterKey===key){ closeColFilter(); return; }   // повторный клик по той же колонке — закрыть
   closeColFilter(); closeAllUisel();
   const def=turnColDef(key); if(!def) return;
-  const all=simpleTurnList().filter(r=>r.status!=="discontinued");
+  const all=simpleTurnList();
   const base=turnFilteredRows(all,key);                  // значения — с учётом ДРУГИХ активных фильтров
   const counts=new Map();
   base.forEach(r=>{ const v=def.val(r); counts.set(v,(counts.get(v)||0)+1); });
@@ -1539,12 +1539,7 @@ function monthlyOrders(){
       active,avg,peakSales:peakPerDay*TURN_PEAK_BUYOUT,
       pkQty: pkIdx>=0? vals[pkIdx]:0, pkLabel: pkM?pkM.label:"—", pkRate, pkPartial: pkM?pkM.partial:false,
       avgRate, avgMonths:cnt, avgQty: avgRate*30.4};
-  })
-  // Товары «На вывод» исключаем из ВСЕХ видов вкладки — так же, как в «Дозаказе».
-  // Иначе таблицы закупа предлагали докупить то, что выводится из ассортимента
-  // (было 31 позиция на 13 444 шт — прямая ошибка в заказе на фабрику).
-  .filter(r=>{ const c=RCAT.find(x=>x.sku===r.sku); return !(c && c.productionStatus==="На вывод"); })
-  .filter(r=>r.total>0);
+  }).filter(r=>r.total>0);
   return {months,rows};
 }
 // Закуп на основе выбранной базы: 'peak' — пиковый месяц (без декабря), 'avg' — средний месяц.
@@ -1560,14 +1555,17 @@ function purchaseRows(base){
     const salesPerDay = rate*TURN_PEAK_BUYOUT;
     const need = Math.ceil(salesPerDay*TURN_COVER_DAYS);
     const covered = t.covered||0;
-    let buy = Math.max(0, need-covered);
+    // Товары «На вывод» ВИДНЫ в таблице (нужно следить за распродажей), но к закупу по ним 0 —
+    // в заказ на производство они попасть не должны. Из CSV-выгрузки закупа они исключаются совсем.
+    const discontinued = t.status==="discontinued";
+    let buy = discontinued? 0 : Math.max(0, need-covered);
     let cont=0;
     if(buy>0 && t.contQty>0){ cont=Math.ceil(buy/t.contQty); buy=cont*t.contQty; }
     const cost = costOf(r.sku);
     return {...r, baseQty: base==="peak"? r.pkQty : Math.round(r.avgQty),
       baseLabel: base==="peak"? r.pkLabel : (r.avgMonths+" мес"),
       basePartial: base==="peak"? r.pkPartial : false,
-      salesPerDay, need, covered, buy, cont, contQty:t.contQty||0,
+      salesPerDay, need, covered, buy, cont, contQty:t.contQty||0, discontinued,
       buyCost: cost!=null? buy*cost : 0, hasCost: cost!=null, status:t.status||""};
   }).filter(r=>r.baseQty>0);
 }
@@ -1597,7 +1595,8 @@ function renderTurnPurchase(base){
       +`<td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>`
       +`<td>${fmt(r.need)}</td>`
       +`<td>${fmt(r.covered)}</td>`
-      +`<td style="font-weight:700;${r.buy?"color:var(--accent)":""}">${r.buy? fmt(r.buy)+" шт"+(r.cont?`<span class="sub2 mut">${r.cont} конт.</span>`:"") : "—"}</td>`
+      +`<td style="font-weight:700;${r.buy?"color:var(--accent)":""}">${r.buy? fmt(r.buy)+" шт"+(r.cont?`<span class="sub2 mut">${r.cont} конт.</span>`:"")
+        : (r.discontinued? '<span class="badge nodata"><span class="d"></span>На вывод</span>' : "—")}</td>`
       +`<td>${r.buy? (r.hasCost? rub(r.buyCost) : '<span class="muted">нет с/с</span>') : "—"}</td></tr>`;
   });
   html+="</tbody>"; tbl.innerHTML=html;
@@ -1609,6 +1608,7 @@ function exportPurchaseCSV(base){
   if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
+  rows=rows.filter(r=>!r.discontinued);   // файл идёт на производство — выводимые товары в него не попадают
   rows=sortRows(rows,turnSortState,{ name:r=>r.name, baseQty:r=>r.baseQty, salesPerDay:r=>r.salesPerDay,
     need:r=>r.need, covered:r=>r.covered, buy:r=>r.buy, buyCost:r=>r.buyCost });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
@@ -1667,7 +1667,7 @@ function renderTurnoverSimple(){
   const oz = _appliedMp==="ozon";
   const prodSel=document.getElementById("turnProduct"); if(prodSel && !prodSel.options.length) fillProductSelect(prodSel);
   document.getElementById("turnTable").className="rnp";
-  const all=simpleTurnList().filter(r=>r.status!=="discontinued");   // товары «На вывод» убираем из таблицы совсем
+  const all=simpleTurnList();   // включая «На вывод»: их надо видеть (распродажа), но дозаказ по ним = 0
   let rows=turnFilteredRows(all,null);
   const rank={critical:0,warning:1,good:2,nodata:3,discontinued:4}, dl=v=>v===Infinity?1e9:v;
   rows=sortRows(rows,turnSortState,{
@@ -1693,16 +1693,7 @@ function renderTurnoverSimple(){
     bwTxt="% выкупа за "+(_bw? (fmtDate(_bw.split("…")[0])+"–"+fmtDate(_bw.split("…")[1])) : "период"); }
   else bwTxt="% выкупа — 14-дневный из каталога";
   document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров · заказы за 7 дн · "+bwTxt;
-  if(!rows.length){
-    // Товары «На вывод» намеренно убраны со вкладки целиком (см. CLAUDE.md) — если запрос ничего не
-    // нашёл именно из-за этого, не молчим «ничего не найдено», а объясняем, где искать дальше.
-    const q=document.getElementById("turnSearch").value.trim().toLowerCase();
-    let hint="Ничего не найдено по текущим фильтрам";
-    if(q){
-      const discMatch=RCAT.find(c=>c.productionStatus==="На вывод" && matchQ(c.sku,c.name,q));
-      if(discMatch) hint=`Товар «${esc(discMatch.name)}» (${esc(discMatch.sku)}) найден, но у него статус «На вывод» — такие товары не показываются на «Оборачиваемости». Ищите на «Динамике заказов» или «Товаре».`;
-    }
-    document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">${hint}</td></tr></tbody>`; return; }
+  if(!rows.length){ document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}
     ${thSortF("Остаток "+(oz?"Ozon":"WB"),"currentStock",turnSortState)}${thSortF("Заказов/дн","avgD",turnSortState)}${thSortF("% выкупа","buyout",turnSortState)}
     ${thSortF("Продаж/дн","sales",turnSortState)}${thSortF("Хватит, дн","daysLeft",turnSortState)}${thSortF("Дозаказать","reorder",turnSortState)}${thSortF("Заказать","whenOrder",turnSortState)}${thSortF("Статус","status",turnSortState)}</tr></thead><tbody>`;
@@ -1751,8 +1742,8 @@ function exportTurnoverCSV(){
   if(turnView==="buyAvg"){ exportPurchaseCSV("avg"); return; }
   if(_appliedMp==="all"){ alert("Оборачиваемость считается по площадке — выберите «Wildberries» или «Ozon»."); return; }
   const oz = _appliedMp==="ozon";
-  const all=simpleTurnList().filter(r=>r.status!=="discontinued");
-  const dl=v=>v===Infinity?1e9:v, rank={critical:0,warning:1,good:2,nodata:3};
+  const all=simpleTurnList();
+  const dl=v=>v===Infinity?1e9:v, rank={critical:0,warning:1,good:2,nodata:3,discontinued:4};
   let rows=turnFilteredRows(all,null);
   rows=sortRows(rows,turnSortState,{
     name:r=>r.name, category:r=>r.category, currentStock:r=>r.stock, avgD:r=>r.avgD, buyout:r=>r.buyout,
