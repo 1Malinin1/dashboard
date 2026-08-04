@@ -1033,7 +1033,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260804f"></script>
+<script src="wb-secure.js?v=20260804g"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1188,6 +1188,21 @@ const catalogCostBySku = {}; // заполняется в hydrateData из RCAT
 const COST_OV_KEY="wb_cost_overrides_v1";
 let costOverrides={}; try{ costOverrides=JSON.parse(localStorage.getItem(COST_OV_KEY)||"{}"); }catch(e){ costOverrides={}; }
 function costOf(sku){ const o=costOverrides[sku]; if(o!=null) return o; const c=catalogCostBySku[sku]; return c!=null? c : null; }
+// История себестоимости: costHistory=[{from:null|iso, cost}] по возрастанию даты.
+// Первая запись всегда с from:null (цена «с начала времён») — её гарантирует
+// update-cost.cjs, поэтому фолбэк на текущую цену срабатывает только у товаров
+// вообще без истории. Нужна, чтобы новая поставка не пересчитывала прошлые недели:
+// прибыль каждого дня считается по цене, действовавшей в этот день.
+const catalogCostHistBySku={};
+function costAt(sku,date){
+  const o=costOverrides[sku]; if(o!=null) return o;      // ручная правка перекрывает всё
+  const h=catalogCostHistBySku[sku];
+  if(h&&h.length){ let v=null;
+    for(const e of h){ if(!e.from || e.from<=date) v=e.cost; else break; }
+    if(v!=null) return v; }
+  const c=catalogCostBySku[sku]; return c!=null? c : null;
+}
+function hasCostHistory(sku){ const h=catalogCostHistBySku[sku]; return !!(h&&h.length>1); }
 // Ссылка на карточку товара: ВБ → wildberries.ru; Озон → ozon.ru (по числовому SKU Озона,
 // иначе поиск по артикулу). «Всего» — без ссылки (артикул = код поставщика, не привязан к площадке).
 function productUrl(sku){
@@ -2715,7 +2730,8 @@ function finAggregate(dates,catFilter,q){
   const set=new Set(dates), cp=catPred(catFilter);
   const rows=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!cp||cp(r.category))&&matchQ(r.sku,r.name,q));
   const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
-  const cogs=rows.reduce((a,r)=>{ const cp=costOf(r.sku); return a+(cp!=null?(r.qty-r.returnsQty)*cp:0); },0);
+  // себестоимость берём НА ДАТУ строки — новая поставка не должна пересчитывать прошлые недели
+  const cogs=rows.reduce((a,r)=>{ const cp=costAt(r.sku,r.date); return a+(cp!=null?(r.qty-r.returnsQty)*cp:0); },0);
   const agg={qty:sum("qty"),returnsQty:sum("returnsQty"),cogs,rows};
   FIN_MONEY.forEach(k=>agg[k]=sum(k));
   agg.holdings=finHoldings(agg); agg.net=finNet(agg); agg.profit=agg.net-cogs;
@@ -2725,8 +2741,10 @@ function finAggregate(dates,catFilter,q){
 function finAggBySku(rows){
   const m={};
   for(const r of rows){ let b=m[r.sku];
-    if(!b){ b=m[r.sku]={sku:r.sku,name:r.name,category:r.category,qty:0,returnsQty:0}; FIN_MONEY.forEach(k=>b[k]=0); }
+    if(!b){ b=m[r.sku]={sku:r.sku,name:r.name,category:r.category,qty:0,returnsQty:0,cogs:0}; FIN_MONEY.forEach(k=>b[k]=0); }
     b.qty+=r.qty||0; b.returnsQty+=r.returnsQty||0; FIN_MONEY.forEach(k=>b[k]+=r[k]||0);
+    // себестоимость копим построчно — по цене, действовавшей на дату этой строки
+    const cpd=costAt(r.sku,r.date); if(cpd!=null) b.cogs+=((r.qty||0)-(r.returnsQty||0))*cpd;
     if((!b.name||b.name===b.sku)&&r.name&&r.name!==r.sku) b.name=r.name;
   }
   return Object.values(m);
@@ -2738,7 +2756,7 @@ function finSeriesByDate(dates,catFilter,q){
     if(catP&&!catP(r.category)) return;
     if(!matchQ(r.sku,r.name,q)) return;
     revenue[i]+=r.revenue||0; net[i]+=finNet(r);
-    const cp=costOf(r.sku); if(cp!=null) cogs[i]+=(r.qty-r.returnsQty)*cp; });
+    const cp=costAt(r.sku,r.date); if(cp!=null) cogs[i]+=(r.qty-r.returnsQty)*cp; });
   return {revenue,net,cogs};
 }
 /* Единое правило «товар был активен в периоде» — по нему формируются ВСЕ таблицы
@@ -2756,7 +2774,9 @@ function productPnL(dates,cat,q){
   Object.keys(ad.bySku).forEach(sku=>{ if(!bySku[sku]) bySku[sku]={sku,name:catalogNameBySku[sku]||sku,category:catalogCatBySku[sku]||"",qty:0,returnsQty:0,revenue:0,payout:0,logistics:0,penalty:0,storage:0,reimb:0,deduction:0,priyomka:0,loyalty:0,loyaltyPts:0}; });
   return Object.values(bySku).map(r=>{
     const net=r.qty-r.returnsQty, cp=costOf(r.sku);
-    const cogs=cp!=null? net*cp : 0, hasCost=cp!=null, adSp=ad.bySku[r.sku]||0;
+    // cogs уже посчитан построчно в finAggBySku (по цене на дату продажи); у артикулов
+    // только с рекламой строк продаж нет — там 0
+    const cogs=r.cogs||0, hasCost=cp!=null, adSp=ad.bySku[r.sku]||0;
     const payoutNet=finNet(r), preAdProfit=payoutNet-cogs, profit=preAdProfit-adSp, wbHold=r.revenue-payoutNet;
     const returnRate = r.qty>0? r.returnsQty/r.qty : (r.returnsQty>0?1:0);
     return {...r,net,cogs,hasCost,ad:adSp,payoutNet,preAdProfit,profit,wbHold,margin:r.revenue?profit/r.revenue:0,returnRate};
@@ -3812,7 +3832,9 @@ function rebuildCatalogMaps(){
   const wbBySku={}, wbBySup={};
   ((RD&&RD.catalog)||[]).forEach(w=>{ wbBySku[w.sku]=w;
     const s=(''+(w.supplierCode||'')).trim(); if(s) wbBySup[s]=w; });
+  for(const k in catalogCostHistBySku) delete catalogCostHistBySku[k];
   RCAT.forEach(c=>{ if(c.costPrice!=null) catalogCostBySku[c.sku]=c.costPrice;
+    if(c.costHistory&&c.costHistory.length) catalogCostHistBySku[c.sku]=c.costHistory;
     catalogCatBySku[c.sku]=c.category; catalogNameBySku[c.sku]=c.name;
     const w = wbBySku[c.sku] || wbBySup[(''+(c.supplierCode||c.sku)).trim()] || null;
     const s = (''+(c.supplierCode||'')).trim() || (w? (''+(w.supplierCode||'')).trim() : '');
