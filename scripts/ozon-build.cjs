@@ -80,10 +80,15 @@ if(stockFile){
     const c=ensure(art); if(c.name===art){ const nm=(''+(r[1]||'')).trim(); if(nm) c.name=nm; }
     const zayav=num(r[cZayav]), path=num(r[cPath]);
     sumZayav+=zayav; sumPath+=path;
-    c.ozStock=num(r[cAvail]); c.ozTransit=zayav+path;
+    // Один артикул может идти НЕСКОЛЬКИМИ строками — у Озона это разные карточки (SKU)
+    // под одним арт. поставщика: «Маркируемый» и «Уценка, Маркируемый». Остатки по ним
+    // СКЛАДЫВАЕМ (`+=`, не присваиваем): раньше пустая строка уценки шла последней и
+    // затирала реальный остаток нулём (арт. 493370: 25 шт и 936 в заявках превращались в 0).
+    const avail=num(r[cAvail]);
+    c.ozStock+=avail; c.ozTransit+=zayav+path;
     const dl=num(r[6]); if(dl>0) c.ozDaysLeftReport=Math.round(dl);
     const av=num(r[7]); if(av>0) c.ozAvg28=av;
-    stockRows++; stockSum+=c.ozStock;
+    stockRows++; stockSum+=avail;
     if(!byArt[art]) byArt[art]=new Array(dates.length).fill(0);
   }
 }
