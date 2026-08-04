@@ -848,7 +848,7 @@
         <button data-view="buyAvg">Закуп: по среднему</button>
       </div>
       <span class="count" id="turnCount"></span>
-      <button class="btn" id="turnExportBtn">Скачать таблицу CSV</button>
+      <button class="btn" id="turnExportBtn">Скачать Excel</button>
     </div>
     <div class="howto" id="turnHowTo"></div>
     <div class="table-card">
@@ -1157,8 +1157,99 @@ function wireKpiTips(containerId){
 }
 function downloadCSV(filename,text){
   const blob=new Blob(["﻿"+text],{type:"text/csv;charset=utf-8"});
+  downloadBlob(filename,blob);
+}
+function downloadBlob(filename,blob){
   const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;a.click();
   setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+}
+/* ---- Запись .xlsx без библиотек: zip (метод STORE) + минимальный OOXML ----
+   Зачем: выгрузки «Оборачиваемости» уходят руководству, и им нужен один файл, где
+   на первом листе написано КАК считалось, а на втором — сами цифры. CSV листов не
+   умеет, а SheetJS тянется с CDN (в песочнице недоступен) — поэтому пишем сами.
+   Формат простой: числа как <v>, текст inline-строками, три стиля (обычный/жирный/
+   с переносом). Проверено открытием в Excel и разбором через SheetJS. */
+const _crcTab=(()=>{const t=new Uint32Array(256);
+  for(let n=0;n<256;n++){let c=n;for(let k=0;k<8;k++)c=(c&1)?(0xEDB88320^(c>>>1)):(c>>>1);t[n]=c>>>0;}return t;})();
+function _crc32(u8){let c=0xFFFFFFFF;for(let i=0;i<u8.length;i++)c=_crcTab[(c^u8[i])&0xFF]^(c>>>8);return (c^0xFFFFFFFF)>>>0;}
+function _zipStore(files){
+  const enc=new TextEncoder(), parts=[], central=[]; let off=0;
+  files.forEach(f=>{
+    const nm=enc.encode(f.name), data=f.data, crc=_crc32(data);
+    const lh=new Uint8Array(30+nm.length), lv=new DataView(lh.buffer);
+    lv.setUint32(0,0x04034b50,true); lv.setUint16(4,20,true); lv.setUint32(14,crc,true);
+    lv.setUint32(18,data.length,true); lv.setUint32(22,data.length,true); lv.setUint16(26,nm.length,true);
+    lh.set(nm,30); parts.push(lh,data);
+    const ch=new Uint8Array(46+nm.length), cv=new DataView(ch.buffer);
+    cv.setUint32(0,0x02014b50,true); cv.setUint16(4,20,true); cv.setUint16(6,20,true);
+    cv.setUint32(16,crc,true); cv.setUint32(20,data.length,true); cv.setUint32(24,data.length,true);
+    cv.setUint16(28,nm.length,true); cv.setUint32(42,off,true); ch.set(nm,46); central.push(ch);
+    off+=lh.length+data.length;
+  });
+  const cdSize=central.reduce((a,c)=>a+c.length,0);
+  const eo=new Uint8Array(22), ev=new DataView(eo.buffer);
+  ev.setUint32(0,0x06054b50,true); ev.setUint16(8,files.length,true); ev.setUint16(10,files.length,true);
+  ev.setUint32(12,cdSize,true); ev.setUint32(16,off,true);
+  const all=[...parts,...central,eo], total=all.reduce((a,c)=>a+c.length,0);
+  const out=new Uint8Array(total); let p=0; all.forEach(c=>{out.set(c,p);p+=c.length;});
+  return out;
+}
+const _xEsc=s=>String(s).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+function _colLetter(i){ let s="",n=i+1; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26); } return s; }
+// строка листа: число → <v>, {t,wrap} или строка → inlineStr; первая строка — жирная
+function _sheetXml(rows,widths,headerRows){
+  const hr=headerRows==null?1:headerRows;
+  const cols=(widths&&widths.length)
+    ? "<cols>"+widths.map((w,i)=>`<col min="${i+1}" max="${i+1}" width="${w}" customWidth="1"/>`).join("")+"</cols>" : "";
+  const body=rows.map((r,ri)=>{
+    const cells=r.map((v,ci)=>{
+      if(v==null||v==="") return "";
+      const ref=_colLetter(ci)+(ri+1);
+      const o=(typeof v==="object"&&v!==null), wrap=o&&v.wrap, bold=o&&v.b;
+      const st = (ri<hr||(bold&&!wrap))? ' s="1"' : (bold&&wrap? ' s="3"' : (wrap? ' s="2"' : ''));
+      if(typeof v==="number"&&isFinite(v)) return `<c r="${ref}"${st}><v>${v}</v></c>`;
+      const txt=(typeof v==="object")? v.t : v;
+      return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${_xEsc(txt)}</t></is></c>`;
+    }).join("");
+    return `<row r="${ri+1}">${cells}</row>`;
+  }).join("");
+  return `<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    +`<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">${cols}<sheetData>${body}</sheetData></worksheet>`;
+}
+// sheets = [{name, rows:[[ячейки]], widths:[ширины], headerRows}]
+function xlsxDownload(filename,sheets){
+  const enc=new TextEncoder(), F=[];
+  const add=(name,str)=>F.push({name,data:enc.encode(str)});
+  const safe=s=>String(s).replace(/[\[\]:*?\/\\]/g,"-").slice(0,31);
+  add("[Content_Types].xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    +`<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">`
+    +`<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>`
+    +`<Default Extension="xml" ContentType="application/xml"/>`
+    +`<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>`
+    +sheets.map((s,i)=>`<Override PartName="/xl/worksheets/sheet${i+1}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>`).join("")
+    +`<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/></Types>`);
+  add("_rels/.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    +`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+    +`<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/></Relationships>`);
+  add("xl/workbook.xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    +`<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets>`
+    +sheets.map((s,i)=>`<sheet name="${_xEsc(safe(s.name))}" sheetId="${i+1}" r:id="rId${i+1}"/>`).join("")
+    +`</sheets></workbook>`);
+  add("xl/_rels/workbook.xml.rels",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    +`<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">`
+    +sheets.map((s,i)=>`<Relationship Id="rId${i+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet${i+1}.xml"/>`).join("")
+    +`<Relationship Id="rId${sheets.length+1}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/></Relationships>`);
+  add("xl/styles.xml",`<?xml version="1.0" encoding="UTF-8" standalone="yes"?>`
+    +`<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">`
+    +`<fonts count="2"><font><sz val="11"/><name val="Calibri"/></font><font><b/><sz val="11"/><name val="Calibri"/></font></fonts>`
+    +`<fills count="2"><fill><patternFill patternType="none"/></fill><fill><patternFill patternType="gray125"/></fill></fills>`
+    +`<borders count="1"><border/></borders><cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>`
+    +`<cellXfs count="4"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/>`
+    +`<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1"/>`
+    +`<xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf>`
+    +`<xf numFmtId="0" fontId="1" fillId="0" borderId="0" xfId="0" applyFont="1" applyAlignment="1"><alignment vertical="top" wrapText="1"/></xf></cellXfs></styleSheet>`);
+  sheets.forEach((s,i)=>add(`xl/worksheets/sheet${i+1}.xml`,_sheetXml(s.rows,s.widths,s.headerRows)));
+  downloadBlob(filename,new Blob([_zipStore(F)],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}));
 }
 // Число для CSV: разделитель дробной части — ЗАПЯТАЯ (русская локаль Excel).
 // С точкой Excel принимает «29.1» за дату и превращает в «29.янв» — отсюда каша в выгрузке.
@@ -1562,17 +1653,18 @@ function monthlyOrders(){
     // --- база для закупа: БЕЗ декабря (просьба продавца — распродажный месяц не показателен).
     // Сравниваем месяцы по СРЕДНЕДНЕВНОМУ темпу, а не по сумме: иначе неполный месяц
     // (текущий, напр. июль 27 дн из 31) заведомо проигрывает полным и никогда не станет пиком.
-    let pkRate=0,pkIdx=-1, sumRate=0, cnt=0;
+    let pkRate=0,pkIdx=-1, sumRate=0, cnt=0; const avgLabels=[];
     months.forEach((m,i)=>{ if(m.key.endsWith("-12")) return;           // декабрь исключаем
       const rate=m.days? vals[i]/m.days : 0;
       if(rate>pkRate){ pkRate=rate; pkIdx=i; }
-      if(vals[i]>0){ sumRate+=rate; cnt++; }                            // среднее — по месяцам С продажами
+      if(vals[i]>0){ sumRate+=rate; cnt++; avgLabels.push(m.label); }   // среднее — по месяцам С продажами
     });
     const avgRate = cnt? sumRate/cnt : 0;
     const pkM = pkIdx>=0? months[pkIdx] : null;
     return {sku:c.sku,name:c.name,category:c.category,pStatus:prodStatus(c.sku),vals,total,peak,peakIdx,peakLabel:pm?pm.label:"—",
       active,avg,peakSales:peakPerDay*TURN_PEAK_BUYOUT,
       pkQty: pkIdx>=0? vals[pkIdx]:0, pkLabel: pkM?pkM.label:"—", pkRate, pkPartial: pkM?pkM.partial:false,
+      pkDays: pkM?pkM.days:0, avgLabels,
       avgRate, avgMonths:cnt, avgQty: avgRate*30.4};
   }).filter(r=>r.total>0);
   return {months,rows};
@@ -1640,7 +1732,38 @@ function renderTurnPurchase(base){
   });
   html+="</tbody>"; tbl.innerHTML=html;
 }
+// Общий лист «Как считается» для выгрузок Excel — руководство читает файл без дашборда.
+function howToSheet(view,oz,extra){
+  const h=turnHowTo(view,oz);
+  const rows=[[h.title]];
+  rows.push([""],[{t:"Порядок расчёта",b:true}]);
+  h.steps.forEach((s,i)=>rows.push([(i+1)+".", {t:s,wrap:true}]));
+  rows.push([""],[{t:"Что важно знать",b:true}]);
+  h.notes.forEach(n=>rows.push(["•", {t:n,wrap:true}]));
+  if(extra&&extra.length){ rows.push([""],[{t:"Параметры этой выгрузки",b:true}]);
+    extra.forEach(e=>rows.push([e[0],{t:e[1],wrap:true}])); }
+  return {name:"Как считается", rows, widths:[5,115], headerRows:1};
+}
+// параметры, общие для всех выгрузок вкладки (площадка, даты данных, фильтры)
+function turnExportMeta(){
+  const oz=_appliedMp==="ozon";
+  const stockDate = oz? (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate) : (RD&&RD.meta&&RD.meta.stockSnapshotDate);
+  const q=document.getElementById("turnSearch").value.trim();
+  const cats=selCats("turnCat"), prods=selCats("turnProduct");
+  const cf=Object.keys(turnColFilters).filter(k=>turnColFilters[k]&&turnColFilters[k].size);
+  const m=[["Площадка", oz?"Ozon":"Wildberries"],
+    ["Остатки на дату", stockDate? fmtDateLong(stockDate) : "—"],
+    ["Заказы по дату", RLAST? fmtDateLong(RLAST) : "—"],
+    ["Файл сформирован", fmtDateLong(new Date().toISOString().slice(0,10))]];
+  if(q) m.push(["Фильтр: поиск", q]);
+  if(cats.length) m.push(["Фильтр: категории", cats.join(", ")]);
+  if(prods.length) m.push(["Фильтр: товары", prods.length+" шт"]);
+  if(cf.length) m.push(["Фильтры по колонкам", cf.map(k=>k+": "+[...turnColFilters[k]].join(", ")).join(" · ")]);
+  return m;
+}
 function exportPurchaseCSV(base){
+  const oz=_appliedMp==="ozon";
+  const {months}=monthlyOrders();
   let rows=purchaseRows(base);
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
@@ -1651,22 +1774,48 @@ function exportPurchaseCSV(base){
     need:r=>r.need, covered:r=>r.covered, buy:r=>r.buy, buyCost:r=>r.buyCost,
     pStatus:r=>(PSTATUS_RANK[r.pStatus||"—"]!=null?PSTATUS_RANK[r.pStatus||"—"]:9)*1e9-r.buy });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
-  const bt = base==="peak"? "пиковому месяцу (без декабря)" : "среднему месяцу";
-  const cols=["Артикул","Код 1С","Код фабрики","Статус товара","Название","Категория",
-    base==="peak"?"Пиковый месяц, шт":"Средний месяц, шт", base==="peak"?"Какой месяц":"Месяцев в расчёте",
-    "Продаж в день (выкуп "+Math.round(TURN_PEAK_BUYOUT*100)+"%)","Нужно на 6 мес, шт",
-    "Есть сейчас (остаток+в пути+ожидается)","К закупу, шт","Контейнеров","Сумма по себестоимости, ₽"];
-  let csv="Расчёт закупа по "+bt+"\n"+cols.join(";")+"\n";
-  const iBuy=cols.indexOf("К закупу, шт"), iCost=cols.indexOf("Сумма по себестоимости, ₽");
+  const isPeak = base==="peak";
+  // Месяцы показываем ВСЕ, включая декабрь: в расчёт он не идёт, но в файле должен быть видно
+  const monCols=months.map(m=>m.label+(m.partial?"*":"")+(m.key.endsWith("-12")?" (не в расчёте)":""));
+  const head=["Артикул","Код 1С","Код фабрики","Статус товара","Название","Категория",
+    ...monCols,"Итого за историю, шт",
+    isPeak?"ПИКОВЫЙ МЕСЯЦ (база)":"Месяцев в расчёте",
+    isPeak?"Пик, шт":"Какие месяцы взяты",
+    "Темп базы, шт/дн","Продаж в день (выкуп "+Math.round(TURN_PEAK_BUYOUT*100)+"%)",
+    "Нужно на 6 мес, шт","Остаток","В пути"];
+  if(oz) head.push("Ожидается со склада");
+  head.push("Есть сейчас, шт","К закупу до округления, шт","Размер контейнера, шт","Контейнеров",
+    "К ЗАКУПУ, шт","Себестоимость, ₽/шт","Сумма, ₽");
+  const data=[head];
   let tq=0,ts=0;
   rows.forEach(r=>{ tq+=r.buy; ts+=r.buyCost;
-    csv+=[r.sku,code1c(r.sku),factoryCode(r.sku),r.pStatus||"",
-      (r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "),
-      r.baseQty, r.baseLabel+(r.basePartial?" (неполный)":""), csvNum(r.salesPerDay,1),
-      r.need, r.covered, r.buy||"", r.cont||"", r.buy&&r.hasCost? Math.round(r.buyCost):""].join(";")+"\n"; });
-  const tot=Array(cols.length).fill(""); tot[0]="ИТОГО"; tot[iBuy]=tq; tot[iCost]=Math.round(ts);
-  csv+=tot.join(";")+"\n";
-  downloadCSV((_appliedMp==="ozon"?"ozon":"wb")+"-закуп-"+(base==="peak"?"по-пику":"по-среднему")+".csv",csv);
+    const cost=costOf(r.sku);
+    const line=[r.sku,code1c(r.sku),factoryCode(r.sku),r.pStatus||"",r.name||"",r.category||"",
+      ...r.vals, r.total,
+      isPeak? (r.pkLabel+(r.pkPartial?" (неполный)":"")) : r.avgMonths,
+      isPeak? r.pkQty : (r.avgLabels||[]).join(", "),
+      +((isPeak? r.pkRate : r.avgRate).toFixed(2)),
+      +r.salesPerDay.toFixed(2), r.need, r.stock, r.transit];
+    if(oz) line.push(r.reserve);
+    line.push(r.covered, r.rawBuy, r.contQty||"", r.cont||"", r.buy||"",
+      cost!=null? Math.round(cost*100)/100 : "", r.buy&&r.hasCost? Math.round(r.buyCost):"");
+    data.push(line);
+  });
+  const tot=new Array(head.length).fill(""); tot[0]="ИТОГО";
+  tot[head.indexOf("К ЗАКУПУ, шт")]=tq; tot[head.indexOf("Сумма, ₽")]=Math.round(ts);
+  data.push(tot);
+  const widths=[13,11,14,13,44,20,...months.map(()=>10),15,
+    isPeak?18:16, isPeak?11:34, 15,20,17,11,10];
+  if(oz) widths.push(17);
+  widths.push(14,20,18,12,13,17,14);
+  const extra=[...turnExportMeta(),
+    ["База расчёта", isPeak? "пиковый месяц каждого товара (декабрь исключён)" : "средний темп по месяцам с продажами (декабрь исключён)"],
+    ["Горизонт", TURN_COVER_DAYS+" дней (6 месяцев)"],
+    ["Выкуп", Math.round(TURN_PEAK_BUYOUT*100)+"% (фиксированный для расчётов от истории)"],
+    ["Декабрь", "показан в таблице отдельной колонкой, но в базу расчёта НЕ входит"]];
+  xlsxDownload((oz?"ozon":"wb")+"-закуп-"+(isPeak?"по-пику":"по-среднему")+".xlsx",
+    [howToSheet(base==="peak"?"buyPeak":"buyAvg",oz,extra),
+     {name: isPeak?"Закуп по пику":"Закуп по среднему", rows:data, widths, headerRows:1}]);
 }
 function renderTurnMonths(){
   const tbl=document.getElementById("turnTable"); tbl.className="rnp pivot";
@@ -1707,50 +1856,58 @@ function renderTurnMonths(){
   html+="</tbody>"; tbl.innerHTML=html;
 }
 // «Как считается» — цепочка от исходных данных до итоговой цифры, своя для каждого вида.
-// Нужна, чтобы перед заказом на фабрику было видно, откуда взялось каждое число.
-function renderTurnHowTo(){
-  const el=document.getElementById("turnHowTo"); if(!el) return;
-  const oz=_appliedMp==="ozon";
-  const A='<span class="ht-arrow">→</span>';
+// Одна точка истины: отсюда и блок над таблицей, и лист «Как считается» в выгрузке Excel
+// (руководство читает файл без дашборда, поэтому объяснение обязано ехать вместе с цифрами).
+function turnHowTo(view,oz){
   const covTxt = oz? "остаток + в пути на Озон + ожидается с вашего склада"
                    : "остаток + в пути (ваш файл «на оптовых»)";
   const buyTxt = oz? "% выкупа за дозревшее окно (14 дней со сдвигом на 7)"
                    : "% выкупа 14-дневный из каталога ВБ";
-  let title,body,note="";
-  if(turnView==="reorder"){
-    title="Как считается дозаказ";
-    body=`<span class="ht-step"><b>Заказов/дн</b> = заказы за последние 7 дней ÷ 7</span>${A}`
-      +`<span class="ht-step"><b>Продаж/дн</b> = Заказов/дн × ${buyTxt}</span>${A}`
-      +`<span class="ht-step"><b>Хватит дней</b> = (${covTxt}) ÷ Продаж/дн</span>${A}`
-      +`<span class="ht-step">если хватит меньше <b>${TURN_MIN_DAYS} дн</b> ${A} <b>Дозаказать</b> = Продаж/дн × ${TURN_COVER_DAYS} дн, округляем ВВЕРХ до контейнера</span>`;
-    note=`Колонка «Хватит, дн»: первое число — на сколько хватит того, что уже лежит на складе ${oz?"Ozon":"WB"}; второе (со стрелкой) — с учётом того, что едет. `
-      +`«Заказать» = через сколько дней размещать заказ, чтобы партия успела прийти (хватит − ${TURN_MIN_DAYS} дн). `
-      +`Текущий остаток из партии НЕ вычитается — это плановый объём на ${TURN_COVER_DAYS} дней. `
-      +`Производственный статус («На вывод» и др.) на расчёт не влияет — он справочный.`;
-  } else if(turnView==="months"){
-    title="Как читать историю по месяцам";
-    body=`<span class="ht-step"><b>Ячейки</b> = заказы этого товара за месяц (штуки из подённой истории)</span>${A}`
-      +`<span class="ht-step"><b>Пик/мес</b> — лучший месяц товара</span>${A}`
-      +`<span class="ht-step"><b>Ср/мес</b> — среднее <b>только по месяцам с продажами</b> (иначе новинки занижаются)</span>${A}`
-      +`<span class="ht-step"><b>Продаж/дн в пик</b> = пик ÷ дней в том месяце × ${Math.round(TURN_PEAK_BUYOUT*100)}%</span>`;
-    note=`Заливка внутри строки — относительно лучшего месяца ЭТОГО товара. Месяцы со звёздочкой неполные (история началась или ещё не закончилась). `
-      +`Выкуп здесь фиксированный ${Math.round(TURN_PEAK_BUYOUT*100)}% — на истории с нулями свой процент не показателен. Суммы в рублях в этом виде не показываем: деньги в истории есть только с середины июля.`;
-  } else {
-    const isPeak=turnView==="buyPeak";
-    title=isPeak? "Как считается закуп по пиковому месяцу" : "Как считается закуп по среднему месяцу";
-    body=`<span class="ht-step"><b>База</b> = ${isPeak? "лучший месяц товара <b>без декабря</b>, месяцы сравниваются по среднедневному темпу"
-        : "средний темп по месяцам <b>с продажами</b>, декабрь исключён"}</span>${A}`
-      +`<span class="ht-step"><b>Продаж/дн</b> = темп базы × ${Math.round(TURN_PEAK_BUYOUT*100)}% выкупа</span>${A}`
-      +`<span class="ht-step"><b>Нужно на 6 мес</b> = Продаж/дн × ${TURN_COVER_DAYS} дн</span>${A}`
-      +`<span class="ht-step"><b>Есть сейчас</b> = ${covTxt}</span>${A}`
-      +`<span class="ht-step"><b>К закупу</b> = Нужно − Есть, округляем ВВЕРХ до контейнера</span>`;
-    note=`Декабрь исключён из базы — распродажный месяц, по нему заказывать нельзя. `
-      +`${isPeak? "Сравниваем месяцы по темпу в день, а не по сумме: иначе неполный текущий месяц никогда не станет пиком."
-                : "Среднее берём только по месяцам с продажами — у новинок нули в старых месяцах занизили бы расчёт."} `
-      +`Здесь текущее покрытие <b>вычитается</b> (в отличие от колонки «Дозаказать»). Сумма ₽ = К закупу × текущая себестоимость. `
-      +`Товары без размера контейнера не округляются — количество берите как есть.`;
-  }
-  el.innerHTML=`<span class="ht-t">${title}</span>${body}<span class="ht-note">${note}</span>`;
+  const P=Math.round(TURN_PEAK_BUYOUT*100);
+  if(view==="reorder") return {title:"Как считается дозаказ", steps:[
+      "Заказов/дн = заказы за последние 7 дней ÷ 7",
+      "Продаж/дн = Заказов/дн × "+buyTxt,
+      "Хватит дней = ("+covTxt+") ÷ Продаж/дн",
+      "если хватит меньше "+TURN_MIN_DAYS+" дн → Дозаказать = Продаж/дн × "+TURN_COVER_DAYS+" дн, округляем ВВЕРХ до контейнера"],
+    notes:[
+      "Колонка «Хватит, дн»: первое число — на сколько хватит того, что уже лежит на складе "+(oz?"Ozon":"WB")+"; второе (со стрелкой) — с учётом того, что едет.",
+      "«Заказать» = через сколько дней размещать заказ, чтобы партия успела прийти (хватит − "+TURN_MIN_DAYS+" дн).",
+      "Текущий остаток из партии НЕ вычитается — это плановый объём на "+TURN_COVER_DAYS+" дней вперёд.",
+      "Производственный статус («На вывод», «Новинка», «В работе») на расчёт НЕ влияет — он справочный, решение принимает продавец."]};
+  if(view==="months") return {title:"Как читать историю по месяцам", steps:[
+      "Ячейки = заказы этого товара за месяц (штуки из подённой истории)",
+      "Пик/мес — лучший месяц товара",
+      "Ср/мес — среднее ТОЛЬКО по месяцам с продажами (иначе новинки занижаются)",
+      "Продаж/дн в пик = пик ÷ дней в том месяце × "+P+"%"],
+    notes:[
+      "Месяцы со звёздочкой неполные: история началась в середине месяца или месяц ещё не закончился.",
+      "Выкуп здесь фиксированный "+P+"% — на истории с нулями свой процент выкупа не показателен.",
+      "Суммы в рублях в этом виде не показываем: деньги в истории есть только с середины июля.",
+      "Декабрь показан для справки, но в расчёты закупа он НЕ входит."]};
+  const isPeak=view==="buyPeak";
+  return {title: isPeak? "Как считается закуп по пиковому месяцу" : "Как считается закуп по среднему месяцу",
+    steps:[
+      "База = "+(isPeak? "лучший месяц товара БЕЗ ДЕКАБРЯ; месяцы сравниваются по среднедневному темпу"
+                       : "средний темп по месяцам С ПРОДАЖАМИ, декабрь исключён"),
+      "Продаж/дн = темп базы × "+P+"% выкупа",
+      "Нужно на 6 мес = Продаж/дн × "+TURN_COVER_DAYS+" дн",
+      "Есть сейчас = "+covTxt,
+      "К закупу = Нужно − Есть, округляем ВВЕРХ до контейнера"],
+    notes:[
+      "Декабрь исключён из базы — распродажный месяц, заказывать от него нельзя. В таблице он показан для справки.",
+      isPeak? "Месяцы сравниваются по темпу в день, а не по сумме за месяц: иначе неполный текущий месяц заведомо проигрывает полным и никогда не станет пиком."
+            : "Среднее берём только по месяцам с продажами — у новинок нули в старых месяцах занизили бы расчёт.",
+      "Здесь текущее покрытие ВЫЧИТАЕТСЯ (в отличие от колонки «Дозаказать» на виде «Дозаказ»).",
+      "Сумма ₽ = К закупу × текущая себестоимость.",
+      "У товаров без заданного размера контейнера округления нет — количество берите как есть."]};
+}
+function renderTurnHowTo(){
+  const el=document.getElementById("turnHowTo"); if(!el) return;
+  const h=turnHowTo(turnView,_appliedMp==="ozon");
+  const A='<span class="ht-arrow">→</span>';
+  el.innerHTML=`<span class="ht-t">${esc(h.title)}</span>`
+    +h.steps.map(s=>`<span class="ht-step">${esc(s)}</span>`).join(A)
+    +`<span class="ht-note">${h.notes.map(esc).join(" ")}</span>`;
 }
 function renderTurnoverSimple(){
   const oz = _appliedMp==="ozon";
@@ -1845,28 +2002,39 @@ function exportTurnoverCSV(){
     whenOrder:r=>r.whenOrder==null?1e9:r.whenOrder, status:r=>rank[r.status]*1e9+dl(r.daysLeft),
     pStatus:r=>(PSTATUS_RANK[r.pStatus||"—"]!=null?PSTATUS_RANK[r.pStatus||"—"]:9)*1e9+dl(r.daysLeft) });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
-  const cols=["Артикул","Код 1С","Код фабрики","Статус товара","Название","Категория","Остаток","В пути"];
-  if(oz) cols.push("Ожидается (наши поставки)");
-  cols.push("Заказов в день (7д)","Выкуп, %","Продаж в день","Хватит дней","Дозаказать шт","Контейнеров","Сумма по себестоимости, ₽","Когда заказать","Статус");
-  const iReorder=cols.indexOf("Дозаказать шт"), iSum=cols.indexOf("Сумма по себестоимости, ₽");
-  let csv=cols.join(";")+"\n";
+  const head=["Артикул","Код 1С","Код фабрики","Статус товара","Название","Категория","Остаток","В пути"];
+  if(oz) head.push("Ожидается со склада");
+  head.push("Есть всего, шт","Заказов в день (7 дн)","Выкуп, %","Продаж в день",
+    "Хватит дней (только остаток)","Хватит дней (с учётом в пути)",
+    "Дозаказать, шт","Размер контейнера, шт","Контейнеров","Сумма по себестоимости, ₽","Когда заказать","Статус");
+  const data=[head];
   let totQty=0,totSum=0;
+  const dtxt=v=> v===Infinity? "∞" : (v>0? Math.round(v) : 0);
   rows.forEach(r=>{ totQty+=r.reorder; totSum+=r.reorderCost||0;
-    const when = r.whenOrder==null? "" : (r.whenOrder<=0? "сейчас" : ("через "+r.whenOrder+" дн"));
-    const daysTxt = r.salesPerDay<=0 ? (r.covered>0?"∞":"") : Math.round(r.daysBase);
-    const base=[r.sku,code1c(r.sku),factoryCode(r.sku),r.pStatus||"",
-      (r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "), r.stock, r.transit||""];
-    if(oz) base.push(r.ozReserve||"");
-    base.push(csvNum(r.avgD,1), Math.round(r.buyout*100), csvNum(r.salesPerDay,1),
-      daysTxt, r.reorder||"", r.containers||"", r.reorderCost?Math.round(r.reorderCost):"", when, TURN_STATUS[r.status]);
-    csv+=base.join(";")+"\n"; });
-  const tot=Array(cols.length).fill(""); tot[0]="ИТОГО"; tot[iReorder]=totQty; tot[iSum]=Math.round(totSum);
-  csv+=tot.join(";")+"\n";
-  downloadCSV((oz?"ozon":"wb")+"-оборачиваемость.csv",csv);
+    const line=[r.sku,code1c(r.sku),factoryCode(r.sku),r.pStatus||"",r.name||"",r.category||"",r.stock,r.transit||0];
+    if(oz) line.push(r.ozReserve||0);
+    line.push(r.covered, +r.avgD.toFixed(2), Math.round(r.buyout*100), +r.salesPerDay.toFixed(2),
+      r.salesPerDay<=0? (r.covered>0?"∞":0) : dtxt(r.daysBase),
+      r.salesPerDay<=0? (r.covered>0?"∞":0) : dtxt(r.daysLeft),
+      r.reorder||"", r.contQty||"", r.containers||"", r.reorderCost?Math.round(r.reorderCost):"",
+      r.whenOrder==null? "" : (r.whenOrder<=0? "сейчас" : ("через "+r.whenOrder+" дн")), TURN_STATUS[r.status]);
+    data.push(line);
+  });
+  const tot=new Array(head.length).fill(""); tot[0]="ИТОГО";
+  tot[head.indexOf("Дозаказать, шт")]=totQty; tot[head.indexOf("Сумма по себестоимости, ₽")]=Math.round(totSum);
+  data.push(tot);
+  const widths=[13,11,14,13,44,20,10,10];
+  if(oz) widths.push(17);
+  widths.push(12,19,10,13,24,26,15,19,12,24,16,22);
+  const extra=[...turnExportMeta(),
+    ["Окно скорости", "последние 7 дней заказов"],
+    ["Порог дозаказа", "меньше "+TURN_MIN_DAYS+" дней покрытия"],
+    ["Объём партии", "продаж/день × "+TURN_COVER_DAYS+" дней, округление вверх до контейнера"]];
+  xlsxDownload((oz?"ozon":"wb")+"-оборачиваемость.xlsx",
+    [howToSheet("reorder",oz,extra),{name:"Дозаказ",rows:data,widths,headerRows:1}]);
 }
-
-// Выгрузка помесячной истории — те же фильтры и сортировка, что на экране.
 function exportTurnMonthsCSV(){
+  const oz=_appliedMp==="ozon";
   const {months,rows:all}=monthlyOrders();
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
@@ -1879,18 +2047,26 @@ function exportTurnMonthsCSV(){
     pStatus:r=>(PSTATUS_RANK[r.pStatus||"—"]!=null?PSTATUS_RANK[r.pStatus||"—"]:9)*1e9-r.total,
     ...Object.fromEntries(months.map((m,i)=>["m"+i,r=>r.vals[i]])) });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
-  const head=["Артикул","Код 1С","Код фабрики","Статус товара","Название","Категория"];
-  const cols=[...head,...months.map(m=>m.label+(m.partial?" (неполный)":"")),
-    "Итого","Пик за месяц","Месяц пика","Месяцев с продажами","В среднем за месяц","Продаж в день в пик (выкуп "+Math.round(TURN_PEAK_BUYOUT*100)+"%)"];
-  let csv=cols.join(";")+"\n";
-  rows.forEach(r=>{ csv+=[r.sku,code1c(r.sku),factoryCode(r.sku),r.pStatus||"",
-    (r.name||"").replace(/[;\n]/g," "),(r.category||"").replace(/[;\n]/g," "),
-    ...r.vals, r.total, r.peak, r.peakLabel, r.active, Math.round(r.avg), csvNum(r.peakSales,1)].join(";")+"\n"; });
-  const tot=Array(cols.length).fill(""); tot[0]="ИТОГО";
-  months.forEach((m,i)=>{ tot[head.length+i]=rows.reduce((a,r)=>a+r.vals[i],0); });
-  tot[head.length+months.length]=rows.reduce((a,r)=>a+r.total,0);
-  csv+=tot.join(";")+"\n";
-  downloadCSV((_appliedMp==="ozon"?"ozon":"wb")+"-заказы-по-месяцам.csv",csv);
+  const monCols=months.map(m=>m.label+(m.partial?"*":"")+(m.key.endsWith("-12")?" (не в расчёте)":""));
+  const head=["Артикул","Код 1С","Код фабрики","Статус товара","Название","Категория",...monCols,
+    "Итого, шт","Пик за месяц, шт","Месяц пика (всё)","Пиковый месяц БЕЗ декабря","Темп пика, шт/дн",
+    "Месяцев с продажами","Какие месяцы взяты в среднее","В среднем за месяц, шт","Средний темп, шт/дн",
+    "Продаж в день в пик (выкуп "+Math.round(TURN_PEAK_BUYOUT*100)+"%)"];
+  const data=[head];
+  rows.forEach(r=>data.push([r.sku,code1c(r.sku),factoryCode(r.sku),r.pStatus||"",r.name||"",r.category||"",
+    ...r.vals, r.total, r.peak, r.peakLabel, r.pkLabel+(r.pkPartial?" (неполный)":""), +r.pkRate.toFixed(2),
+    r.avgMonths, (r.avgLabels||[]).join(", "), Math.round(r.avg), +r.avgRate.toFixed(2), +r.peakSales.toFixed(2)]));
+  const tot=new Array(head.length).fill(""); tot[0]="ИТОГО";
+  months.forEach((m,i)=>{ tot[6+i]=rows.reduce((a,r)=>a+r.vals[i],0); });
+  tot[6+months.length]=rows.reduce((a,r)=>a+r.total,0);
+  data.push(tot);
+  const widths=[13,11,14,13,44,20,...months.map(()=>13),12,15,16,24,15,18,34,20,17,28];
+  const extra=[...turnExportMeta(),
+    ["Выкуп", Math.round(TURN_PEAK_BUYOUT*100)+"% (фиксированный)"],
+    ["Декабрь", "в таблице показан, но в расчёты пика и среднего НЕ входит"],
+    ["Звёздочка у месяца", "месяц неполный: история началась в середине или месяц ещё идёт"]];
+  xlsxDownload((oz?"ozon":"wb")+"-заказы-по-месяцам.xlsx",
+    [howToSheet("months",oz,extra),{name:"По месяцам",rows:data,widths,headerRows:1}]);
 }
 
 /* ---- динамика заказов: диапазон дат, агрегация, график ---- */
@@ -3895,10 +4071,16 @@ function rebuildCatalogMaps(){
   ((RD&&RD.catalog)||[]).forEach(w=>{ wbBySku[w.sku]=w;
     const s=(''+(w.supplierCode||'')).trim(); if(s) wbBySup[s]=w; });
   for(const k in catalogCostHistBySku) delete catalogCostHistBySku[k];
-  RCAT.forEach(c=>{ if(c.costPrice!=null) catalogCostBySku[c.sku]=c.costPrice;
-    if(c.costHistory&&c.costHistory.length) catalogCostHistBySku[c.sku]=c.costHistory;
+  RCAT.forEach(c=>{
     catalogCatBySku[c.sku]=c.category; catalogNameBySku[c.sku]=c.name;
     const w = wbBySku[c.sku] || wbBySup[(''+(c.supplierCode||c.sku)).trim()] || null;
+    // себестоимость ведётся в каталоге ВБ; на Озоне товар тот же самый, поэтому берём
+    // цену связанного ВБ-товара — иначе в закупе Озона пустая колонка «Сумма ₽»
+    const cost = c.costPrice!=null? c.costPrice : (w&&w.costPrice!=null? w.costPrice : null);
+    if(cost!=null) catalogCostBySku[c.sku]=cost;
+    const hist = (c.costHistory&&c.costHistory.length)? c.costHistory
+      : ((w&&w.costHistory&&w.costHistory.length)? w.costHistory : null);
+    if(hist) catalogCostHistBySku[c.sku]=hist;
     const s = (''+(c.supplierCode||'')).trim() || (w? (''+(w.supplierCode||'')).trim() : '');
     if(s) catalog1cBySku[c.sku]=s;
     if(w){ const f=(''+(w.factoryCode||'')).trim(); if(f) catalogFactoryBySku[c.sku]=f;
