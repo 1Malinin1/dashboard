@@ -198,6 +198,15 @@
   .chart text{font-family:inherit}
 
   /* ===== РНП таблица ===== */
+  /* «Как считается» — цепочка расчёта над таблицей оборачиваемости */
+  .howto{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-lg);
+    padding:11px 14px;margin-bottom:12px;font-size:12.5px;line-height:1.55;color:var(--text-2)}
+  .howto b{color:var(--text-1);font-weight:650}
+  .howto .ht-t{display:block;font-size:12px;font-weight:700;color:var(--text-1);
+    letter-spacing:.02em;text-transform:uppercase;margin-bottom:5px}
+  .howto .ht-step{display:inline-block;margin:1px 0}
+  .howto .ht-arrow{color:var(--accent);font-weight:700;margin:0 5px}
+  .howto .ht-note{display:block;margin-top:5px;font-size:11.5px;color:var(--muted)}
   .table-card{background:var(--surface);border:1px solid var(--border);
     border-radius:var(--r-lg);box-shadow:var(--shadow),inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent);
     overflow:hidden;margin-bottom:16px}
@@ -841,6 +850,7 @@
       <span class="count" id="turnCount"></span>
       <button class="btn" id="turnExportBtn">Скачать таблицу CSV</button>
     </div>
+    <div class="howto" id="turnHowTo"></div>
     <div class="table-card">
       <div class="table-scroll"><table class="rnp" id="turnTable"></table></div>
     </div>
@@ -1591,6 +1601,8 @@ function purchaseRows(base){
       baseLabel: base==="peak"? r.pkLabel : (r.avgMonths+" мес"),
       basePartial: base==="peak"? r.pkPartial : false,
       salesPerDay, need, covered, buy, cont, contQty:t.contQty||0,
+      stock:t.stock||0, transit:t.transit||0, reserve:t.ozReserve||0,   // разложение «Есть сейчас»
+      rawBuy: Math.max(0, need-(t.covered||0)),                          // до округления до контейнера
       buyCost: cost!=null? buy*cost : 0, hasCost: cost!=null, status:t.status||"", pStatus:t.pStatus||prodStatus(r.sku)};
   }).filter(r=>r.baseQty>0);
 }
@@ -1619,9 +1631,10 @@ function renderTurnPurchase(base){
     html+=`<tr><td class="name-cell metric" title="${esc(r.name)}">${esc(r.name)}${skuMeta(r)}</td>`
       +`<td>${fmt(r.baseQty)} шт<span class="sub2 mut">${esc(r.baseLabel)}${r.basePartial?" (неполный)":""}</span></td>`
       +`<td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>`
-      +`<td>${fmt(r.need)}</td>`
-      +`<td>${fmt(r.covered)}</td>`
-      +`<td style="font-weight:700;${r.buy?"color:var(--accent)":""}">${r.buy? fmt(r.buy)+" шт"+(r.cont?`<span class="sub2 mut">${r.cont} конт.</span>`:"") : "—"}</td>`
+      +`<td>${fmt(r.need)}<span class="sub2 mut">${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})} × ${TURN_COVER_DAYS} дн</span></td>`
+      +`<td>${fmt(r.covered)}<span class="sub2 mut">${fmt(r.stock)} остаток${r.transit?" + "+fmt(r.transit)+" в пути":""}${r.reserve?" + "+fmt(r.reserve)+" ожид.":""}</span></td>`
+      +`<td style="font-weight:700;${r.buy?"color:var(--accent)":""}">${r.buy? fmt(r.buy)+" шт"
+        +`<span class="sub2 mut">${fmt(r.need)} − ${fmt(r.covered)} = ${fmt(r.rawBuy)}${r.cont?" → "+r.cont+" конт.":""}</span>` : "—"}</td>`
       +`<td>${r.buy? (r.hasCost? rub(r.buyCost) : '<span class="muted">нет с/с</span>') : "—"}</td>`
       +`<td>${pStatusBadge(r.pStatus)}</td></tr>`;
   });
@@ -1693,10 +1706,57 @@ function renderTurnMonths(){
   });
   html+="</tbody>"; tbl.innerHTML=html;
 }
+// «Как считается» — цепочка от исходных данных до итоговой цифры, своя для каждого вида.
+// Нужна, чтобы перед заказом на фабрику было видно, откуда взялось каждое число.
+function renderTurnHowTo(){
+  const el=document.getElementById("turnHowTo"); if(!el) return;
+  const oz=_appliedMp==="ozon";
+  const A='<span class="ht-arrow">→</span>';
+  const covTxt = oz? "остаток + в пути на Озон + ожидается с вашего склада"
+                   : "остаток + в пути (ваш файл «на оптовых»)";
+  const buyTxt = oz? "% выкупа за дозревшее окно (14 дней со сдвигом на 7)"
+                   : "% выкупа 14-дневный из каталога ВБ";
+  let title,body,note="";
+  if(turnView==="reorder"){
+    title="Как считается дозаказ";
+    body=`<span class="ht-step"><b>Заказов/дн</b> = заказы за последние 7 дней ÷ 7</span>${A}`
+      +`<span class="ht-step"><b>Продаж/дн</b> = Заказов/дн × ${buyTxt}</span>${A}`
+      +`<span class="ht-step"><b>Хватит дней</b> = (${covTxt}) ÷ Продаж/дн</span>${A}`
+      +`<span class="ht-step">если хватит меньше <b>${TURN_MIN_DAYS} дн</b> ${A} <b>Дозаказать</b> = Продаж/дн × ${TURN_COVER_DAYS} дн, округляем ВВЕРХ до контейнера</span>`;
+    note=`Колонка «Хватит, дн»: первое число — на сколько хватит того, что уже лежит на складе ${oz?"Ozon":"WB"}; второе (со стрелкой) — с учётом того, что едет. `
+      +`«Заказать» = через сколько дней размещать заказ, чтобы партия успела прийти (хватит − ${TURN_MIN_DAYS} дн). `
+      +`Текущий остаток из партии НЕ вычитается — это плановый объём на ${TURN_COVER_DAYS} дней. `
+      +`Производственный статус («На вывод» и др.) на расчёт не влияет — он справочный.`;
+  } else if(turnView==="months"){
+    title="Как читать историю по месяцам";
+    body=`<span class="ht-step"><b>Ячейки</b> = заказы этого товара за месяц (штуки из подённой истории)</span>${A}`
+      +`<span class="ht-step"><b>Пик/мес</b> — лучший месяц товара</span>${A}`
+      +`<span class="ht-step"><b>Ср/мес</b> — среднее <b>только по месяцам с продажами</b> (иначе новинки занижаются)</span>${A}`
+      +`<span class="ht-step"><b>Продаж/дн в пик</b> = пик ÷ дней в том месяце × ${Math.round(TURN_PEAK_BUYOUT*100)}%</span>`;
+    note=`Заливка внутри строки — относительно лучшего месяца ЭТОГО товара. Месяцы со звёздочкой неполные (история началась или ещё не закончилась). `
+      +`Выкуп здесь фиксированный ${Math.round(TURN_PEAK_BUYOUT*100)}% — на истории с нулями свой процент не показателен. Суммы в рублях в этом виде не показываем: деньги в истории есть только с середины июля.`;
+  } else {
+    const isPeak=turnView==="buyPeak";
+    title=isPeak? "Как считается закуп по пиковому месяцу" : "Как считается закуп по среднему месяцу";
+    body=`<span class="ht-step"><b>База</b> = ${isPeak? "лучший месяц товара <b>без декабря</b>, месяцы сравниваются по среднедневному темпу"
+        : "средний темп по месяцам <b>с продажами</b>, декабрь исключён"}</span>${A}`
+      +`<span class="ht-step"><b>Продаж/дн</b> = темп базы × ${Math.round(TURN_PEAK_BUYOUT*100)}% выкупа</span>${A}`
+      +`<span class="ht-step"><b>Нужно на 6 мес</b> = Продаж/дн × ${TURN_COVER_DAYS} дн</span>${A}`
+      +`<span class="ht-step"><b>Есть сейчас</b> = ${covTxt}</span>${A}`
+      +`<span class="ht-step"><b>К закупу</b> = Нужно − Есть, округляем ВВЕРХ до контейнера</span>`;
+    note=`Декабрь исключён из базы — распродажный месяц, по нему заказывать нельзя. `
+      +`${isPeak? "Сравниваем месяцы по темпу в день, а не по сумме: иначе неполный текущий месяц никогда не станет пиком."
+                : "Среднее берём только по месяцам с продажами — у новинок нули в старых месяцах занизили бы расчёт."} `
+      +`Здесь текущее покрытие <b>вычитается</b> (в отличие от колонки «Дозаказать»). Сумма ₽ = К закупу × текущая себестоимость. `
+      +`Товары без размера контейнера не округляются — количество берите как есть.`;
+  }
+  el.innerHTML=`<span class="ht-t">${title}</span>${body}<span class="ht-note">${note}</span>`;
+}
 function renderTurnoverSimple(){
   const oz = _appliedMp==="ozon";
   const prodSel=document.getElementById("turnProduct"); if(prodSel && !prodSel.options.length) fillProductSelect(prodSel);
   document.getElementById("turnTable").className="rnp";
+  renderTurnHowTo();
   const all=simpleTurnList();   // все товары; производственный статус — справочная колонка, на расчёт не влияет
   let rows=turnFilteredRows(all,null);
   const rank={critical:0,warning:1,good:2,nodata:3,discontinued:4}, dl=v=>v===Infinity?1e9:v;
@@ -1751,7 +1811,8 @@ function renderTurnoverTab(){
   document.getElementById("turnFreshness").innerHTML = RD
     ? `<span class="dot"></span>Остатки ${oz?"Ozon":"WB"}${stockDate?" обновлены на "+fmtDateLong(stockDate):""} · заказы — по ${fmtDateLong(RLAST)}`
     : "";
-  if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML=""; return; }
+  if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML="";
+    document.getElementById("turnHowTo").innerHTML=""; return; }
   // простая модель (ВБ и Озон) считает по фикс. окну 7 дней — прячем селектор «Скорость» и старый CSV-дозаказ
   const winWrap=document.getElementById("turnWindow").closest(".uisel");
   if(winWrap) winWrap.style.display = "none";
@@ -1759,6 +1820,7 @@ function renderTurnoverTab(){
   // «Всего»: реплан по площадкам раздельный — остатки и поставки у ВБ и Озона свои
   if(_appliedMp==="all"){
     document.getElementById("turnKpis").innerHTML="";
+    document.getElementById("turnHowTo").innerHTML="";
     document.getElementById("turnCount").textContent="";
     document.getElementById("turnTable").innerHTML=`<tbody><tr><td class="empty-hint">Оборачиваемость и дозаказ считаются по каждой площадке отдельно — остатки и поставки у ВБ и Озона свои. Выберите «Wildberries» или «Ozon» вверху.</td></tr></tbody>`;
     return;
