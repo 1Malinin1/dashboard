@@ -112,8 +112,13 @@ ozCat.forEach(c=>{ const g=wGross[c.sku]||0, n=wNet[c.sku]||0;
   c.ozBuyout = g>=10 ? +(n/g).toFixed(4) : +buyoutAll.toFixed(4); });
 const buyoutWindow = winDates.length ? winDates[0]+'…'+winDates[winDates.length-1] : null;
 
+// ВАЖНО: воронку Озона (её печёт ozon-funnel-build.cjs) переносим как есть — раньше
+// объект ozon пересобирался с нуля и каждый прогон молча стирал `funnel`, из-за чего
+// вкладка «Товар» на Озоне оставалась пустой. Не убирай перенос.
+const prevFunnel = (RD.ozon && RD.ozon.funnel) || [];
 RD.ozon={
   catalog:ozCat,
+  funnel:prevFunnel,
   orderSeries:{dates,byArt,money:ozMoney},
   ordersMeta:{period:dates[0]+'…'+dates[dates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
   meta:{ stockDate: stockFile? stockDate : (RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||null, buyoutAll:+buyoutAll.toFixed(4), buyoutWindow }
@@ -132,3 +137,5 @@ console.log('  остатки:',stockFile?('строк '+stockRows+' · сумм
 if(stockFile) console.log('  в пути на Озон:',(sumZayav+sumPath),'шт = заявки на поставку '+sumZayav+' + физически в пути '+sumPath);
 console.log('  товаров с остатком >0:',ozCat.filter(c=>c.ozStock>0).length);
 console.log('  % выкупа: окно',buyoutWindow,'· общий',Math.round(buyoutAll*100)+'%');
+console.log('  воронка Озона: перенесена без изменений —',prevFunnel.length,'строк'
+  +(prevFunnel.length? ' ('+[...new Set(prevFunnel.map(r=>r.date))].sort().slice(-1)[0]+' последняя дата)' : ' (пусто — запеките ozon-funnel-build.cjs)'));
