@@ -1,27 +1,35 @@
-// Заливает остатки СВОЕГО склада продавца в REAL_DATA.warehouse.
-// Это отдельный слой: в покрытие площадок он НЕ входит (см. simpleTurnList) — из него
-// считается подсорт «куда и сколько отгрузить», чтобы держать на ВБ/Озоне ≥30 дней запаса.
+// Заливает «свои» остатки и то, что едет к продавцу, из выгрузок 1С.
 //
-// Колонки ищутся ПО ИМЕНИ (порядок в рабочих файлах плавает):
-//   ключ   — «код»/«код поставщика»/«арт»/«артикул» (это арт. поставщика = код 1С = артикул Озона);
-//   кол-во — «кол-во»/«количество»/«остаток»/«итог».
-// Если в файле ДВЕ колонки количества с пометкой площадки («вб»/«озон») — читаем обе,
-// тогда товар уже физически разделён и подсорт считается по каждой площадке отдельно.
+//   node scripts/update-warehouse.cjs stock  <файл.xls> [дата]   — остатки на СВОИХ складах
+//   node scripts/update-warehouse.cjs china  <файл.xls> [дата]   — товары в пути из Китая
+//   node scripts/update-warehouse.cjs order  <файл.xls> [дата]   — открытые заказы производству
 //
-// Использование: node scripts/update-warehouse.cjs <файл.xlsx> [лист] [дата]
+// Пишет:
+//   REAL_DATA.warehouse = {date, split:false, byWh:{склад:шт}, bySup:{код:{qty, wh:{склад:шт}}}}
+//   REAL_DATA.inbound   = {china:{date,total,bySup}, order:{date,total,bySup}}
+// Ключ везде — «Номенклатура.Код» = арт. поставщика = WB supplierCode = артикул Озона.
+//
+// Форматы 1С, которые понимает скрипт:
+//   A. «Ведомость по товарам на складах» — шапка со «Номенклатура.Код» и колонками складов + «Итог».
+//      Каждая колонка склада становится отдельным складом (Евросиб = Новосибирск, СХ Солнечногорск = Москва).
+//   B. «Ведомость по заказам поставщикам» — строки-заголовки «Заказ поставщику …», под ними код/кол-во.
+//      Берём только строки с числовым кодом; отрицательные и служебные ±1 игнорируем.
+// Числа: «1,234.000» = 1234. Коды: «487 160» = 487160 (1С печатает с разделителем разрядов).
+//
 // Дальше: node scripts/encrypt.cjs <код>
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const XLSX=require('./node_modules/xlsx');
 const OUT=path.join(__dirname,'..','decrypted');
-const file=process.argv[2];
-let sheetArg=process.argv[3], dateArg=process.argv[4];
-if(sheetArg && /^\d{4}-\d{2}-\d{2}$/.test(sheetArg)){ dateArg=sheetArg; sheetArg=null; }
-if(!file){console.error('usage: node scripts/update-warehouse.cjs <файл.xlsx> [лист] [ГГГГ-ММ-ДД]');process.exit(1);}
+const kind=(process.argv[2]||'').toLowerCase();
+const file=process.argv[3];
+const dateArg=process.argv[4]||new Date().toISOString().slice(0,10);
+if(!['stock','china','order'].includes(kind)||!file){
+  console.error('usage: node scripts/update-warehouse.cjs <stock|china|order> <файл.xls> [ГГГГ-ММ-ДД]');process.exit(1);}
 
-const S=v=>(''+(v==null?'':v)).replace(/\s+/g,' ').trim();
-const num=v=>{ let s=S(v).replace(/[\s ]/g,''); if(!s) return 0;
-  if(s.includes(',')&&s.includes('.')) s=s.replace(/,/g,''); else if(s.includes(',')) s=s.replace(',','.');
+const S=v=>(''+(v==null?'':v)).replace(/ /g,' ').replace(/\s+/g,' ').trim();
+const code=v=>S(v).replace(/[\s ]/g,'');                       // «487 160» → «487160»
+const num=v=>{ const s=S(v).replace(/[\s ]/g,'').replace(/,/g,''); if(!s) return 0;
   const n=parseFloat(s); return isNaN(n)?0:n; };
 
 const ctx={};vm.createContext(ctx);
@@ -31,51 +39,76 @@ const supSet=new Set(RD.catalog.map(c=>S(c.supplierCode)).filter(Boolean));
 const nameBySup={}; RD.catalog.forEach(c=>{ const s=S(c.supplierCode); if(s&&!nameBySup[s]) nameBySup[s]=c.name; });
 
 const wb=XLSX.read(fs.readFileSync(file),{type:'buffer',cellStyles:false,cellFormula:false});
-const sheet=sheetArg||wb.SheetNames[0];
-if(!wb.Sheets[sheet]){console.error('нет листа «'+sheet+'» (есть: '+wb.SheetNames.join(', ')+')');process.exit(1);}
-const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,raw:false,defval:''});
-// шапка — первая строка, где есть и ключ, и количество
-let hr=-1,H=[];
-for(let i=0;i<Math.min(8,rows.length);i++){
-  const h=(rows[i]||[]).map(x=>S(x).toLowerCase());
-  const k=h.findIndex(x=>/^код|поставщик|^арт|артикул/.test(x));
-  const q=h.findIndex(x=>/кол-?во|количест|остат|итог/.test(x));
-  if(k>=0&&q>=0){ hr=i; H=h; break; }
-}
-if(hr<0){console.error('не нашёл шапку с колонками ключа и количества. Первая строка: '+JSON.stringify(rows[0]));process.exit(1);}
-const iKey=H.findIndex(x=>/^код|поставщик|^арт|артикул/.test(x));
-const qCols=[]; H.forEach((h,i)=>{ if(/кол-?во|количест|остат|итог/.test(h)) qCols.push({i,h}); });
-const iWb=(qCols.find(c=>/вб|wb/.test(c.h))||{}).i;
-const iOz=(qCols.find(c=>/озон|ozon/.test(c.h))||{}).i;
-const split = iWb!=null && iOz!=null;
-const iAll = split? null : qCols[0].i;
-console.log('лист «'+sheet+'» · шапка в строке '+(hr+1)+' · ключ: «'+rows[hr][iKey]+'»');
-console.log(split? ('раздельно по площадкам: ВБ «'+rows[hr][iWb]+'» · Озон «'+rows[hr][iOz]+'»')
-                 : ('общее количество: «'+rows[hr][iAll]+'»'));
+const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
 
-const bySup={}; let rowsRead=0, unknown={}, totalAll=0, totalWb=0, totalOz=0;
-for(let i=hr+1;i<rows.length;i++){
-  const r=rows[i]; const key=S(r[iKey]).replace(/,/g,'');
-  if(!key||/^итог|^всего/i.test(key)) continue;
-  const w=split? num(r[iWb]) : 0, o=split? num(r[iOz]) : 0, a=split? 0 : num(r[iAll]);
-  if(!(w||o||a)) continue;
-  if(!supSet.has(key)){ unknown[key]=(unknown[key]||0)+(w+o+a); continue; }
-  const e=bySup[key]||(bySup[key]={qty:0,wb:0,oz:0});
-  e.qty+=w+o+a; e.wb+=w; e.oz+=o;
-  rowsRead++; totalAll+=w+o+a; totalWb+=w; totalOz+=o;
-}
-RD.warehouse={ date: dateArg||new Date().toISOString().slice(0,10), split, bySup };
+// ---- определяем раскладку ----
+// Заголовок «Номенклатура.Код» встречается и в описании отчёта («Группировки строк: …»),
+// поэтому ищем ТОЧНОЕ совпадение ячейки. Раскладку «по заказам» опознаём по строкам
+// «Заказ поставщику …» — в ней колонок складов нет вообще.
+const isOrders = rows.some(r=>(r||[]).some(x=>/^Заказ поставщику\b/i.test(S(x))));
+let hr=-1;
+for(let i=0;i<Math.min(24,rows.length);i++){ if((rows[i]||[]).some(x=>S(x)==='Номенклатура.Код')){ hr=i; break; } }
+const layout = isOrders ? 'B' : 'A';
+if(layout==='A'&&hr<0){ console.error('не нашёл строку-шапку с ячейкой «Номенклатура.Код»'); process.exit(1); }
+const bySup={}, byWh={}; let taken=0, skipped={}, total=0;
 
+if(layout==='A'){
+  const H=rows[hr].map(S);
+  const iCode=H.findIndex(x=>x==='Номенклатура.Код');
+  // колонки складов — всё между кодом и «Итог» (сам «Итог» не берём, чтобы не задвоить)
+  const cols=[]; for(let i=iCode+1;i<H.length;i++){ const h=H[i]; if(!h) continue; if(/^Итог/i.test(h)) break; cols.push({i,name:h}); }
+  if(!cols.length){ console.error('не нашёл колонок складов в шапке: '+JSON.stringify(H)); process.exit(1); }
+  console.log('раскладка «ведомость по складам» · шапка в строке '+(hr+1)+' · склады: '+cols.map(c=>c.name).join(' · '));
+  for(let i=hr+1;i<rows.length;i++){
+    const r=rows[i]; const k=code(r[iCode]);
+    if(!k||!/^\d+$/.test(k)) continue;                       // «Итог» и пустые строки
+    let sum=0; const wh={};
+    cols.forEach(c=>{ const v=num(r[c.i]); if(v>0){ wh[c.name]=(wh[c.name]||0)+v; sum+=v; } });
+    if(sum<=0) continue;
+    if(!supSet.has(k)){ skipped[k]=(skipped[k]||0)+sum; continue; }
+    const e=bySup[k]||(bySup[k]={qty:0,wh:{}});
+    e.qty+=sum; Object.entries(wh).forEach(([n,v])=>{ e.wh[n]=(e.wh[n]||0)+v; byWh[n]=(byWh[n]||0)+v; });
+    taken++; total+=sum;
+  }
+} else {
+  // Б: строки-заголовки «Заказ поставщику …», под ними пары код/количество.
+  // Колонку кода берём из шапки, количество — следующая за ней.
+  const HB=(hr>=0? rows[hr]:[]).map(S);
+  const iCode=Math.max(1,HB.findIndex(x=>x==='Номенклатура.Код'));
+  const iQty=iCode+1;
+  console.log('раскладка «ведомость по заказам поставщикам»');
+  let orders=0;
+  for(let i=0;i<rows.length;i++){
+    const r=rows[i]; const c0=S(r[iCode]);
+    if(/^Заказ поставщику/i.test(c0)){ orders++; continue; }
+    const k=code(r[iCode]); if(!k||!/^\d+$/.test(k)) continue;
+    const q=num(r[iQty]); if(q<=0) continue;                 // отрицательные/нулевые остатки заказа — мусор
+    if(!supSet.has(k)){ skipped[k]=(skipped[k]||0)+q; continue; }
+    const e=bySup[k]||(bySup[k]={qty:0,wh:{}});
+    e.qty+=q; taken++; total+=q;
+  }
+  console.log('заказов поставщикам в файле: '+orders);
+}
+
+if(kind==='stock'){
+  RD.warehouse={date:dateArg, split:false, byWh, bySup};
+} else {
+  RD.inbound=RD.inbound||{};
+  RD.inbound[kind]={date:dateArg, total, bySup:Object.fromEntries(Object.entries(bySup).map(([k,v])=>[k,v.qty]))};
+}
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
   +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
 
-const uk=Object.keys(unknown);
-console.log('\nСклад на '+RD.warehouse.date+': строк принято '+rowsRead+' · позиций '+Object.keys(bySup).length
-  +' · всего '+totalAll.toLocaleString('ru-RU')+' шт'+(split? (' (ВБ '+totalWb.toLocaleString('ru-RU')+' · Озон '+totalOz.toLocaleString('ru-RU')+')') : ''));
+const label={stock:'Остатки своих складов',china:'В пути из Китая',order:'Заказано производству'}[kind];
+const uk=Object.keys(skipped);
+console.log('\n'+label+' на '+dateArg+': позиций '+Object.keys(bySup).length+' · '+total.toLocaleString('ru-RU')+' шт');
+if(kind==='stock') Object.entries(byWh).forEach(([n,v])=>console.log('   '+n+': '+v.toLocaleString('ru-RU')+' шт'));
 console.log('Кодов не из нашего каталога (пропущено): '+uk.length
-  +(uk.length? ' · '+uk.slice(0,15).map(k=>k+'('+unknown[k]+')').join(', ')+(uk.length>15?' …':'') : ''));
-const top=Object.entries(bySup).sort((a,b)=>b[1].qty-a[1].qty).slice(0,10);
+  +(uk.length? ' · '+uk.slice(0,12).map(k=>k+' ('+skipped[k]+')').join(', ')+(uk.length>12?' …':'') : ''));
+const top=Object.entries(bySup).sort((a,b)=>b[1].qty-a[1].qty).slice(0,8);
 if(top.length){ console.log('\nТоп по количеству:');
-  top.forEach(([k,v])=>console.log('  1С '+k+' · '+v.qty+' шт'+(split? (' (ВБ '+v.wb+' / Озон '+v.oz+')'):'')+'  · '+(nameBySup[k]||'').slice(0,40))); }
+  top.forEach(([k,v])=>console.log('   1С '+k+' · '+v.qty.toLocaleString('ru-RU')+' шт'
+    +(Object.keys(v.wh).length? ' ('+Object.entries(v.wh).map(([n,q])=>n+' '+q).join(' / ')+')':'')
+    +'  · '+(nameBySup[k]||'').slice(0,38))); }
 console.log('\nДальше: node scripts/encrypt.cjs <код>');
