@@ -846,6 +846,7 @@
         <button data-view="months">По месяцам</button>
         <button data-view="buyPeak">Закуп: по пику</button>
         <button data-view="buyAvg">Закуп: по среднему</button>
+        <button data-view="resupply">Подсорт со склада</button>
       </div>
       <span class="count" id="turnCount"></span>
       <button class="btn" id="turnExportBtn">Скачать Excel</button>
@@ -1043,7 +1044,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260805f"></script>
+<script src="wb-secure.js?v=20260805g"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1447,7 +1448,9 @@ function wireSortable(tableId,state,onChange){
 }
 
 let turnSortState={key:"status",dir:1};
-let turnView="reorder";   // «Дозаказ» (простая модель) или «По месяцам» (история заказов)
+let turnView="reorder";   // reorder | months | buyPeak | buyAvg | resupply
+// Подсорт: цель — держать на КАЖДОЙ площадке минимум столько дней продаж.
+const RESUPPLY_DAYS=30;
 function turnoverList(){
   const windowDays=parseInt(document.getElementById("turnWindow").value,10)||30;
   return RCAT.map(c=>computeTurnover(c,windowDays));
@@ -1863,6 +1866,19 @@ function turnHowTo(view,oz){
       "«Заказать» = через сколько дней размещать заказ, чтобы партия успела прийти (хватит − "+TURN_MIN_DAYS+" дн).",
       "Текущий остаток из партии НЕ вычитается — это плановый объём на "+TURN_COVER_DAYS+" дней вперёд.",
       "Производственный статус («На вывод», «Новинка», «В работе») на расчёт НЕ влияет — он справочный, решение принимает продавец."]};
+  if(view==="resupply") return {title:"Как считается подсорт со склада", steps:[
+      "Продаж/дн на площадке = заказы за 7 дней ÷ 7 × % выкупа",
+      "Покрытие: ВБ = остаток на складах WB + ваши отгрузки, которые ещё не приняты; Озон = остаток + в пути на Озон",
+      "Хватит дней = покрытие ÷ продаж/дн",
+      "Нужно до "+RESUPPLY_DAYS+" дней = продаж/дн × "+RESUPPLY_DAYS+" − покрытие",
+      "Отгрузить = сколько из этого закрывает ваш склад"],
+    notes:[
+      "Вид считается сразу по ОБЕИМ площадкам — переключатель ВБ/Озон на него не влияет: товар распределяется между ними.",
+      "Если склада не хватает на обе площадки, делим пропорционально дефициту, а остаток отдаём той, где покрытие в днях меньше.",
+      "Если в файле склада товар уже разделён на «вб» и «озон», площадки считаются раздельно и ничего не перемешивается.",
+      "ВБ не показывает путь товара от отправки до приёмки. Поэтому об отгрузке на ВБ сообщаете вы, она попадает в «в пути», а закрывается автоматически, когда остаток на ВБ вырастет.",
+      "У Озона всё видно самому: создали поставку — она в «в пути», приехала — перешла в остаток.",
+      "Статус: «Срочно» — покрытие меньше "+Math.round(RESUPPLY_DAYS/3)+" дней; «Подсорт» — меньше "+RESUPPLY_DAYS+"; «Нет на складе» — отгружать нечего."]};
   if(view==="months") return {title:"Как читать историю по месяцам", steps:[
       "Ячейки = заказы этого товара за месяц (штуки из подённой истории)",
       "Пик/мес — лучший месяц товара",
@@ -1897,6 +1913,146 @@ function renderTurnHowTo(){
   el.innerHTML=`<span class="ht-t">${esc(h.title)}</span>`
     +h.steps.map(s=>`<span class="ht-step">${esc(s)}</span>`).join(A)
     +`<span class="ht-note">${h.notes.map(esc).join(" ")}</span>`;
+}
+/* ---- ПОДСОРТ СО СВОЕГО СКЛАДА ----
+   Задача продавца: держать на КАЖДОЙ площадке минимум RESUPPLY_DAYS дней продаж.
+   Как только покрытие меньше — дашборд предлагает, сколько отгрузить с собственного склада
+   и на какую площадку. Считается сразу по обеим площадкам (распределение — между ними),
+   поэтому вид не зависит от переключателя ВБ/Озон.
+
+   Покрытие площадки:
+     Озон — остаток + `ozTransit` (его собственные заявки и партии в пути);
+     ВБ   — остаток + открытые отгрузки из журнала (`REAL_DATA.shipments`). ВБ не показывает путь
+            товара от отправки до приёмки, поэтому отгрузку записывает сам продавец
+            (scripts/wb-shipment.cjs), а закрывается она автоматически по росту остатка. */
+function mpStats(mp){
+  const oz = mp==="ozon";
+  const ds = oz? OZDATA : WBDATA; if(!ds) return {};
+  const dates=ds.dates, last=dates.length-1, days=Math.min(7,dates.length);
+  const buyoutAvg = oz ? ((RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutAll)||1)
+    : (()=>{ const v=(RD.catalog||[]).map(c=>c.buyoutPct14d).filter(x=>x>0);
+             return v.length? v.reduce((a,b)=>a+b,0)/v.length/100 : 1; })();
+  const openShip={};   // арт.поставщика → сколько отгружено на ВБ и ещё не принято
+  (RD.shipments||[]).forEach(s=>{ if(s.mp==="wb"&&s.left>0) openShip[s.sup]=(openShip[s.sup]||0)+s.left; });
+  const out={}, shipDone=new Set();
+  ds.catalog.forEach(c=>{
+    const sup = oz ? (""+c.sku) : (""+(c.supplierCode||"")).trim();
+    if(!sup) return;
+    const ser=ds.bySku[c.sku]; let sum=0;
+    if(ser) for(let i=Math.max(0,last-6);i<=last;i++) sum+=ser[i]||0;
+    const avgD = days? sum/days : 0;
+    const buyout = oz ? (c.ozBuyout!=null? c.ozBuyout : buyoutAvg)
+                      : (c.buyoutPct14d>0? c.buyoutPct14d/100 : buyoutAvg);
+    const stock = oz ? (c.ozStock||0) : ((c.wbStock||0)+(c.ownWarehouseStock||0));
+    // отгрузку по коду 1С добавляем ОДИН раз, даже если под кодом несколько артикулов ВБ
+    let transit = oz ? (c.ozTransit||0) : 0;
+    if(!oz && !shipDone.has(sup)){ transit += (openShip[sup]||0); shipDone.add(sup); }
+    const e = out[sup] || (out[sup]={spd:0,stock:0,transit:0,name:c.name,category:c.category});
+    e.spd += avgD*buyout; e.stock += stock; e.transit += transit;
+    if(!e.name||e.name===sup) e.name=c.name;
+  });
+  Object.values(out).forEach(e=>{ e.covered=e.stock+e.transit;
+    e.days = e.spd>0 ? e.covered/e.spd : (e.covered>0? Infinity : 0); });
+  return out;
+}
+// Строки подсорта: по каждому коду 1С — что на площадках, что на складе, сколько отгружать.
+function resupplyRows(){
+  const W=mpStats("wb"), O=mpStats("ozon");
+  const wh=(RD&&RD.warehouse&&RD.warehouse.bySup)||{}, split=!!(RD&&RD.warehouse&&RD.warehouse.split);
+  const zero={spd:0,stock:0,transit:0,covered:0,days:0,name:"",category:""};
+  const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh)])];
+  const contBySup={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim();
+    if(s&&c.containerQty&&!contBySup[s]) contBySup[s]=c.containerQty; });
+  const skuBySup={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s&&!skuBySup[s]) skuBySup[s]=c.sku; });
+  return sups.map(sup=>{
+    const w=W[sup]||zero, o=O[sup]||zero;
+    const have=wh[sup]||{qty:0,wb:0,oz:0};
+    const needW=Math.max(0, Math.ceil(w.spd*RESUPPLY_DAYS)-w.covered);
+    const needO=Math.max(0, Math.ceil(o.spd*RESUPPLY_DAYS)-o.covered);
+    let shipW=0, shipO=0;
+    if(split){                       // товар на складе уже разделён по площадкам — не смешиваем
+      shipW=Math.min(needW,have.wb); shipO=Math.min(needO,have.oz);
+    } else {
+      const total=needW+needO;
+      if(total<=have.qty){ shipW=needW; shipO=needO; }
+      else if(total>0){
+        // склада не хватает на обе: делим пропорционально дефициту, остаток — тому,
+        // у кого покрытие в днях меньше (он «горит» сильнее)
+        shipW=Math.floor(have.qty*needW/total); shipO=Math.floor(have.qty*needO/total);
+        let rest=have.qty-shipW-shipO;
+        const first = (w.days<=o.days) ? "w" : "o";
+        if(rest>0){ if(first==="w"){ const a=Math.min(rest,needW-shipW); shipW+=a; rest-=a; shipO+=Math.min(rest,needO-shipO); }
+                    else { const a=Math.min(rest,needO-shipO); shipO+=a; rest-=a; shipW+=Math.min(rest,needW-shipW); } }
+      }
+    }
+    const ship=shipW+shipO, rest=Math.max(0,(split? have.wb+have.oz : have.qty)-ship);
+    const daysAfterW = w.spd>0? (w.covered+shipW)/w.spd : (w.covered+shipW>0? Infinity:0);
+    const daysAfterO = o.spd>0? (o.covered+shipO)/o.spd : (o.covered+shipO>0? Infinity:0);
+    // статус: чем меньше дней на площадке, тем острее; «нет на складе» — если нужно, а брать нечего
+    const minDays=Math.min(w.spd>0?w.days:Infinity, o.spd>0?o.days:Infinity);
+    let status;
+    if(needW+needO<=0) status="ok";
+    else if((split? have.wb+have.oz : have.qty)<=0) status="nostock";
+    else if(minDays<RESUPPLY_DAYS/3) status="urgent";
+    else status="need";
+    return {sup, sku:skuBySup[sup]||sup, name:(w.name||o.name||sup), category:(w.category||o.category||""),
+      contQty:contBySup[sup]||0,
+      wSpd:w.spd, wCov:w.covered, wStock:w.stock, wTransit:w.transit, wDays:w.days, needW, shipW, daysAfterW,
+      oSpd:o.spd, oCov:o.covered, oStock:o.stock, oTransit:o.transit, oDays:o.days, needO, shipO, daysAfterO,
+      have:(split? have.wb+have.oz : have.qty), haveWb:have.wb, haveOz:have.oz, split,
+      ship, rest, status, minDays};
+  }).filter(r=> r.needW>0 || r.needO>0 || r.have>0 );
+}
+const RESUP_STATUS={urgent:"Срочно",need:"Подсорт",nostock:"Нет на складе",ok:"Норма"};
+const RESUP_RANK={urgent:0,need:1,nostock:2,ok:3};
+function resupBadge(s){ const cls = s==="urgent"?"critical":(s==="need"?"warning":(s==="nostock"?"nodata":"good"));
+  return `<span class="badge ${cls}"><span class="d"></span>${RESUP_STATUS[s]}</span>`; }
+const dTxt = v => v===Infinity? "∞" : Math.round(v);
+function renderTurnResupply(){
+  const tbl=document.getElementById("turnTable"); tbl.className="rnp";
+  let rows=resupplyRows();
+  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
+  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
+  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q)||(""+r.sup).includes(q));
+  if(cp) rows=rows.filter(r=>cp(r.category));
+  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku)||selProd.includes(r.sup));
+  rows=sortRows(rows,turnSortState,{ name:r=>r.name, have:r=>r.have,
+    wDays:r=>r.wDays===Infinity?1e9:r.wDays, oDays:r=>r.oDays===Infinity?1e9:r.oDays,
+    needW:r=>r.needW, needO:r=>r.needO, ship:r=>r.ship, rest:r=>r.rest,
+    status:r=>RESUP_RANK[r.status]*1e9+(r.minDays===Infinity?1e8:r.minDays) });
+  const toShip=rows.filter(r=>r.ship>0), noStock=rows.filter(r=>r.status==="nostock");
+  document.getElementById("turnKpis").innerHTML=[
+    {lbl:"Позиций требуют подсорта",val:rows.filter(r=>r.needW>0||r.needO>0).length+" из "+rows.length,
+     valColor:toShip.length?"var(--accent)":"var(--text-1)"},
+    {lbl:"К отгрузке со склада, шт",val:fmt(toShip.reduce((a,r)=>a+r.ship,0))},
+    {lbl:"Нечем закрыть (нет на складе)",val:noStock.length,valColor:noStock.length?"var(--crit-txt)":"var(--text-1)"},
+    {lbl:"Останется на складе, шт",val:fmt(rows.reduce((a,r)=>a+r.rest,0))},
+  ].map(kpiCard).join("");
+  const whDate=(RD&&RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date) : null;
+  document.getElementById("turnCount").textContent = whDate
+    ? (rows.length+" позиций · склад на "+whDate+" · цель — "+RESUPPLY_DAYS+" дней на каждой площадке")
+    : (rows.length+" позиций · остатки склада не загружены — показан только дефицит");
+  if(!rows.length){ tbl.innerHTML=`<tbody><tr><td class="empty-hint">Нет позиций под текущие фильтры</td></tr></tbody>`; return; }
+  let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}`
+    +`${thSort("На складе","have",turnSortState)}`
+    +`${thSort("ВБ: хватит дн","wDays",turnSortState)}${thSort("ВБ: нужно","needW",turnSortState)}`
+    +`${thSort("Ozon: хватит дн","oDays",turnSortState)}${thSort("Ozon: нужно","needO",turnSortState)}`
+    +`${thSort("Отгрузить ВБ","ship",turnSortState)}${thSort("Отгрузить Ozon","ship",turnSortState)}`
+    +`${thSort("Останется","rest",turnSortState)}${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
+  rows.slice(0,400).forEach(r=>{
+    html+=`<tr class="${r.status==="urgent"?"row-critical":""}">`
+      +`<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}${skuMeta(r)}</td>`
+      +`<td>${fmt(r.have)}${r.split&&r.have?`<span class="sub2 mut">ВБ ${fmt(r.haveWb)} / Оз ${fmt(r.haveOz)}</span>`:""}</td>`
+      +`<td>${r.wSpd>0? dTxt(r.wDays) : "—"}<span class="sub2 mut">${fmt(r.wCov)} шт · ${r.wSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
+      +`<td>${r.needW? fmt(r.needW)+" шт" : "—"}</td>`
+      +`<td>${r.oSpd>0? dTxt(r.oDays) : "—"}<span class="sub2 mut">${fmt(r.oCov)} шт · ${r.oSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
+      +`<td>${r.needO? fmt(r.needO)+" шт" : "—"}</td>`
+      +`<td style="font-weight:700;${r.shipW?"color:var(--accent)":""}">${r.shipW? fmt(r.shipW)+" шт"+`<span class="sub2 mut">станет ${dTxt(r.daysAfterW)} дн</span>` : "—"}</td>`
+      +`<td style="font-weight:700;${r.shipO?"color:var(--accent)":""}">${r.shipO? fmt(r.shipO)+" шт"+`<span class="sub2 mut">станет ${dTxt(r.daysAfterO)} дн</span>` : "—"}</td>`
+      +`<td>${fmt(r.rest)}</td>`
+      +`<td>${resupBadge(r.status)}</td></tr>`;
+  });
+  html+="</tbody>"; tbl.innerHTML=html;
 }
 function renderTurnoverSimple(){
   const oz = _appliedMp==="ozon";
@@ -1963,6 +2119,9 @@ function renderTurnoverTab(){
   const winWrap=document.getElementById("turnWindow").closest(".uisel");
   if(winWrap) winWrap.style.display = "none";
   const expBtn=document.getElementById("turnExportBtn"); if(expBtn) expBtn.style.display = (_appliedMp==="all"? "none" : "");
+  // «Подсорт» распределяет товар МЕЖДУ площадками, поэтому считается по обеим сразу
+  // и не зависит от переключателя ВБ/Озон/Всего.
+  if(turnView==="resupply"){ renderTurnHowTo(); renderTurnResupply(); return; }
   // «Всего»: реплан по площадкам раздельный — остатки и поставки у ВБ и Озона свои
   if(_appliedMp==="all"){
     document.getElementById("turnKpis").innerHTML="";
@@ -1977,6 +2136,7 @@ function renderTurnoverTab(){
 }
 // Экспорт таблицы оборачиваемости — СТРОГО по текущим фильтрам и сортировке (что видишь, то и качаешь).
 function exportTurnoverCSV(){
+  if(turnView==="resupply"){ exportResupplyXLSX(); return; }
   if(turnView==="months"){ exportTurnMonthsCSV(); return; }
   if(turnView==="buyPeak"){ exportPurchaseCSV("peak"); return; }
   if(turnView==="buyAvg"){ exportPurchaseCSV("avg"); return; }
@@ -2017,6 +2177,49 @@ function exportTurnoverCSV(){
     ["Объём партии", "продаж/день × "+TURN_COVER_DAYS+" дней, округление вверх до контейнера"]];
   xlsxDownload((oz?"ozon":"wb")+"-оборачиваемость.xlsx",
     [howToSheet("reorder",oz,extra),{name:"Дозаказ",rows:data,widths,headerRows:1}]);
+}
+// Выгрузка подсорта: лист «Как считается» + план отгрузки со склада на обе площадки.
+function exportResupplyXLSX(){
+  let rows=resupplyRows();
+  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
+  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
+  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q)||(""+r.sup).includes(q));
+  if(cp) rows=rows.filter(r=>cp(r.category));
+  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku)||selProd.includes(r.sup));
+  rows=sortRows(rows,turnSortState,{ name:r=>r.name, have:r=>r.have,
+    wDays:r=>r.wDays===Infinity?1e9:r.wDays, oDays:r=>r.oDays===Infinity?1e9:r.oDays,
+    needW:r=>r.needW, needO:r=>r.needO, ship:r=>r.ship, rest:r=>r.rest,
+    status:r=>RESUP_RANK[r.status]*1e9+(r.minDays===Infinity?1e8:r.minDays) });
+  if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
+  const head=["Код 1С","Артикул ВБ","Код фабрики","Статус товара","Название","Категория","На складе, шт",
+    "ВБ: остаток","ВБ: в пути (отгружено)","ВБ: покрытие шт","ВБ: продаж/дн","ВБ: хватит дней","ВБ: нужно до "+RESUPPLY_DAYS+" дн",
+    "Ozon: остаток","Ozon: в пути","Ozon: покрытие шт","Ozon: продаж/дн","Ozon: хватит дней","Ozon: нужно до "+RESUPPLY_DAYS+" дн",
+    "ОТГРУЗИТЬ НА ВБ, шт","Станет дней на ВБ","ОТГРУЗИТЬ НА OZON, шт","Станет дней на Ozon",
+    "Останется на складе","Размер контейнера","Статус"];
+  const inf=v=>v===Infinity? "∞" : Math.round(v);
+  const data=[head];
+  let tW=0,tO=0;
+  rows.forEach(r=>{ tW+=r.shipW; tO+=r.shipO;
+    data.push([r.sup, r.sku, factoryCode(r.sku), prodStatus(r.sku)||"", r.name||"", r.category||"", r.have,
+      r.wStock, r.wTransit, r.wCov, +r.wSpd.toFixed(2), inf(r.wDays), r.needW||"",
+      r.oStock, r.oTransit, r.oCov, +r.oSpd.toFixed(2), inf(r.oDays), r.needO||"",
+      r.shipW||"", r.shipW? inf(r.daysAfterW):"", r.shipO||"", r.shipO? inf(r.daysAfterO):"",
+      r.rest, r.contQty||"", RESUP_STATUS[r.status]]);
+  });
+  const tot=new Array(head.length).fill(""); tot[0]="ИТОГО";
+  tot[head.indexOf("ОТГРУЗИТЬ НА ВБ, шт")]=tW; tot[head.indexOf("ОТГРУЗИТЬ НА OZON, шт")]=tO;
+  data.push(tot);
+  const widths=[11,13,14,13,44,20,12, 12,20,15,13,14,20, 13,13,16,14,15,21, 20,18,22,19, 16,17,16];
+  const wh=RD&&RD.warehouse;
+  const extra=[["Склад на дату", wh&&wh.date? fmtDateLong(wh.date) : "остатки склада не загружены"],
+    ["Разделение склада", wh&&wh.split? "товар уже разделён по площадкам — считаем раздельно" : "склад общий — делим между площадками"],
+    ["Остатки ВБ на дату", (RD&&RD.meta&&RD.meta.stockSnapshotDate)? fmtDateLong(RD.meta.stockSnapshotDate):"—"],
+    ["Остатки Ozon на дату", (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)? fmtDateLong(RD.ozon.meta.stockDate):"—"],
+    ["Заказы по дату", RLAST? fmtDateLong(RLAST):"—"],
+    ["Цель покрытия", RESUPPLY_DAYS+" дней продаж на каждой площадке"],
+    ["Файл сформирован", fmtDateLong(new Date().toISOString().slice(0,10))]];
+  xlsxDownload("подсорт-со-склада.xlsx",
+    [howToSheet("resupply",false,extra),{name:"Подсорт",rows:data,widths,headerRows:1}]);
 }
 function exportTurnMonthsCSV(){
   const oz=_appliedMp==="ozon";
