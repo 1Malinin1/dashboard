@@ -5,7 +5,8 @@
 // Ступени → как у ВБ-воронки: Показы всего · Посещения карточки · В корзину всего ·
 // Заказано товаров · Доставлено товаров (=аналог «Выкупили» у ВБ, «дозревает»).
 // Артикул продавца = связка с ВБ (= supplierCode = ozon.catalog.sku). Берём только НАШИ товары.
-// Даты из файла перезаписывают те же дни. Дальше: node scripts/encrypt.cjs <код>.
+// Мерж по ключу «дата+артикул» — отчёт можно дробить по строкам и грузить частями, не боясь
+// ни потерь, ни задвоения. Дальше: node scripts/encrypt.cjs <код>.
 //
 // Использование: node scripts/ozon-funnel-build.cjs <отчёт.xlsx> [ещё.xlsx ...]
 'use strict';
@@ -85,12 +86,20 @@ for(const f of files){
 let ozLinked=0; ozCat.forEach(c=>{ const s=ozSkuByArt[String(c.sku)]; if(s){ c.ozonSku=s; ozLinked++; } });
 console.log('  SKU Озона проставлен у '+ozLinked+' товаров каталога (для ссылок)');
 
-// мерж: новые даты перекрывают старые дни снимка воронки Озона
+// Мерж по ключу «дата + артикул», а НЕ по дню целиком. Продавец дробит один большой отчёт
+// на части ПО СТРОКАМ (шапка та же, дни те же, товары разные), поэтому замена дня целиком
+// затирала бы товары из уже загруженной части. При таком ключе:
+//   · одна и та же строка, залитая дважды, просто перезаписывает сама себя (задвоения нет);
+//   · части одного дня складываются;
+//   · исправленная выгрузка корректно перекрывает старые цифры.
 const old=(RD.ozon.funnel||[]);
-const newDates=new Set(Object.keys(byDate));
-const kept=old.filter(r=>!newDates.has(r.date));
-const merged=kept.concat(...Object.values(byDate)).sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:(a.sku<b.sku?-1:1)));
+const map={}; old.forEach(r=>{ map[r.date+'_'+r.sku]=r; });
+let replaced=0, fresh=0;
+Object.values(byDate).forEach(list=>list.forEach(r=>{ const k=r.date+'_'+r.sku;
+  if(map[k]) replaced++; else fresh++; map[k]=r; }));
+const merged=Object.values(map).sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:(a.sku<b.sku?-1:1)));
 RD.ozon.funnel=merged;
+console.log('  строк товар×день: новых '+fresh+' · перезаписано (уже были) '+replaced);
 
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
