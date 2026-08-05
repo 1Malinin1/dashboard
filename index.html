@@ -1049,7 +1049,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260805l"></script>
+<script src="wb-secure.js?v=20260805m"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1612,7 +1612,7 @@ function turnFilteredRows(all, exceptKey){
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
   let rows=all;
-  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q)||(""+(r.sup||"")).includes(q));
+  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q)||(""+(r.sup||"")).includes(q)||(""+(r.skuWb||"")).includes(q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku)||(r.sup&&selProd.includes(r.sup)));
   turnColDefs().forEach(def=>{ if(def.key===exceptKey) return;
@@ -2023,6 +2023,10 @@ function resupplyRows(){
   const contBySup={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim();
     if(s&&c.containerQty&&!contBySup[s]) contBySup[s]=c.containerQty; });
   const skuBySup={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s&&!skuBySup[s]) skuBySup[s]=c.sku; });
+  const ozSet=new Set(((RD.ozon&&RD.ozon.catalog)||[]).map(c=>""+c.sku));   // есть ли карточка на Озоне
+  // код фабрики и произв. статус ведутся в каталоге ВБ; берём их ПО КОДУ 1С напрямую,
+  // а не через catalogFactoryBySku — та карта построена под текущую площадку и на Озоне пуста
+  const wbBySup={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s&&!wbBySup[s]) wbBySup[s]=c; });
   return sups.map(sup=>{
     const w=W[sup]||zero, o=O[sup]||zero;
     const have=wh[sup]||{qty:0,wb:0,oz:0};
@@ -2058,7 +2062,11 @@ function resupplyRows(){
     else if(haveAll<=0) status="nostock";
     else if(minDays<RESUPPLY_DAYS/3) status="urgent";
     else status="need";
-    return {sup, sku:skuBySup[sup]||sup, name:(w.name||o.name||sup), category:(w.category||o.category||""),
+    const wcat=wbBySup[sup]||null;
+    return {sup, sku:skuBySup[sup]||sup, skuWb:skuBySup[sup]||null, skuOz:(ozSet.has(sup)? sup : null),
+      factory: wcat? (""+(wcat.factoryCode||"")).trim() : "",
+      pStatus: wcat? (""+(wcat.productionStatus||"")).trim() : "",
+      name:(w.name||o.name||sup), category:(w.category||o.category||""),
       contQty:contBySup[sup]||0,
       wSpd:w.spd, wCov:w.covered, wStock:w.stock, wTransit:w.transit, wDays:w.days, needW, shipW, daysAfterW,
       oSpd:o.spd, oCov:o.covered, oStock:o.stock, oTransit:o.transit, oDays:o.days, needO, shipO, daysAfterO,
@@ -2121,7 +2129,7 @@ function renderTurnResupply(){
   rows.slice(0,400).forEach(r=>{
     const st=resupStatusFor(r);
     html+=`<tr class="${st==="urgent"?"row-critical":""}">`
-      +`<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}${skuMeta(r)}</td>`
+      +`<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}${resupMeta(r)}</td>`
       +`<td class="${r.whMsk?"":"d-zero"}">${r.whMsk? fmt(r.whMsk) : "—"}</td>`
       +`<td class="${r.whNsk?"":"d-zero"}">${r.whNsk? fmt(r.whNsk) : "—"}</td>`
       +`<td style="font-weight:650">${fmt(r.have)}${r.whOther?`<span class="sub2 mut">+${fmt(r.whOther)} проч.</span>`:""}${r.split&&r.have?`<span class="sub2 mut">ВБ ${fmt(r.haveWb)} / Оз ${fmt(r.haveOz)}</span>`:""}</td>`;
@@ -2279,7 +2287,7 @@ function exportResupplyXLSX(){
     needW:r=>r.needW, needO:r=>r.needO, ship:r=>r.ship, rest:r=>r.rest,
     status:r=>RESUP_RANK[r.status]*1e9+(r.minDays===Infinity?1e8:r.minDays) });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
-  const head=["Код 1С","Артикул ВБ","Код фабрики","Статус товара","Название","Категория","Склад Мск, шт","Склад Нск, шт","Склад всего, шт",
+  const head=["Код 1С","Артикул ВБ","Артикул Ozon","Код фабрики","Статус товара","Название","Категория","Склад Мск, шт","Склад Нск, шт","Склад всего, шт",
     "ВБ: остаток","ВБ: в пути (отгружено)","ВБ: покрытие шт","ВБ: продаж/дн","ВБ: хватит дней","ВБ: нужно до "+RESUPPLY_DAYS+" дн",
     "Ozon: остаток","Ozon: в пути","Ozon: покрытие шт","Ozon: продаж/дн","Ozon: хватит дней","Ozon: нужно до "+RESUPPLY_DAYS+" дн",
     "ОТГРУЗИТЬ НА ВБ, шт","Станет дней на ВБ","ОТГРУЗИТЬ НА OZON, шт","Станет дней на Ozon",
@@ -2288,7 +2296,7 @@ function exportResupplyXLSX(){
   const data=[head];
   let tW=0,tO=0;
   rows.forEach(r=>{ tW+=r.shipW; tO+=r.shipO;
-    data.push([r.sup, r.sku, factoryCode(r.sku), prodStatus(r.sku)||"", r.name||"", r.category||"", r.whMsk, r.whNsk, r.have,
+    data.push([r.sup, r.skuWb||"", r.skuOz||"", r.factory||"", r.pStatus||"", r.name||"", r.category||"", r.whMsk, r.whNsk, r.have,
       r.wStock, r.wTransit, r.wCov, +r.wSpd.toFixed(2), inf(r.wDays), r.needW||"",
       r.oStock, r.oTransit, r.oCov, +r.oSpd.toFixed(2), inf(r.oDays), r.needO||"",
       r.shipW||"", r.shipW? inf(r.daysAfterW):"", r.shipO||"", r.shipO? inf(r.daysAfterO):"",
@@ -2297,7 +2305,7 @@ function exportResupplyXLSX(){
   const tot=new Array(head.length).fill(""); tot[0]="ИТОГО";
   tot[head.indexOf("ОТГРУЗИТЬ НА ВБ, шт")]=tW; tot[head.indexOf("ОТГРУЗИТЬ НА OZON, шт")]=tO;
   data.push(tot);
-  const widths=[11,13,14,13,44,20,14,14,15, 12,20,15,13,14,20, 13,13,16,14,15,21, 20,18,22,19, 16,22,28,17,16];
+  const widths=[11,13,14,14,13,44,20,14,14,15, 12,20,15,13,14,20, 13,13,16,14,15,21, 20,18,22,19, 16,22,28,17,16];
   const wh=RD&&RD.warehouse;
   const extra=[["Склад на дату", wh&&wh.date? fmtDateLong(wh.date) : "остатки склада не загружены"],
     ["Разделение склада", wh&&wh.split? "товар уже разделён по площадкам — считаем раздельно" : "склад общий — делим между площадками"],
@@ -2854,6 +2862,17 @@ function prodStatus(sku){ return catalogPStatusBySku[sku]||""; }
 function matchQ(sku,name,q){ if(!q) return true;
   return (''+sku).includes(q) || code1c(sku).toLowerCase().includes(q)
     || factoryCode(sku).toLowerCase().includes(q) || (''+(name||"")).toLowerCase().includes(q); }
+// подпись для подсорта: ключ строки — код 1С, а показываем артикул ВЫБРАННОЙ площадки
+// (на Озоне артикул и есть код 1С, на ВБ — свой sku; на «Всего» показываем оба без ссылок)
+function resupMeta(r){
+  const f=r.factory, mp=_appliedMp;
+  const parts=[esc(r.category||"")];
+  if(mp==="ozon"){ parts.push(r.skuOz? skuLink(r.skuOz) : esc(r.sup)+" (нет карточки на Озоне)"); }
+  else if(mp==="wb"){ parts.push(r.skuWb? skuLink(r.skuWb) : "нет карточки на ВБ"); parts.push("1С "+esc(r.sup)); }
+  else { if(r.skuWb) parts.push("ВБ "+esc(r.skuWb)); parts.push("1С "+esc(r.sup)); }
+  if(f) parts.push("ф. "+esc(f));
+  return `<span class="sku">${parts.join(" · ")}</span>`;
+}
 // подпись под названием товара в таблицах: категория · артикул · 1С · код фабрики
 function skuMeta(r){
   // на Озоне артикул товара И ЕСТЬ код 1С — второй раз его не печатаем
