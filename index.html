@@ -409,6 +409,10 @@
   #turnTable thead th{font-size:11px;letter-spacing:.005em}
   #turnTable th.metric,#turnTable td.metric{min-width:150px}
   #turnTable td.name-cell{max-width:150px}
+  /* «Подсорт» на «Всего» — 11 колонок, поджимаем название, чтобы влезало без прокрутки */
+  #turnTable.wide th.metric,#turnTable.wide td.metric{min-width:92px}
+  #turnTable.wide td.name-cell{max-width:92px}
+  #turnTable.wide th,#turnTable.wide td{padding:7px 2px}
   #turnTable td.name-cell .sku{font-size:10.5px}
   #turnTable .col-filter{margin-left:2px}
   #turnTable td .badge{padding:3px 7px 3px 6px;font-size:10.5px}
@@ -1044,7 +1048,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260805j"></script>
+<script src="wb-secure.js?v=20260805k"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1533,16 +1537,62 @@ function pStatusBadge(s){ if(!s) return '<span class="muted">—</span>';
   return `<span class="badge ${cls}"><span class="d"></span>${esc(s)}</span>`; }
 // def.val(r) — каноничное значение строки для колонки (для фильтра и списка значений);
 // def.sortVal(v) — число для сортировки списка значений (спец-значения ∞/—/сейчас разложены осмысленно).
+// Базовые строки текущего вида — единая точка для фильтров/панели значений/экспорта.
+function turnBaseRows(){
+  if(turnView==="resupply") return resupplyRows();
+  if(turnView==="months")   return monthlyOrders().rows;
+  if(turnView==="buyPeak")  return purchaseRows("peak");
+  if(turnView==="buyAvg")   return purchaseRows("avg");
+  return simpleTurnList();
+}
+// Описания колонок для фильтров — СВОИ у каждого вида (и у подсорта — ещё и под площадку).
+// def.val(r) — каноничное значение строки (оно же подпись в списке значений);
+// def.sortVal(v) — число для сортировки списка (∞/—/«сейчас» разложены осмысленно).
 function turnColDefs(){
   const n1=x=>x.toLocaleString("ru-RU",{maximumFractionDigits:1});
   const pnum=v=>{const n=parseFloat((""+v).replace(/\s/g,"").replace(/[^\d.,-]/g,"").replace(",","."));return isNaN(n)?0:n;};
+  const dv=v=> v==="∞"?1e12 : v==="—"? -1 : pnum(v);
+  if(turnView==="resupply"){
+    const mp=_appliedMp, showW=mp!=="ozon", showO=mp!=="wb";
+    const d=[{key:"have", val:r=>fmt(r.have), sortVal:pnum}];
+    if(showW) d.push(
+      {key:"wDays", val:r=> r.wSpd>0? String(dTxt(r.wDays)) : "—", sortVal:dv},
+      {key:"needW", val:r=> r.needW? fmt(r.needW)+" шт":"—", sortVal:v=>v==="—"?-1:pnum(v)},
+      {key:"shipW", val:r=> r.shipW? fmt(r.shipW)+" шт":"—", sortVal:v=>v==="—"?-1:pnum(v)});
+    if(showO) d.push(
+      {key:"oDays", val:r=> r.oSpd>0? String(dTxt(r.oDays)) : "—", sortVal:dv},
+      {key:"needO", val:r=> r.needO? fmt(r.needO)+" шт":"—", sortVal:v=>v==="—"?-1:pnum(v)},
+      {key:"shipO", val:r=> r.shipO? fmt(r.shipO)+" шт":"—", sortVal:v=>v==="—"?-1:pnum(v)});
+    d.push({key:"rest", val:r=>fmt(r.rest), sortVal:pnum},
+      {key:"incoming", val:r=> (r.china||r.onOrder)? [r.china?"Китай "+fmt(r.china):"",r.onOrder?"произв. "+fmt(r.onOrder):""].filter(Boolean).join(" + ") : "—",
+       sortVal:v=>v==="—"?-1:pnum(v)},
+      {key:"status", val:r=>RESUP_STATUS[resupStatusFor(r)], sortVal:v=>{const k=Object.keys(RESUP_STATUS).find(x=>RESUP_STATUS[x]===v);return RESUP_RANK[k]!=null?RESUP_RANK[k]:9;}});
+    return d;
+  }
+  if(turnView==="buyPeak"||turnView==="buyAvg") return [
+    {key:"baseQty",     val:r=>fmt(r.baseQty)+" шт", sortVal:pnum},
+    {key:"baseLabel",   val:r=>r.baseLabel+(r.basePartial?" (неполный)":""), sortVal:()=>0},
+    {key:"salesPerDay", val:r=>n1(r.salesPerDay), sortVal:pnum},
+    {key:"need",        val:r=>fmt(r.need), sortVal:pnum},
+    {key:"covered",     val:r=>fmt(r.covered), sortVal:pnum},
+    {key:"buy",         val:r=> r.buy? fmt(r.buy)+" шт":"—", sortVal:v=>v==="—"?-1:pnum(v)},
+    {key:"buyCost",     val:r=> r.buy&&r.hasCost? rub(r.buyCost):"—", sortVal:v=>v==="—"?-1:pnum(v)},
+    {key:"pStatus",     val:r=>r.pStatus||"—", sortVal:v=>PSTATUS_RANK[v]!=null?PSTATUS_RANK[v]:9},
+  ];
+  if(turnView==="months") return [
+    {key:"total",     val:r=>fmt(r.total), sortVal:pnum},
+    {key:"peak",      val:r=>fmt(r.peak), sortVal:pnum},
+    {key:"peakLabel", val:r=>r.peakLabel, sortVal:()=>0},
+    {key:"avg",       val:r=>fmt(Math.round(r.avg)), sortVal:pnum},
+    {key:"peakSales", val:r=>n1(r.peakSales), sortVal:pnum},
+    {key:"pStatus",   val:r=>r.pStatus||"—", sortVal:v=>PSTATUS_RANK[v]!=null?PSTATUS_RANK[v]:9},
+  ];
   return [
     {key:"currentStock", val:r=>fmt(r.stock), sortVal:pnum},
     {key:"avgD",         val:r=>n1(r.avgD), sortVal:pnum},
     {key:"buyout",       val:r=>Math.round(r.buyout*100)+"%", sortVal:pnum},
     {key:"sales",        val:r=>n1(r.salesPerDay), sortVal:pnum},
-    {key:"daysLeft",     val:r=> r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : String(Math.round(r.daysBase)),
-                         sortVal:v=> v==="∞"?1e12 : v==="—"? -1 : pnum(v)},
+    {key:"daysLeft",     val:r=> r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : String(Math.round(r.daysBase)), sortVal:dv},
     {key:"reorder",      val:r=> r.reorder>0? fmt(r.reorder)+" шт" : "—", sortVal:v=> v==="—"?0:pnum(v)},
     {key:"whenOrder",    val:r=> r.whenOrder==null?"—":(r.whenOrder<=0?"сейчас":"через "+r.whenOrder+" дн"),
                          sortVal:v=> v==="сейчас"?0 : v==="—"?1e12 : pnum(v)},
@@ -1556,9 +1606,9 @@ function turnFilteredRows(all, exceptKey){
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
   let rows=all;
-  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
+  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q)||(""+(r.sup||"")).includes(q));
   if(cp) rows=rows.filter(r=>cp(r.category));
-  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
+  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku)||(r.sup&&selProd.includes(r.sup)));
   turnColDefs().forEach(def=>{ if(def.key===exceptKey) return;
     const set=turnColFilters[def.key]; if(set&&set.size) rows=rows.filter(r=>set.has(def.val(r))); });
   return rows;
@@ -1579,7 +1629,7 @@ function openColFilter(anchor,key){
   if(_colFilterKey===key){ closeColFilter(); return; }   // повторный клик по той же колонке — закрыть
   closeColFilter(); closeAllUisel();
   const def=turnColDef(key); if(!def) return;
-  const all=simpleTurnList();
+  const all=turnBaseRows();
   const base=turnFilteredRows(all,key);                  // значения — с учётом ДРУГИХ активных фильтров
   const counts=new Map();
   base.forEach(r=>{ const v=def.val(r); counts.set(v,(counts.get(v)||0)+1); });
@@ -1703,14 +1753,10 @@ function purchaseRows(base){
   }).filter(r=>r.baseQty>0);
 }
 function renderTurnPurchase(base){
-  const tbl=document.getElementById("turnTable"); tbl.className="rnp";
-  let rows=purchaseRows(base);
-  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
-  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
-  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
-  if(cp) rows=rows.filter(r=>cp(r.category));
-  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
-  rows=sortRows(rows,turnSortState,{ name:r=>r.name, baseQty:r=>r.baseQty, salesPerDay:r=>r.salesPerDay,
+  const tbl=document.getElementById("turnTable"); tbl.className="rnp wide";
+  let rows=turnFilteredRows(purchaseRows(base),null);
+  rows=sortRows(rows,turnSortState,{ name:r=>r.name, baseQty:r=>r.baseQty, baseLabel:r=>r.baseLabel,
+    salesPerDay:r=>r.salesPerDay,
     need:r=>r.need, covered:r=>r.covered, buy:r=>r.buy, buyCost:r=>r.buyCost,
     pStatus:r=>(PSTATUS_RANK[r.pStatus||"—"]!=null?PSTATUS_RANK[r.pStatus||"—"]:9)*1e9-r.buy });
   const toBuy=rows.filter(r=>r.buy>0);
@@ -1719,13 +1765,15 @@ function renderTurnPurchase(base){
     +`${rub(toBuy.reduce((a,r)=>a+r.buyCost,0))} · база: ${base==="peak"?"пиковый месяц (без декабря)":"средний месяц"} · выкуп ${Math.round(TURN_PEAK_BUYOUT*100)}%`;
   if(!rows.length){ tbl.innerHTML=`<tbody><tr><td class="empty-hint">Нет товаров с историей заказов по текущим фильтрам</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}`
-    +`${thSort(base==="peak"?"Пиковый месяц":"Средний месяц","baseQty",turnSortState)}`
-    +`${thSort("Продаж/дн","salesPerDay",turnSortState)}${thSort("Нужно на 6 мес","need",turnSortState)}`
-    +`${thSort("Есть сейчас","covered",turnSortState)}${thSort("К закупу","buy",turnSortState)}`
-    +`${thSort("Сумма, ₽","buyCost",turnSortState)}${thSort("Статус тов.","pStatus",turnSortState)}</tr></thead><tbody>`;
+    +`${thSortF(base==="peak"?"Пик, шт":"Средн., шт","baseQty",turnSortState)}`
+    +`${thSortF(base==="peak"?"Месяц":"Месяцев","baseLabel",turnSortState)}`
+    +`${thSortF("Прод/дн","salesPerDay",turnSortState)}${thSortF("Нужно 6 мес","need",turnSortState)}`
+    +`${thSortF("Есть","covered",turnSortState)}${thSortF("К закупу","buy",turnSortState)}`
+    +`${thSortF("Сумма, ₽","buyCost",turnSortState)}${thSortF("Статус","pStatus",turnSortState)}</tr></thead><tbody>`;
   rows.slice(0,400).forEach(r=>{
     html+=`<tr><td class="name-cell metric" title="${esc(r.name)}">${esc(r.name)}${skuMeta(r)}</td>`
-      +`<td>${fmt(r.baseQty)} шт<span class="sub2 mut">${esc(r.baseLabel)}${r.basePartial?" (неполный)":""}</span></td>`
+      +`<td>${fmt(r.baseQty)} шт</td>`
+      +`<td>${esc(r.baseLabel)}${r.basePartial?`<span class="sub2 mut">неполный</span>`:""}</td>`
       +`<td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>`
       +`<td>${fmt(r.need)}<span class="sub2 mut">${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})} × ${TURN_COVER_DAYS} дн</span></td>`
       +`<td>${fmt(r.covered)}<span class="sub2 mut">${fmt(r.mpCov)} на МП${r.whQty?" + "+fmt(r.whQty)+" склад":""}${r.chinaQty?" + "+fmt(r.chinaQty)+" Китай":""}${r.orderQty?" + "+fmt(r.orderQty)+" заказано":""}</span></td>`
@@ -1768,12 +1816,7 @@ function turnExportMeta(){
 function exportPurchaseCSV(base){
   const oz=_appliedMp==="ozon";
   const {months}=monthlyOrders();
-  let rows=purchaseRows(base);
-  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
-  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
-  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
-  if(cp) rows=rows.filter(r=>cp(r.category));
-  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
+  let rows=turnFilteredRows(purchaseRows(base),null);
   rows=sortRows(rows,turnSortState,{ name:r=>r.name, baseQty:r=>r.baseQty, salesPerDay:r=>r.salesPerDay,
     need:r=>r.need, covered:r=>r.covered, buy:r=>r.buy, buyCost:r=>r.buyCost,
     pStatus:r=>(PSTATUS_RANK[r.pStatus||"—"]!=null?PSTATUS_RANK[r.pStatus||"—"]:9)*1e9-r.buy });
@@ -1819,15 +1862,9 @@ function exportPurchaseCSV(base){
      {name: isPeak?"Закуп по пику":"Закуп по среднему", rows:data, widths, headerRows:1}]);
 }
 function renderTurnMonths(){
-  const tbl=document.getElementById("turnTable"); tbl.className="rnp pivot";
+  const tbl=document.getElementById("turnTable"); tbl.className="rnp pivot wide";
   const {months,rows:all}=monthlyOrders();
-  // те же фильтры, что и на «Дозаказе»: поиск, категории, список товаров
-  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
-  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
-  let rows=all;
-  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
-  if(cp) rows=rows.filter(r=>cp(r.category));
-  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
+  let rows=turnFilteredRows(all,null);
   rows=sortRows(rows,turnSortState,{
     name:r=>r.name, total:r=>r.total, peak:r=>r.peak, avg:r=>r.avg, peakSales:r=>r.peakSales,
     pStatus:r=>(PSTATUS_RANK[r.pStatus||"—"]!=null?PSTATUS_RANK[r.pStatus||"—"]:9)*1e9-r.total,
@@ -1840,7 +1877,7 @@ function renderTurnMonths(){
   const monTotMax=Math.max(...monTot,0)||1;
   let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}`;
   months.forEach((m,i)=>{ html+=thSort(m.label+(m.partial?"*":""),"m"+i,turnSortState); });
-  html+=`${thSort("Итого","total",turnSortState,"tot-col")}${thSort("Пик/мес","peak",turnSortState)}${thSort("Ср/мес","avg",turnSortState)}${thSort("Продаж/дн в пик","peakSales",turnSortState)}${thSort("Статус тов.","pStatus",turnSortState)}</tr></thead><tbody>`;
+  html+=`${thSortF("Итого","total",turnSortState,"tot-col")}${thSortF("Пик/мес","peak",turnSortState)}${thSortF("Ср/мес","avg",turnSortState)}${thSortF("Прод/дн пик","peakSales",turnSortState)}${thSortF("Статус","pStatus",turnSortState)}</tr></thead><tbody>`;
   html+=`<tr class="pivot-total"><td class="metric">Всего по месяцам</td>`;
   months.forEach((m,i)=>{ html+=`<td class="d-col" style="${heatBg(monTot[i],monTotMax)}">${fmt(monTot[i])}</td>`; });
   html+=`<td class="tot-col">${fmt(monTot.reduce((a,b)=>a+b,0))}</td><td colspan="4"></td></tr>`;
@@ -2003,9 +2040,12 @@ function resupplyRows(){
     const daysAfterO = o.spd>0? (o.covered+shipO)/o.spd : (o.covered+shipO>0? Infinity:0);
     // статус: чем меньше дней на площадке, тем острее; «нет на складе» — если нужно, а брать нечего
     const minDays=Math.min(w.spd>0?w.days:Infinity, o.spd>0?o.days:Infinity);
+    const haveAll=split? have.wb+have.oz : have.qty;
+    const mkSt=(nd,days,hv)=> nd<=0? "ok" : (hv<=0? "nostock" : (days<RESUPPLY_DAYS/3? "urgent":"need"));
+    const stW=mkSt(needW,w.days,split?have.wb:haveAll), stO=mkSt(needO,o.days,split?have.oz:haveAll);
     let status;
     if(needW+needO<=0) status="ok";
-    else if((split? have.wb+have.oz : have.qty)<=0) status="nostock";
+    else if(haveAll<=0) status="nostock";
     else if(minDays<RESUPPLY_DAYS/3) status="urgent";
     else status="need";
     return {sup, sku:skuBySup[sup]||sup, name:(w.name||o.name||sup), category:(w.category||o.category||""),
@@ -2014,7 +2054,7 @@ function resupplyRows(){
       oSpd:o.spd, oCov:o.covered, oStock:o.stock, oTransit:o.transit, oDays:o.days, needO, shipO, daysAfterO,
       have:(split? have.wb+have.oz : have.qty), haveWb:have.wb, haveOz:have.oz, split,
       whBy:(have.wh||{}), china:(chinaBy[sup]||0), onOrder:(orderBy[sup]||0),
-      ship, rest, status, minDays};
+      ship, rest, status, stW, stO, minDays};
   }).filter(r=> r.needW>0 || r.needO>0 || r.have>0 || r.china>0 || r.onOrder>0 );
 }
 // короткое имя склада для ячейки: «Склад Евросиб» → «Нск», «СХ Солнечногорск» → «Мск»
@@ -2025,57 +2065,70 @@ const RESUP_RANK={urgent:0,need:1,nostock:2,ok:3};
 function resupBadge(s){ const cls = s==="urgent"?"critical":(s==="need"?"warning":(s==="nostock"?"nodata":"good"));
   return `<span class="badge ${cls}"><span class="d"></span>${RESUP_STATUS[s]}</span>`; }
 const dTxt = v => v===Infinity? "∞" : Math.round(v);
+// статус строки под ТЕКУЩУЮ площадку: на «ВБ» смотрим только ВБ, на «Озон» — только Озон,
+// на «Всего» — общий (что острее)
+function resupStatusFor(r){
+  if(_appliedMp==="wb") return r.stW;
+  if(_appliedMp==="ozon") return r.stO;
+  return r.status;
+}
 function renderTurnResupply(){
-  const tbl=document.getElementById("turnTable"); tbl.className="rnp";
-  let rows=resupplyRows();
-  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
-  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
-  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q)||(""+r.sup).includes(q));
-  if(cp) rows=rows.filter(r=>cp(r.category));
-  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku)||selProd.includes(r.sup));
+  const tbl=document.getElementById("turnTable");
+  const mp=_appliedMp, showW=mp!=="ozon", showO=mp!=="wb";
+  tbl.className="rnp"+(showW&&showO? " wide":"");
+  let rows=turnFilteredRows(resupplyRows(),null);
+  // на выбранной площадке показываем только то, что к ней относится
+  if(mp==="wb")   rows=rows.filter(r=>r.needW>0||r.shipW>0||r.have>0||r.china>0||r.onOrder>0);
+  if(mp==="ozon") rows=rows.filter(r=>r.needO>0||r.shipO>0||r.have>0||r.china>0||r.onOrder>0);
   rows=sortRows(rows,turnSortState,{ name:r=>r.name, have:r=>r.have,
     wDays:r=>r.wDays===Infinity?1e9:r.wDays, oDays:r=>r.oDays===Infinity?1e9:r.oDays,
-    needW:r=>r.needW, needO:r=>r.needO, ship:r=>r.ship, rest:r=>r.rest,
+    needW:r=>r.needW, needO:r=>r.needO, shipW:r=>r.shipW, shipO:r=>r.shipO, rest:r=>r.rest,
     incoming:r=>r.china+r.onOrder,
-    status:r=>RESUP_RANK[r.status]*1e9+(r.minDays===Infinity?1e8:r.minDays) });
-  const toShip=rows.filter(r=>r.ship>0), noStock=rows.filter(r=>r.status==="nostock");
+    status:r=>RESUP_RANK[resupStatusFor(r)]*1e9+(r.minDays===Infinity?1e8:r.minDays) });
+  const need = r => (showW? r.needW:0)+(showO? r.needO:0);
+  const ship = r => (showW? r.shipW:0)+(showO? r.shipO:0);
+  const toShip=rows.filter(r=>ship(r)>0), noStock=rows.filter(r=>resupStatusFor(r)==="nostock");
+  const mpTxt = mp==="wb"? "Wildberries" : (mp==="ozon"? "Ozon" : "обе площадки");
   document.getElementById("turnKpis").innerHTML=[
-    {lbl:"Позиций требуют подсорта",val:rows.filter(r=>r.needW>0||r.needO>0).length+" из "+rows.length,
+    {lbl:"Позиций требуют подсорта",val:rows.filter(r=>need(r)>0).length+" из "+rows.length,
      valColor:toShip.length?"var(--accent)":"var(--text-1)"},
-    {lbl:"К отгрузке со склада, шт",val:fmt(toShip.reduce((a,r)=>a+r.ship,0))},
+    {lbl:"К отгрузке со склада, шт",val:fmt(toShip.reduce((a,r)=>a+ship(r),0))},
     {lbl:"Нечем закрыть (нет на складе)",val:noStock.length,valColor:noStock.length?"var(--crit-txt)":"var(--text-1)"},
     {lbl:"Останется на складе, шт",val:fmt(rows.reduce((a,r)=>a+r.rest,0))},
   ].map(kpiCard).join("");
   const whDate=(RD&&RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date) : null;
-  document.getElementById("turnCount").textContent = whDate
-    ? (rows.length+" позиций · склад на "+whDate+" · цель — "+RESUPPLY_DAYS+" дней на каждой площадке")
-    : (rows.length+" позиций · остатки склада не загружены — показан только дефицит");
+  document.getElementById("turnCount").textContent = (whDate
+    ? (rows.length+" позиций · склад на "+whDate+" · цель — "+RESUPPLY_DAYS+" дней")
+    : (rows.length+" позиций · остатки склада не загружены — показан только дефицит"))
+    +" · "+mpTxt;
   if(!rows.length){ tbl.innerHTML=`<tbody><tr><td class="empty-hint">Нет позиций под текущие фильтры</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}`
-    +`${thSort("На складе","have",turnSortState)}`
-    +`${thSort("ВБ: дней","wDays",turnSortState)}${thSort("ВБ: нужно","needW",turnSortState)}`
-    +`${thSort("Ozon: дней","oDays",turnSortState)}${thSort("Ozon: нужно","needO",turnSortState)}`
-    +`${thSort("Отгр. ВБ","ship",turnSortState)}${thSort("Отгр. Ozon","ship",turnSortState)}`
-    +`${thSort("Останется","rest",turnSortState)}${thSort("Приедет","incoming",turnSortState)}`
-    +`${thSort("Статус","status",turnSortState)}</tr></thead><tbody>`;
+    +`${thSortF("Склад","have",turnSortState)}`;
+  if(showW) html+=`${thSortF("ВБ: дней","wDays",turnSortState)}${thSortF("ВБ: нужно","needW",turnSortState)}${thSortF("Отгр. ВБ","shipW",turnSortState)}`;
+  if(showO) html+=`${thSortF("Ozon: дней","oDays",turnSortState)}${thSortF("Ozon: нужно","needO",turnSortState)}${thSortF("Отгр. Ozon","shipO",turnSortState)}`;
+  html+=`${thSortF("Останется","rest",turnSortState)}${thSortF("Приедет","incoming",turnSortState)}`
+    +`${thSortF("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.slice(0,400).forEach(r=>{
-    html+=`<tr class="${r.status==="urgent"?"row-critical":""}">`
+    const st=resupStatusFor(r);
+    html+=`<tr class="${st==="urgent"?"row-critical":""}">`
       +`<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}${skuMeta(r)}</td>`
       +`<td>${fmt(r.have)}${r.split&&r.have?`<span class="sub2 mut">ВБ ${fmt(r.haveWb)} / Оз ${fmt(r.haveOz)}</span>`
-        :(Object.keys(r.whBy).length>1? `<span class="sub2 mut">${Object.entries(r.whBy).map(([n,q])=>whShort(n)+" "+fmt(q)).join(" / ")}</span>`:"")}</td>`
-      +`<td>${r.wSpd>0? dTxt(r.wDays) : "—"}<span class="sub2 mut">${fmt(r.wCov)} шт · ${r.wSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
+        :(Object.keys(r.whBy).length>1? `<span class="sub2 mut">${Object.entries(r.whBy).map(([n,q])=>whShort(n)+" "+fmt(q)).join(" / ")}</span>`:"")}</td>`;
+    if(showW) html+=`<td>${r.wSpd>0? dTxt(r.wDays) : "—"}<span class="sub2 mut">${fmt(r.wCov)} шт · ${r.wSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
       +`<td>${r.needW? fmt(r.needW)+" шт" : "—"}</td>`
-      +`<td>${r.oSpd>0? dTxt(r.oDays) : "—"}<span class="sub2 mut">${fmt(r.oCov)} шт · ${r.oSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
+      +`<td style="font-weight:700;${r.shipW?"color:var(--accent)":""}">${r.shipW? fmt(r.shipW)+" шт"+`<span class="sub2 mut">станет ${dTxt(r.daysAfterW)} дн</span>` : "—"}</td>`;
+    if(showO) html+=`<td>${r.oSpd>0? dTxt(r.oDays) : "—"}<span class="sub2 mut">${fmt(r.oCov)} шт · ${r.oSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
       +`<td>${r.needO? fmt(r.needO)+" шт" : "—"}</td>`
-      +`<td style="font-weight:700;${r.shipW?"color:var(--accent)":""}">${r.shipW? fmt(r.shipW)+" шт"+`<span class="sub2 mut">станет ${dTxt(r.daysAfterW)} дн</span>` : "—"}</td>`
-      +`<td style="font-weight:700;${r.shipO?"color:var(--accent)":""}">${r.shipO? fmt(r.shipO)+" шт"+`<span class="sub2 mut">станет ${dTxt(r.daysAfterO)} дн</span>` : "—"}</td>`
-      +`<td>${fmt(r.rest)}</td>`
+      +`<td style="font-weight:700;${r.shipO?"color:var(--accent)":""}">${r.shipO? fmt(r.shipO)+" шт"+`<span class="sub2 mut">станет ${dTxt(r.daysAfterO)} дн</span>` : "—"}</td>`;
+    html+=`<td>${fmt(r.rest)}</td>`
       +`<td>${(r.china||r.onOrder)? `${r.china?`<span class="sub2 acc" style="display:block" title="Едет из Китая — примерно через месяц у вас на складе">+${fmt(r.china)} ~1 мес</span>`:""}${r.onOrder?`<span class="sub2 mut" style="display:block" title="Заказано производству: ~3 месяца до вашего склада, ~4 месяца до площадки">+${fmt(r.onOrder)} ~3 мес</span>`:""}` : "—"}</td>`
-      +`<td>${resupBadge(r.status)}</td></tr>`;
+      +`<td>${resupBadge(st)}</td></tr>`;
   });
   html+="</tbody>"; tbl.innerHTML=html;
 }
 function renderTurnoverSimple(){
+  // «Подсорт» — свой рендер (и свои KPI); сюда попадаем в т.ч. из панели фильтра колонки
+  if(turnView==="resupply"){ renderTurnHowTo(); renderTurnResupply(); return; }
   const oz = _appliedMp==="ozon";
   const prodSel=document.getElementById("turnProduct"); if(prodSel && !prodSel.options.length) fillProductSelect(prodSel);
   document.getElementById("turnTable").className="rnp";
@@ -2139,9 +2192,15 @@ function renderTurnoverTab(){
   // простая модель (ВБ и Озон) считает по фикс. окну 7 дней — прячем селектор «Скорость» и старый CSV-дозаказ
   const winWrap=document.getElementById("turnWindow").closest(".uisel");
   if(winWrap) winWrap.style.display = "none";
-  const expBtn=document.getElementById("turnExportBtn"); if(expBtn) expBtn.style.display = (_appliedMp==="all"? "none" : "");
-  // «Подсорт» распределяет товар МЕЖДУ площадками, поэтому считается по обеим сразу
-  // и не зависит от переключателя ВБ/Озон/Всего.
+  const expBtn=document.getElementById("turnExportBtn");
+  if(expBtn) expBtn.style.display = (_appliedMp==="all" && turnView!=="resupply")? "none" : "";
+  // фильтры «категории»/«товары» нужны во ВСЕХ видах — заполняем до любых ранних выходов
+  const catSel0=document.getElementById("turnCat");
+  if(catSel0 && !catSel0.options.length) fillCategorySelect(catSel0);
+  const prodSel0=document.getElementById("turnProduct");
+  if(prodSel0 && !prodSel0.options.length) fillProductSelect(prodSel0);
+  // «Подсорт» распределяет товар между площадками, но показывает данные ВЫБРАННОЙ площадки
+  // (на «Всего» — обе). Сам расчёт всегда общий: приоритет Озону при нехватке склада.
   if(turnView==="resupply"){ renderTurnHowTo(); renderTurnResupply(); return; }
   // «Всего»: реплан по площадкам раздельный — остатки и поставки у ВБ и Озона свои
   if(_appliedMp==="all"){
@@ -2201,12 +2260,9 @@ function exportTurnoverCSV(){
 }
 // Выгрузка подсорта: лист «Как считается» + план отгрузки со склада на обе площадки.
 function exportResupplyXLSX(){
-  let rows=resupplyRows();
-  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
-  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
-  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q)||(""+r.sup).includes(q));
-  if(cp) rows=rows.filter(r=>cp(r.category));
-  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku)||selProd.includes(r.sup));
+  let rows=turnFilteredRows(resupplyRows(),null);
+  if(_appliedMp==="wb")   rows=rows.filter(r=>r.needW>0||r.shipW>0||r.have>0||r.china>0||r.onOrder>0);
+  if(_appliedMp==="ozon") rows=rows.filter(r=>r.needO>0||r.shipO>0||r.have>0||r.china>0||r.onOrder>0);
   rows=sortRows(rows,turnSortState,{ name:r=>r.name, have:r=>r.have,
     wDays:r=>r.wDays===Infinity?1e9:r.wDays, oDays:r=>r.oDays===Infinity?1e9:r.oDays,
     needW:r=>r.needW, needO:r=>r.needO, ship:r=>r.ship, rest:r=>r.rest,
@@ -2247,12 +2303,7 @@ function exportResupplyXLSX(){
 function exportTurnMonthsCSV(){
   const oz=_appliedMp==="ozon";
   const {months,rows:all}=monthlyOrders();
-  const q=document.getElementById("turnSearch").value.trim().toLowerCase();
-  const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
-  let rows=all;
-  if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q));
-  if(cp) rows=rows.filter(r=>cp(r.category));
-  if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku));
+  let rows=turnFilteredRows(all,null);
   rows=sortRows(rows,turnSortState,{ name:r=>r.name, total:r=>r.total, peak:r=>r.peak, avg:r=>r.avg,
     peakSales:r=>r.peakSales,
     pStatus:r=>(PSTATUS_RANK[r.pStatus||"—"]!=null?PSTATUS_RANK[r.pStatus||"—"]:9)*1e9-r.total,
