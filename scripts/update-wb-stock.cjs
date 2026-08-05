@@ -36,16 +36,35 @@ for(let i=hr+1;i<rows.length;i++){ const r=rows[i];
 }
 
 let matched=0, zeroed=0, oldTotal=0, newTotal=0; const zeroedHad=[];
+const grew={};   // арт.поставщика → на сколько вырос остаток (для закрытия отгрузок, см. ниже)
 RD.catalog.forEach(c=>{ const sku=''+c.sku, sup=(''+(c.supplierCode||'')).trim();
   oldTotal+=(c.wbStock||0);
+  const was=c.wbStock||0;
   let v=null;
   if(repByWB[sku]!=null) v=repByWB[sku];
   else if(sup && repBySup[sup]!=null) v=repBySup[sup];
   if(v!=null){ c.wbStock=v; matched++; }
   else { if((c.wbStock||0)>0) zeroedHad.push({sku,name:c.name,was:c.wbStock}); c.wbStock=0; zeroed++; }
   newTotal+=(c.wbStock||0);
+  const d=(c.wbStock||0)-was; if(sup && d>0) grew[sup]=(grew[sup]||0)+d;
 });
+
+// ---- Автозакрытие отгрузок на ВБ ----
+// ВБ не показывает путь товара от отправки до приёмки, поэтому продавец сообщает об отгрузке
+// сам (wb-shipment.cjs), а признаком прихода служит РОСТ остатка по этому же коду 1С: продажи
+// остаток только уменьшают, значит рост = принятая поставка. Закрываем самые старые отгрузки
+// первыми, не больше, чем вырос остаток. Печатаем, что закрылось, — продавцу на сверку.
 RD.meta=RD.meta||{}; RD.meta.stockSnapshotDate=dateArg||new Date().toISOString().slice(0,10);
+const closed=[];
+Object.keys(grew).forEach(sup=>{
+  let left=grew[sup];
+  (RD.shipments||[]).filter(s=>s.mp==='wb'&&s.sup===sup&&s.left>0)
+    .sort((a,b)=>a.date<b.date?-1:1)
+    .forEach(s=>{ if(left<=0) return;
+      const q=Math.min(s.left,left); s.left-=q; left-=q;
+      (s.arrived||(s.arrived=[])).push({date:RD.meta.stockSnapshotDate,qty:q});
+      closed.push({id:s.id,sup,qty:q,left:s.left,grew:grew[sup]}); });
+});
 
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
@@ -55,5 +74,12 @@ console.log('Отчёт остатков: строк данных '+repRows+' ·
 console.log('Наш каталог: '+RD.catalog.length+' товаров · совпало с отчётом '+matched+' · нет в отчёте (→0) '+zeroed);
 console.log('Остаток каталога (наши товары): было '+oldTotal.toLocaleString('ru-RU')+' → стало '+newTotal.toLocaleString('ru-RU')+' шт');
 console.log('Дата снимка остатков: '+RD.meta.stockSnapshotDate);
+const openSh=(RD.shipments||[]).filter(s=>s.mp==='wb'&&s.left>0);
+if(closed.length){
+  console.log('\nПоставки на ВБ, принятые по росту остатка ('+closed.length+'):');
+  closed.forEach(x=>console.log('  '+x.id+' · пришло '+x.qty+' шт (остаток по коду вырос на '+x.grew+')'
+    +(x.left>0? ' · ещё в пути '+x.left : ' · отгрузка закрыта')));
+}
+if(openSh.length) console.log('Осталось в пути на ВБ: '+openSh.reduce((a,s)=>a+s.left,0)+' шт по '+openSh.length+' позициям');
 if(zeroedHad.length){ console.log('\nОбнулены (не найдены в отчёте, но раньше был остаток) — '+zeroedHad.length+' шт:');
   zeroedHad.sort((a,b)=>b.was-a.was).slice(0,20).forEach(x=>console.log('  '+x.sku+'  '+x.name.slice(0,34)+'  было '+x.was)); }
