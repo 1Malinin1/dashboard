@@ -20,7 +20,26 @@ function load(f){ if(f.endsWith('.csv')){const t=fs.readFileSync(f,'utf8');const
 // Порядок полей (MD/DM) определяется отдельно, пофайлово, через detectFmt.
 function parts(s,fmt){const p=(''+s).trim().split(' ')[0].split(/[/.]/);if(p.length!==3)return null;let a=+p[0],b=+p[1],y=+p[2];if(!(a>0&&b>0&&y>0))return null;if(y<100)y+=2000;const m=fmt==='MD'?a:b,d=fmt==='MD'?b:a;if(!(m>=1&&m<=12&&d>=1&&d<=31))return null;return{y,m,d};}
 function iso(o){return o.y+'-'+String(o.m).padStart(2,'0')+'-'+String(o.d).padStart(2,'0');}
-function detectFmt(strs){const r={};for(const f of ['MD','DM']){let ok=true,mn=null,mx=null;for(const s of strs){const o=parts(s,f);if(!o){ok=false;break;}const t=Date.UTC(o.y,o.m-1,o.d);if(mn==null||t<mn)mn=t;if(mx==null||t>mx)mx=t;}if(ok)r[f]=(mx-mn)/864e5;}const k=Object.keys(r);return k.length?k.sort((a,b)=>r[a]-r[b])[0]:'MD';}
+// Определяем порядок полей даты (М/Д или Д/М) ПОФАЙЛОВО. Сначала жёсткие признаки:
+// значение >12 может быть только днём. Если оба поля ≤12 (напр. «1/5/26 · 2/5/26 · 3/5/26»),
+// выбираем формат, дающий более КОМПАКТНЫЙ период: выгрузка Озона — это несколько подряд
+// идущих дней, а не «5 января, 5 февраля, 5 марта». Считаем по ВСЕМ строкам файла, а не
+// только по нашим товарам: на паре дат разброс не отличить, и формат угадывался наугад
+// (реальный случай: файл за 1–3 мая прочитался как 5 января / 5 февраля / 5 марта).
+function detectFmt(strs){
+  let maxA=0,maxB=0;
+  for(const s of strs){const p=(''+s).trim().split(' ')[0].split(/[/.]/);if(p.length!==3)continue;
+    const a=+p[0],b=+p[1]; if(a>maxA)maxA=a; if(b>maxB)maxB=b;}
+  if(maxA>12&&maxB<=12) return 'DM';
+  if(maxB>12&&maxA<=12) return 'MD';
+  const r={};
+  for(const f of ['MD','DM']){ let ok=true,mn=null,mx=null,mons=new Set();
+    for(const s of strs){const o=parts(s,f);if(!o){ok=false;break;}
+      const t=Date.UTC(o.y,o.m-1,o.d); if(mn==null||t<mn)mn=t; if(mx==null||t>mx)mx=t; mons.add(o.y+'-'+o.m);}
+    if(ok) r[f]={span:(mx-mn)/864e5, mons:mons.size}; }
+  const k=Object.keys(r); if(!k.length) return 'MD';
+  return k.sort((a,b)=>(r[a].mons-r[b].mons)||(r[a].span-r[b].span))[0];
+}
 // Все наши строки из переданных файлов, ключ = «номер отправления + SKU».
 // Внутри одного прогона повтор ключа отбрасывается сразу; сверка с уже загруженным —
 // ниже, по сохранённому в своде списку ключей.
@@ -30,8 +49,9 @@ let ours=0;
 for(const f of files){
   const wb=load(f);const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
   const H=rows[0];const iOtpr=H.indexOf('Номер отправления'),iAcc=H.indexOf('Принят в обработку'),iStatus=H.indexOf('Статус'),iArt=H.indexOf('Артикул'),iSku=H.indexOf('SKU'),iQty=H.indexOf('Количество'),iPrice=H.indexOf('Ваша цена');
-  const ds=[];for(let i=1;i<rows.length;i++){const a=(''+(rows[i][iArt]||'')).trim();if(wbSup.has(a)){const s=(''+(rows[i][iAcc]||'')).trim();if(s)ds.push(s);}}
-  const fmt=detectFmt(ds);
+  // берём УНИКАЛЬНЫЕ строки дат по всему файлу — так формат определяется надёжно
+  const dset=new Set();for(let i=1;i<rows.length;i++){const s=(''+(rows[i][iAcc]||'')).trim().split(' ')[0];if(s)dset.add(s);}
+  const fmt=detectFmt([...dset]);
   for(let i=1;i<rows.length;i++){const r=rows[i];const a=(''+(r[iArt]||'')).trim();if(!wbSup.has(a))continue;
     const key=(''+(r[iOtpr]||''))+'|'+(''+(r[iSku]||''));if(rowsByKey.has(key))continue;
     const o=parts(r[iAcc],fmt);if(!o)continue;const d=iso(o);newDates.add(d);
