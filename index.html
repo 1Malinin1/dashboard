@@ -410,8 +410,9 @@
   #turnTable th.metric,#turnTable td.metric{min-width:150px}
   #turnTable td.name-cell{max-width:150px}
   /* «Подсорт» на «Всего» — 11 колонок, поджимаем название, чтобы влезало без прокрутки */
-  #turnTable.wide th.metric,#turnTable.wide td.metric{min-width:92px}
-  #turnTable.wide td.name-cell{max-width:92px}
+  #turnTable.wide th.metric,#turnTable.wide td.metric{min-width:86px}
+  #turnTable.wide td.name-cell{max-width:86px}
+  #turnTable.wide thead th{font-size:10.5px}
   #turnTable.wide th,#turnTable.wide td{padding:7px 2px}
   #turnTable td.name-cell .sku{font-size:10.5px}
   #turnTable .col-filter{margin-left:2px}
@@ -1048,7 +1049,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260805k"></script>
+<script src="wb-secure.js?v=20260805l"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -1446,7 +1447,10 @@ function wireSortable(tableId,state,onChange){
     if(e.target.closest(".col-filter")) return;   // клик по кнопке-воронке — фильтр, не сортировка
     const th=e.target.closest("th[data-key]"); if(!th) return;
     const key=th.dataset.key;
-    if(state.key===key) state.dir=-state.dir; else { state.key=key; state.dir=1; }
+    // первый клик по колонке — сразу «от большего к меньшему» (так ждут от цифр),
+    // повторный — наоборот. Текстовые колонки (название) логичнее сначала по алфавиту.
+    if(state.key===key) state.dir=-state.dir;
+    else { state.key=key; state.dir = /^(name|category)$/.test(key) ? 1 : -1; }
     onChange();
   });
 }
@@ -1554,7 +1558,9 @@ function turnColDefs(){
   const dv=v=> v==="∞"?1e12 : v==="—"? -1 : pnum(v);
   if(turnView==="resupply"){
     const mp=_appliedMp, showW=mp!=="ozon", showO=mp!=="wb";
-    const d=[{key:"have", val:r=>fmt(r.have), sortVal:pnum}];
+    const d=[{key:"whMsk", val:r=>r.whMsk? fmt(r.whMsk):"—", sortVal:v=>v==="—"?-1:pnum(v)},
+             {key:"whNsk", val:r=>r.whNsk? fmt(r.whNsk):"—", sortVal:v=>v==="—"?-1:pnum(v)},
+             {key:"have",  val:r=>fmt(r.have), sortVal:pnum}];
     if(showW) d.push(
       {key:"wDays", val:r=> r.wSpd>0? String(dTxt(r.wDays)) : "—", sortVal:dv},
       {key:"needW", val:r=> r.needW? fmt(r.needW)+" шт":"—", sortVal:v=>v==="—"?-1:pnum(v)},
@@ -2035,6 +2041,10 @@ function resupplyRows(){
         shipW=Math.min(needW,have.qty-shipO);
       }
     }
+    // раскладка своего склада по городам: Мск — СХ Солнечногорск, Нск — Склад Евросиб
+    const whB=have.wh||{}; let whMsk=0, whNsk=0, whOther=0;
+    Object.entries(whB).forEach(([n,q])=>{ if(/солнечногор/i.test(n)) whMsk+=q;
+      else if(/евросиб/i.test(n)) whNsk+=q; else whOther+=q; });
     const ship=shipW+shipO, rest=Math.max(0,(split? have.wb+have.oz : have.qty)-ship);
     const daysAfterW = w.spd>0? (w.covered+shipW)/w.spd : (w.covered+shipW>0? Infinity:0);
     const daysAfterO = o.spd>0? (o.covered+shipO)/o.spd : (o.covered+shipO>0? Infinity:0);
@@ -2053,7 +2063,7 @@ function resupplyRows(){
       wSpd:w.spd, wCov:w.covered, wStock:w.stock, wTransit:w.transit, wDays:w.days, needW, shipW, daysAfterW,
       oSpd:o.spd, oCov:o.covered, oStock:o.stock, oTransit:o.transit, oDays:o.days, needO, shipO, daysAfterO,
       have:(split? have.wb+have.oz : have.qty), haveWb:have.wb, haveOz:have.oz, split,
-      whBy:(have.wh||{}), china:(chinaBy[sup]||0), onOrder:(orderBy[sup]||0),
+      whBy:whB, whMsk, whNsk, whOther, china:(chinaBy[sup]||0), onOrder:(orderBy[sup]||0),
       ship, rest, status, stW, stO, minDays};
   }).filter(r=> r.needW>0 || r.needO>0 || r.have>0 || r.china>0 || r.onOrder>0 );
 }
@@ -2080,7 +2090,7 @@ function renderTurnResupply(){
   // на выбранной площадке показываем только то, что к ней относится
   if(mp==="wb")   rows=rows.filter(r=>r.needW>0||r.shipW>0||r.have>0||r.china>0||r.onOrder>0);
   if(mp==="ozon") rows=rows.filter(r=>r.needO>0||r.shipO>0||r.have>0||r.china>0||r.onOrder>0);
-  rows=sortRows(rows,turnSortState,{ name:r=>r.name, have:r=>r.have,
+  rows=sortRows(rows,turnSortState,{ name:r=>r.name, have:r=>r.have, whMsk:r=>r.whMsk, whNsk:r=>r.whNsk,
     wDays:r=>r.wDays===Infinity?1e9:r.wDays, oDays:r=>r.oDays===Infinity?1e9:r.oDays,
     needW:r=>r.needW, needO:r=>r.needO, shipW:r=>r.shipW, shipO:r=>r.shipO, rest:r=>r.rest,
     incoming:r=>r.china+r.onOrder,
@@ -2103,17 +2113,18 @@ function renderTurnResupply(){
     +" · "+mpTxt;
   if(!rows.length){ tbl.innerHTML=`<tbody><tr><td class="empty-hint">Нет позиций под текущие фильтры</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}`
-    +`${thSortF("Склад","have",turnSortState)}`;
+    +`${thSortF("Мск","whMsk",turnSortState)}${thSortF("Нск","whNsk",turnSortState)}${thSortF("Склад","have",turnSortState)}`;
   if(showW) html+=`${thSortF("ВБ: дней","wDays",turnSortState)}${thSortF("ВБ: нужно","needW",turnSortState)}${thSortF("Отгр. ВБ","shipW",turnSortState)}`;
   if(showO) html+=`${thSortF("Ozon: дней","oDays",turnSortState)}${thSortF("Ozon: нужно","needO",turnSortState)}${thSortF("Отгр. Ozon","shipO",turnSortState)}`;
-  html+=`${thSortF("Останется","rest",turnSortState)}${thSortF("Приедет","incoming",turnSortState)}`
+  html+=`${thSortF("Ост.","rest",turnSortState)}${thSortF("Приедет","incoming",turnSortState)}`
     +`${thSortF("Статус","status",turnSortState)}</tr></thead><tbody>`;
   rows.slice(0,400).forEach(r=>{
     const st=resupStatusFor(r);
     html+=`<tr class="${st==="urgent"?"row-critical":""}">`
       +`<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}${skuMeta(r)}</td>`
-      +`<td>${fmt(r.have)}${r.split&&r.have?`<span class="sub2 mut">ВБ ${fmt(r.haveWb)} / Оз ${fmt(r.haveOz)}</span>`
-        :(Object.keys(r.whBy).length>1? `<span class="sub2 mut">${Object.entries(r.whBy).map(([n,q])=>whShort(n)+" "+fmt(q)).join(" / ")}</span>`:"")}</td>`;
+      +`<td class="${r.whMsk?"":"d-zero"}">${r.whMsk? fmt(r.whMsk) : "—"}</td>`
+      +`<td class="${r.whNsk?"":"d-zero"}">${r.whNsk? fmt(r.whNsk) : "—"}</td>`
+      +`<td style="font-weight:650">${fmt(r.have)}${r.whOther?`<span class="sub2 mut">+${fmt(r.whOther)} проч.</span>`:""}${r.split&&r.have?`<span class="sub2 mut">ВБ ${fmt(r.haveWb)} / Оз ${fmt(r.haveOz)}</span>`:""}</td>`;
     if(showW) html+=`<td>${r.wSpd>0? dTxt(r.wDays) : "—"}<span class="sub2 mut">${fmt(r.wCov)} шт · ${r.wSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
       +`<td>${r.needW? fmt(r.needW)+" шт" : "—"}</td>`
       +`<td style="font-weight:700;${r.shipW?"color:var(--accent)":""}">${r.shipW? fmt(r.shipW)+" шт"+`<span class="sub2 mut">станет ${dTxt(r.daysAfterW)} дн</span>` : "—"}</td>`;
@@ -2268,7 +2279,7 @@ function exportResupplyXLSX(){
     needW:r=>r.needW, needO:r=>r.needO, ship:r=>r.ship, rest:r=>r.rest,
     status:r=>RESUP_RANK[r.status]*1e9+(r.minDays===Infinity?1e8:r.minDays) });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
-  const head=["Код 1С","Артикул ВБ","Код фабрики","Статус товара","Название","Категория","На складе, шт",
+  const head=["Код 1С","Артикул ВБ","Код фабрики","Статус товара","Название","Категория","Склад Мск, шт","Склад Нск, шт","Склад всего, шт",
     "ВБ: остаток","ВБ: в пути (отгружено)","ВБ: покрытие шт","ВБ: продаж/дн","ВБ: хватит дней","ВБ: нужно до "+RESUPPLY_DAYS+" дн",
     "Ozon: остаток","Ozon: в пути","Ozon: покрытие шт","Ozon: продаж/дн","Ozon: хватит дней","Ozon: нужно до "+RESUPPLY_DAYS+" дн",
     "ОТГРУЗИТЬ НА ВБ, шт","Станет дней на ВБ","ОТГРУЗИТЬ НА OZON, шт","Станет дней на Ozon",
@@ -2277,7 +2288,7 @@ function exportResupplyXLSX(){
   const data=[head];
   let tW=0,tO=0;
   rows.forEach(r=>{ tW+=r.shipW; tO+=r.shipO;
-    data.push([r.sup, r.sku, factoryCode(r.sku), prodStatus(r.sku)||"", r.name||"", r.category||"", r.have,
+    data.push([r.sup, r.sku, factoryCode(r.sku), prodStatus(r.sku)||"", r.name||"", r.category||"", r.whMsk, r.whNsk, r.have,
       r.wStock, r.wTransit, r.wCov, +r.wSpd.toFixed(2), inf(r.wDays), r.needW||"",
       r.oStock, r.oTransit, r.oCov, +r.oSpd.toFixed(2), inf(r.oDays), r.needO||"",
       r.shipW||"", r.shipW? inf(r.daysAfterW):"", r.shipO||"", r.shipO? inf(r.daysAfterO):"",
@@ -2286,7 +2297,7 @@ function exportResupplyXLSX(){
   const tot=new Array(head.length).fill(""); tot[0]="ИТОГО";
   tot[head.indexOf("ОТГРУЗИТЬ НА ВБ, шт")]=tW; tot[head.indexOf("ОТГРУЗИТЬ НА OZON, шт")]=tO;
   data.push(tot);
-  const widths=[11,13,14,13,44,20,12, 12,20,15,13,14,20, 13,13,16,14,15,21, 20,18,22,19, 16,22,28,17,16];
+  const widths=[11,13,14,13,44,20,14,14,15, 12,20,15,13,14,20, 13,13,16,14,15,21, 20,18,22,19, 16,22,28,17,16];
   const wh=RD&&RD.warehouse;
   const extra=[["Склад на дату", wh&&wh.date? fmtDateLong(wh.date) : "остатки склада не загружены"],
     ["Разделение склада", wh&&wh.split? "товар уже разделён по площадкам — считаем раздельно" : "склад общий — делим между площадками"],
@@ -4253,9 +4264,15 @@ document.getElementById("turnViewSeg").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
   b.setAttribute("aria-pressed","true"); turnView=b.dataset.view;
-  // у видов разные наборы колонок — сбрасываем сортировку на осмысленную по умолчанию
-  turnSortState = turnView==="months" ? {key:"total",dir:-1}
-    : (turnView==="reorder" ? {key:"status",dir:1} : {key:"buy",dir:-1});
+  // У видов разные наборы колонок — сбрасываем сортировку на осмысленную по умолчанию.
+  // ВАЖНО: объект НЕ пересоздаём, а меняем поля: wireSortable держит ссылку на него
+  // с момента загрузки, и после присваивания нового объекта клики по шапке уходили
+  // в «осиротевший» стейт — сортировка молча переставала работать.
+  const def = turnView==="months" ? {key:"total",dir:-1}
+    : turnView==="reorder" ? {key:"status",dir:1}
+    : turnView==="resupply" ? {key:"status",dir:1}
+    : {key:"buy",dir:-1};
+  turnSortState.key=def.key; turnSortState.dir=def.dir;
   renderTurnoverTab();
 });
 wireSortable("turnTable",turnSortState,renderTurnoverTab);
