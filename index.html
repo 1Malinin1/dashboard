@@ -1457,14 +1457,12 @@ function turnoverList(){
 // остаток ÷ продаж/день = на сколько дней хватит. Дозаказ: держим минимум OZ_MIN_DAYS
 // дней запаса; как только меньше — заказываем фикс. партию на OZ_COVER_DAYS продаж (6 мес).
 const TURN_MIN_DAYS=130, TURN_COVER_DAYS=180;   // держим минимум 130 дн запаса; партия дозаказа = 6 мес продаж
-// «В пути» по площадкам. Приоритет — ТОЧНЫЕ данные из рабочего файла продавца («на оптовых»):
-// у ВБ это `pending.qty` (свои склады «должно уехать» + едущие партии), у Озона — `ozIncoming`
-// (то же самое для Озона, ДОПОЛНИТЕЛЬНО к `ozTransit`, который Озон сам показывает по своим поставкам).
-// Признак наличия точных данных — RD.meta.transitDate.
-// Фолбэк для старых снимков без этих данных: «в пути» ВБ = вся партия, из которой доля
-// OZ_RESERVE_SHARE считается резервом под Озон.
-const OZ_RESERVE_SHARE=0.35;
-function transitIsReal(){ return !!(RD && RD.meta && RD.meta.transitDate); }
+// ПОКРЫТИЕ = только то, что УЖЕ на площадке или официально едет на неё:
+//   ВБ  — остаток на складах WB;
+//   Озон — остаток + `ozTransit` (заявки на поставку и партии в пути, которые показывает сам Озон).
+// Товар на СВОИХ складах продавца (ВБ `pending.qty`, Озон `ozIncoming`) в покрытие НЕ входит —
+// по просьбе продавца: он путал картину («хватит дней» считалось от товара, который ещё не отгружен).
+// Сами поля из данных не удалены: они нужны для будущего расчёта «куда и сколько отгрузить».
 const TURN_STATUS={critical:"Критично — нет остатка",warning:"Пора дозаказать",good:"Норма",nodata:"Нет продаж",discontinued:"На вывод"};
 // Короткие подписи для бейджа в таблице (полные — в фильтре/KPI). «Критично — нет остатка» широкий, режем.
 // короткая подпись на бейдже (полная — в подсказке): таблица должна влезать без прокрутки вбок
@@ -1484,9 +1482,6 @@ function simpleTurnList(){
   if(oz && WBDATA){ contBySku={}; WBDATA.catalog.forEach(w=>{ if(w.containerQty) contBySku[w.sku]=w.containerQty; }); }
   let wbCostBySku=null; // для Озона: себестоимость берём у связанного ВБ-товара (общий товар)
   if(oz){ wbCostBySku={}; (RD.catalog||[]).forEach(w=>{ if(w.costPrice!=null) wbCostBySku[w.sku]=w.costPrice; }); }
-  const REAL_TRANSIT=transitIsReal();   // есть точные «в пути» по площадкам из файла продавца
-  let wbPendingBySku=null; // фолбэк для Озона: 35% партии «в пути» связанного ВБ-товара
-  if(oz && !REAL_TRANSIT){ wbPendingBySku={}; (RD.catalog||[]).forEach(w=>{ if(w.pending && w.pending.qty) wbPendingBySku[w.sku]=w.pending.qty; }); }
   return RCAT.map(c=>{
     const s=seriesFor(c.sku); let sum=0;
     if(s) for(let i=Math.max(0,lastIdx-win+1);i<=lastIdx;i++) sum+=s[i]||0;
@@ -1495,14 +1490,10 @@ function simpleTurnList(){
       : (c.buyoutPct14d>0 ? c.buyoutPct14d/100 : buyoutAvg);
     const salesPerDay = avgD*buyout;
     const stock = oz ? (c.ozStock||0) : ((c.wbStock||0)+(c.ownWarehouseStock||0));
-    const rawPending = c.pending? (c.pending.qty||0) : 0;
-    // ВБ: точное «в пути» из файла продавца (иначе — доля 1−share от партии).
-    // Озон: `ozTransit` (поставки, которые видит сам Озон) + `ozIncoming` (наши, ещё не отгруженные) —
-    // это РАЗНЫЕ величины, они складываются; в фолбэке вместо ozIncoming — доля share от партии ВБ.
-    const transit = oz ? (c.ozTransit||0) : (REAL_TRANSIT? rawPending : Math.round(rawPending*(1-OZ_RESERVE_SHARE)));
-    const ozReserve = !oz ? 0 : (REAL_TRANSIT ? (c.ozIncoming||0)
-      : Math.round((c.wbSku&&wbPendingBySku? (wbPendingBySku[c.wbSku]||0):0)*OZ_RESERVE_SHARE));
-    const covered = stock+transit+ozReserve;
+    // «в пути» — только официальная поставка НА площадку: у Озона это его собственные заявки
+    // и партии в пути; у ВБ такого показателя нет, поэтому покрытие = остаток на складах WB.
+    const transit = oz ? (c.ozTransit||0) : 0;
+    const covered = stock+transit;
     const contQty = oz ? (c.wbSku&&contBySku? (contBySku[c.wbSku]||0) : 0) : (c.containerQty||0);
     // Производственный статус («В работе» / «Новинка» / «На вывод») — СПРАВОЧНЫЙ: он показан
     // отдельной колонкой и фильтруется, но на расчёт НЕ влияет. Продавец сам решает, дозаказывать
@@ -1523,7 +1514,7 @@ function simpleTurnList(){
     const whenOrder = salesPerDay<=0? null : (reorder>0? 0 : Math.max(0, Math.round(daysLeft)-TURN_MIN_DAYS));
     const cost = oz ? (c.wbSku&&wbCostBySku? (wbCostBySku[c.wbSku]||0) : 0) : (costOf(c.sku)||0);
     const reorderCost = reorder*cost;
-    return {sku:c.sku,name:c.name,category:c.category,stock,transit,ozReserve,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,containers,contQty,status,pStatus,whenOrder,reorderCost};
+    return {sku:c.sku,name:c.name,category:c.category,stock,transit,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,containers,contQty,status,pStatus,whenOrder,reorderCost};
   });
 }
 // ---- Фильтры по значениям в каждой колонке (Excel-стиль): комбинируются логическим И,
@@ -1671,7 +1662,7 @@ function monthlyOrders(){
 }
 // Закуп на основе выбранной базы: 'peak' — пиковый месяц (без декабря), 'avg' — средний месяц.
 // Темп продаж = заказы/день выбранной базы × выкуп 85%. Нужно на TURN_COVER_DAYS (6 мес).
-// «Есть» = остаток + в пути + ожидается (то же покрытие, что в «Дозаказе»). К закупу = нужно − есть,
+// «Есть» = остаток + в пути на площадку (то же покрытие, что в «Дозаказе»). К закупу = нужно − есть,
 // округляется ВВЕРХ до контейнера. Так продавец видит именно недостающее количество.
 function purchaseRows(base){
   const {rows:mrows}=monthlyOrders();
@@ -1693,7 +1684,7 @@ function purchaseRows(base){
       baseLabel: base==="peak"? r.pkLabel : (r.avgMonths+" мес"),
       basePartial: base==="peak"? r.pkPartial : false,
       salesPerDay, need, covered, buy, cont, contQty:t.contQty||0,
-      stock:t.stock||0, transit:t.transit||0, reserve:t.ozReserve||0,   // разложение «Есть сейчас»
+      stock:t.stock||0, transit:t.transit||0,   // разложение «Есть сейчас»
       rawBuy: Math.max(0, need-(t.covered||0)),                          // до округления до контейнера
       buyCost: cost!=null? buy*cost : 0, hasCost: cost!=null, status:t.status||"", pStatus:t.pStatus||prodStatus(r.sku)};
   }).filter(r=>r.baseQty>0);
@@ -1724,7 +1715,7 @@ function renderTurnPurchase(base){
       +`<td>${fmt(r.baseQty)} шт<span class="sub2 mut">${esc(r.baseLabel)}${r.basePartial?" (неполный)":""}</span></td>`
       +`<td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>`
       +`<td>${fmt(r.need)}<span class="sub2 mut">${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})} × ${TURN_COVER_DAYS} дн</span></td>`
-      +`<td>${fmt(r.covered)}<span class="sub2 mut">${fmt(r.stock)} остаток${r.transit?" + "+fmt(r.transit)+" в пути":""}${r.reserve?" + "+fmt(r.reserve)+" ожид.":""}</span></td>`
+      +`<td>${fmt(r.covered)}<span class="sub2 mut">${fmt(r.stock)} остаток${r.transit?" + "+fmt(r.transit)+" в пути":""}</span></td>`
       +`<td style="font-weight:700;${r.buy?"color:var(--accent)":""}">${r.buy? fmt(r.buy)+" шт"
         +`<span class="sub2 mut">${fmt(r.need)} − ${fmt(r.covered)} = ${fmt(r.rawBuy)}${r.cont?" → "+r.cont+" конт.":""}</span>` : "—"}</td>`
       +`<td>${r.buy? (r.hasCost? rub(r.buyCost) : '<span class="muted">нет с/с</span>') : "—"}</td>`
@@ -1783,7 +1774,6 @@ function exportPurchaseCSV(base){
     isPeak?"Пик, шт":"Какие месяцы взяты",
     "Темп базы, шт/дн","Продаж в день (выкуп "+Math.round(TURN_PEAK_BUYOUT*100)+"%)",
     "Нужно на 6 мес, шт","Остаток","В пути"];
-  if(oz) head.push("Ожидается со склада");
   head.push("Есть сейчас, шт","К закупу до округления, шт","Размер контейнера, шт","Контейнеров",
     "К ЗАКУПУ, шт","Себестоимость, ₽/шт","Сумма, ₽");
   const data=[head];
@@ -1796,7 +1786,6 @@ function exportPurchaseCSV(base){
       isPeak? r.pkQty : (r.avgLabels||[]).join(", "),
       +((isPeak? r.pkRate : r.avgRate).toFixed(2)),
       +r.salesPerDay.toFixed(2), r.need, r.stock, r.transit];
-    if(oz) line.push(r.reserve);
     line.push(r.covered, r.rawBuy, r.contQty||"", r.cont||"", r.buy||"",
       cost!=null? Math.round(cost*100)/100 : "", r.buy&&r.hasCost? Math.round(r.buyCost):"");
     data.push(line);
@@ -1806,7 +1795,6 @@ function exportPurchaseCSV(base){
   data.push(tot);
   const widths=[13,11,14,13,44,20,...months.map(()=>10),15,
     isPeak?18:16, isPeak?11:34, 15,20,17,11,10];
-  if(oz) widths.push(17);
   widths.push(14,20,18,12,13,17,14);
   const extra=[...turnExportMeta(),
     ["База расчёта", isPeak? "пиковый месяц каждого товара (декабрь исключён)" : "средний темп по месяцам с продажами (декабрь исключён)"],
@@ -1859,8 +1847,9 @@ function renderTurnMonths(){
 // Одна точка истины: отсюда и блок над таблицей, и лист «Как считается» в выгрузке Excel
 // (руководство читает файл без дашборда, поэтому объяснение обязано ехать вместе с цифрами).
 function turnHowTo(view,oz){
-  const covTxt = oz? "остаток + в пути на Озон + ожидается с вашего склада"
-                   : "остаток + в пути (ваш файл «на оптовых»)";
+  // в покрытие входит только то, что уже на площадке или официально едет на неё
+  const covTxt = oz? "остаток на Озоне + в пути на Озон (заявки и партии, которые показывает сам Озон)"
+                   : "остаток на складах WB";
   const buyTxt = oz? "% выкупа за дозревшее окно (14 дней со сдвигом на 7)"
                    : "% выкупа 14-дневный из каталога ВБ";
   const P=Math.round(TURN_PEAK_BUYOUT*100);
@@ -1948,11 +1937,11 @@ function renderTurnoverSimple(){
   rows.forEach(r=>{
     html+=`<tr class="${r.status==='critical'?'row-critical':''}">
       <td class="name-cell" title="${esc(r.name)}">${esc(r.name)}${skuMeta(r)}</td>
-      <td>${fmt(r.stock)}${r.transit?`<span class="sub2 acc">+${fmt(r.transit)} в пути</span>`:""}${r.ozReserve?`<span class="sub2 acc" title="Ваши данные: товар на своих складах под Озон + едущие партии. Дополнительно к «в пути», которое показывает сам Озон.">+${fmt(r.ozReserve)} ожидается</span>`:""}</td>
+      <td>${fmt(r.stock)}${r.transit?`<span class="sub2 acc" title="Официальная поставка на площадку: заявки и партии в пути, которые показывает сам маркетплейс.">+${fmt(r.transit)} в пути</span>`:""}</td>
       <td>${r.avgD.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
       <td>${Math.round(r.buyout*100)}%</td>
       <td>${r.salesPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})}</td>
-      <td>${r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : (Math.round(r.daysBase)+(((r.transit||r.ozReserve)&&r.daysLeft!==r.daysBase&&r.daysLeft!==Infinity)?`<span class="sub2 acc">→ ${Math.round(r.daysLeft)}</span>`:""))}</td>
+      <td>${r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : (Math.round(r.daysBase)+((r.transit&&r.daysLeft!==r.daysBase&&r.daysLeft!==Infinity)?`<span class="sub2 acc">→ ${Math.round(r.daysLeft)}</span>`:""))}</td>
       <td style="font-weight:650">${r.reorder>0? fmt(r.reorder)+" шт"+(r.containers?`<span class="sub2 mut">${r.containers} конт.</span>`:"") : "—"}</td>
       <td>${r.whenOrder==null?"—":(r.whenOrder<=0?`<span style="color:var(--accent);font-weight:650">сейчас</span>`:`<span class="muted">через ${fmt(r.whenOrder)} дн</span>`)}</td>
       <td>${pStatusBadge(r.pStatus)}</td>
@@ -2003,7 +1992,6 @@ function exportTurnoverCSV(){
     pStatus:r=>(PSTATUS_RANK[r.pStatus||"—"]!=null?PSTATUS_RANK[r.pStatus||"—"]:9)*1e9+dl(r.daysLeft) });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
   const head=["Артикул","Код 1С","Код фабрики","Статус товара","Название","Категория","Остаток","В пути"];
-  if(oz) head.push("Ожидается со склада");
   head.push("Есть всего, шт","Заказов в день (7 дн)","Выкуп, %","Продаж в день",
     "Хватит дней (только остаток)","Хватит дней (с учётом в пути)",
     "Дозаказать, шт","Размер контейнера, шт","Контейнеров","Сумма по себестоимости, ₽","Когда заказать","Статус");
@@ -2012,7 +2000,6 @@ function exportTurnoverCSV(){
   const dtxt=v=> v===Infinity? "∞" : (v>0? Math.round(v) : 0);
   rows.forEach(r=>{ totQty+=r.reorder; totSum+=r.reorderCost||0;
     const line=[r.sku,code1c(r.sku),factoryCode(r.sku),r.pStatus||"",r.name||"",r.category||"",r.stock,r.transit||0];
-    if(oz) line.push(r.ozReserve||0);
     line.push(r.covered, +r.avgD.toFixed(2), Math.round(r.buyout*100), +r.salesPerDay.toFixed(2),
       r.salesPerDay<=0? (r.covered>0?"∞":0) : dtxt(r.daysBase),
       r.salesPerDay<=0? (r.covered>0?"∞":0) : dtxt(r.daysLeft),
@@ -2023,9 +2010,7 @@ function exportTurnoverCSV(){
   const tot=new Array(head.length).fill(""); tot[0]="ИТОГО";
   tot[head.indexOf("Дозаказать, шт")]=totQty; tot[head.indexOf("Сумма по себестоимости, ₽")]=Math.round(totSum);
   data.push(tot);
-  const widths=[13,11,14,13,44,20,10,10];
-  if(oz) widths.push(17);
-  widths.push(12,19,10,13,24,26,15,19,12,24,16,22);
+  const widths=[13,11,14,13,44,20,10,10,12,19,10,13,24,26,15,19,12,24,16,22];
   const extra=[...turnExportMeta(),
     ["Окно скорости", "последние 7 дней заказов"],
     ["Порог дозаказа", "меньше "+TURN_MIN_DAYS+" дней покрытия"],
