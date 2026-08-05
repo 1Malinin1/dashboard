@@ -430,6 +430,7 @@
   /* вторичная инфа (в пути / конт. / →дн) — 2-й строкой, а не вширь (ряд и так 2-строчный из-за названия) */
   #turnTable td .sub2{display:block;font-size:10px;font-weight:500;line-height:1.25;margin-top:1px}
   #turnTable td .sub2.acc{color:var(--accent);font-weight:600}
+  #turnTable td .sub2 b.acc{color:var(--accent);font-weight:700}
   #turnTable td .sub2.mut{color:var(--muted)}
   #homeTable input.cost-input{width:64px}
   table.rnp tbody tr.row-critical td{background:color-mix(in srgb,var(--crit) 6%,var(--surface))}
@@ -1060,7 +1061,7 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260805n"></script>
+<script src="wb-secure.js?v=20260805o"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -2225,6 +2226,7 @@ function renderTurnResupply(){
   if(showO) html+=`${thSortF("Ozon: дней","oDays",turnSortState)}${thSortF("Ozon: нужно","needO",turnSortState)}${thSortF("Отгр. Ozon","shipO",turnSortState)}`;
   html+=`${thSortF("Ост.","rest",turnSortState)}${thSortF("Приедет","incoming",turnSortState)}`
     +`${thSortF("Статус","status",turnSortState)}</tr></thead><tbody>`;
+  const both=showW&&showO;   // «Всего»: 13 колонок, разбивку покрытия не разворачиваем
   rows.slice(0,400).forEach(r=>{
     const st=resupStatusFor(r);
     html+=`<tr class="${st==="urgent"?"row-critical":""}">`
@@ -2233,14 +2235,15 @@ function renderTurnResupply(){
       +`<td class="${r.whMsk?"":"d-zero"}">${r.whMsk? fmt(r.whMsk) : "—"}</td>`
       +`<td class="${r.whNsk?"":"d-zero"}">${r.whNsk? fmt(r.whNsk) : "—"}</td>`
       +`<td style="font-weight:650">${fmt(r.have)}${r.whOther?`<span class="sub2 mut">+${fmt(r.whOther)} проч.</span>`:""}${r.split&&r.have?`<span class="sub2 mut">ВБ ${fmt(r.haveWb)} / Оз ${fmt(r.haveOz)}</span>`:""}</td>`;
-    if(showW) html+=`<td>${r.wSpd>0? dTxt(r.wDays) : "—"}<span class="sub2 mut">${fmt(r.wCov)} шт · ${r.wSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
+    // под днями — из чего сложилось покрытие: остаток на площадке + то, что уже едет на неё
+    if(showW) html+=`<td>${r.wSpd>0? dTxt(r.wDays) : "—"}<span class="sub2 mut">${both? fmt(r.wCov) : fmt(r.wStock)+(r.wTransit?` +<b class="acc">${fmt(r.wTransit)}</b> в пути`:"")} · ${r.wSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
       +`<td>${r.needW? fmt(r.needW)+" шт" : "—"}</td>`
       +`<td style="font-weight:700;${r.shipW?"color:var(--accent)":""}">${r.shipW? fmt(r.shipW)+" шт"
-        +`<span class="sub2 mut">${r.palShipW? r.palShipW+" палл."+(r.wMsk&&r.wNsk? " ("+r.wMsk+" Мск / "+r.wNsk+" Нск)":(r.wMsk?" Мск":" Нск")) : "без паллет"} · станет ${dTxt(r.daysAfterW)} дн</span>` : "—"}</td>`;
-    if(showO) html+=`<td>${r.oSpd>0? dTxt(r.oDays) : "—"}<span class="sub2 mut">${fmt(r.oCov)} шт · ${r.oSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
+        +`<span class="sub2 mut">${r.palShipW? r.palShipW+" палл."+(both?"":(r.wMsk&&r.wNsk? " ("+r.wMsk+" Мск / "+r.wNsk+" Нск)":(r.wMsk?" Мск":" Нск"))) : "без паллет"}${both?"":" · станет "+dTxt(r.daysAfterW)+" дн"}</span>` : "—"}</td>`;
+    if(showO) html+=`<td>${r.oSpd>0? dTxt(r.oDays) : "—"}<span class="sub2 mut" title="Остаток на Озоне + поставки, которые Озон уже показывает в пути">${both? fmt(r.oCov) : fmt(r.oStock)+(r.oTransit?` +<b class="acc">${fmt(r.oTransit)}</b> в пути`:"")} · ${r.oSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
       +`<td>${r.needO? fmt(r.needO)+" шт" : "—"}</td>`
       +`<td style="font-weight:700;${r.shipO?"color:var(--accent)":""}">${r.shipO? fmt(r.shipO)+" шт"
-        +`<span class="sub2 mut">${r.palShipO? r.palShipO+" палл."+(r.oMsk&&r.oNsk? " ("+r.oMsk+" Мск / "+r.oNsk+" Нск)":(r.oMsk?" Мск":" Нск")) : "без паллет"} · станет ${dTxt(r.daysAfterO)} дн</span>` : "—"}</td>`;
+        +`<span class="sub2 mut">${r.palShipO? r.palShipO+" палл."+(both?"":(r.oMsk&&r.oNsk? " ("+r.oMsk+" Мск / "+r.oNsk+" Нск)":(r.oMsk?" Мск":" Нск"))) : "без паллет"}${both?"":" · станет "+dTxt(r.daysAfterO)+" дн"}</span>` : "—"}</td>`;
     html+=`<td>${fmt(r.rest)}</td>`
       +`<td>${(r.china||r.onOrder)? `${r.china?`<span class="sub2 acc" style="display:block" title="Едет из Китая — примерно через месяц у вас на складе">+${fmt(r.china)} ~1 мес</span>`:""}${r.onOrder?`<span class="sub2 mut" style="display:block" title="Заказано производству: ~3 месяца до вашего склада, ~4 месяца до площадки">+${fmt(r.onOrder)} ~3 мес</span>`:""}` : "—"}</td>`
       +`<td>${resupBadge(st)}</td></tr>`;
