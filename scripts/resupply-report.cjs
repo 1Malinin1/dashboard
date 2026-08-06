@@ -58,6 +58,9 @@ const chinaBy=(inb.china&&inb.china.bySup)||{}, orderBy=(inb.order&&inb.order.by
 const zero={spd:0,covered:0,days:0,name:''};
 const PAL=(RD.pallets&&RD.pallets.bySup)||{};
 const PALLETS_PER_TRUCK=33;
+// На Wildberries отгружаем только из Новосибирска — из Москвы поставок на ВБ нет.
+// Москва работает на Ozon (и Озон выгребает её первой, чтобы не забирать Нск у ВБ).
+const WB_FROM_MSK=false;
 // «На вывод» исключаем из подсорта целиком (просьба продавца): товар выводится из
 // ассортимента, везти его на площадку незачем. Считаем по ВСЕМ карточкам кода 1С —
 // если хоть одна НЕ «На вывод», товар живой. В дозаказе/закупе статус по-прежнему справочный.
@@ -78,18 +81,20 @@ let rows=sups.map(sup=>{
   Object.entries(whB).forEach(([n,q])=>{ if(/солнечногор/i.test(n)) mMsk+=q; else if(/евросиб/i.test(n)) mNsk+=q; });
   const P=PAL[sup]||null, palOz=P?(P.oz||0):0, palWb=P?(P.wb||0):0;
   let rMsk=mMsk, rNsk=mNsk;
-  const take=(needQty,cap,up)=>{ if(cap<=0) return null;
+  // mskOk=false — с Мск на эту площадку не возим (WB_FROM_MSK, см. index.html)
+  const take=(needQty,cap,up,mskOk)=>{ if(cap<=0) return null;
     const want=up? Math.ceil(needQty/cap) : Math.floor(needQty/cap);
     if(want<=0) return {pal:0,msk:0,nsk:0,qty:0};
-    const a=Math.min(want,Math.floor(rMsk/cap)), b=Math.min(want-a,Math.floor(rNsk/cap));
+    const a=mskOk? Math.min(want,Math.floor(rMsk/cap)) : 0, b=Math.min(want-a,Math.floor(rNsk/cap));
     rMsk-=a*cap; rNsk-=b*cap; return {pal:a+b,msk:a,nsk:b,qty:(a+b)*cap}; };
   let shipO=0,shipW=0,palO=0,palW=0,oM=0,oN=0,wM=0,wN=0;
-  const tO=take(needO,palOz,launchO);
+  const tO=take(needO,palOz,launchO,true);
   if(tO){ palO=tO.pal; shipO=tO.qty; oM=tO.msk; oN=tO.nsk; }
   else { shipO=Math.min(needO,rMsk+rNsk); const f=Math.min(shipO,rMsk); rMsk-=f; rNsk-=(shipO-f); }
-  const tW=take(needW,palWb,launchW);
+  const tW=take(needW,palWb,launchW,WB_FROM_MSK);
   if(tW){ palW=tW.pal; shipW=tW.qty; wM=tW.msk; wN=tW.nsk; }
-  else { shipW=Math.min(needW,rMsk+rNsk); const f=Math.min(shipW,rMsk); rMsk-=f; rNsk-=(shipW-f); }
+  else { const av=WB_FROM_MSK? rMsk+rNsk : rNsk; shipW=Math.min(needW,av);
+         const f=WB_FROM_MSK? Math.min(shipW,rMsk) : 0; rMsk-=f; rNsk-=(shipW-f); }
   return {sup,name:(w.name||o.name||sup),have,palOz,palWb,palO,palW,oM,oN,wM,wN,
     whMsk:mMsk,whNsk:mNsk,oCov:o.covered,wCov:w.covered,topUpO:0,topUpW:0,
     noPal:(!P&&(needW+needO>0)),
@@ -114,6 +119,7 @@ const TRUCK_TOPUP_MIN=15, TOPUP_SELL_DAYS=90;
   Object.keys(cnt).sort((a,b)=>{ const ma=a.endsWith('ozon')?0:1, mb=b.endsWith('ozon')?0:1;
     return ma!==mb? ma-mb : cnt[b]-cnt[a]; }).forEach(k=>{
     const wh=k.split('|')[0], mp=k.split('|')[1];
+    if(mp==='wb' && wh==='Мск' && !WB_FROM_MSK) return;         // с Мск на ВБ не возим
     const restPal=cnt[k]%PALLETS_PER_TRUCK; if(restPal<TRUCK_TOPUP_MIN) return;
     const pal=r=> mp==='ozon'? r.palOz : r.palWb;
     const cands=rows.filter(r=>pal(r)>0 && free[r.sup][wh]>=pal(r) && cap[r.sup][mp]>=pal(r))
