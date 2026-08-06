@@ -1,0 +1,10 @@
+#!/bin/sh
+# Если в коммит попадает index.html — автоматически обновляем отпечаток разметки
+# в data-version.json. Без этого правка интерфейса доезжает до браузера продавца
+# только когда протухнет кеш GitHub Pages (до 10 минут), и он пишет «не вижу изменений».
+# Включается один раз: git config core.hooksPath .githooks
+if git diff --cached --name-only | grep -qx 'index.html'; then
+  node scripts/stamp-build.cjs || exit 1
+  git add data-version.json
+fi
+exit 0

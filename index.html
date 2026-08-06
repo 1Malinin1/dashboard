@@ -2955,12 +2955,19 @@ function renderDynamicsTab(){
       +trS("Wildberries",fmt(qWb)+" шт · "+(periodTotal?Math.round(qWb/periodTotal*100):0)+"%")
       +trS("Ozon",fmt(qOz)+" шт · "+(periodTotal?Math.round(qOz/periodTotal*100):0)+"%")
       +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${fmt(periodTotal)} шт</span></div>` : "";
+  // в подсказке к деньгам — не только суммы, но и ДОЛЯ площадки: сразу видно, кто кормит
+  const shr=(v,t)=> t? " · "+Math.round(v/t*100)+"%" : "";
+  const ordTot=mSplit? mSplit.wb[0]+mSplit.oz[0] : 0, buyTot=mSplit? mSplit.wb[1]+mSplit.oz[1] : 0;
   const ordTip = mSplit? `<div class="t-hd">Заказано на сумму — по площадкам</div>`
-      +trS("Wildberries",rub(mSplit.wb[0]))+trS("Ozon",rub(mSplit.oz[0]))
-      +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${rub(mSplit.wb[0]+mSplit.oz[0])}</span></div>` : "";
+      +trS("Wildberries",rub(mSplit.wb[0])+shr(mSplit.wb[0],ordTot))
+      +trS("Ozon",rub(mSplit.oz[0])+shr(mSplit.oz[0],ordTot))
+      +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${rub(ordTot)}</span></div>`
+      +(periodTotal? `<div class="t-row" style="opacity:.75"><span class="k">Средний чек заказа</span><span class="v">${rub(ordTot/periodTotal)}</span></div>`:"") : "";
   const buyTip = mSplit? `<div class="t-hd">Выкуплено на сумму — по площадкам</div>`
-      +trS("Wildberries",rub(mSplit.wb[1]))+trS("Ozon",rub(mSplit.oz[1]))
-      +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${rub(mSplit.wb[1]+mSplit.oz[1])}</span></div>`
+      +trS("Wildberries",rub(mSplit.wb[1])+shr(mSplit.wb[1],buyTot))
+      +trS("Ozon",rub(mSplit.oz[1])+shr(mSplit.oz[1],buyTot))
+      +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${rub(buyTot)}</span></div>`
+      +(ordTot? `<div class="t-row" style="opacity:.75"><span class="k">Выкуплено от заказанного</span><span class="v">${Math.round(buyTot/ordTot*100)}%</span></div>`:"")
       +`<div class="t-row" style="opacity:.75"><span class="k">Выкуп «дозревает» — свежие дни ниже реальных</span></div>` : "";
   const dynKpiCards=[
     {lbl:"Заказов за период",val:fmt(periodTotal),delta:hasPrev?delta(periodTotal,prevTotal,true):"",hero:true,
@@ -2975,10 +2982,22 @@ function renderDynamicsTab(){
       delta:periodTotal?`<div class="kpi-d">${Math.round(qWb/periodTotal*100)}% заказов</div>`:""},
     {lbl:"Из них Ozon",val:fmt(qOz)+" шт",
       delta:periodTotal?`<div class="kpi-d">${Math.round(qOz/periodTotal*100)}% заказов</div>`:""});
+  // на одной площадке разреза нет, но полезное в подсказке всё равно есть: средний чек
+  // и какая доля заказанного уже выкуплена
+  const mpName1 = _appliedMp==="ozon"? "Ozon" : "Wildberries";
+  const ordTip1 = isAll? ordTip : (`<div class="t-hd">Заказано на сумму — ${mpName1}</div>`
+      +trS("Заказов за период",fmt(periodTotal)+" шт")
+      +(periodTotal? trS("Средний чек заказа",rub(moneyNow.ordersSum/periodTotal)):"")
+      +`<div class="t-row" style="${sepS}"><span class="k">Заказано</span><span class="v">${rub(moneyNow.ordersSum)}</span></div>`);
+  const buyTip1 = isAll? buyTip : (`<div class="t-hd">Выкуплено на сумму — ${mpName1}</div>`
+      +trS("Заказано",rub(moneyNow.ordersSum))
+      +trS("Выкуплено",rub(moneyNow.buyoutSum)
+        +(moneyNow.ordersSum? " · "+Math.round(moneyNow.buyoutSum/moneyNow.ordersSum*100)+"%":""))
+      +`<div class="t-row" style="opacity:.75"><span class="k">${_appliedMp==="ozon"?"Доставка":"Выкуп"} «дозревает» — свежие дни ниже реальных</span></div>`);
   dynKpiCards.push(
-    {lbl:"Заказано на сумму, ₽",val:rub(moneyNow.ordersSum),tip:ordTip||undefined,
+    {lbl:"Заказано на сумму, ₽",val:rub(moneyNow.ordersSum),tip:ordTip1||undefined,
       delta:moneyPrev?delta(moneyNow.ordersSum,moneyPrev.ordersSum,true):""},
-    {lbl:"Выкуплено на сумму, ₽",val:rub(moneyNow.buyoutSum),tip:buyTip||undefined,
+    {lbl:"Выкуплено на сумму, ₽",val:rub(moneyNow.buyoutSum),tip:buyTip1||undefined,
       delta:moneyPrev?delta(moneyNow.buyoutSum,moneyPrev.buyoutSum,true):""});
   document.getElementById("dynKpis").innerHTML=dynKpiCards.map(kpiCard).join("");
   wireKpiTips("dynKpis");
