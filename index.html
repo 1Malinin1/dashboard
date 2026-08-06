@@ -1228,8 +1228,10 @@ function _sheetXml(rows,widths,headerRows){
       const ref=_colLetter(ci)+(ri+1);
       const o=(typeof v==="object"&&v!==null), wrap=o&&v.wrap, bold=o&&v.b;
       const st = (ri<hr||(bold&&!wrap))? ' s="1"' : (bold&&wrap? ' s="3"' : (wrap? ' s="2"' : ''));
-      if(typeof v==="number"&&isFinite(v)) return `<c r="${ref}"${st}><v>${v}</v></c>`;
-      const txt=(typeof v==="object")? v.t : v;
+      // значение достаём ДО проверки на число: иначе жирная ячейка с числом ({t:5,b:true})
+      // уезжала в inlineStr и Excel не мог её просуммировать
+      const txt=o? v.t : v;
+      if(typeof txt==="number"&&isFinite(txt)) return `<c r="${ref}"${st}><v>${txt}</v></c>`;
       return `<c r="${ref}"${st} t="inlineStr"><is><t xml:space="preserve">${_xEsc(txt)}</t></is></c>`;
     }).join("");
     return `<row r="${ri+1}">${cells}</row>`;
@@ -2255,11 +2257,13 @@ const dTxt = v => v===Infinity? "∞" : Math.round(v);
 const PALLETS_PER_TRUCK=33;
 function truckPlan(rows){
   const buckets={};   // «склад|площадка» → [{sup,name,pal,days}]
-  const add=(wh,mp,sup,name,pal,days)=>{ if(pal<=0) return;
-    const k=wh+"|"+mp; (buckets[k]||(buckets[k]=[])).push({sup,name,pal,days}); };
+  // cap — вместимость паллеты этой площадки, have — остаток кода на нашем складе:
+  // и то и другое нужно в выгрузке «Машины» (штуки = паллеты × cap)
+  const add=(wh,mp,r,pal,days,cap)=>{ if(pal<=0) return;
+    const k=wh+"|"+mp; (buckets[k]||(buckets[k]=[])).push({sup:r.sup,name:r.name,pal,days,cap,have:r.have}); };
   rows.forEach(r=>{
-    add("Мск","ozon",r.sup,r.name,r.oMsk,r.oDays); add("Нск","ozon",r.sup,r.name,r.oNsk,r.oDays);
-    add("Мск","wb",  r.sup,r.name,r.wMsk,r.wDays); add("Нск","wb",  r.sup,r.name,r.wNsk,r.wDays);
+    add("Мск","ozon",r,r.oMsk,r.oDays,r.palOz); add("Нск","ozon",r,r.oNsk,r.oDays,r.palOz);
+    add("Мск","wb",  r,r.wMsk,r.wDays,r.palWb); add("Нск","wb",  r,r.wNsk,r.wDays,r.palWb);
   });
   return Object.entries(buckets).map(([k,items])=>{
     const [wh,mp]=k.split("|");
@@ -2283,7 +2287,7 @@ function truckPlan(rows){
         });
         if(!best) break;
         const ex=best.items.find(x=>x.sup===it.sup);
-        if(ex) ex.pal++; else best.items.push({sup:it.sup,name:it.name,pal:1});
+        if(ex) ex.pal++; else best.items.push({sup:it.sup,name:it.name,cap:it.cap,have:it.have,pal:1});
         best.free--; best.pallets++; it.left--;
       }
     });
@@ -2625,21 +2629,40 @@ function exportResupplyXLSX(){
     ["Едет из Китая", (RD&&RD.inbound&&RD.inbound.china)? (fmt(RD.inbound.china.total)+" шт — ориентировочно через месяц у продавца на складе") : "не загружено"],
     ["Заказано производству", (RD&&RD.inbound&&RD.inbound.order)? (fmt(RD.inbound.order.total)+" шт — ~3 месяца до склада, ~4 месяца до площадки") : "не загружено"],
     ["Файл сформирован", fmtDateLong(new Date().toISOString().slice(0,10))]];
-  // отдельный лист с планом машин: что грузим, с какого склада, на какую площадку
-  const plan=truckPlan(rows);
-  const tHead=["Склад","Площадка","Машина","Паллет в машине","Кодов в машине","Код 1С","Название","Паллет"];
+  // Отдельный лист с планом машин: что грузим, с какого склада, на какую площадку.
+  // По каждому коду — остаток на нашем складе, сколько штук уходит и сколько это паллет;
+  // под каждой машиной подбивается итог (штуки + паллеты), между машинами — пустая строка,
+  // иначе лист читается сплошняком и непонятно, где кончается одна машина.
+  // лист машин — тоже под выбранную площадку (как таблица и остальные листы):
+  // раньше в файл ВБ попадали и машины Озона
+  const plan=truckPlan(rows).filter(p=>_appliedMp==="all"||p.mp===_appliedMp);
+  const tHead=["Склад","Площадка","Машина","Код 1С","Название",
+    "Остаток на складе, шт","К отгрузке, шт","Паллет"];
   const tData=[tHead];
-  plan.forEach(p=>p.trucks.forEach((t,i)=>{
-    const full=t.pallets>=PALLETS_PER_TRUCK;
-    t.items.forEach((it,j)=>tData.push([j===0?p.wh:"", j===0?(p.mp==="ozon"?"Ozon":"Wildberries"):"",
-      j===0?(full? "Машина "+(i+1) : "Остаток (на машину не хватает)"):"",
-      j===0?t.pallets:"", j===0?t.items.length:"", it.sup, it.name||"", it.pal]));
-  }));
+  const B=t=>({t,b:true});
+  plan.forEach(p=>{
+    const mpN=p.mp==="ozon"?"Ozon":"Wildberries";
+    let dirQty=0, dirPal=0;
+    p.trucks.forEach((t,i)=>{
+      const full=t.pallets>=PALLETS_PER_TRUCK;
+      const label=full? "Машина "+(i+1) : "Остаток (на машину не хватает)";
+      let qty=0;
+      t.items.forEach((it,j)=>{ const q=it.pal*(it.cap||0); qty+=q;
+        tData.push([j===0?p.wh:"", j===0?mpN:"", j===0?label:"",
+          it.sup, it.name||"", it.have||"", q||"", it.pal]); });
+      dirQty+=qty; dirPal+=t.pallets;
+      tData.push(["","",B(label+" — итого"),"",B(t.items.length+" кодов"),"",B(qty),B(t.pallets)]);
+      tData.push(["","","","","","","",""]);                       // разделитель между машинами
+    });
+    tData.push(["",B(p.wh+" → "+mpN),B("ВСЕГО по направлению"),"",
+      B(p.trucks.filter(t=>t.pallets>=PALLETS_PER_TRUCK).length+" полных машин"),"",B(dirQty),B(dirPal)]);
+    tData.push(["","","","","","","",""]);
+  });
   if(tData.length===1) tData.push(["—","—","паллет не набралось","","","","",""]);
   xlsxDownload((_appliedMp==="ozon"?"ozon-":_appliedMp==="wb"?"wb-":"")+"подсорт-со-склада.xlsx",
     [howToSheet("resupply",_appliedMp==="ozon",extra),
      {name:"Подсорт",rows:data,widths,headerRows:1},
-     {name:"Машины",rows:tData,widths:[8,14,30,17,16,11,46,9],headerRows:1}]);
+     {name:"Машины",rows:tData,widths:[8,14,32,11,46,21,16,9],headerRows:1}]);
 }
 function exportTurnMonthsCSV(){
   const oz=_appliedMp==="ozon";
