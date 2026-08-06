@@ -58,7 +58,16 @@ const chinaBy=(inb.china&&inb.china.bySup)||{}, orderBy=(inb.order&&inb.order.by
 const zero={spd:0,covered:0,days:0,name:''};
 const PAL=(RD.pallets&&RD.pallets.bySup)||{};
 const PALLETS_PER_TRUCK=33;
-const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh)])];
+// «На вывод» исключаем из подсорта целиком (просьба продавца): товар выводится из
+// ассортимента, везти его на площадку незачем. Считаем по ВСЕМ карточкам кода 1С —
+// если хоть одна НЕ «На вывод», товар живой. В дозаказе/закупе статус по-прежнему справочный.
+const outSup=new Set(); {
+  const st={}; (RD.catalog||[]).forEach(c=>{ const s=(''+(c.supplierCode||'')).trim(); if(!s) return;
+    const out=(''+(c.productionStatus||'')).trim()==='На вывод';
+    st[s]=(st[s]===undefined)? out : (st[s]&&out); });
+  Object.keys(st).forEach(s=>{ if(st[s]) outSup.add(s); });
+}
+const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh)])].filter(s=>!outSup.has(s));
 const rows=sups.map(sup=>{
   const w=W[sup]||zero, o=O[sup]||zero, have=(wh[sup]&&wh[sup].qty)||0;
   const launchW = w.spd<=0 && w.covered<=0 && have>0, launchO = o.spd<=0 && o.covered<=0 && have>0;
