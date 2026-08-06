@@ -4998,7 +4998,22 @@ const SNAPSHOT_FALLBACK_V="20260806e";       // если data-version.json не�
   try{
     fetch("data-version.json?ts="+Date.now(),{cache:"no-store"})
       .then(r=>r.ok? r.json() : null)
-      .then(j=>boot((j&&j.v)||SNAPSHOT_FALLBACK_V))
+      .then(j=>{
+        /* Свежесть САМОЙ РАЗМЕТКИ. GitHub Pages отдаёт index.html с кешем, поэтому после
+           правок кода продавец ещё минут десять видит старую страницу и думает, что ничего
+           не изменилось. Лечим без хеша внутри файла (он бы менял сам файл): в data-version.json
+           лежит build (отпечаток index.html), а страница держит его в своём адресе ?b=…
+           Не совпало — один раз перезагружаемся по новому адресу: другой URL = гарантированно
+           свежая загрузка мимо кеша. Зациклиться нельзя: после перехода адрес уже содержит
+           нужный build, и повторная проверка проходит. */
+        const build=j&&j.build;
+        if(build){
+          let cur=null;
+          try{ cur=new URLSearchParams(location.search).get("b"); }catch(e){}
+          if(cur!==build){ location.replace(location.pathname+"?b="+encodeURIComponent(build)); return; }
+        }
+        boot((j&&j.v)||SNAPSHOT_FALLBACK_V);
+      })
       .catch(()=>boot(SNAPSHOT_FALLBACK_V));
   }catch(e){ boot(SNAPSHOT_FALLBACK_V); }
 })();
