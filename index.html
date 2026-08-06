@@ -1061,7 +1061,6 @@
 
 <div id="tip"></div>
 
-<script src="wb-secure.js?v=20260806e"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -4851,7 +4850,7 @@ function showLock(){
   if(per && WB_SECURE.period) per.textContent="Снимок за "+WB_SECURE.period;
   const inp=document.getElementById("lockInput"); if(inp) inp.focus();
 }
-(function initGate(){
+function initGate(){
   if(typeof WB_SECURE==="undefined"){ // нет зашифрованного файла — работаем как раньше (пустое состояние/свои загрузки)
     document.body.classList.remove("locked"); bootApp(); return;
   }
@@ -4869,6 +4868,27 @@ function showLock(){
   const saved=(()=>{ try{ return localStorage.getItem(LOCK_KEY); }catch(e){ return null; } })();
   if(saved){ unlock(saved,false).then(ok=>{ if(!ok){ try{localStorage.removeItem(LOCK_KEY);}catch(e){} showLock(); } }); }
   else showLock();
+}
+/* ---- ЗАГРУЗКА СНИМКА ----
+   Раньше снимок подключался статикой: <script src="wb-secure.js?v=ВЕРСИЯ">, а версию
+   бампил ассистент прямо в index.html. Беда в том, что GitHub Pages отдаёт сам index.html
+   с кешем: браузер держал вчерашнюю разметку, запрашивал СТАРЫЙ ?v=… и показывал старые
+   данные — продавец видел «заказы по 3 авг», хотя в репозитории уже лежало 5-е.
+   Теперь версия живёт в отдельном крошечном data-version.json, который грузится БЕЗ кеша
+   (cache:"no-store"): даже со старой разметкой браузер узнаёт актуальную версию и тянет
+   правильный wb-secure.js. Сам снимок по-прежнему кешируется намертво по своему ?v=. */
+const SNAPSHOT_FALLBACK_V="20260806e";       // если data-version.json недоступен
+(function loadSnapshot(){
+  const boot=v=>{ const sc=document.createElement("script");
+    sc.src="wb-secure.js?v="+encodeURIComponent(v);
+    sc.onload=initGate; sc.onerror=initGate;   // файла нет — гейт покажет пустое состояние
+    document.head.appendChild(sc); };
+  try{
+    fetch("data-version.json?ts="+Date.now(),{cache:"no-store"})
+      .then(r=>r.ok? r.json() : null)
+      .then(j=>boot((j&&j.v)||SNAPSHOT_FALLBACK_V))
+      .catch(()=>boot(SNAPSHOT_FALLBACK_V));
+  }catch(e){ boot(SNAPSHOT_FALLBACK_V); }
 })();
 </script>
 </body>
