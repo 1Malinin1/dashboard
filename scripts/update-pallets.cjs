@@ -3,7 +3,8 @@
 // в машину (33 паллеты) и только с ОДНОГО склада — отсюда расчёт в подсорте.
 // Вместимость у ВБ и Озона РАЗНАЯ, поэтому в файле две колонки.
 //
-// Лист с данными ищем по шапке: «Артикул» + «…паллете Озон» + «…паллете Вб».
+// Лист с данными ищем по шапке: ключ («Код 1С»/«Артикул»/«Код») + «…паллете Озон» + «…паллете Вб».
+// Файл можно слать частями — вместимости МЕРЖАТСЯ в снимок, а не заменяют его целиком.
 // Ключ — арт. поставщика (код 1С), в 1С печатается с разделителем разрядов («512,190»).
 //
 // Использование: node scripts/update-pallets.cjs <файл.xls> [дата]
@@ -32,7 +33,10 @@ for(const sh of wb.SheetNames){
   const r=XLSX.utils.sheet_to_json(wb.Sheets[sh],{header:1,raw:false,defval:''});
   for(let i=0;i<Math.min(10,r.length);i++){
     const H=(r[i]||[]).map(x=>S(x).toLowerCase());
-    const k=H.findIndex(x=>/^артикул$/.test(x)||/^код$/.test(x));
+    // ключ ищем по приоритету: «Код 1С» (наш отчёт на заполнение) → «Артикул» → «Код» →
+    // «код поставщика». Важно не схватить «Артикул ВБ»/«Артикул Ozon» из нашего же файла.
+    let k=-1;
+    for(const re of [/^код 1с$/,/^артикул$/,/^код$/,/код поставщ/]){ k=H.findIndex(x=>re.test(x)); if(k>=0) break; }
     const o=H.findIndex(x=>/паллет/.test(x)&&/озон|ozon/.test(x));
     const w=H.findIndex(x=>/паллет/.test(x)&&/вб|wildberries|wb/.test(x));
     if(k>=0&&o>=0&&w>=0){ rows=r; hr=i; iKey=k; iOz=o; iWb=w; sheetName=sh; break; }
@@ -52,12 +56,19 @@ for(let i=hr+1;i<rows.length;i++){
   bySup[k]={wb:w||0, oz:oz||0};
   taken++;
 }
+// МЕРЖ, а не замена: продавец присылает файл частями (сначала общий, потом «дозаполненные»
+// коды). Полная замена стёрла бы уже загруженные вместимости.
+const prev=(RD.pallets&&RD.pallets.bySup)||{};
+let updated=0, kept=0;
+Object.keys(prev).forEach(k=>{ if(!bySup[k]){ bySup[k]=prev[k]; kept++; }
+  else if(prev[k].wb!==bySup[k].wb||prev[k].oz!==bySup[k].oz) updated++; });
 RD.pallets={date:dateArg, bySup};
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
   +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
 
-console.log('\nВместимость паллеты на '+dateArg+': заполнено у '+taken+' позиций');
+console.log('\nВместимость паллеты на '+dateArg+': из файла '+taken+' позиций · было раньше и сохранено '+kept
+  +' · изменено '+updated+' · ИТОГО в снимке '+Object.keys(bySup).length);
 console.log('  без вместимости в файле (пропущено): '+noQty.length+(noQty.length?' · '+noQty.slice(0,12).join(', ')+(noQty.length>12?' …':''):''));
 console.log('  кодов не из нашего каталога: '+unknown.length);
 // сколько наших товаров осталось без паллеты — по ним подсорт не переведётся в паллеты
