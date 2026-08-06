@@ -8,13 +8,16 @@
 // Ключ — арт. поставщика (код 1С), в 1С печатается с разделителем разрядов («512,190»).
 //
 // Использование: node scripts/update-pallets.cjs <файл.xls> [дата]
+//   ручная правка одного кода: node scripts/update-pallets.cjs set <код1С> <палл_ВБ> <палл_Озон> [дата]
+//   (продавец часто уточняет вместимость по одному коду в переписке — гонять ради этого файл незачем)
 // Дальше: node scripts/encrypt.cjs <код>
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const XLSX=require('./node_modules/xlsx');
 const OUT=path.join(__dirname,'..','decrypted');
 const file=process.argv[2], dateArg=process.argv[3]||new Date().toISOString().slice(0,10);
-if(!file){console.error('usage: node scripts/update-pallets.cjs <файл.xls> [ГГГГ-ММ-ДД]');process.exit(1);}
+if(!file){console.error('usage: node scripts/update-pallets.cjs <файл.xls> [ГГГГ-ММ-ДД]\n'
+  +'       node scripts/update-pallets.cjs set <код1С> <палл_ВБ> <палл_Озон> [ГГГГ-ММ-ДД]');process.exit(1);}
 
 const S=v=>(''+(v==null?'':v)).replace(/ /g,' ').replace(/\s+/g,' ').trim();
 const code=v=>S(v).replace(/[\s ,]/g,'');
@@ -26,6 +29,28 @@ vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThi
 const RD=ctx.__RD;
 const supSet=new Set(RD.catalog.map(c=>S(c.supplierCode)).filter(Boolean));
 const nameBySup={}; RD.catalog.forEach(c=>{const s=S(c.supplierCode); if(s&&!nameBySup[s]) nameBySup[s]=c.name;});
+
+// ---- ручная правка одного кода (без файла) ----
+if(file==='set'){
+  const k=code(process.argv[3]), w=num(process.argv[4]), oz=num(process.argv[5]);
+  const dt=process.argv[6]||new Date().toISOString().slice(0,10);
+  if(!k||!/^\d+$/.test(k)||(!w&&!oz)){
+    console.error('usage: node scripts/update-pallets.cjs set <код1С> <палл_ВБ> <палл_Озон> [ГГГГ-ММ-ДД]');process.exit(1);}
+  if(!supSet.has(k)){ console.error('код 1С '+k+' не найден в каталоге ВБ (supplierCode)'); process.exit(1); }
+  const bySup=Object.assign({},(RD.pallets&&RD.pallets.bySup)||{});
+  const was=bySup[k];
+  bySup[k]={wb:w||0, oz:oz||0};
+  RD.pallets={date:dt, bySup};
+  fs.writeFileSync(path.join(OUT,'wb-data.js'),
+    '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
+    +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
+  console.log('1С '+k+' · '+(nameBySup[k]||'').slice(0,44));
+  console.log('  было:  '+(was? 'ВБ '+was.wb+' · Озон '+was.oz : 'вместимости не было'));
+  console.log('  стало: ВБ '+(w||0)+' · Озон '+(oz||0));
+  console.log('ИТОГО в снимке: '+Object.keys(bySup).length+' кодов · дата '+dt);
+  console.log('\nДальше: node scripts/encrypt.cjs <код>');
+  process.exit(0);
+}
 
 const wb=XLSX.read(fs.readFileSync(file),{type:'buffer',cellStyles:false,cellFormula:false});
 let rows=null, hr=-1, iKey=-1, iOz=-1, iWb=-1, sheetName='';
