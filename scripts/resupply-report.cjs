@@ -68,7 +68,7 @@ const outSup=new Set(); {
   Object.keys(st).forEach(s=>{ if(st[s]) outSup.add(s); });
 }
 const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh)])].filter(s=>!outSup.has(s));
-const rows=sups.map(sup=>{
+let rows=sups.map(sup=>{
   const w=W[sup]||zero, o=O[sup]||zero, have=(wh[sup]&&wh[sup].qty)||0;
   const launchW = w.spd<=0 && w.covered<=0 && have>0, launchO = o.spd<=0 && o.covered<=0 && have>0;
   const needW=launchW? Math.min(LAUNCH_QTY,have) : Math.max(0,Math.ceil(w.spd*DAYS)-w.covered);
@@ -91,11 +91,51 @@ const rows=sups.map(sup=>{
   if(tW){ palW=tW.pal; shipW=tW.qty; wM=tW.msk; wN=tW.nsk; }
   else { shipW=Math.min(needW,rMsk+rNsk); const f=Math.min(shipW,rMsk); rMsk-=f; rNsk-=(shipW-f); }
   return {sup,name:(w.name||o.name||sup),have,palOz,palWb,palO,palW,oM,oN,wM,wN,
+    whMsk:mMsk,whNsk:mNsk,oCov:o.covered,wCov:w.covered,topUpO:0,topUpW:0,
     noPal:(!P&&(needW+needO>0)),
     wDays:w.days,oDays:o.days,wSpd:w.spd,oSpd:o.spd,needW,needO,shipW,shipO,
     rest:have-shipW-shipO, china:chinaBy[sup]||0, order:orderBy[sup]||0, launch:(launchW||launchO),
     minDays:Math.min(w.spd>0?w.days:Infinity,o.spd>0?o.days:Infinity)};
-}).filter(r=>r.needW>0||r.needO>0||r.have>0);
+});
+
+// ---- ДОБОР НЕПОЛНОЙ МАШИНЫ (та же логика, что в index.html — держи синхронно) ----
+// Неполную машину от TRUCK_TOPUP_MIN паллет добиваем до полной: везти полупустую дороже.
+// Добираем только тем, что на площадке продастся за TOPUP_SELL_DAYS, по одной паллете
+// разным кодам. Не добили до полной — не добираем вообще.
+const TRUCK_TOPUP_MIN=15, TOPUP_SELL_DAYS=90;
+(function topUp(){
+  const cnt={"Мск|ozon":0,"Нск|ozon":0,"Мск|wb":0,"Нск|wb":0};
+  rows.forEach(r=>{ cnt["Мск|ozon"]+=r.oM; cnt["Нск|ozon"]+=r.oN; cnt["Мск|wb"]+=r.wM; cnt["Нск|wb"]+=r.wN; });
+  const free={}, cap={};
+  rows.forEach(r=>{ free[r.sup]={"Мск":r.whMsk-(r.oM*r.palOz+r.wM*r.palWb),
+                                 "Нск":r.whNsk-(r.oN*r.palOz+r.wN*r.palWb)};
+    cap[r.sup]={ozon:Math.max(0,Math.floor(r.oSpd*TOPUP_SELL_DAYS)-(r.oCov+r.shipO)),
+                wb:  Math.max(0,Math.floor(r.wSpd*TOPUP_SELL_DAYS)-(r.wCov+r.shipW))}; });
+  Object.keys(cnt).sort((a,b)=>{ const ma=a.endsWith('ozon')?0:1, mb=b.endsWith('ozon')?0:1;
+    return ma!==mb? ma-mb : cnt[b]-cnt[a]; }).forEach(k=>{
+    const wh=k.split('|')[0], mp=k.split('|')[1];
+    const restPal=cnt[k]%PALLETS_PER_TRUCK; if(restPal<TRUCK_TOPUP_MIN) return;
+    const pal=r=> mp==='ozon'? r.palOz : r.palWb;
+    const cands=rows.filter(r=>pal(r)>0 && free[r.sup][wh]>=pal(r) && cap[r.sup][mp]>=pal(r))
+      .sort((a,b)=>{ const da=mp==='ozon'?a.oDays:a.wDays, db=mp==='ozon'?b.oDays:b.wDays;
+        return (da===Infinity?1e9:da)-(db===Infinity?1e9:db); });
+    const fr={},cp={},plan=new Map();
+    cands.forEach(r=>{ fr[r.sup]=free[r.sup][wh]; cp[r.sup]=cap[r.sup][mp]; });
+    let left=PALLETS_PER_TRUCK-restPal, moved=true;
+    while(left>0&&moved){ moved=false;
+      for(const r of cands){ if(left<=0) break; const p=pal(r);
+        if(fr[r.sup]<p||cp[r.sup]<p) continue;
+        fr[r.sup]-=p; cp[r.sup]-=p; plan.set(r,(plan.get(r)||0)+1); left--; moved=true; } }
+    if(left>0) return;
+    plan.forEach((pals,r)=>{ const qty=pals*pal(r);
+      free[r.sup][wh]-=qty; cap[r.sup][mp]-=qty; cnt[k]+=pals;
+      if(mp==='ozon'){ r.shipO+=qty; r.palO+=pals; r.topUpO+=qty; if(wh==='Мск') r.oM+=pals; else r.oN+=pals; }
+      else { r.shipW+=qty; r.palW+=pals; r.topUpW+=qty; if(wh==='Мск') r.wM+=pals; else r.wN+=pals; } });
+  });
+  rows.forEach(r=>{ r.rest=r.have-r.shipW-r.shipO; });
+})();
+const _rows=rows.filter(r=>r.needW>0||r.needO>0||r.have>0);
+rows.length=0; _rows.forEach(r=>rows.push(r));
 
 const needAny=rows.filter(r=>r.needW+r.needO>0);
 const toShip=rows.filter(r=>r.shipW+r.shipO>0);
