@@ -1178,8 +1178,11 @@ function downloadCSV(filename,text){
   downloadBlob(filename,blob);
 }
 function downloadBlob(filename,blob){
-  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;a.click();
-  setTimeout(()=>URL.revokeObjectURL(a.href),1000);
+  // якорь обязательно кладём в документ: часть браузеров (Firefox) игнорирует click()
+  // по элементу вне DOM и файл просто не скачивается
+  const a=document.createElement("a");a.href=URL.createObjectURL(blob);a.download=filename;
+  a.style.display="none";document.body.appendChild(a);a.click();
+  setTimeout(()=>{URL.revokeObjectURL(a.href);a.remove();},1000);
 }
 /* ---- Запись .xlsx без библиотек: zip (метод STORE) + минимальный OOXML ----
    Зачем: выгрузки «Оборачиваемости» уходят руководству, и им нужен один файл, где
@@ -1516,7 +1519,11 @@ function simpleTurnList(){
     const buyout = oz ? (c.ozBuyout!=null? c.ozBuyout : buyoutAvg)
       : (c.buyoutPct14d>0 ? c.buyoutPct14d/100 : buyoutAvg);
     const salesPerDay = avgD*buyout;
-    const stock = oz ? (c.ozStock||0) : ((c.wbStock||0)+(c.ownWarehouseStock||0));
+    // ПОКРЫТИЕ — только то, что уже на площадке. Товар на СВОЁМ складе сюда не входит
+    // (просьба продавца): раньше складывался ownWarehouseStock, и «хватит дней» считалось
+    // от партии, которая на площадку ещё не отгружена. Поле сейчас везде 0, но если его
+    // снова начнут заполнять — расчёт молча поедет. Не возвращай слагаемое.
+    const stock = oz ? (c.ozStock||0) : (c.wbStock||0);
     // «в пути» — только официальная поставка НА площадку: у Озона это его собственные заявки
     // и партии в пути; у ВБ такого показателя нет, поэтому покрытие = остаток на складах WB.
     const transit = oz ? (c.ozTransit||0) : 0;
@@ -1539,7 +1546,12 @@ function simpleTurnList(){
     // когда размещать заказ: партия «созревает» ~TURN_MIN_DAYS дней (произв.→склад). Заказать нужно,
     // когда запаса останется ровно на срок поставки → через (хватит − TURN_MIN_DAYS) дней; при дозаказе — сейчас.
     const whenOrder = salesPerDay<=0? null : (reorder>0? 0 : Math.max(0, Math.round(daysLeft)-TURN_MIN_DAYS));
-    const cost = oz ? (c.wbSku&&wbCostBySku? (wbCostBySku[c.wbSku]||0) : 0) : (costOf(c.sku)||0);
+    // на Озоне себестоимость берём у связанного ВБ-товара (catalogCostBySku построена под
+    // активную площадку и на Озоне пуста), но ручную правку costOverrides учитываем так же,
+    // как на ВБ — иначе на Озоне закуп считался бы по старой цене
+    const cost = oz
+      ? (c.wbSku? (costOverrides[c.wbSku]!=null? costOverrides[c.wbSku] : (wbCostBySku[c.wbSku]||0)) : 0)
+      : (costOf(c.sku)||0);
     const reorderCost = reorder*cost;
     return {sku:c.sku,name:c.name,category:c.category,stock,transit,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,containers,contQty,status,pStatus,whenOrder,reorderCost};
   });
@@ -1771,7 +1783,10 @@ function purchaseRows(base){
       basePartial: base==="peak"? r.pkPartial : false,
       salesPerDay, need, covered, buy, cont, contQty:t.contQty||0,
       stock:t.stock||0, transit:t.transit||0, mpCov, whQty, chinaQty, orderQty,   // разложение «Есть сейчас»
-      rawBuy: Math.max(0, need-(t.covered||0)),                          // до округления до контейнера
+      // «нужно − есть» ДО округления до контейнера. Вычитаем ВСЮ трубу (covered), а не только
+      // остаток на площадке: под числом печатается именно эта арифметика, и с t.covered
+      // строка «нужно − есть = N» не сходилась (напр. 4 652 − 3 573 показывало 4 376 вместо 1 079).
+      rawBuy: Math.max(0, need-covered),
       buyCost: cost!=null? buy*cost : 0, hasCost: cost!=null, status:t.status||"", pStatus:t.pStatus||prodStatus(r.sku)};
   }).filter(r=>r.baseQty>0);
 }
@@ -2023,7 +2038,7 @@ function mpStats(mp){
     const avgD = days? sum/days : 0;
     const buyout = oz ? (c.ozBuyout!=null? c.ozBuyout : buyoutAvg)
                       : (c.buyoutPct14d>0? c.buyoutPct14d/100 : buyoutAvg);
-    const stock = oz ? (c.ozStock||0) : ((c.wbStock||0)+(c.ownWarehouseStock||0));
+    const stock = oz ? (c.ozStock||0) : (c.wbStock||0);   // свой склад в покрытие НЕ входит
     // отгрузку по коду 1С добавляем ОДИН раз, даже если под кодом несколько артикулов ВБ
     let transit = oz ? (c.ozTransit||0) : 0;
     if(!oz && !shipDone.has(sup)){ transit += (openShip[sup]||0); shipDone.add(sup); }
@@ -3604,7 +3619,14 @@ function renderHomeTab(){
   else document.getElementById("ch-home-unit").innerHTML=`<div class="empty-hint">Нет продаж за период</div>`;
 
   // строки таблицы (единый свод P&L по товарам; только активные — как в Аналитике)
-  let rows=productPnL(dates,cat,q).filter(hasActivity);
+  const allPnL=productPnL(dates,cat,q);
+  let rows=allPnL.filter(hasActivity);
+  // Служебные строки без продаж (обычно «возмещение издержек» по непроданному артикулу)
+  // в таблицу не попадают — иначе число товаров разъезжалось бы между вкладками. Но в KPI
+  // они учтены, поэтому сумма колонки «Прибыль» не сходилась с KPI на эту величину без
+  // объяснения. Считаем её и говорим прямо.
+  const svcProfit=allPnL.filter(r=>!hasActivity(r)).reduce((a,r)=>a+r.profit,0);
+  const svcCount=allPnL.length-rows.length;
   renderHomeCatProfit(rows);
   renderProfitDrivers(rows);
   if(homeNoCostOnly) rows=rows.filter(r=>!r.hasCost);
@@ -3614,7 +3636,11 @@ function renderHomeTab(){
   });
   const maxAbsP=rows.reduce((m,r)=>Math.max(m,Math.abs(r.profit)),0);
   document.getElementById("homeCount").textContent=rows.length+" товаров";
-  document.getElementById("homeTblNote").textContent = homeNoCostOnly? "только без себестоимости" : `период: ${dates.length} дн.`;
+  document.getElementById("homeTblNote").textContent = homeNoCostOnly
+    ? "только без себестоимости"
+    : `период: ${dates.length} дн.` + (Math.round(svcProfit)!==0
+        ? ` · плюс ${svcCount} ${plural(svcCount,"служебная строка","служебные строки","служебных строк")} без продаж на ${rub(svcProfit)} (учтены в KPI сверху, в таблице не показаны)`
+        : "");
   if(!rows.length){ document.getElementById("homeTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар","name",homeSortState,"metric")}${thSort("Категория","category",homeSortState)}
     ${thSort("Продано","qty",homeSortState)}${thSort("Выручка, ₽","revenue",homeSortState)}${thSort("Себест., ₽","cogs",homeSortState)}${thSort("Удерж. WB, ₽","wbHold",homeSortState)}${thSort("Реклама","ad",homeSortState)}${thSort("Прибыль, ₽","profit",homeSortState)}${thSort("Маржа","margin",homeSortState)}</tr></thead><tbody>`;
@@ -4218,9 +4244,18 @@ function weakestDeclineIndex(A,B){
 function renderFunnelDiag(A,B){
   weakStepIndex=weakestDeclineIndex(A,B);
   const lines=[];
-  if(A){ const imp=A.impressions||0, buy=A.buyoutQty||0, overall=imp? buy/imp*100:0;
+  if(A){ const imp=A.impressions||0, buy=A.buyoutQty||0, ord=A.ordersQty||0, overall=imp? buy/imp*100:0;
     const fin=_appliedMp==="ozon"?"доставки":"выкупа";
-    lines.push({cls:"",ic:"▸",html:`Из <b>${fmt(imp)}</b> показов до ${fin} дошло <b>${fmt(buy)}</b> шт — сквозная конверсия <b>${overall.toFixed(2)}%</b>. Средний чек заказа ${rub(A.avgPrice)}.`}); }
+    // Последняя ступень ДОЗРЕВАЕТ: площадка проставляет выкуп задним числом, поэтому у свежих
+    // дней он нулевой. Считать по нему сквозную конверсию нельзя — получалось «0.00%», и это
+    // читалось как «ничего не выкупают», хотя заказы есть. В таком случае ведём до «Заказов».
+    if(ord>0 && buy===0){
+      lines.push({cls:"",ic:"▸",html:`Из <b>${fmt(imp)}</b> показов до заказа дошло <b>${fmt(ord)}</b> шт — сквозная конверсия <b>${(imp? ord/imp*100:0).toFixed(2)}%</b>. Средний чек заказа ${rub(A.avgPrice)}.`});
+      const ripe=_appliedMp==="ozon"? "Доставка за этот период ещё не дозрела" : "Выкуп за этот период ещё не дозрел";
+      lines.push({cls:"warn",ic:"⏳",html:`${ripe}: площадка проставляет его задним числом, поэтому у свежих дней он нулевой. Сдвиньте период A на несколько дней назад, чтобы увидеть реальный процент.`});
+    } else {
+      lines.push({cls:"",ic:"▸",html:`Из <b>${fmt(imp)}</b> показов до ${fin} дошло <b>${fmt(buy)}</b> шт — сквозная конверсия <b>${overall.toFixed(2)}%</b>. Средний чек заказа ${rub(A.avgPrice)}.`});
+    } }
   if(B){
     if(weakStepIndex>=0){ const i=weakStepIndex, ca=connectorConv(A,i), cb=connectorConv(B,i);
       lines.push({cls:"warn",ic:"⚠",html:`Сильнее всего просело: <b>${stLabel(i)} → ${stLabel(i+1)}</b> — ${ca.toFixed(1)}% против ${cb.toFixed(1)}% в периоде B (<b>${ppFmt(ca-cb)} п.п.</b>). Это узкое место периода.`}); }

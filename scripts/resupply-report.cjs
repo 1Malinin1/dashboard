@@ -40,7 +40,7 @@ function mpStats(mp){
     const s=ser[c.sku]; let sum=0; if(s) for(let i=Math.max(0,last-6);i<=last;i++) sum+=s[i]||0;
     const avgD=days? sum/days:0;
     const buyout = oz? (c.ozBuyout!=null?c.ozBuyout:buyAvg) : (c.buyoutPct14d>0? c.buyoutPct14d/100 : buyAvg);
-    const stock = oz? (c.ozStock||0) : ((c.wbStock||0)+(c.ownWarehouseStock||0));
+    const stock = oz? (c.ozStock||0) : (c.wbStock||0);   // свой склад в покрытие НЕ входит
     let transit = oz? (c.ozTransit||0) : 0;
     if(!oz && !done.has(sup)){ transit+=(openShip[sup]||0); done.add(sup); }
     const e=out[sup]||(out[sup]={spd:0,stock:0,transit:0,name:c.name});
