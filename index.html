@@ -3783,15 +3783,47 @@ function renderFinanceHistoryInfo(){
     + localDataResetLink();
 }
 
-let finPeriodN=28;
+let finPeriodN=0;      // 0 = весь загруженный период (кнопки строит renderPeriodSeg)
 let finSortState={key:"revenue",dir:-1};
+/* ---- ПЕРИОДЫ СТРОЯТСЯ ПО ФАКТУ ЗАГРУЖЕННОГО ----
+   WB отдаёт финансы неделями, и раньше сетка была фиксированной (7/14/21/28 дн, 2–6 мес).
+   Когда пришла 5-я неделя, «28 дн» перестало быть «всеми данными», а увидеть всё можно было
+   только через «2 мес» — что читается абсурдно: двух месяцев в снимке нет. Теперь кнопки
+   рисуются от реальной истории: недели, пока они помещаются, затем месяцы, и всегда
+   «Весь период». Кнопок, которым не хватает данных, просто нет — сбиться не на чем. */
+function periodOptions(daysAvail){
+  const out=[];
+  const weeks=Math.min(8,Math.floor(daysAvail/7));
+  for(let w=1;w<=weeks;w++) out.push({n:w*7,lbl:w+" нед"});
+  [[60,"2 мес"],[90,"3 мес"],[120,"4 мес"],[150,"5 мес"],[180,"6 мес"]].forEach(([n,l])=>{
+    if(n<daysAvail) out.push({n,lbl:l});                 // строго меньше: «весь период» ниже
+  });
+  out.push({n:0,lbl:"Весь период"});
+  return out;
+}
+// перерисовывает сегмент периода под реальную историю; возвращает актуальное значение
+function renderPeriodSeg(segId,curN,daysAvail){
+  const seg=document.getElementById(segId); if(!seg) return curN;
+  const opts=periodOptions(daysAvail);
+  // если выбранного варианта больше нет (данных стало меньше) — берём «Весь период»
+  let n = opts.some(o=>o.n===curN)? curN : 0;
+  const sig=opts.map(o=>o.n).join(",")+"|"+n;
+  if(seg.dataset.sig!==sig){
+    seg.dataset.sig=sig;
+    seg.innerHTML=opts.map(o=>`<button data-n="${o.n}"${o.n===n?' aria-pressed="true"':''}>${o.lbl}</button>`).join("");
+  }
+  return n;
+}
 function dateRangeFromCache(cache,periodN){
   const dates=[...new Set(cache.map(r=>r.date))].sort();
   const n=dates.length; if(!n) return {dates:[],prevDates:[]};
   const win=periodN===0? n : Math.min(periodN,n);
   const cur=dates.slice(n-win);
   const restBefore=dates.slice(0,n-win);
-  const prev=restBefore.slice(Math.max(0,restBefore.length-win));
+  // Сравнение «к пред.» имеет смысл ТОЛЬКО с окном такой же длины. Раньше брался
+  // остаток любой длины, и 28 дней сравнивались с 7 предыдущими — выручка «росла»
+  // на 274%, хотя это просто окно вчетверо длиннее. Не хватает истории — сравнения нет.
+  const prev = restBefore.length>=win ? restBefore.slice(restBefore.length-win) : [];
   return {dates:cur,prevDates:prev};
 }
 function finRange(){ return dateRangeFromCache(FINANCE_CACHE,finPeriodN); }
@@ -3854,7 +3886,7 @@ function productPnL(dates,cat,q){
 }
 
 /* ---- главная: сводный P&L на основе загруженной "Финансы" ---- */
-let homePeriodN=28;
+let homePeriodN=0;     // 0 = весь загруженный период
 let homeSortState={key:"profit",dir:-1};
 let homeNoCostOnly=false;   // показывать только товары без себестоимости (по клику на баннер)
 function renderHomeTab(){
@@ -3868,13 +3900,17 @@ function renderHomeTab(){
   document.getElementById("homeEmpty").hidden=true;
   document.getElementById("homeContent").hidden=false;
   const allDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
-  fresh.innerHTML=`<span class="dot"></span>Финансы обновлены по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])}`
+  // сколько всего загружено — иначе непонятно, почему «5 нед» есть, а «6 нед» нет
+  const wkTxt=n=>{const w=Math.floor(n/7),d=n%7;
+    return (w? w+" "+plural(w,"неделя","недели","недель") : "")+(w&&d? " ":"")+(d? d+" "+plural(d,"день","дня","дней"):"");};
+  fresh.innerHTML=`<span class="dot"></span>Финансы обновлены по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])} · загружено <b>${wkTxt(allDates.length)}</b>`
     + (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : "")
     + localDataResetLink();
 
   const catSel=document.getElementById("homeCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
+  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,allDates.length);
   const {dates,prevDates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
   const now=finAggregate(dates,cat,q);
   const prev=prevDates.length? finAggregate(prevDates,cat,q) : null;
@@ -4023,7 +4059,7 @@ function exportHomeCSV(){
 /* =========================================================================
    ВКЛАДКА «АНАЛИТИКА» — ABC-анализ, убыточные товары, реклама-не-окупается
    ========================================================================= */
-let analyticsPeriodN=180;                  // по умолчанию — 6 мес (ABC нагляднее на всех данных)
+let analyticsPeriodN=0;                    // весь период — ABC нагляднее на всех данных
 let anSortState={key:"profit",dir:-1};
 const ABC_ORDER={A:0,B:1,C:2,loss:3};
 // классификация ABC по прибыли: ранжируем по убыванию, копим долю среди прибыльных
@@ -4049,6 +4085,7 @@ function renderAnalyticsTab(){
     + localDataResetLink();
   const catSel=document.getElementById("anCat"); if(!catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("anCat"), q=document.getElementById("anSearch").value.trim().toLowerCase();
+  analyticsPeriodN=renderPeriodSeg("anPeriodSeg",analyticsPeriodN,allDates.length);
   const {dates}=dateRangeFromCache(FINANCE_CACHE,analyticsPeriodN);
   const all=productPnL(dates,cat,q).filter(hasActivity);
   const hasAds=ADS_CACHE.length>0;
@@ -4213,6 +4250,8 @@ function renderFinanceTab(){
   const catSel=document.getElementById("finCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("finCat"), q=document.getElementById("finSearch").value.trim().toLowerCase();
+  finPeriodN=renderPeriodSeg("finPeriodSeg",finPeriodN,
+    [...new Set(FINANCE_CACHE.map(r=>r.date))].length);
   const {dates,prevDates}=finRange();
   const now=finAggregate(dates,cat,q);
   const prev=prevDates.length? finAggregate(prevDates,cat,q) : null;
