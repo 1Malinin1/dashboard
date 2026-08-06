@@ -1947,6 +1947,7 @@ function turnHowTo(view,oz){
       "Отгрузить = сколько из этого закрывает ваш склад"],
     notes:[
       "Вид считается сразу по ОБЕИМ площадкам — переключатель ВБ/Озон на него не влияет: товар распределяется между ними.",
+      "Товары со статусом «На вывод» в подсорт НЕ попадают — их выводим из ассортимента, везти на площадку нечего. В «Дозаказе» и «Закупе» они по-прежнему считаются: там решение о заказе принимаете вы.",
       "Если склада не хватает на обе площадки — ПРИОРИТЕТ У ОЗОНА: сначала закрываем его полностью, остатком закрываем ВБ.",
       "Если в файле склада товар уже разделён на «вб» и «озон», площадки считаются раздельно и ничего не перемешивается.",
       "ВБ не показывает путь товара от отправки до приёмки. Поэтому об отгрузке на ВБ сообщаете вы, она попадает в «в пути», а закрывается автоматически, когда остаток на ВБ вырастет.",
@@ -2042,7 +2043,18 @@ function resupplyRows(){
   const inb=(RD&&RD.inbound)||{};
   const chinaBy=(inb.china&&inb.china.bySup)||{}, orderBy=(inb.order&&inb.order.bySup)||{};
   const zero={spd:0,stock:0,transit:0,covered:0,days:0,name:"",category:""};
-  const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh),...Object.keys(chinaBy),...Object.keys(orderBy)])];
+  // «На вывод» — товар выводим из ассортимента, ВЕЗТИ его на площадку смысла нет:
+  // по просьбе продавца такие коды из подсорта исключаются целиком (в дозаказе/закупе
+  // статус по-прежнему справочный и на расчёт не влияет — там решает сам продавец).
+  // Считаем по ВСЕМ карточкам кода 1С: если хоть одна НЕ «На вывод» — товар живой.
+  const outSup=new Set(); {
+    const st={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(!s) return;
+      const out=(""+(c.productionStatus||"")).trim()==="На вывод";
+      st[s]=(st[s]===undefined)? out : (st[s]&&out); });
+    Object.keys(st).forEach(s=>{ if(st[s]) outSup.add(s); });
+  }
+  const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh),...Object.keys(chinaBy),...Object.keys(orderBy)])]
+    .filter(s=>!outSup.has(s));
   const contBySup={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim();
     if(s&&c.containerQty&&!contBySup[s]) contBySup[s]=c.containerQty; });
   const skuBySup={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s&&!skuBySup[s]) skuBySup[s]=c.sku; });
@@ -2442,6 +2454,7 @@ function exportResupplyXLSX(){
     ["Остатки Ozon на дату", (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)? fmtDateLong(RD.ozon.meta.stockDate):"—"],
     ["Заказы по дату", RLAST? fmtDateLong(RLAST):"—"],
     ["Цель покрытия", RESUPPLY_DAYS+" дней продаж на каждой площадке"],
+    ["Товары «На вывод»", "исключены из подсорта — выводим из ассортимента"],
     ["Отгрузка", "только целыми паллетами; "+PALLETS_PER_TRUCK+" паллет = машина, машина собирается с одного склада на одну площадку"],
     ["Вместимость паллеты", (RD&&RD.pallets)? ("из файла продавца от "+fmtDateLong(RD.pallets.date)+"; у ВБ и Озона разная") : "не загружена"],
     ["Едет из Китая", (RD&&RD.inbound&&RD.inbound.china)? (fmt(RD.inbound.china.total)+" шт — ориентировочно через месяц у продавца на складе") : "не загружено"],
