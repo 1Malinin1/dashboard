@@ -5110,6 +5110,26 @@ function initGate(){
    (cache:"no-store"): даже со старой разметкой браузер узнаёт актуальную версию и тянет
    правильный wb-secure.js. Сам снимок по-прежнему кешируется намертво по своему ?v=. */
 const SNAPSHOT_FALLBACK_V="20260806e";       // если data-version.json недоступен
+/* Дашборд обычно висит открытой вкладкой сутками — и тогда проверка при загрузке
+   не срабатывает никогда: страница просто не перезагружается. Поэтому дополнительно
+   сверяем отпечаток при ВОЗВРАЩЕНИИ на вкладку и раз в 10 минут. Изменился build —
+   уходим на новый адрес (это и есть загрузка мимо кеша). Проверка стоит копейки:
+   data-version.json — сотня байт. */
+function watchBuild(loaded){
+  let last=0, busy=false;
+  const check=()=>{
+    if(busy || Date.now()-last<60000) return;            // не чаще раза в минуту
+    busy=true; last=Date.now();
+    fetch("data-version.json?ts="+Date.now(),{cache:"no-store"})
+      .then(r=>r.ok? r.json() : null)
+      .then(j=>{ if(j&&j.build&&j.build!==loaded) location.replace(location.pathname+"?b="+encodeURIComponent(j.build)); })
+      .catch(()=>{})
+      .then(()=>{ busy=false; });
+  };
+  document.addEventListener("visibilitychange",()=>{ if(!document.hidden) check(); });
+  window.addEventListener("focus",check);
+  setInterval(check,10*60*1000);
+}
 (function loadSnapshot(){
   const boot=v=>{ const sc=document.createElement("script");
     sc.src="wb-secure.js?v="+encodeURIComponent(v);
@@ -5131,6 +5151,7 @@ const SNAPSHOT_FALLBACK_V="20260806e";       // если data-version.json не�
           let cur=null;
           try{ cur=new URLSearchParams(location.search).get("b"); }catch(e){}
           if(cur!==build){ location.replace(location.pathname+"?b="+encodeURIComponent(build)); return; }
+          watchBuild(build);          // дальше следим за обновлениями, не закрывая вкладку
         }
         boot((j&&j.v)||SNAPSHOT_FALLBACK_V);
       })
