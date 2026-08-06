@@ -2764,14 +2764,58 @@ function dailyBars(mount,isoDates,values){
 /* ---- ₽ заказано/выкуплено по дням — из снимка (money={дата:{ключ:[о,в]}}), MP-aware ----
    ВБ: снимок orderSeries.money + загруженная воронка FUNNEL_CACHE поверх (дни, которых нет в снимке).
    Озон: ozon.orderSeries.money. «Всего»: пусто (₽ считаем по площадкам отдельно). ---- */
-function mpMoney(){
-  if(_appliedMp==="ozon") return (RD&&RD.ozon&&RD.ozon.orderSeries.money)||{};
-  if(_appliedMp==="all") return {};
+// карта денег ВБ по дням: снимок + добор из воронки за дни, которых в снимке нет
+function wbMoneyMap(){
   const snap=(RD&&RD.orderSeries.money)||{}, m={};
   for(const d in snap){ m[d]={}; for(const s in snap[d]) m[d][s]=snap[d][s].slice(); }
   FUNNEL_CACHE.forEach(r=>{ if(snap[r.date]) return; const dm=m[r.date]||(m[r.date]={});
     const cur=dm[r.sku]||(dm[r.sku]=[0,0]); cur[0]+=r.ordersSum||0; cur[1]+=r.buyoutSum||0; });
   return m;
+}
+// код товара для ВБ-артикула: арт. поставщика (= код 1С = артикул Озона), иначе сам sku
+function wbCodeMap(){ const m={};
+  ((WBDATA&&WBDATA.catalog)||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); m[c.sku]=s||(""+c.sku); });
+  return m; }
+/* Деньги для режима «Всего»: сводим ВБ и Озон по КОДУ товара (у ВБ — арт. поставщика,
+   у Озона артикул и есть этот код). Раньше на «Всего» деньги просто не показывались,
+   и «общая» вкладка общей не была. Возвращаем и разрез по площадкам — из него
+   считаются доли «где товар заходит лучше». */
+function combinedMoney(){
+  const out={all:{},wb:{},oz:{}}, codeBySku=wbCodeMap();
+  const add=(dst,d,code,v)=>{ const dm=dst[d]||(dst[d]={}), cur=dm[code]||(dm[code]=[0,0]);
+    cur[0]+=v[0]||0; cur[1]+=v[1]||0; };
+  const wbM=wbMoneyMap();
+  for(const d in wbM) for(const sku in wbM[d]){ const code=codeBySku[sku]||sku;
+    add(out.wb,d,code,wbM[d][sku]); add(out.all,d,code,wbM[d][sku]); }
+  const ozM=(RD&&RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.money)||{};
+  for(const d in ozM) for(const art in ozM[d]){ const code=(""+art).trim();
+    add(out.oz,d,code,ozM[d][art]); add(out.all,d,code,ozM[d][art]); }
+  return out;
+}
+function mpMoney(){
+  if(_appliedMp==="ozon") return (RD&&RD.ozon&&RD.ozon.orderSeries.money)||{};
+  if(_appliedMp==="all") return combinedMoney().all;
+  return wbMoneyMap();
+}
+// разрез штук по площадкам за период (для «Всего»): код → {wb,oz}
+function mpQtySplitByCode(fromIso,toIso){
+  const out={};
+  const scan=(ds,keyOf,k)=>{ if(!ds) return;
+    const idx=[]; ds.dates.forEach((d,i)=>{ if(d>=fromIso&&d<=toIso) idx.push(i); });
+    ds.catalog.forEach(c=>{ const ser=ds.bySku[c.sku]; if(!ser) return;
+      let sum=0; idx.forEach(i=>sum+=ser[i]||0); if(!sum) return;
+      const code=keyOf(c), e=out[code]||(out[code]={wb:0,oz:0}); e[k]+=sum; }); };
+  scan(WBDATA,c=>(""+(c.supplierCode||"")).trim()||(""+c.sku),"wb");
+  scan(OZDATA,c=>""+c.sku,"oz");
+  return out;
+}
+// суммы денег по площадкам за период (для подсказок на «Всего»)
+function mpMoneySplit(fromIso,toIso){
+  const cm=combinedMoney(), acc={wb:[0,0],oz:[0,0]};
+  ["wb","oz"].forEach(k=>{ const m=cm[k];
+    for(const d in m){ if(d<fromIso||d>toIso) continue;
+      for(const c in m[d]){ acc[k][0]+=m[d][c][0]||0; acc[k][1]+=m[d][c][1]||0; } } });
+  return acc;
 }
 function moneySumsForSkus(skus,fromDate,toDate){
   const set=new Set(skus.map(c=>c.sku)), m=mpMoney(); let ordersSum=0,buyoutSum=0;
@@ -2898,18 +2942,46 @@ function renderDynamicsTab(){
   if(hasPrev){ const prevDates=RDATES.slice(prevFrom,prevTo+1);
     if(prevDates.length) moneyPrev=moneySumsForSkus(skus,prevDates[0],prevDates[prevDates.length-1]); }
 
+  // На «Всего» держим разрез по площадкам: и штуки, и деньги — иначе «общая» вкладка
+  // не отвечает на главный вопрос «где товар заходит лучше».
+  const isAll=_appliedMp==="all";
+  const qSplit = (isAll&&isoDates.length)? mpQtySplitByCode(isoDates[0],isoDates[isoDates.length-1]) : null;
+  let qWb=0,qOz=0; if(qSplit){ const set=new Set(skus.map(c=>""+c.sku));
+    Object.entries(qSplit).forEach(([code,v])=>{ if(!set.has(code)) return; qWb+=v.wb; qOz+=v.oz; }); }
+  const mSplit = (isAll&&isoDates.length)? mpMoneySplit(isoDates[0],isoDates[isoDates.length-1]) : null;
+  const trS=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  const sepS=`border-top:1px solid var(--grid);margin-top:5px;padding-top:6px`;
+  const qtyTip = isAll? `<div class="t-hd">Заказы по площадкам</div>`
+      +trS("Wildberries",fmt(qWb)+" шт · "+(periodTotal?Math.round(qWb/periodTotal*100):0)+"%")
+      +trS("Ozon",fmt(qOz)+" шт · "+(periodTotal?Math.round(qOz/periodTotal*100):0)+"%")
+      +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${fmt(periodTotal)} шт</span></div>` : "";
+  const ordTip = mSplit? `<div class="t-hd">Заказано на сумму — по площадкам</div>`
+      +trS("Wildberries",rub(mSplit.wb[0]))+trS("Ozon",rub(mSplit.oz[0]))
+      +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${rub(mSplit.wb[0]+mSplit.oz[0])}</span></div>` : "";
+  const buyTip = mSplit? `<div class="t-hd">Выкуплено на сумму — по площадкам</div>`
+      +trS("Wildberries",rub(mSplit.wb[1]))+trS("Ozon",rub(mSplit.oz[1]))
+      +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${rub(mSplit.wb[1]+mSplit.oz[1])}</span></div>`
+      +`<div class="t-row" style="opacity:.75"><span class="k">Выкуп «дозревает» — свежие дни ниже реальных</span></div>` : "";
   const dynKpiCards=[
     {lbl:"Заказов за период",val:fmt(periodTotal),delta:hasPrev?delta(periodTotal,prevTotal,true):"",hero:true,
+      tip:qtyTip||undefined,
       spark:totals.length>1? spark(totals,cssv("--s1")):""},
     {lbl:"В среднем в день",val:avgPerDay.toLocaleString("ru-RU",{maximumFractionDigits:1})},
     {lbl:"Активных товаров",val:activeSkuCount+" из "+skus.length},
     {lbl:"Топ-категория",val:esc(topCat)+(topCatQty&&periodTotal?` (${Math.round(topCatQty/periodTotal*100)}%)`:"")},
   ];
-  // суммы ₽ по дням: ВБ и Озон — из снимка; в «Всего» по площадкам не сводим
-  if(_appliedMp!=="all") dynKpiCards.push(
-    {lbl:"Заказано на сумму, ₽",val:rub(moneyNow.ordersSum),delta:moneyPrev?delta(moneyNow.ordersSum,moneyPrev.ordersSum,true):""},
-    {lbl:"Выкуплено на сумму, ₽",val:rub(moneyNow.buyoutSum),delta:moneyPrev?delta(moneyNow.buyoutSum,moneyPrev.buyoutSum,true):""});
+  if(isAll) dynKpiCards.splice(1,0,
+    {lbl:"Из них Wildberries",val:fmt(qWb)+" шт",
+      delta:periodTotal?`<div class="kpi-d">${Math.round(qWb/periodTotal*100)}% заказов</div>`:""},
+    {lbl:"Из них Ozon",val:fmt(qOz)+" шт",
+      delta:periodTotal?`<div class="kpi-d">${Math.round(qOz/periodTotal*100)}% заказов</div>`:""});
+  dynKpiCards.push(
+    {lbl:"Заказано на сумму, ₽",val:rub(moneyNow.ordersSum),tip:ordTip||undefined,
+      delta:moneyPrev?delta(moneyNow.ordersSum,moneyPrev.ordersSum,true):""},
+    {lbl:"Выкуплено на сумму, ₽",val:rub(moneyNow.buyoutSum),tip:buyTip||undefined,
+      delta:moneyPrev?delta(moneyNow.buyoutSum,moneyPrev.buyoutSum,true):""});
   document.getElementById("dynKpis").innerHTML=dynKpiCards.map(kpiCard).join("");
+  wireKpiTips("dynKpis");
 
   document.getElementById("dynChartCap").textContent = isoDates.length
     ? `${fmtDate(isoDates[0])} – ${fmtDate(isoDates[isoDates.length-1])} · ${skus.length} товаров в выборке`
@@ -2919,30 +2991,70 @@ function renderDynamicsTab(){
   legend(document.getElementById("dynMoneyLegend"),[
     {name:"Заказано, ₽",color:cssv("--s1")},{name:"Выкуплено, ₽",color:cssv("--s2")}]);
   const _mm=mpMoney();
-  const hasMoneyData = _appliedMp!=="all" && isoDates.some(d=>_mm[d]);
+  const hasMoneyData = isoDates.some(d=>_mm[d]);
   if(hasMoneyData){
     const money=moneySeriesForSkus(skus,isoDates);
     dailyGroupedBars(document.getElementById("ch-dyn-money"),isoDates,[
       {name:"Заказано, ₽",color:cssv("--s1"),data:money.ordersSum},
       {name:"Выкуплено, ₽",color:cssv("--s2"),data:money.buyoutSum}]);
-    document.getElementById("dynMoneyCap").textContent="₽ в день · заказано и выкуплено (выкуп «дозревает», свежие дни ниже)";
+    document.getElementById("dynMoneyCap").textContent="₽ в день · заказано и выкуплено"
+      +(isAll? " · ВБ + Ozon вместе":"")+" (выкуп «дозревает», свежие дни ниже)";
   } else {
-    document.getElementById("ch-dyn-money").innerHTML=`<div class="empty-hint">${_appliedMp==="all"?"Суммы ₽ смотрите по каждой площадке отдельно — выберите «Wildberries» или «Ozon».":"За выбранный период нет данных по суммам заказов."}</div>`;
+    document.getElementById("ch-dyn-money").innerHTML=`<div class="empty-hint">За выбранный период нет данных по суммам заказов.</div>`;
   }
 
   const moneyMap = isoDates.length? moneyBySkuMap(isoDates[0],isoDates[isoDates.length-1]) : {};
+  // на «Всего» к каждому коду добавляем, сколько его взяли на ВБ и сколько на Озоне
+  const cmAll = (isAll&&isoDates.length)? combinedMoney() : null;
+  const sumMp=(m,code)=>{ let o=0,b=0; if(!m) return [0,0];
+    for(const d in m){ if(d<isoDates[0]||d>isoDates[isoDates.length-1]) continue;
+      const v=m[d][code]; if(v){ o+=v[0]||0; b+=v[1]||0; } } return [o,b]; };
   let rows=skus.map(c=>{ const m=moneyMap[c.sku]||{ordersSum:0,buyoutSum:0};
-    return {sku:c.sku,name:c.name,category:c.category,qty:sumRange(c.sku,from,to),ordersSum:m.ordersSum,buyoutSum:m.buyoutSum}; });
+    const r={sku:c.sku,name:c.name,category:c.category,qty:sumRange(c.sku,from,to),
+      ordersSum:m.ordersSum,buyoutSum:m.buyoutSum};
+    if(isAll){ const q=(qSplit&&qSplit[""+c.sku])||{wb:0,oz:0};
+      r.qtyWb=q.wb; r.qtyOz=q.oz;
+      const mw=sumMp(cmAll.wb,""+c.sku), mo=sumMp(cmAll.oz,""+c.sku);
+      r.ordWb=mw[0]; r.ordOz=mo[0]; r.buyWb=mw[1]; r.buyOz=mo[1];
+      r.ozShare = r.qty? r.qtyOz/r.qty : 0; }
+    return r; });
   rows=rows.filter(r=>r.qty>0);
   rows=sortRows(rows,dynSortState,{
     name:r=>r.name, category:r=>r.category, qty:r=>r.qty, share:r=>r.qty,
     ordersSum:r=>r.ordersSum, buyoutSum:r=>r.buyoutSum,
+    qtyWb:r=>r.qtyWb||0, qtyOz:r=>r.qtyOz||0, ozShare:r=>r.ozShare||0,
+    ordWb:r=>r.ordWb||0, ordOz:r=>r.ordOz||0,
   });
   document.getElementById("dynCount").textContent=rows.length+" товаров с заказами";
   document.getElementById("dynTblNote").textContent=`период: ${isoDates.length} дн.`;
   if(!rows.length){ document.getElementById("dynTable").innerHTML=`<tbody><tr><td class="empty-hint">За этот период заказов не найдено</td></tr></tbody>`; return; }
   if(dynView==="days"){ renderDynPivot(rows,skus,isoDates,from,hasMoneyData); return; }
-  document.getElementById("dynTable").className="rnp";
+  document.getElementById("dynTable").className="rnp"+(isAll?" wide":"");
+  if(isAll){
+    // «Всего» = разрез по площадкам: сколько штук и денег дал каждый маркетплейс
+    // по ОДНОМУ И ТОМУ ЖЕ коду товара (у ВБ это код 1С, у Озона — артикул).
+    // категорию убираем во вторую строку названия — иначе 9 колонок не влезают в экран
+    let h=`<thead><tr>${thSort("Товар / категория","name",dynSortState,"metric")}`
+      +`${thSort("ВБ, шт","qtyWb",dynSortState)}${thSort("Ozon, шт","qtyOz",dynSortState)}`
+      +`${thSort("Всего, шт","qty",dynSortState)}${thSort("Доля Ozon","ozShare",dynSortState)}`
+      +`${thSort("ВБ, ₽","ordWb",dynSortState)}${thSort("Ozon, ₽","ordOz",dynSortState)}`
+      +`${thSort("Всего, ₽","ordersSum",dynSortState)}</tr></thead><tbody>`;
+    rows.slice(0,300).forEach(r=>{
+      const share=periodTotal? (r.qty/periodTotal*100):0;
+      const oz=Math.round((r.ozShare||0)*100);
+      h+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}`
+        +`<span class="sku">${esc(r.category||"—")} · ${esc(r.sku)}</span></td>`
+        +`<td class="${r.qtyWb?"":"d-zero"}">${r.qtyWb? fmt(r.qtyWb):"—"}</td>`
+        +`<td class="${r.qtyOz?"":"d-zero"}">${r.qtyOz? fmt(r.qtyOz):"—"}</td>`
+        +`<td style="font-weight:650">${fmt(r.qty)}<span class="sub2 mut">${share.toFixed(1)}% всех заказов</span></td>`
+        +`<td class="share-cell" title="Какая доля заказов этого товара пришлась на Ozon (остальное — ВБ)">`
+          +`${oz?`<span class="share-fill" style="width:${oz}%"></span>`:""}<span class="share-val">${oz}%</span></td>`
+        +`<td>${r.ordWb? rub(r.ordWb):"—"}</td><td>${r.ordOz? rub(r.ordOz):"—"}</td>`
+        +`<td style="font-weight:640">${r.ordersSum? rub(r.ordersSum):"—"}</td></tr>`;
+    });
+    document.getElementById("dynTable").innerHTML=h+"</tbody>";
+    return;
+  }
   let html=`<thead><tr>${thSort("Товар","name",dynSortState,"metric")}${thSort("Категория","category",dynSortState)}
     ${thSort("Заказы, шт","qty",dynSortState)}${thSort("Доля","share",dynSortState)}${thSort("Заказано, ₽","ordersSum",dynSortState)}${thSort("Выкуплено, ₽","buyoutSum",dynSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
