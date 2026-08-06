@@ -67,6 +67,12 @@ function parseFinanceSheet(XLSX, wb, catalogSkuSet) {
   if (rows.length < 2) throw new Error('Лист найден, но в нём нет строк с данными.');
   const colIdx = {}; for (const k in FIN_COLS) colIdx[k] = header.indexOf(FIN_COLS[k]);
   if (colIdx.sku < 0 || colIdx.payout < 0) throw new Error('Не нашёл нужные колонки — это точно отчёт о реализации WB?');
+  // ВАЖНО: колонки ищутся по ТОЧНОМУ имени. Если WB переименует «Хранение» или «Удержания»,
+  // indexOf вернёт -1, val() молча отдаст 0 — и целая статья расходов исчезнет из «Итого к оплате»
+  // без единой ошибки. Поэтому о ненайденных колонках сообщаем вслух.
+  const missing = Object.keys(FIN_COLS).filter(k => colIdx[k] < 0);
+  if (missing.length) console.warn('  ⚠ не нашёл колонки в отчёте (будут считаться нулём): '
+    + missing.map(k => '«' + FIN_COLS[k] + '»').join(', '));
   const val = (r, k) => (colIdx[k] >= 0 ? num(r[colIdx[k]]) : 0);
   const byId = {}; let matched = 0, total = 0;
   for (let i = 1; i < rows.length; i++) {
