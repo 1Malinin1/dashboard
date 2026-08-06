@@ -125,14 +125,22 @@ rows.forEach(r=>{ addB('Мск','Ozon',r,r.oM,r.oDays); addB('Нск','Ozon',r,r
 const plan=Object.entries(buckets).map(([k,items])=>{
   const [whn,mp]=k.split('|'); const total=items.reduce((a,x)=>a+x.pal,0);
   const pool=items.map(x=>({...x,left:x.pal})).sort((a,b)=>(a.days===Infinity?1e9:a.days)-(b.days===Infinity?1e9:b.days));
-  const trucks=[]; let cur=[],cp=0;
-  const flush=()=>{ if(cp>0) trucks.push({pallets:cp,items:cur}); cur=[];cp=0; };
-  while(pool.some(x=>x.left>0)){ let any=false;
-    for(const it of pool){ if(it.left<=0) continue; if(cp>=PALLETS_PER_TRUCK) flush();
-      const ex=cur.find(c=>c.sup===it.sup); if(ex) ex.pal++; else cur.push({sup:it.sup,pal:1});
-      it.left--; cp++; any=true; }
-    if(!any) break; }
-  flush();
+  // машины заводим ЗАРАНЕЕ (целые + остаток) и раздаём паллеты каждого кода СРАЗУ ПО ВСЕМ:
+  // в приоритете машина, где кода ещё нет, при равенстве — где больше свободного места.
+  // Так ассортимент размазан по всем машинам, а не только по первой (см. index.html).
+  const nFull=Math.floor(total/PALLETS_PER_TRUCK), rest=total%PALLETS_PER_TRUCK;
+  const caps=[]; for(let i=0;i<nFull;i++) caps.push(PALLETS_PER_TRUCK);
+  if(rest>0) caps.push(rest);
+  const trucks=caps.map(c=>({pallets:0,free:c,items:[]}));
+  pool.forEach(it=>{ while(it.left>0){
+    let best=null,bestHas=2,bestFree=-1;
+    trucks.forEach(t=>{ if(t.free<=0) return;
+      const has=t.items.some(x=>x.sup===it.sup)?1:0;
+      if(has<bestHas || (has===bestHas && t.free>bestFree)){ best=t; bestHas=has; bestFree=t.free; } });
+    if(!best) break;
+    const ex=best.items.find(x=>x.sup===it.sup);
+    if(ex) ex.pal++; else best.items.push({sup:it.sup,pal:1});
+    best.free--; best.pallets++; it.left--; } });
   return {whn,mp,total,trucks,full:trucks.filter(t=>t.pallets>=PALLETS_PER_TRUCK).length,
     tail:trucks.filter(t=>t.pallets<PALLETS_PER_TRUCK).reduce((a,t)=>a+t.pallets,0),codes:items.length};
 }).sort((a,b)=>b.total-a.total);

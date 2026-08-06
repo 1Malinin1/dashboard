@@ -1953,7 +1953,7 @@ function turnHowTo(view,oz){
       "ВБ не показывает путь товара от отправки до приёмки. Поэтому об отгрузке на ВБ сообщаете вы, она попадает в «в пути», а закрывается автоматически, когда остаток на ВБ вырастет.",
       "У Озона всё видно самому: создали поставку — она в «в пути», приехала — перешла в остаток.",
       "Стартовая партия округляется до паллеты ВВЕРХ («не менее "+LAUNCH_QTY+"»), обычный подсорт — вниз (неполную паллету не везём). Такие строки помечены звёздочкой.",
-      "Машина набивается максимально разным ассортиментом: паллеты раздаются кодам по кругу, начиная с самых горящих, — так в одну машину попадает как можно больше товаров.",
+      "Каждая машина набивается максимально разным ассортиментом: сначала считаем, сколько всего машин нужно, а потом паллеты каждого кода раскладываем сразу по всем машинам — так ассортимент ровно размазан, а не весь в первой машине.",
       "Если паллет на складе меньше, чем на машину, — машина не собирается, показываем просто паллеты. Если у товара не набирается даже паллета, в строке стоит пометка.",
       "Статус: «Срочно» — покрытие меньше "+Math.round(RESUPPLY_DAYS/3)+" дней; «Подсорт» — меньше "+RESUPPLY_DAYS+"; «Нет на складе» — отгружать нечего.",
       "Колонка «На складе» — сумма своих складов, под ней разбивка: Нск — Евросиб (Новосибирск), Мск — СХ Солнечногорск.",
@@ -2150,9 +2150,13 @@ const dTxt = v => v===Infinity? "∞" : Math.round(v);
 /* ---- МАШИНЫ ----
    Отгрузка идёт паллетами, паллеты грузятся в машину по PALLETS_PER_TRUCK штук,
    и машина собирается только с ОДНОГО склада на ОДНУ площадку. Машину набиваем
-   максимально разнообразным ассортиментом: раздаём по одной паллете каждому коду
-   по кругу (round-robin), начиная с самых «горящих» — так в одну машину попадает
-   как можно больше разных товаров.
+   максимально разнообразным ассортиментом — причём КАЖДУЮ, а не только первую.
+   Поэтому машины НЕ набиваются по очереди: сначала считаем, сколько их всего
+   (целые по PALLETS_PER_TRUCK + остаток), а потом раздаём паллеты каждого кода
+   СРАЗУ ПО ВСЕМ машинам — сначала в те, где этого кода ещё нет, при равенстве —
+   где больше свободного места. Раньше был round-robin с последовательным набиванием:
+   первая машина забирала весь ассортимент, мелкие коды кончались, и во вторую
+   попадали 3-4 крупных кода. Не возвращай это.
    Если на складе паллет меньше, чем на машину, — машина не собирается, показываем
    просто паллеты. Если у товара не набирается даже паллета — помечаем в строке. */
 const PALLETS_PER_TRUCK=33;
@@ -2169,20 +2173,27 @@ function truckPlan(rows){
     const total=items.reduce((a,x)=>a+x.pal,0);
     // порядок раздачи: сначала те, у кого меньше дней покрытия
     const pool=items.map(x=>({...x,left:x.pal})).sort((a,b)=>(a.days===Infinity?1e9:a.days)-(b.days===Infinity?1e9:b.days));
-    const trucks=[]; let cur=[], curPal=0;
-    const flush=()=>{ if(curPal>0){ trucks.push({pallets:curPal,items:cur}); } cur=[]; curPal=0; };
-    while(pool.some(x=>x.left>0)){
-      let placedRound=false;
-      for(const it of pool){
-        if(it.left<=0) continue;
-        if(curPal>=PALLETS_PER_TRUCK){ flush(); }
-        const ex=cur.find(c=>c.sup===it.sup);
-        if(ex) ex.pal++; else cur.push({sup:it.sup,name:it.name,pal:1});
-        it.left--; curPal++; placedRound=true;
+    // машины заводим ЗАРАНЕЕ: целые + остаток. Суммарная вместимость = всем паллетам,
+    // поэтому в конце все машины окажутся заполнены ровно.
+    const nFull=Math.floor(total/PALLETS_PER_TRUCK), rest=total%PALLETS_PER_TRUCK;
+    const caps=[]; for(let i=0;i<nFull;i++) caps.push(PALLETS_PER_TRUCK);
+    if(rest>0) caps.push(rest);
+    const trucks=caps.map(c=>({pallets:0,free:c,items:[]}));
+    pool.forEach(it=>{
+      while(it.left>0){
+        // ищем машину: в приоритете та, где этого кода ЕЩЁ НЕТ (ассортимент), при
+        // равенстве — с наибольшим свободным местом (машины наполняются равномерно)
+        let best=null, bestHas=2, bestFree=-1;
+        trucks.forEach(t=>{ if(t.free<=0) return;
+          const has=t.items.some(x=>x.sup===it.sup)?1:0;
+          if(has<bestHas || (has===bestHas && t.free>bestFree)){ best=t; bestHas=has; bestFree=t.free; }
+        });
+        if(!best) break;
+        const ex=best.items.find(x=>x.sup===it.sup);
+        if(ex) ex.pal++; else best.items.push({sup:it.sup,name:it.name,pal:1});
+        best.free--; best.pallets++; it.left--;
       }
-      if(!placedRound) break;
-    }
-    flush();
+    });
     const full=trucks.filter(t=>t.pallets>=PALLETS_PER_TRUCK);
     const tail=trucks.filter(t=>t.pallets<PALLETS_PER_TRUCK);
     return {wh,mp,total,trucks,full:full.length,tailPallets:tail.reduce((a,t)=>a+t.pallets,0),
