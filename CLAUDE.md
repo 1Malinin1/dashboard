@@ -59,9 +59,12 @@ node scripts/stamp-build.cjs                # ОБЯЗАТЕЛЬНО, если �
 git add wb-secure.js && git commit && git push
 ```
 
-- **`stamp-build.cjs`** — пишет в `data-version.json` отпечаток `index.html`. **Запускай перед
-  КАЖДЫМ коммитом, который трогает `index.html`** — иначе правка кода доедет до браузера продавца
-  только когда протухнет кеш GitHub Pages (до 10 минут), и он напишет «не вижу изменений».
+- **`stamp-build.cjs`** — пишет в `data-version.json` отпечаток `index.html`. Без него правка кода
+  доезжает до браузера продавца только когда протухнет кеш GitHub Pages (до 10 минут), и он пишет
+  «не вижу изменений». **Руками запускать не нужно — это делает git-хук** `.githooks/pre-commit`
+  (срабатывает, когда в коммит попадает `index.html`, и сам добавляет `data-version.json`).
+  **В НОВОЙ СЕССИИ включи хук одной командой:** `git config core.hooksPath .githooks` — конфиг
+  git'а не переживает пересоздание контейнера, а сам хук лежит в репозитории.
 - **`decrypt.cjs <код>`** — расшифровывает `wb-secure.js` → `decrypted/wb-data.js` + `wb-reports.js`.
 - **`encrypt.cjs <код>`** — обратно, `decrypted/*.js` → `wb-secure.js` (с самопроверкой roundtrip).
 - **`ingest-finance.cjs файл1.xlsx файл2.xlsx ...`** — разбирает отчёты «О реализации» и/или
