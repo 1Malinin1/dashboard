@@ -202,6 +202,8 @@
   .truckplan{margin-bottom:12px}
   .truckplan .tp-title{font-size:12px;font-weight:700;letter-spacing:.02em;text-transform:uppercase;
     color:var(--text-1);margin-bottom:7px}
+  /* пометка «план не зависит от фильтров» — тем же размером, но спокойным цветом */
+  .truckplan .tp-title .tp-note{font-weight:600;text-transform:none;letter-spacing:0;color:var(--muted)}
   .truckplan .tp-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:10px}
   .truckplan .tp-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:10px 12px}
   .truckplan .tp-head{font-weight:700;font-size:13px;color:var(--text-1);margin-bottom:3px}
@@ -2314,7 +2316,12 @@ function truckPlan(rows){
   }).sort((a,b)=>b.total-a.total);
 }
 // Сводка «План машин» под KPI: по каждому складу и площадке — паллеты, машины, ассортимент.
-function renderTruckPlan(rows){
+/* ПЛАН МАШИН СТРОИТСЯ ПО ВСЕМУ ПОДСОРТУ, а не по отфильтрованной таблице.
+   Машина — физическая отгрузка: она не перестаёт быть полной оттого, что продавец
+   отфильтровал таблицу по одной категории. Раньше сюда приходили отфильтрованные
+   строки, план пересобирался на подмножестве, и появлялись «огрызки» вроде
+   «остаток 24 палл.», которых в реальности нет. Фильтры влияют только на таблицу. */
+function renderTruckPlan(rows,filtered){
   const el=document.getElementById("turnTrucks"); if(!el) return;
   const mp=_appliedMp;
   let plan=truckPlan(rows);
@@ -2333,7 +2340,9 @@ function renderTruckPlan(rows){
       +(p.tailPallets? ` · остаток <b>${p.tailPallets}</b> палл. (на машину не хватает)` : "")
       +` · ${p.codes} кодов</div>${list}</div>`;
   }).join("");
-  el.innerHTML=`<div class="tp-title">План машин · ${PALLETS_PER_TRUCK} паллет в машине, сборка с одного склада на одну площадку</div><div class="tp-grid">${cards}</div>`;
+  el.innerHTML=`<div class="tp-title">План машин · ${PALLETS_PER_TRUCK} паллет в машине, сборка с одного склада на одну площадку`
+    +(filtered? `<span class="tp-note"> · план по всему подсорту — фильтры таблицы на него не влияют</span>`:"")
+    +`</div><div class="tp-grid">${cards}</div>`;
 }
 function resupStatusFor(r){
   if(_appliedMp==="wb") return r.stW;
@@ -2344,7 +2353,8 @@ function renderTurnResupply(){
   const tbl=document.getElementById("turnTable");
   const mp=_appliedMp, showW=mp!=="ozon", showO=mp!=="wb";
   tbl.className="rnp"+(showW&&showO? " wide":"");
-  let rows=turnFilteredRows(resupplyRows(),null);
+  const allRows=resupplyRows();          // весь подсорт — для плана машин (фильтры на него не влияют)
+  let rows=turnFilteredRows(allRows,null);
   // на выбранной площадке показываем только то, что к ней относится
   if(mp==="wb")   rows=rows.filter(r=>r.needW>0||r.shipW>0||r.have>0||r.china>0||r.onOrder>0);
   if(mp==="ozon") rows=rows.filter(r=>r.needO>0||r.shipO>0||r.have>0||r.china>0||r.onOrder>0);
@@ -2423,7 +2433,11 @@ function renderTurnResupply(){
       +`<td>${resupBadge(st)}</td></tr>`;
   });
   html+="</tbody>"; tbl.innerHTML=html;
-  renderTruckPlan(rows);
+  // пометку про фильтры показываем только когда фильтр реально включён
+  const anyFilter = !!document.getElementById("turnSearch").value.trim()
+    || selCats("turnCat").length>0 || selCats("turnProduct").length>0
+    || Object.keys(turnColFilters).some(k=>turnColFilters[k]&&turnColFilters[k].size);
+  renderTruckPlan(allRows, anyFilter);
 }
 function renderTurnoverSimple(){
   // «Подсорт» — свой рендер (и свои KPI); сюда попадаем в т.ч. из панели фильтра колонки
@@ -2652,7 +2666,8 @@ function exportResupplyXLSX(){
   // иначе лист читается сплошняком и непонятно, где кончается одна машина.
   // лист машин — тоже под выбранную площадку (как таблица и остальные листы):
   // раньше в файл ВБ попадали и машины Озона
-  const plan=truckPlan(rows).filter(p=>_appliedMp==="all"||p.mp===_appliedMp);
+  // лист машин — по ВСЕМУ подсорту: это план отгрузки, он не зависит от фильтров таблицы
+  const plan=truckPlan(resupplyRows()).filter(p=>_appliedMp==="all"||p.mp===_appliedMp);
   const tHead=["Склад","Площадка","Машина","Код 1С","Название",
     "Остаток на складе, шт","К отгрузке, шт","Паллет"];
   const tData=[tHead];
