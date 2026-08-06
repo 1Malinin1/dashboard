@@ -52,6 +52,14 @@ decipher.setAuthTag(tag);
 const back = JSON.parse(Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8'));
 const ok = back.BAKED_FINANCE.length === out.BAKED_FINANCE.length && back.REAL_DATA.catalog.length === out.REAL_DATA.catalog.length;
 
+// Версия снимка для кеш-бастинга. Лежит отдельным крошечным файлом: index.html грузит его
+// БЕЗ кеша и уже по нему запрашивает wb-secure.js. Так обновление данных доезжает до браузера
+// даже с закешированной разметкой (раньше версия жила в index.html и залипала вместе с ним).
+const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
+fs.writeFileSync(path.join(ROOT, 'data-version.json'),
+  JSON.stringify({ v: stamp, period: out.BAKED_PERIOD, builtAt: new Date().toISOString() }) + '\n');
+console.log('data-version.json:', stamp);
+
 console.log('wb-secure.js записан:', (js.length / 1024 | 0), 'KB · каталог', out.REAL_DATA.catalog.length,
   '· фин.агрегатов', out.BAKED_FINANCE.length, '· рекл.агрегатов', out.BAKED_ADS.length,
   '· строк воронки', out.BAKED_FUNNEL.length,
