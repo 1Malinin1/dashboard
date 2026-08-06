@@ -2337,13 +2337,34 @@ function renderTurnResupply(){
   const ship = r => (showW? r.shipW:0)+(showO? r.shipO:0);
   const toShip=rows.filter(r=>ship(r)>0), noStock=rows.filter(r=>resupStatusFor(r)==="nostock");
   const mpTxt = mp==="wb"? "Wildberries" : (mp==="ozon"? "Ozon" : "обе площадки");
+  // «Останется на складе» — согласованно с «К отгрузке» НА ЭТОМ ЖЕ экране: склад один на две
+  // площадки, поэтому раньше здесь всегда стоял остаток после ОБЕИХ отгрузок и число не менялось
+  // при переключении ВБ/Озон — выглядело как поломка. Теперь на площадке показываем остаток после
+  // её отгрузки, а в подсказке — полную картину: сколько уйдёт на вторую и что останется в итоге.
+  const whAll=rows.reduce((a,r)=>a+r.have,0);
+  const shipMp=toShip.reduce((a,r)=>a+ship(r),0);
+  const shipW=rows.reduce((a,r)=>a+r.shipW,0), shipO=rows.reduce((a,r)=>a+r.shipO,0);
+  const restMp=Math.max(0,whAll-shipMp), restAll=Math.max(0,whAll-shipW-shipO);
+  const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  const restTip = mp==="all"
+    ? `<div class="t-hd">Останется на складе</div>`+tr2("На складе сейчас",fmt(whAll)+" шт")
+      +tr2("− на Wildberries","−"+fmt(shipW)+" шт")+tr2("− на Ozon","−"+fmt(shipO)+" шт")
+      +tr2("= останется",fmt(restAll)+" шт")
+    : `<div class="t-hd">Останется на складе после отгрузки на ${mpTxt}</div>`
+      +tr2("Склад один на две площадки")
+      +tr2("На складе сейчас",fmt(whAll)+" шт")+tr2("− на "+mpTxt,"−"+fmt(shipMp)+" шт")
+      +tr2("= останется",fmt(restMp)+" шт")
+      +tr2("С этого же склада уйдёт на "+(mp==="wb"?"Ozon":"Wildberries"),fmt(mp==="wb"?shipO:shipW)+" шт")
+      +tr2("После обеих площадок останется",fmt(restAll)+" шт");
   document.getElementById("turnKpis").innerHTML=[
     {lbl:"Позиций требуют подсорта",val:rows.filter(r=>need(r)>0).length+" из "+rows.length,
      valColor:toShip.length?"var(--accent)":"var(--text-1)"},
-    {lbl:"К отгрузке со склада, шт",val:fmt(toShip.reduce((a,r)=>a+ship(r),0))},
+    {lbl:"К отгрузке со склада, шт",val:fmt(shipMp)},
     {lbl:"Нечем закрыть (нет на складе)",val:noStock.length,valColor:noStock.length?"var(--crit-txt)":"var(--text-1)"},
-    {lbl:"Останется на складе, шт",val:fmt(rows.reduce((a,r)=>a+r.rest,0))},
+    {lbl: mp==="all"? "Останется на складе, шт" : "Останется после отгрузки на "+mpTxt+", шт",
+     val:fmt(mp==="all"? restAll : restMp), tip:restTip},
   ].map(kpiCard).join("");
+  wireKpiTips("turnKpis");
   const whDate=(RD&&RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date) : null;
   document.getElementById("turnCount").textContent = (whDate
     ? (rows.length+" позиций · склад на "+whDate+" · цель — "+RESUPPLY_DAYS+" дней")
