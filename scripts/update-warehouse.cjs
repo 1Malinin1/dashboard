@@ -28,7 +28,9 @@ if(!['stock','china','order'].includes(kind)||!file){
   console.error('usage: node scripts/update-warehouse.cjs <stock|china|order> <файл.xls> [ГГГГ-ММ-ДД]');process.exit(1);}
 
 const S=v=>(''+(v==null?'':v)).replace(/ /g,' ').replace(/\s+/g,' ').trim();
-const code=v=>S(v).replace(/[\s ]/g,'');                       // «487 160» → «487160»
+// 1С печатает разделитель разрядов и пробелом, и ЗАПЯТОЙ: «487 160» и «474,092» → 487160/474092.
+// Без срезания запятой строки не проходили /^\d+$/ и файл молча читался как пустой.
+const code=v=>S(v).replace(/[\s ,]/g,'');
 const num=v=>{ const s=S(v).replace(/[\s ]/g,'').replace(/,/g,''); if(!s) return 0;
   const n=parseFloat(s); return isNaN(n)?0:n; };
 
@@ -51,12 +53,13 @@ for(let i=0;i<Math.min(24,rows.length);i++){ if((rows[i]||[]).some(x=>S(x)==='Н
 const layout = isOrders ? 'B' : 'A';
 if(layout==='A'&&hr<0){ console.error('не нашёл строку-шапку с ячейкой «Номенклатура.Код»'); process.exit(1); }
 const bySup={}, byWh={}; let taken=0, skipped={}, total=0;
+let cols=[];   // колонки-склады из шапки (нужны и ниже, при мерже по складам)
 
 if(layout==='A'){
   const H=rows[hr].map(S);
   const iCode=H.findIndex(x=>x==='Номенклатура.Код');
   // колонки складов — всё между кодом и «Итог» (сам «Итог» не берём, чтобы не задвоить)
-  const cols=[]; for(let i=iCode+1;i<H.length;i++){ const h=H[i]; if(!h) continue; if(/^Итог/i.test(h)) break; cols.push({i,name:h}); }
+  for(let i=iCode+1;i<H.length;i++){ const h=H[i]; if(!h) continue; if(/^Итог/i.test(h)) break; cols.push({i,name:h}); }
   if(!cols.length){ console.error('не нашёл колонок складов в шапке: '+JSON.stringify(H)); process.exit(1); }
   console.log('раскладка «ведомость по складам» · шапка в строке '+(hr+1)+' · склады: '+cols.map(c=>c.name).join(' · '));
   for(let i=hr+1;i<rows.length;i++){
@@ -90,7 +93,32 @@ if(layout==='A'){
   console.log('заказов поставщикам в файле: '+orders);
 }
 
+// Страховка: если из файла не взято НИ ОДНОЙ строки — это почти всегда сбой разбора
+// (сменился формат кода/шапки), а не «склад опустел». Пишем ошибку и НЕ трогаем снимок.
+if(taken===0){
+  console.error('\n❌ Из файла не взято ни одной строки — снимок НЕ изменён.');
+  console.error('   Проверьте колонку с кодом («Номенклатура.Код») и формат кодов в файле.');
+  process.exit(1);
+}
 if(kind==='stock'){
+  // МЕРЖ ПО СКЛАДАМ, а не замена целиком. Продавец присылает и полную ведомость (все склады
+  // в шапке), и выгрузку по ОДНОМУ складу («Номенклатура.Код» + «СХ Солнечногорск»). Полная
+  // замена во втором случае молча обнуляла бы второй склад — а он реальный.
+  // Правило: склады, названные в шапке файла, перезаписываются целиком (нет строки = 0 там),
+  // склады, которых в файле нет, сохраняются как были.
+  const fileWh=new Set(Object.keys(byWh));
+  cols.forEach(c=>fileWh.add(c.name));                       // и те, что в шапке, но без остатков
+  const prev=(RD.warehouse&&RD.warehouse.bySup)||{};
+  const kept=new Set();
+  Object.entries(prev).forEach(([k,v])=>{
+    const keep={}; let sum=0;
+    Object.entries(v.wh||{}).forEach(([n,q])=>{ if(!fileWh.has(n)){ keep[n]=q; sum+=q; kept.add(n); } });
+    if(sum<=0) return;
+    const e=bySup[k]||(bySup[k]={qty:0,wh:{}});
+    e.qty+=sum; Object.entries(keep).forEach(([n,q])=>{ e.wh[n]=(e.wh[n]||0)+q; byWh[n]=(byWh[n]||0)+q; });
+  });
+  console.log('склады из файла (перезаписаны): '+[...fileWh].join(' · ')
+    +(kept.size? ' | сохранены как были: '+[...kept].join(' · ') : ' | других складов в снимке не было'));
   RD.warehouse={date:dateArg, split:false, byWh, bySup};
 } else {
   RD.inbound=RD.inbound||{};
