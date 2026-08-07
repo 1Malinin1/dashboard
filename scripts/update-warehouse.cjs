@@ -33,6 +33,14 @@ const S=v=>(''+(v==null?'':v)).replace(/ /g,' ').replace(/\s+/g,' ').trim();
 const code=v=>S(v).replace(/[\s ,]/g,'');
 const num=v=>{ const s=S(v).replace(/[\s ]/g,'').replace(/,/g,''); if(!s) return 0;
   const n=parseFloat(s); return isNaN(n)?0:n; };
+// Продавец выгружает склад с разными подписями колонки: «Склад Евросиб», «Нск», «Новосибирск».
+// Без приведения к одному имени мерж по складам добавил бы ВТОРОЙ склад рядом со старым
+// и задвоил остаток (старый бы сохранился как «отсутствующий в файле»). Приводим к каноничным
+// именам — тем, что понимает дашборд (whShort в index.html).
+const canonWh=v=>{ const s=S(v);
+  if(/евросиб|новосиб|^нск$/i.test(s)) return 'Склад Евросиб';
+  if(/солнечногор|москв|^мск$/i.test(s)) return 'СХ Солнечногорск';
+  return s; };
 
 const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
@@ -59,7 +67,10 @@ if(layout==='A'){
   const H=rows[hr].map(S);
   const iCode=H.findIndex(x=>x==='Номенклатура.Код');
   // колонки складов — всё между кодом и «Итог» (сам «Итог» не берём, чтобы не задвоить)
-  for(let i=iCode+1;i<H.length;i++){ const h=H[i]; if(!h) continue; if(/^Итог/i.test(h)) break; cols.push({i,name:h}); }
+  for(let i=iCode+1;i<H.length;i++){ const h=H[i]; if(!h) continue; if(/^Итог/i.test(h)) break;
+    // «плановый запас» и прочие справочные колонки складами не являются
+    if(/плановый|запас|норма/i.test(h)) continue;
+    cols.push({i,name:canonWh(h)}); }
   if(!cols.length){ console.error('не нашёл колонок складов в шапке: '+JSON.stringify(H)); process.exit(1); }
   console.log('раскладка «ведомость по складам» · шапка в строке '+(hr+1)+' · склады: '+cols.map(c=>c.name).join(' · '));
   for(let i=hr+1;i<rows.length;i++){
