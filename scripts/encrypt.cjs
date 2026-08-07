@@ -56,9 +56,15 @@ const ok = back.BAKED_FINANCE.length === out.BAKED_FINANCE.length && back.REAL_D
 // БЕЗ кеша и уже по нему запрашивает wb-secure.js. Так обновление данных доезжает до браузера
 // даже с закешированной разметкой (раньше версия жила в index.html и залипала вместе с ним).
 const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
-fs.writeFileSync(path.join(ROOT, 'data-version.json'),
-  JSON.stringify({ v: stamp, period: out.BAKED_PERIOD, builtAt: new Date().toISOString() }) + '\n');
-console.log('data-version.json:', stamp);
+// ВАЖНО: дописываем в существующий файл, а не перезаписываем его целиком. Рядом с версией
+// данных там живёт `build` — отпечаток index.html, по которому страница понимает, что вышла
+// новая разметка. Полная перезапись сносила его, и самообновление молча выключалось:
+// заливка данных (index.html при этом не менялся) не поднимала git-хук, и `build` не возвращался.
+const vfile = path.join(ROOT, 'data-version.json');
+let vj = {}; try { vj = JSON.parse(fs.readFileSync(vfile, 'utf8')); } catch (e) {}
+vj.v = stamp; vj.period = out.BAKED_PERIOD; vj.builtAt = new Date().toISOString();
+fs.writeFileSync(vfile, JSON.stringify(vj) + '\n');
+console.log('data-version.json:', stamp, vj.build ? '· build ' + vj.build + ' сохранён' : '· ⚠ build отсутствует — запустите scripts/stamp-build.cjs');
 
 console.log('wb-secure.js записан:', (js.length / 1024 | 0), 'KB · каталог', out.REAL_DATA.catalog.length,
   '· фин.агрегатов', out.BAKED_FINANCE.length, '· рекл.агрегатов', out.BAKED_ADS.length,
