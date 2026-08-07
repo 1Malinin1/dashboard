@@ -486,7 +486,11 @@
   /* таблица недель: 8 колонок с деньгами — поджимаем паддинги, чтобы влезала без прокрутки */
   #homeWeeksTable td,#homeWeeksTable th{padding-left:7px;padding-right:7px;white-space:nowrap}
   #homeWeeksTable td:first-child,#homeWeeksTable th:first-child{padding-left:14px}
-  #homeWeeksTable .sub2{white-space:nowrap}
+  /* вторая строка в ячейке (даты/дельты) — свой блок. Стиль .sub2 был прописан
+     только для #turnTable, поэтому здесь подписи слипались с числом: «02.08.267 дней» */
+  #homeWeeksTable td .sub2{display:block;font-size:10px;font-weight:500;line-height:1.25;
+    margin-top:2px;white-space:nowrap}
+  #homeWeeksTable td .sub2.mut{color:var(--muted)}
   /* мини-бар доли прибыли прямо в ячейке (data-ink) */
   table.rnp td.share-cell{position:relative;overflow:hidden}
   .share-fill{position:absolute;left:0;top:50%;transform:translateY(-50%);height:56%;
