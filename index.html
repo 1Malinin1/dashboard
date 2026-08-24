@@ -3226,9 +3226,23 @@ function moneyBySkuMap(fromDate,toDate){
    отделяем свои товары от остального большого кабинета.
    ========================================================================= */
 const FUNNEL_DB="wb_funnel_db", FUNNEL_STORE="days", FINANCE_STORE="finance", ADS_STORE="ads", DB_VERSION=5, FUNNEL_RETENTION_DAYS=90;
+/* IndexedDB здесь — ТОЛЬКО для старых браузерных загрузок (мёртвая ветка: данные давно
+   приезжают зашитым снимком). Поэтому её отказ НЕ должен ронять дашборд: раньше любая
+   ошибка открытия базы (приватное окно, запрет сайту хранить данные, повреждённая база)
+   отклоняла промис, `bootApp` глотал его в .catch(()=>{}) — и все три кеша оставались
+   пустыми. Продавец видел пустую «Главную» с надписью «пришлите первый отчёт», хотя
+   снимок с данными лежал рядом расшифрованный. Плюс `onblocked`: если база открыта в
+   другой вкладке со старой версией, open не зовёт ни success, ни error — промис висел
+   вечно. Теперь любая беда = «своих загрузок нет», снимок при этом виден. */
+let IDB_FAILED=false;   // показываем в строке свежести, чтобы отказ не был безмолвным
 function fdbOpen(){
   return new Promise((resolve,reject)=>{
-    const req=indexedDB.open(FUNNEL_DB,DB_VERSION);
+    let done=false;
+    const fail=e=>{ if(done) return; done=true; IDB_FAILED=true; reject(e||new Error("IndexedDB недоступна")); };
+    let req;
+    try{ req=indexedDB.open(FUNNEL_DB,DB_VERSION); }catch(e){ return fail(e); }
+    setTimeout(()=>fail(new Error("IndexedDB не отвечает")),8000);   // страховка от onblocked
+    req.onblocked=()=>fail(new Error("база открыта в другой вкладке"));
     req.onupgradeneeded=e=>{
       const db=e.target.result;
       // v3→v4: финансы построчно + все типы строк для формулы «Итого к оплате».
@@ -3253,20 +3267,21 @@ function fdbPutAll(store,records){
     tx.oncomplete=()=>resolve(); tx.onerror=()=>reject(tx.error);
   }));
 }
-function fdbGetAll(store){
-  return fdbOpen().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(store,"readonly");
-    const req=tx.objectStore(store).getAll();
-    req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
-  }));
+// ЧТЕНИЕ ИЗ IndexedDB НЕ БРОСАЕТ: нет базы / нет доступа → «локальных загрузок нет»,
+// и дашборд рисуется по зашитому снимку. Ошибка чтения тут никогда не должна
+// оборачиваться пустой «Главной» — см. комментарий у fdbOpen.
+function fdbReadSafe(store,method){
+  return fdbOpen().then(db=>new Promise(resolve=>{
+    try{
+      const tx=db.transaction(store,"readonly");
+      const req=tx.objectStore(store)[method]();
+      req.onsuccess=()=>resolve(req.result||[]);
+      req.onerror=()=>{ IDB_FAILED=true; resolve([]); };
+    }catch(e){ IDB_FAILED=true; resolve([]); }
+  })).catch(()=>{ IDB_FAILED=true; return []; });
 }
-function fdbGetAllKeys(store){
-  return fdbOpen().then(db=>new Promise((resolve,reject)=>{
-    const tx=db.transaction(store,"readonly");
-    const req=tx.objectStore(store).getAllKeys();
-    req.onsuccess=()=>resolve(req.result); req.onerror=()=>reject(req.error);
-  }));
-}
+function fdbGetAll(store){ return fdbReadSafe(store,"getAll"); }
+function fdbGetAllKeys(store){ return fdbReadSafe(store,"getAllKeys"); }
 function fdbClear(store){
   return fdbOpen().then(db=>new Promise((resolve,reject)=>{
     const tx=db.transaction(store,"readwrite");
@@ -3973,7 +3988,15 @@ let homeNoCostOnly=false;   // показывать только товары б
 function renderHomeTab(){
   const fresh=document.getElementById("homeFreshness");
   if(!FINANCE_CACHE.length){
-    fresh.innerHTML="";
+    /* Пустой свод при ЖИВОМ снимке — это сбой, а не «данных ещё не присылали».
+       Так выглядела поломка, когда отказ IndexedDB обнулял все кеши: продавец читал
+       «пришлите первый отчёт» и думал, что данные пропали. Говорим прямо. */
+    const bakedOk=(typeof BAKED_FINANCE!=="undefined") && BAKED_FINANCE.length>0;
+    fresh.innerHTML = bakedOk
+      ? '<span class="dot" style="background:var(--crit-txt)"></span>Данные в снимке есть'
+        +' ('+BAKED_FINANCE.length.toLocaleString("ru-RU")+' строк), но браузер не смог их показать.'
+        +' Обновите страницу; если не поможет — <a href="#" onclick="resetLocalData();return false;">сбросьте локальные данные</a>.'
+      : "";
     document.getElementById("homeEmpty").hidden=false;
     document.getElementById("homeContent").hidden=true;
     return;
@@ -5133,13 +5156,26 @@ addEventListener("resize",()=>{ clearTimeout(window._rt); window._rt=setTimeout(
    ========================================================================= */
 const LOCK_KEY="wb_pass_v1";
 const b64ToBytes=s=>{ const bin=atob(s); const u=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++)u[i]=bin.charCodeAt(i); return u; };
+let UNLOCK_FATAL="";   // причина, по которой снимок не открылся, если дело НЕ в коде доступа
 async function wbDecrypt(pass){
+  UNLOCK_FATAL="";
   const S=WB_SECURE, enc=new TextEncoder();
   const baseKey=await crypto.subtle.importKey("raw",enc.encode(pass),"PBKDF2",false,["deriveKey"]);
   const key=await crypto.subtle.deriveKey(
     {name:"PBKDF2",salt:b64ToBytes(S.salt),iterations:S.iter,hash:S.hash||"SHA-256"},
     baseKey,{name:"AES-GCM",length:256},false,["decrypt"]);
   const buf=await crypto.subtle.decrypt({name:"AES-GCM",iv:b64ToBytes(S.iv)},key,b64ToBytes(S.ct)); // бросает при неверном коде
+  /* Снимок СЖАТ (gzip) до шифрования: JSON внутри — 9,5 МБ, файл на сайте из-за base64
+     доходил до 12,7 МБ и на слабой связи просто не догружался (дашборд открывался пустым).
+     После сжатия — около 1,2 МБ. Поле `zip` появилось позже, поэтому старый снимок без
+     него читается по-прежнему как обычный текст. */
+  if(S.zip==="gzip"){
+    if(typeof DecompressionStream==="undefined"){
+      UNLOCK_FATAL="Браузер устарел и не умеет распаковывать данные — обновите браузер."; throw new Error("no DecompressionStream"); }
+    const ds=new DecompressionStream("gzip");
+    const stream=new Blob([buf]).stream().pipeThrough(ds);
+    return await new Response(stream).text();
+  }
   return new TextDecoder().decode(buf);
 }
 async function unlock(pass,remember){
@@ -5164,9 +5200,26 @@ function showLock(){
   if(per && WB_SECURE.period) per.textContent="Снимок за "+WB_SECURE.period;
   const inp=document.getElementById("lockInput"); if(inp) inp.focus();
 }
+/* Снимок не доехал (обрыв связи, файл ещё выкладывается на Pages, блокировщик).
+   РАНЬШЕ в этом случае молча открывался пустой дашборд с надписью «пришлите первый
+   отчёт» — продавец видел «ничего не отображается» и не понимал, что это сбой связи,
+   а не пропажа данных. Теперь честно говорим, что случилось, и даём кнопку «Повторить». */
+function snapshotFailed(){
+  document.body.classList.add("locked");
+  const ls=document.getElementById("lockScreen"); if(!ls) return;
+  ls.hidden=false;
+  ls.innerHTML='<div class="lock-card">'
+    +'<div class="lock-logo">WB</div><h2>Данные не загрузились</h2>'
+    +'<p class="lock-hint">Файл с данными не дошёл до браузера — обычно это обрыв связи или'
+    +' обновление сайта, которое ещё выкладывается (занимает несколько минут).<br><br>'
+    +'Данные на месте, дашборду просто нечего показать. Нажмите «Повторить».</p>'
+    +'<button type="button" class="lock-btn" onclick="location.reload()">Повторить</button>'
+    +'<div class="lock-msg err">Если не помогает — обновите страницу через пару минут'
+    +' или напишите ассистенту.</div></div>';
+}
 function initGate(){
-  if(typeof WB_SECURE==="undefined"){ // нет зашифрованного файла — работаем как раньше (пустое состояние/свои загрузки)
-    document.body.classList.remove("locked"); bootApp(); return;
+  if(typeof WB_SECURE==="undefined"){ // файл не загрузился или битый — это сбой, а не «нет данных»
+    snapshotFailed(); return;
   }
   const form=document.getElementById("lockForm");
   if(form) form.addEventListener("submit",async e=>{
@@ -5176,7 +5229,7 @@ function initGate(){
     const msg=document.getElementById("lockMsg"), btn=form.querySelector("button");
     msg.textContent="Проверяем…"; msg.className="lock-msg"; btn.disabled=true;
     const ok=await unlock(pass,remember); btn.disabled=false;
-    if(!ok){ msg.textContent="Неверный код"; msg.className="lock-msg err";
+    if(!ok){ msg.textContent=UNLOCK_FATAL||"Неверный код"; msg.className="lock-msg err";
       const inp=document.getElementById("lockInput"); inp.select(); }
   });
   const saved=(()=>{ try{ return localStorage.getItem(LOCK_KEY); }catch(e){ return null; } })();
@@ -5213,9 +5266,15 @@ function watchBuild(loaded){
   setInterval(check,10*60*1000);
 }
 (function loadSnapshot(){
+  /* Снимок — самый большой файл на сайте, и именно он чаще всего не доезжает при
+     слабой связи. Поэтому не сдаёмся с первого раза: две повторных попытки с паузой,
+     каждая — с новым хвостом в адресе (гарантированно мимо кеша битого ответа). */
+  let tries=0;
   const boot=v=>{ const sc=document.createElement("script");
-    sc.src="wb-secure.js?v="+encodeURIComponent(v);
-    sc.onload=initGate; sc.onerror=initGate;   // файла нет — гейт покажет пустое состояние
+    sc.src="wb-secure.js?v="+encodeURIComponent(v)+(tries? "&retry="+tries : "");
+    sc.onload=()=>initGate();
+    sc.onerror=()=>{ sc.remove();
+      if(tries<2){ tries++; setTimeout(()=>boot(v),1500*tries); } else snapshotFailed(); };
     document.head.appendChild(sc); };
   try{
     fetch("data-version.json?ts="+Date.now(),{cache:"no-store"})
