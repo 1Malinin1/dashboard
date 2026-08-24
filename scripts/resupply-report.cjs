@@ -22,9 +22,44 @@ const TOP=parseInt(process.argv[3],10)||15;
 const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
 const RD=ctx.__RD;
+// воронка ВБ нужна для % выкупа по окну (лежит в отчётах, а не в каталоге)
+let FUNNEL_WB=[];
+try{ const c2={};vm.createContext(c2);
+  vm.runInContext(fs.readFileSync(path.join(OUT,'wb-reports.js'),'utf8')
+    +'\nglobalThis.__F=(typeof BAKED_FUNNEL!=="undefined"? BAKED_FUNNEL:[]);',c2);
+  FUNNEL_WB=c2.__F||[]; }catch(e){ FUNNEL_WB=[]; }
 const F=n=>Math.round(n).toLocaleString('ru-RU');
 const D=v=>v===Infinity?'∞':Math.round(v);
 
+// % выкупа по окну «пропустить последнюю неделю, взять две предыдущие» — та же логика,
+// что buyoutFromFunnel/buyoutOf в index.html (держи синхронно). Незрелому окну не верим:
+// выкуп в снимке заморожен на момент выгрузки и задним числом не обновляется.
+const BUYOUT_HOLD=7, BUYOUT_WIN=14, BUYOUT_MIN_ORD=10;
+const addD=(d,n)=>{const t=new Date(d+'T00:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10);};
+function buyoutFromFunnel(funnel){
+  if(!funnel||!funnel.length) return null;
+  const ds=[...new Set(funnel.map(r=>r.date))].sort();
+  const to=addD(ds[ds.length-1],-BUYOUT_HOLD), from=addD(to,-(BUYOUT_WIN-1));
+  const rows=funnel.filter(r=>r.date>=from&&r.date<=to);
+  if(!rows.length) return null;
+  const bySku={}; let o=0,b=0;
+  rows.forEach(r=>{ const e=bySku[r.sku]||(bySku[r.sku]={o:0,b:0});
+    e.o+=r.ordersQty||0; e.b+=r.buyoutQty||0; o+=r.ordersQty||0; b+=r.buyoutQty||0; });
+  if(!o) return null;
+  // зрелость: день с заказами, но почти без выкупа = выкуп ещё не проставлен (см. index.html)
+  const byDate={};
+  rows.forEach(r=>{ const e=byDate[r.date]||(byDate[r.date]={o:0,b:0});
+    e.o+=r.ordersQty||0; e.b+=r.buyoutQty||0; });
+  const dead=Object.keys(byDate).filter(d=>byDate[d].o>=20&&byDate[d].b/byDate[d].o<0.15).sort();
+  return {from,to,all:b/o,bySku,dead,mature:dead.length===0,days:Object.keys(byDate).length};
+}
+const BW={ wb:buyoutFromFunnel(FUNNEL_WB), ozon:buyoutFromFunnel((RD.ozon&&RD.ozon.funnel)||[]) };
+function buyoutOf(mp,sku,fallback){
+  const bi=BW[mp];
+  if(bi && bi.mature){ const e=bi.bySku[sku];
+    return (e && e.o>=BUYOUT_MIN_ORD) ? e.b/e.o : bi.all; }
+  return fallback;
+}
 function mpStats(mp){
   const oz=mp==='ozon';
   const cat = oz? ((RD.ozon&&RD.ozon.catalog)||[]) : RD.catalog;
@@ -39,7 +74,8 @@ function mpStats(mp){
     const sup = oz? (''+c.sku) : (''+(c.supplierCode||'')).trim(); if(!sup) return;
     const s=ser[c.sku]; let sum=0; if(s) for(let i=Math.max(0,last-6);i<=last;i++) sum+=s[i]||0;
     const avgD=days? sum/days:0;
-    const buyout = oz? (c.ozBuyout!=null?c.ozBuyout:buyAvg) : (c.buyoutPct14d>0? c.buyoutPct14d/100 : buyAvg);
+    const buyout = buyoutOf(mp, c.sku,
+      oz? (c.ozBuyout!=null?c.ozBuyout:buyAvg) : (c.buyoutPct14d>0? c.buyoutPct14d/100 : buyAvg));
     const stock = oz? (c.ozStock||0) : (c.wbStock||0);   // свой склад в покрытие НЕ входит
     let transit = oz? (c.ozTransit||0) : 0;
     if(!oz && !done.has(sup)){ transit+=(openShip[sup]||0); done.add(sup); }
@@ -82,8 +118,10 @@ let rows=sups.map(sup=>{
   const P=PAL[sup]||null, palOz=P?(P.oz||0):0, palWb=P?(P.wb||0):0;
   let rMsk=mMsk, rNsk=mNsk;
   // mskOk=false — с Мск на эту площадку не возим (WB_FROM_MSK, см. index.html)
+  // Округляем ВВЕРХ (решение продавца 24.08) — округление вниз систематически не дотягивало
+  // до цели 30 дней. Держи синхронно с takePallets в index.html.
   const take=(needQty,cap,up,mskOk)=>{ if(cap<=0) return null;
-    const want=up? Math.ceil(needQty/cap) : Math.floor(needQty/cap);
+    const want=Math.ceil(needQty/cap);
     if(want<=0) return {pal:0,msk:0,nsk:0,qty:0};
     const a=mskOk? Math.min(want,Math.floor(rMsk/cap)) : 0, b=Math.min(want-a,Math.floor(rNsk/cap));
     rMsk-=a*cap; rNsk-=b*cap; return {pal:a+b,msk:a,nsk:b,qty:(a+b)*cap}; };
@@ -150,6 +188,15 @@ const toShip=rows.filter(r=>r.shipW+r.shipO>0);
 const noStock=needAny.filter(r=>r.have<=0);
 const urgent=needAny.filter(r=>r.minDays<DAYS/3);
 
+['wb','ozon'].forEach(mp=>{ const b=BW[mp]; const nm=mp==='wb'?'ВБ  ':'Озон';
+  if(!b){ console.log('% выкупа '+nm+': воронки нет → прежний источник'); return; }
+  console.log('% выкупа '+nm+': окно '+b.from+'…'+b.to+' ('+b.days+'/'+BUYOUT_WIN+' дн) → '
+    +(b.all*100).toFixed(1)+'%'
+    +(b.mature? ' · ПРИМЕНЕНО'
+      : ' · НЕ ЗРЕЛО (выкуп не проставлен за '+b.dead.length+' дн: '
+        +b.dead.join(', ')+') → взят прежний источник'));
+});
+console.log('');
 console.log('ПОДСОРТ НА '+DAYS+' ДНЕЙ · остатки ВБ на '+((RD.meta&&RD.meta.stockSnapshotDate)||'—')
   +' · Озон на '+((RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||'—')
   +' · склад на '+((RD.warehouse&&RD.warehouse.date)||'не загружен'));

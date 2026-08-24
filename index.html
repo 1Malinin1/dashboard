@@ -1528,6 +1528,58 @@ function turnBadge(s){ return `<span class="badge ${s==='discontinued'?'nodata':
 //   Озон: ozStock · ozTransit · ozBuyout; размер контейнера — из связанного ВБ-товара (кратность общая).
 // продаж/день = ср.заказов(7д) × выкуп; хватит = (остаток+в пути) ÷ продаж/день;
 // дозаказ при <130 дн = партия на 6 мес (ceil(продаж×180)), округляем ВВЕРХ до контейнера.
+/* ---- % ВЫКУПА ПО ОКНУ: «пропустить последнюю неделю, взять две предыдущие» ----
+   Просьба продавца 24.08: свежая неделя не показательна — товар ещё в пути, выкуп по ней
+   занижен. Поэтому окно = 14 дней, заканчивающихся за 7 дней до последней даты данных
+   (последняя дата 23.08 → окно 03.08–16.08). Одно правило на обе площадки.
+   Источник — воронка: `ordersQty` → `buyoutQty` (у Озона последняя ступень «Доставлено»).
+   Свой % берём у товара с 10+ заказами в окне, иначе общий по магазину.
+
+   ПРОВЕРКА ЗРЕЛОСТИ — обязательна. Выкуп в снимке заморожен на момент выгрузки и задним
+   числом НЕ обновляется: день, выгруженный в тот же день, навсегда остаётся с нулевым
+   выкупом. На реальных данных ВБ окно 03–16.08 давало 40% вместо 88% из каталога, и
+   подсорт от такого числа уехал бы вдвое вниз. Поэтому сравниваем хвост окна с началом:
+   если к концу окна выкуп резко падает — данные ещё дозревают, окну не верим и берём
+   прежний источник (у ВБ `buyoutPct14d`, у Озона `ozBuyout` из статусов заказов).
+   Чтобы окно заработало на ВБ, нужна ОДНА свежая выгрузка аналитики за период окна:
+   выгруженная сегодня, она содержит уже дозревший выкуп (так вышло с файлом Озона). */
+const BUYOUT_HOLD=7, BUYOUT_WIN=14, BUYOUT_MIN_ORD=10;
+function buyoutFromFunnel(funnel){
+  if(!funnel||!funnel.length) return null;
+  const dates=[...new Set(funnel.map(r=>r.date))].sort();
+  const to=addDays(dates[dates.length-1],-BUYOUT_HOLD), from=addDays(to,-(BUYOUT_WIN-1));
+  const rows=funnel.filter(r=>r.date>=from&&r.date<=to);
+  if(!rows.length) return null;
+  const bySku={}; let o=0,b=0;
+  rows.forEach(r=>{ const e=bySku[r.sku]||(bySku[r.sku]={o:0,b:0});
+    e.o+=r.ordersQty||0; e.b+=r.buyoutQty||0; o+=r.ordersQty||0; b+=r.buyoutQty||0; });
+  if(!o) return null;
+  /* ЗРЕЛОСТЬ — по физике, а не по тренду. День, в котором были заказы, но выкуп почти
+     нулевой, физически невозможен: значит по этому дню выкуп ещё не проставлен (или день
+     выгружали в тот же день и с тех пор не обновляли). Хотя бы один такой день в окне —
+     и всему окну верить нельзя. Сравнение «начало окна против хвоста» тут не работает:
+     у ВБ мёртвые дни оказались в НАЧАЛЕ окна, и тренд выглядел «растущим», то есть
+     здоровым. Порог: 20+ заказов за день при выкупе меньше 15%. */
+  const byDate={};
+  rows.forEach(r=>{ const e=byDate[r.date]||(byDate[r.date]={o:0,b:0});
+    e.o+=r.ordersQty||0; e.b+=r.buyoutQty||0; });
+  const dead=Object.keys(byDate).filter(d=>byDate[d].o>=20 && byDate[d].b/byDate[d].o<0.15).sort();
+  return {from,to,all:b/o,bySku,dead,mature:dead.length===0,
+    days:Object.keys(byDate).length};
+}
+let _buyoutWin={};
+function buyoutInfo(mp){
+  if(_buyoutWin[mp]!==undefined) return _buyoutWin[mp];
+  const f = mp==="ozon" ? (typeof OZ_FUNNEL!=="undefined"? OZ_FUNNEL:[]) : (FUNNEL_CACHE||[]);
+  return (_buyoutWin[mp]=buyoutFromFunnel(f));
+}
+// итоговый % выкупа товара: окно (если зрелое) → иначе прежний источник площадки
+function buyoutOf(mp,sku,fallback){
+  const bi=buyoutInfo(mp);
+  if(bi && bi.mature){ const e=bi.bySku[sku];
+    return (e && e.o>=BUYOUT_MIN_ORD) ? e.b/e.o : bi.all; }
+  return fallback;
+}
 function simpleTurnList(){
   const oz = _appliedMp==="ozon";
   const win=7, lastIdx=RDATES.length-1, days=Math.min(win,RDATES.length);
@@ -1541,8 +1593,9 @@ function simpleTurnList(){
     const s=seriesFor(c.sku); let sum=0;
     if(s) for(let i=Math.max(0,lastIdx-win+1);i<=lastIdx;i++) sum+=s[i]||0;
     const avgD = days? sum/days : 0;
-    const buyout = oz ? (c.ozBuyout!=null? c.ozBuyout : buyoutAvg)
-      : (c.buyoutPct14d>0 ? c.buyoutPct14d/100 : buyoutAvg);
+    const buyout = buyoutOf(oz?"ozon":"wb", c.sku,
+      oz ? (c.ozBuyout!=null? c.ozBuyout : buyoutAvg)
+         : (c.buyoutPct14d>0 ? c.buyoutPct14d/100 : buyoutAvg));
     const salesPerDay = avgD*buyout;
     // ПОКРЫТИЕ — только то, что уже на площадке. Товар на СВОЁМ складе сюда не входит
     // (просьба продавца): раньше складывался ownWarehouseStock, и «хватит дней» считалось
@@ -1966,8 +2019,16 @@ function turnHowTo(view,oz,mp){
   // в покрытие входит только то, что уже на площадке или официально едет на неё
   const covTxt = oz? "остаток на Озоне + в пути на Озон (заявки и партии, которые показывает сам Озон)"
                    : "остаток на складах WB";
-  const buyTxt = oz? "% выкупа за дозревшее окно (14 дней со сдвигом на 7)"
-                   : "% выкупа 14-дневный из каталога ВБ";
+  /* % выкупа: пробуем окно «пропустить последнюю неделю, взять две предыдущие», и текст
+     обязан говорить, что применилось РЕАЛЬНО — иначе продавец читает про окно, а расчёт
+     идёт по каталогу (или наоборот) и цифры не сходятся с описанием. */
+  const _bi = (mp==="all")? null : buyoutInfo(oz? "ozon":"wb");
+  const _dr = d=>d? d.slice(8,10)+"."+d.slice(5,7) : "";
+  const buyTxt = (_bi && _bi.mature)
+    ? "% выкупа за окно "+_dr(_bi.from)+"–"+_dr(_bi.to)+" (последняя неделя пропущена — по ней выкуп ещё не дозрел); "
+      +"по товару свой процент при 10+ заказах в окне, иначе общий "+Math.round(_bi.all*100)+"%"
+    : (oz? "% выкупа из статусов заказов Озона (за дозревшее окно)"
+         : "% выкупа 14-дневный из каталога ВБ");
   const P=Math.round(TURN_PEAK_BUYOUT*100);
   const mpSuf = mp==="all"? "" : (oz? " — Ozon" : " — Wildberries");
   if(view==="reorder") return {title:"Как считается дозаказ"+mpSuf, steps:[
@@ -1984,7 +2045,7 @@ function turnHowTo(view,oz,mp){
     const W=mp!=="ozon", O=mp!=="wb", both=W&&O;                 // что показываем в тексте
     const mpName = both? "площадке" : (O? "Озоне" : "ВБ");
     const steps=[
-      "Продаж/дн на "+mpName+" = заказы за 7 дней ÷ 7 × % выкупа",
+      "Продаж/дн на "+mpName+" = заказы за 7 дней ÷ 7 × "+(both? "% выкупа" : buyTxt),
       both? "Покрытие: ВБ = остаток на складах WB + ваши отгрузки, которые ещё не приняты; Озон = остаток + в пути на Озон"
         : (O? "Покрытие Озона = остаток на Озоне + в пути на Озон (заявки и партии, которые Озон показывает сам)"
              : "Покрытие ВБ = остаток на складах WB + ваши отгрузки, которые ещё не приняты"),
@@ -2013,7 +2074,7 @@ function turnHowTo(view,oz,mp){
     // «в пути» устроено принципиально по-разному — каждой площадке свой абзац
     if(W) notes.push("ВБ не показывает путь товара от отправки до приёмки. Поэтому об отгрузке на ВБ сообщаете вы, она попадает в «в пути», а закрывается автоматически, когда остаток на ВБ вырастет.");
     if(O) notes.push("У Озона всё видно самому: создали поставку — она в «в пути», приехала — перешла в остаток.");
-    notes.push("Стартовая партия округляется до паллеты ВВЕРХ («не менее "+LAUNCH_QTY+"»), обычный подсорт — вниз (неполную паллету не везём). Такие строки помечены звёздочкой.",
+    notes.push("Паллеты округляются ВВЕРХ: если потребность не делится на паллету ровно, везём паллету целиком с запасом. Раньше округляли вниз, и товар не дотягивал до "+RESUPPLY_DAYS+" дней (при паллете 108 шт и потребности 163 шт уезжала одна паллета — покрытие 24 дня вместо 30). Стартовые партии («не менее "+LAUNCH_QTY+"») помечены звёздочкой.",
       "Каждая машина набивается максимально разным ассортиментом: сначала считаем, сколько всего машин нужно, а потом паллеты каждого кода раскладываем сразу по всем машинам — так ассортимент ровно размазан, а не весь в первой машине.",
       "Если паллет на складе меньше, чем на машину, — машина не собирается, показываем просто паллеты. Если у товара не набирается даже паллета, в строке стоит пометка.",
       "ДОБОР МАШИНЫ: неполную машину от "+TRUCK_TOPUP_MIN+" паллет добиваем до "+PALLETS_PER_TRUCK+" — везти полупустую дороже, чем довезти то, что скоро понадобится. Добираем только тем, что на "+(both?"этой площадке":(O?"Озоне":"ВБ"))+" продастся за "+Math.round(TOPUP_SELL_DAYS/30)+" месяца (покрытие товара после добора не выходит за этот срок), и раздаём по одной паллете разным кодам — чтобы не создавать застой. Такие штуки помечены «добор машины». Если добить до полной нечем — не добираем вообще.",
@@ -2085,8 +2146,11 @@ function mpStats(mp){
     const ser=ds.bySku[c.sku]; let sum=0;
     if(ser) for(let i=Math.max(0,last-6);i<=last;i++) sum+=ser[i]||0;
     const avgD = days? sum/days : 0;
-    const buyout = oz ? (c.ozBuyout!=null? c.ozBuyout : buyoutAvg)
-                      : (c.buyoutPct14d>0? c.buyoutPct14d/100 : buyoutAvg);
+    // % выкупа — по окну «пропустить неделю, взять две» (buyoutOf), с откатом на прежний
+    // источник площадки, если данные окна ещё не дозрели. См. buyoutFromFunnel.
+    const buyout = buyoutOf(mp, c.sku,
+      oz ? (c.ozBuyout!=null? c.ozBuyout : buyoutAvg)
+         : (c.buyoutPct14d>0? c.buyoutPct14d/100 : buyoutAvg));
     const stock = oz ? (c.ozStock||0) : (c.wbStock||0);   // свой склад в покрытие НЕ входит
     // отгрузку по коду 1С добавляем ОДИН раз, даже если под кодом несколько артикулов ВБ
     let transit = oz ? (c.ozTransit||0) : 0;
@@ -2149,8 +2213,13 @@ function resupplyRows(){
     // mskOk=false — склад Мск для этой площадки недоступен (см. WB_FROM_MSK ниже).
     const takePallets=(needQty,cap,roundUp,mskOk)=>{
       if(cap<=0) return null;                                   // вместимость неизвестна
-      // обычный подсорт — вниз (неполную паллету не везём); стартовая партия — вверх («не менее»)
-      const want=roundUp? Math.ceil(needQty/cap) : Math.floor(needQty/cap);
+      /* ОКРУГЛЯЕМ ВВЕРХ (решение продавца 24.08). Раньше обычный подсорт округлялся ВНИЗ
+         («неполную паллету не везём»), и из-за этого товар systematически не дотягивал до
+         цели 30 дней: при паллете 108 шт и потребности 163 шт уезжала одна паллета и
+         покрытие выходило 24 дня вместо 30. Теперь недобор невозможен — берём паллету
+         с запасом. `roundUp` у стартовых партий сохранён как отдельный флаг (он ещё нужен
+         для пометки «не менее LAUNCH_QTY»), но на арифметику больше не влияет. */
+      const want=Math.ceil(needQty/cap);
       if(want<=0) return {pal:0,msk:0,nsk:0,qty:0};
       const mskPal=mskOk? Math.min(want,Math.floor(restMsk/cap)) : 0;
       const nskPal=Math.min(want-mskPal,Math.floor(restNsk/cap));
@@ -3337,6 +3406,7 @@ async function fdbRefreshCache(){
   funnelIsBaked=(raw.length===0 && baked.length>0);
   funnelHasBaked=(bakedKept.length>0);
   FUNNEL_CACHE=bakedKept.concat(raw).sort((a,b)=>a.date<b.date?-1:1);
+  _buyoutWin={};   // % выкупа ВБ считается по этой воронке — пересобрать окно
 }
 
 let FINANCE_CACHE=[];      // свод по (дата+артикул), пересобирается из построчных данных
@@ -5126,6 +5196,7 @@ function applyMpData(mp){
 }
 function hydrateData(){
   RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
+  _buyoutWin={};                 // окно % выкупа считается от воронки — пересобрать
   OZ_FUNNEL = (RD && RD.ozon && RD.ozon.funnel) ? RD.ozon.funnel : [];
   buildMpDatasets();
   _appliedMp=null; applyMpData("wb");
