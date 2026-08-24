@@ -3501,6 +3501,7 @@ let financeIsBaked=false;
 // Нормализуем в одном месте — и фильтры, и таблицы, и разбивка «Продано» становятся согласованы.
 function normFinCategory(sku,fallback){ return catalogCatBySku[sku] || fallback || ""; }
 let financeHasBaked=false;   // зашитый снимок присутствует в текущем своде (в т.ч. в миксе с загрузками)
+let financeEstFrom=null, financeEstTo=null;   // даты, за которые финансы — ОЦЕНКА, а не факт
 async function fdbRefreshFinanceCache(){
   const raw=await fdbGetAll(FINANCE_STORE);
   // Зашитый снимок — базовый слой, который присутствует ВСЕГДА. Ваши загрузки
@@ -3514,7 +3515,17 @@ async function fdbRefreshFinanceCache(){
   financeIsBaked=(raw.length===0 && baked.length>0);   // чисто снимок (свои отчёты не грузили)
   financeHasBaked=(bakedKept.length>0);
   FINANCE_ROW_COUNT=raw.length + (bakedKept.length && typeof BAKED_FINANCE_ROWS!=="undefined"? BAKED_FINANCE_ROWS : 0);
-  FINANCE_CACHE=bakedKept.concat(uploaded).map(r=>({...r,category:normFinCategory(r.sku,r.category)})).sort((a,b)=>a.date<b.date?-1:1);
+  /* ОЦЕНКА за даты после факта (scripts/model-finance.cjs). Продавцу закрыли доступ к отчётам
+     «О реализации», поэтому свежие недели считаются по коэффициентам с заказов. Строки помечены
+     est:true и НИКОГДА не молчат об этом: дата оценки отдельно печатается в строке свежести,
+     а недели в разборе помечаются «оценка». Настоящий отчёт всегда сильнее — если дата попала
+     и в факт, и в оценку, берём факт. */
+  const est=(typeof MODELED_FINANCE!=="undefined" && MODELED_FINANCE)? MODELED_FINANCE : [];
+  const factDates=new Set(bakedKept.concat(uploaded).map(r=>r.date));
+  const estKept=est.filter(r=>!factDates.has(r.date));
+  financeEstFrom = estKept.length? estKept.reduce((a,r)=>a<r.date?a:r.date,estKept[0].date) : null;
+  financeEstTo   = estKept.length? estKept.reduce((a,r)=>a>r.date?a:r.date,estKept[0].date) : null;
+  FINANCE_CACHE=bakedKept.concat(uploaded,estKept).map(r=>({...r,category:normFinCategory(r.sku,r.category)})).sort((a,b)=>a.date<b.date?-1:1);
 }
 
 /* ---- реклама (WB Продвижение): расход по (дата+артикул) ---- */
@@ -4060,7 +4071,9 @@ function weeklyBreakdown(cat,q){
   for(let end=all.length; end>0; end-=7){
     const from=Math.max(0,end-7), dates=all.slice(from,end);
     const now=finAggregate(dates,cat,q), ad=adAggregate(dates,cat,q);
-    weeks.push({from:dates[0],to:dates[dates.length-1],days:dates.length,
+    // неделя помечается «оценка», если хоть один её день посчитан моделью, а не отчётом
+    const est = !!financeEstFrom && dates.some(d=>d>=financeEstFrom);
+    weeks.push({from:dates[0],to:dates[dates.length-1],days:dates.length,est,
       qty:now.qty-now.returnsQty, revenue:now.revenue, wbHold:now.revenue-now.net,
       cogs:now.cogs, ad:ad.total, profit:now.net-now.cogs-ad.total,
       margin: now.revenue? (now.net-now.cogs-ad.total)/now.revenue : 0});
@@ -4090,7 +4103,8 @@ function renderHomeWeeks(cat,q){
     const prev=w[i+1];                                  // следующая в списке = предыдущая по времени
     const mark = r===best? ' title="Лучшая неделя по прибыли"' : (r===worst? ' title="Худшая неделя по прибыли"':'');
     html+=`<tr${mark}><td class="metric">${fmtDate(r.from)} – ${fmtDate(r.to)}`
-      +`<span class="sub2 mut">${r.days===7? "7 дней" : r.days+" "+plural(r.days,"день","дня","дней")}`
+      +`<span class="sub2 ${r.est?"acc":"mut"}">${r.days===7? "7 дней" : r.days+" "+plural(r.days,"день","дня","дней")}`
+      +`${r.est? " · оценка":""}`
       +`${r===best? " · лучшая":""}${r===worst&&r!==best? " · худшая":""}</span></td>`
       +`<td>${fmt(r.qty)}</td>`
       +`<td>${rub(r.revenue)}${dPct(r,prev,"revenue")}</td>`
@@ -4129,7 +4143,9 @@ function renderHomeTab(){
   const wkTxt=n=>{const w=Math.floor(n/7),d=n%7;
     return (w? w+" "+plural(w,"неделя","недели","недель") : "")+(w&&d? " ":"")+(d? d+" "+plural(d,"день","дня","дней"):"");};
   fresh.innerHTML=`<span class="dot"></span>Финансы обновлены по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])} · загружено <b>${wkTxt(allDates.length)}</b>`
-    + (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : "")
+    + (financeEstFrom
+        ? ` · <span class="acc" title="Отчёт «О реализации» за эти даты недоступен. Выручка посчитана от фактических заказов через % выкупа, «итого к оплате» — 62% от выручки (коэффициент снят с 5 фактических недель, ошибка 0,3%). Себестоимость точная, реклама — по факту загрузок.">факт по ${fmtDateLong(addDays(financeEstFrom,-1))}, дальше <b>ОЦЕНКА</b> (${fmtDate(financeEstFrom)}–${fmtDate(financeEstTo)})</span>`
+        : (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : ""))
     + localDataResetLink();
 
   const catSel=document.getElementById("homeCat");
@@ -5307,6 +5323,7 @@ async function unlock(pass,remember){
   window.BAKED_FINANCE_ROWS=d.BAKED_FINANCE_ROWS; window.BAKED_ADS_ROWS=d.BAKED_ADS_ROWS;
   window.BAKED_FINANCE=d.BAKED_FINANCE; window.BAKED_ADS=d.BAKED_ADS;
   window.BAKED_FUNNEL=d.BAKED_FUNNEL||[];   // зашитая воронка (может отсутствовать в старом снимке)
+  window.MODELED_FINANCE=d.MODELED_FINANCE||[];   // оценка финансов за даты после факта
   hydrateData();
   if(remember){ try{ localStorage.setItem(LOCK_KEY,pass); }catch(e){} }
   document.body.classList.remove("locked");
