@@ -2161,16 +2161,25 @@ function resupplyRows(){
     let oMsk=0,oNsk=0,wMsk=0,wNsk=0;
     // Озон разбираем первым (приоритет продавца) и в первую очередь с Мск — этот склад
     // всё равно не умеет отгружать на ВБ, поэтому Нск бережём для Wildberries.
+    // usedMsk/usedNsk — сколько ШТУК фактически взято с каждого склада (паллетами или
+    // штучно). Раньше свободный остаток считался только из паллет (oNsk*palOz), и при
+    // штучной отгрузке (вместимость паллеты неизвестна) склад выглядел нетронутым —
+    // добор машин раздавал уже занятый товар и отгрузка превышала склад.
+    let usedMsk=0, usedNsk=0;
     const tO=takePallets(needO,palOz,isLaunchO,true);
-    if(tO){ palShipO=tO.pal; shipO=tO.qty; oMsk=tO.msk; oNsk=tO.nsk; }
+    if(tO){ palShipO=tO.pal; shipO=tO.qty; oMsk=tO.msk; oNsk=tO.nsk;
+            usedMsk+=tO.msk*palOz; usedNsk+=tO.nsk*palOz; }
     else { shipO=Math.min(needO,restMsk+restNsk);               // без данных о паллете — как раньше, штуками
-           const fromMsk=Math.min(shipO,restMsk); oMsk=0; oNsk=0; restMsk-=fromMsk; restNsk-=(shipO-fromMsk); }
+           const fromMsk=Math.min(shipO,restMsk); oMsk=0; oNsk=0; restMsk-=fromMsk; restNsk-=(shipO-fromMsk);
+           usedMsk+=fromMsk; usedNsk+=(shipO-fromMsk); }
     const tW=takePallets(needW,palWb,isLaunchW,WB_FROM_MSK);
-    if(tW){ palShipW=tW.pal; shipW=tW.qty; wMsk=tW.msk; wNsk=tW.nsk; }
+    if(tW){ palShipW=tW.pal; shipW=tW.qty; wMsk=tW.msk; wNsk=tW.nsk;
+            usedMsk+=tW.msk*palWb; usedNsk+=tW.nsk*palWb; }
     else { const avail=WB_FROM_MSK? restMsk+restNsk : restNsk;
            shipW=Math.min(needW,avail);
            const fromMsk=WB_FROM_MSK? Math.min(shipW,restMsk) : 0;
-           restMsk-=fromMsk; restNsk-=(shipW-fromMsk); }
+           restMsk-=fromMsk; restNsk-=(shipW-fromMsk);
+           usedMsk+=fromMsk; usedNsk+=(shipW-fromMsk); }
     // пометки «не набирается паллета»
     const launchNote = (isLaunchO||isLaunchW)
       ? ("нет на "+[isLaunchO?"Озоне":"",isLaunchW?"ВБ":""].filter(Boolean).join(" и ")+" — стартовая партия")
@@ -2202,7 +2211,7 @@ function resupplyRows(){
       have:(split? have.wb+have.oz : have.qty), haveWb:have.wb, haveOz:have.oz, split,
       whBy:whB, whMsk, whNsk, whOther, china:(chinaBy[sup]||0), onOrder:(orderBy[sup]||0),
       palOz, palWb, palShipO, palShipW, palNote, launchNote, isLaunchO, isLaunchW,
-      oMsk, oNsk, wMsk, wNsk, topUpO:0, topUpW:0,
+      oMsk, oNsk, wMsk, wNsk, usedMsk, usedNsk, topUpO:0, topUpW:0,
       ship, rest, status, stW, stO, minDays};
   });
   topUpTrucks(all);
@@ -2226,8 +2235,8 @@ function topUpTrucks(rows){
   // что осталось свободного на каждом складе и сколько ещё влезает в 3 месяца продаж
   const free={}, cap={};
   rows.forEach(r=>{
-    free[r.sup]={"Мск": r.whMsk-(r.oMsk*r.palOz+r.wMsk*r.palWb),
-                 "Нск": r.whNsk-(r.oNsk*r.palOz+r.wNsk*r.palWb)};
+    // свободно = что лежит на складе минус ФАКТИЧЕСКИ взятое (паллетами или штуками)
+    free[r.sup]={"Мск": Math.max(0,r.whMsk-r.usedMsk), "Нск": Math.max(0,r.whNsk-r.usedNsk)};
     cap[r.sup]={ozon: Math.max(0, Math.floor(r.oSpd*TOPUP_SELL_DAYS)-(r.oCov+r.shipO)),
                 wb:   Math.max(0, Math.floor(r.wSpd*TOPUP_SELL_DAYS)-(r.wCov+r.shipW))};
   });
@@ -2255,6 +2264,7 @@ function topUpTrucks(rows){
     if(left>0) return;
     plan.forEach((pals,r)=>{ const qty=pals*pal(r);
       free[r.sup][wh]-=qty; cap[r.sup][mp]-=qty; cnt[k]+=pals;
+      if(wh==="Мск") r.usedMsk+=qty; else r.usedNsk+=qty;
       if(mp==="ozon"){ r.shipO+=qty; r.palShipO+=pals; r.topUpO+=qty;
         if(wh==="Мск") r.oMsk+=pals; else r.oNsk+=pals; }
       else { r.shipW+=qty; r.palShipW+=pals; r.topUpW+=qty;

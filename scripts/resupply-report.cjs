@@ -87,16 +87,18 @@ let rows=sups.map(sup=>{
     if(want<=0) return {pal:0,msk:0,nsk:0,qty:0};
     const a=mskOk? Math.min(want,Math.floor(rMsk/cap)) : 0, b=Math.min(want-a,Math.floor(rNsk/cap));
     rMsk-=a*cap; rNsk-=b*cap; return {pal:a+b,msk:a,nsk:b,qty:(a+b)*cap}; };
-  let shipO=0,shipW=0,palO=0,palW=0,oM=0,oN=0,wM=0,wN=0;
+  let shipO=0,shipW=0,palO=0,palW=0,oM=0,oN=0,wM=0,wN=0,usedMsk=0,usedNsk=0;
   const tO=take(needO,palOz,launchO,true);
-  if(tO){ palO=tO.pal; shipO=tO.qty; oM=tO.msk; oN=tO.nsk; }
-  else { shipO=Math.min(needO,rMsk+rNsk); const f=Math.min(shipO,rMsk); rMsk-=f; rNsk-=(shipO-f); }
+  if(tO){ palO=tO.pal; shipO=tO.qty; oM=tO.msk; oN=tO.nsk; usedMsk+=tO.msk*palOz; usedNsk+=tO.nsk*palOz; }
+  else { shipO=Math.min(needO,rMsk+rNsk); const f=Math.min(shipO,rMsk); rMsk-=f; rNsk-=(shipO-f);
+         usedMsk+=f; usedNsk+=(shipO-f); }
   const tW=take(needW,palWb,launchW,WB_FROM_MSK);
-  if(tW){ palW=tW.pal; shipW=tW.qty; wM=tW.msk; wN=tW.nsk; }
+  if(tW){ palW=tW.pal; shipW=tW.qty; wM=tW.msk; wN=tW.nsk; usedMsk+=tW.msk*palWb; usedNsk+=tW.nsk*palWb; }
   else { const av=WB_FROM_MSK? rMsk+rNsk : rNsk; shipW=Math.min(needW,av);
-         const f=WB_FROM_MSK? Math.min(shipW,rMsk) : 0; rMsk-=f; rNsk-=(shipW-f); }
+         const f=WB_FROM_MSK? Math.min(shipW,rMsk) : 0; rMsk-=f; rNsk-=(shipW-f);
+         usedMsk+=f; usedNsk+=(shipW-f); }
   return {sup,name:(w.name||o.name||sup),have,palOz,palWb,palO,palW,oM,oN,wM,wN,
-    whMsk:mMsk,whNsk:mNsk,oCov:o.covered,wCov:w.covered,topUpO:0,topUpW:0,
+    whMsk:mMsk,whNsk:mNsk,usedMsk,usedNsk,oCov:o.covered,wCov:w.covered,topUpO:0,topUpW:0,
     noPal:(!P&&(needW+needO>0)),
     wDays:w.days,oDays:o.days,wSpd:w.spd,oSpd:o.spd,needW,needO,shipW,shipO,
     rest:have-shipW-shipO, china:chinaBy[sup]||0, order:orderBy[sup]||0, launch:(launchW||launchO),
@@ -112,8 +114,7 @@ const TRUCK_TOPUP_MIN=15, TOPUP_SELL_DAYS=90;
   const cnt={"Мск|ozon":0,"Нск|ozon":0,"Мск|wb":0,"Нск|wb":0};
   rows.forEach(r=>{ cnt["Мск|ozon"]+=r.oM; cnt["Нск|ozon"]+=r.oN; cnt["Мск|wb"]+=r.wM; cnt["Нск|wb"]+=r.wN; });
   const free={}, cap={};
-  rows.forEach(r=>{ free[r.sup]={"Мск":r.whMsk-(r.oM*r.palOz+r.wM*r.palWb),
-                                 "Нск":r.whNsk-(r.oN*r.palOz+r.wN*r.palWb)};
+  rows.forEach(r=>{ free[r.sup]={"Мск":Math.max(0,r.whMsk-r.usedMsk),"Нск":Math.max(0,r.whNsk-r.usedNsk)};
     cap[r.sup]={ozon:Math.max(0,Math.floor(r.oSpd*TOPUP_SELL_DAYS)-(r.oCov+r.shipO)),
                 wb:  Math.max(0,Math.floor(r.wSpd*TOPUP_SELL_DAYS)-(r.wCov+r.shipW))}; });
   Object.keys(cnt).sort((a,b)=>{ const ma=a.endsWith('ozon')?0:1, mb=b.endsWith('ozon')?0:1;
@@ -135,6 +136,7 @@ const TRUCK_TOPUP_MIN=15, TOPUP_SELL_DAYS=90;
     if(left>0) return;
     plan.forEach((pals,r)=>{ const qty=pals*pal(r);
       free[r.sup][wh]-=qty; cap[r.sup][mp]-=qty; cnt[k]+=pals;
+      if(wh==='Мск') r.usedMsk+=qty; else r.usedNsk+=qty;
       if(mp==='ozon'){ r.shipO+=qty; r.palO+=pals; r.topUpO+=qty; if(wh==='Мск') r.oM+=pals; else r.oN+=pals; }
       else { r.shipW+=qty; r.palW+=pals; r.topUpW+=qty; if(wh==='Мск') r.wM+=pals; else r.wN+=pals; } });
   });
