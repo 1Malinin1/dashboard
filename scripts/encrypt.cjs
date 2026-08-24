@@ -22,7 +22,8 @@ vm.runInContext(
   + fs.readFileSync(path.join(OUT, 'wb-reports.js'), 'utf8') + '\n'
   + 'globalThis.__OUT = {REAL_DATA, BAKED_AT, BAKED_PERIOD, BAKED_FINANCE_ROWS, BAKED_ADS_ROWS, BAKED_FINANCE, BAKED_ADS,'
   + ' BAKED_FUNNEL: (typeof BAKED_FUNNEL!=="undefined"? BAKED_FUNNEL : []),'
-  + ' BAKED_FUNNEL_ROWS: (typeof BAKED_FUNNEL_ROWS!=="undefined"? BAKED_FUNNEL_ROWS : 0)};',
+  + ' BAKED_FUNNEL_ROWS: (typeof BAKED_FUNNEL_ROWS!=="undefined"? BAKED_FUNNEL_ROWS : 0),'
+  + ' MODELED_FINANCE: (typeof MODELED_FINANCE!=="undefined"? MODELED_FINANCE : [])};',
   ctx
 );
 const out = ctx.__OUT;
