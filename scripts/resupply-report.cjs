@@ -53,12 +53,19 @@ function buyoutFromFunnel(funnel){
   const dead=Object.keys(byDate).filter(d=>byDate[d].o>=20&&byDate[d].b/byDate[d].o<0.15).sort();
   return {from,to,all:b/o,bySku,dead,mature:dead.length===0,days:Object.keys(byDate).length};
 }
-const BW={ wb:buyoutFromFunnel(FUNNEL_WB), ozon:buyoutFromFunnel((RD.ozon&&RD.ozon.funnel)||[]) };
+// У ВБ приоритет — измеренное окно из сводного отчёта (scripts/wb-buyout-window.cjs).
+// См. buyoutInfo в index.html: держи синхронно.
+function wbMeasured(){ const b=RD.meta&&RD.meta.buyoutWin;
+  return (b&&b.all>0)? {from:b.from,to:b.to,all:b.all,pctBySku:b.bySku||{},dead:[],
+    mature:true,measured:true,openPct:b.openPct,days:null} : null; }
+const BW={ wb: wbMeasured()||buyoutFromFunnel(FUNNEL_WB),
+           ozon: buyoutFromFunnel((RD.ozon&&RD.ozon.funnel)||[]) };
 function buyoutOf(mp,sku,fallback){
   const bi=BW[mp];
-  if(bi && bi.mature){ const e=bi.bySku[sku];
-    return (e && e.o>=BUYOUT_MIN_ORD) ? e.b/e.o : bi.all; }
-  return fallback;
+  if(!bi || !bi.mature) return fallback;
+  if(bi.pctBySku){ const p=bi.pctBySku[sku]; return p>0? p : bi.all; }
+  const e=bi.bySku[sku];
+  return (e && e.o>=BUYOUT_MIN_ORD) ? e.b/e.o : bi.all;
 }
 function mpStats(mp){
   const oz=mp==='ozon';
@@ -190,8 +197,9 @@ const urgent=needAny.filter(r=>r.minDays<DAYS/3);
 
 ['wb','ozon'].forEach(mp=>{ const b=BW[mp]; const nm=mp==='wb'?'ВБ  ':'Озон';
   if(!b){ console.log('% выкупа '+nm+': воронки нет → прежний источник'); return; }
-  console.log('% выкупа '+nm+': окно '+b.from+'…'+b.to+' ('+b.days+'/'+BUYOUT_WIN+' дн) → '
-    +(b.all*100).toFixed(1)+'%'
+  console.log('% выкупа '+nm+': окно '+b.from+'…'+b.to
+    +(b.measured? ' (замер сводным отчётом, в пути '+b.openPct+'%)' : ' ('+b.days+'/'+BUYOUT_WIN+' дн по воронке)')
+    +' → '+(b.all*100).toFixed(1)+'%'
     +(b.mature? ' · ПРИМЕНЕНО'
       : ' · НЕ ЗРЕЛО (выкуп не проставлен за '+b.dead.length+' дн: '
         +b.dead.join(', ')+') → взят прежний источник'));
