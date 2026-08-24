@@ -7,6 +7,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'decrypted');
@@ -25,7 +26,12 @@ vm.runInContext(
   ctx
 );
 const out = ctx.__OUT;
-const payload = Buffer.from(JSON.stringify(out), 'utf8');
+// СЖИМАЕМ до шифрования. JSON снимка — около 9,5 МБ, а base64 в файле раздувал его до
+// 12,7 МБ: на слабой связи браузер просто не догружал wb-secure.js и дашборд открывался
+// пустым. gzip даёт ~1,2 МБ (данные очень однотипные). Флаг `zip` читает страница;
+// старые снимки без него по-прежнему читаются как обычный текст.
+const rawJson = Buffer.from(JSON.stringify(out), 'utf8');
+const payload = zlib.gzipSync(rawJson, { level: 9 });
 
 const salt = crypto.randomBytes(16);
 const iv = crypto.randomBytes(12);
@@ -36,7 +42,7 @@ const tag = cipher.getAuthTag();
 const ct = Buffer.concat([enc, tag]);
 
 const secure = {
-  v: 1, alg: 'AES-GCM', kdf: 'PBKDF2-SHA256', hash: 'SHA-256', iter: ITER,
+  v: 1, alg: 'AES-GCM', kdf: 'PBKDF2-SHA256', hash: 'SHA-256', iter: ITER, zip: 'gzip',
   salt: salt.toString('base64'), iv: iv.toString('base64'), ct: ct.toString('base64'),
   period: out.BAKED_PERIOD,
 };
@@ -49,8 +55,12 @@ fs.writeFileSync(path.join(ROOT, 'wb-secure.js'), js);
 const key2 = crypto.pbkdf2Sync(Buffer.from(pass, 'utf8'), salt, ITER, 32, 'sha256');
 const decipher = crypto.createDecipheriv('aes-256-gcm', key2, iv);
 decipher.setAuthTag(tag);
-const back = JSON.parse(Buffer.concat([decipher.update(enc), decipher.final()]).toString('utf8'));
-const ok = back.BAKED_FINANCE.length === out.BAKED_FINANCE.length && back.REAL_DATA.catalog.length === out.REAL_DATA.catalog.length;
+const backBuf = Buffer.concat([decipher.update(enc), decipher.final()]);
+const back = JSON.parse(zlib.gunzipSync(backBuf).toString('utf8'));
+const ok = back.BAKED_FINANCE.length === out.BAKED_FINANCE.length
+  && back.BAKED_ADS.length === out.BAKED_ADS.length
+  && back.BAKED_FUNNEL.length === out.BAKED_FUNNEL.length
+  && back.REAL_DATA.catalog.length === out.REAL_DATA.catalog.length;
 
 // Версия снимка для кеш-бастинга. Лежит отдельным крошечным файлом: index.html грузит его
 // БЕЗ кеша и уже по нему запрашивает wb-secure.js. Так обновление данных доезжает до браузера
@@ -66,6 +76,8 @@ vj.v = stamp; vj.period = out.BAKED_PERIOD; vj.builtAt = new Date().toISOString(
 fs.writeFileSync(vfile, JSON.stringify(vj) + '\n');
 console.log('data-version.json:', stamp, vj.build ? '· build ' + vj.build + ' сохранён' : '· ⚠ build отсутствует — запустите scripts/stamp-build.cjs');
 
+console.log('сжатие: JSON', (rawJson.length / 1048576).toFixed(2), 'МБ → gzip',
+  (payload.length / 1048576).toFixed(2), 'МБ ·', (payload.length / rawJson.length * 100).toFixed(1) + '% от исходного');
 console.log('wb-secure.js записан:', (js.length / 1024 | 0), 'KB · каталог', out.REAL_DATA.catalog.length,
   '· фин.агрегатов', out.BAKED_FINANCE.length, '· рекл.агрегатов', out.BAKED_ADS.length,
   '· строк воронки', out.BAKED_FUNNEL.length,

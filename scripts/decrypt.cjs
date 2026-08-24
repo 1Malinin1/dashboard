@@ -8,6 +8,7 @@ const fs = require('fs');
 const path = require('path');
 const vm = require('vm');
 const crypto = require('crypto');
+const zlib = require('zlib');
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'decrypted');
@@ -27,7 +28,11 @@ const decipher = crypto.createDecipheriv('aes-256-gcm', key, Buffer.from(S.iv, '
 decipher.setAuthTag(tag);
 let payload;
 try {
-  payload = JSON.parse(Buffer.concat([decipher.update(body), decipher.final()]).toString('utf8'));
+  // Снимок сжат gzip до шифрования (флаг `zip`) — так файл на сайте весит ~1,2 МБ вместо 12,7.
+  // Старые снимки без флага лежат обычным текстом, читаем их по-прежнему.
+  let buf = Buffer.concat([decipher.update(body), decipher.final()]);
+  if (S.zip === 'gzip') buf = zlib.gunzipSync(buf);
+  payload = JSON.parse(buf.toString('utf8'));
 } catch (e) {
   console.error('Не удалось расшифровать — неверный код доступа?'); process.exit(1);
 }
