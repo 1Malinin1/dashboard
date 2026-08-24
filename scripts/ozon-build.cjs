@@ -46,8 +46,17 @@ if(reuse){
   }
 }
 
-// 3) Заказы по дням из свода
-const ord=JSON.parse(fs.readFileSync(path.join(OUT,'ozon-orders.json'),'utf8'));
+// 3) Заказы по дням из свода.
+// Накопитель decrypted/ozon-orders.json — эфемерный (gitignored) и не переживает
+// пересоздание контейнера. Сами заказы при этом лежат в снимке, поэтому в режиме
+// --reuse без накопителя мы НЕ пересобираем заказы, а сохраняем как есть и обновляем
+// только остатки. Раньше скрипт просто падал с ENOENT.
+const ordFile=path.join(OUT,'ozon-orders.json');
+const keepOrders = reuse && !fs.existsSync(ordFile);
+if(keepOrders) console.log('  накопителя заказов нет — заказы берём из снимка как есть (обновляем только остатки)');
+const ord = keepOrders
+  ? {byDateArt:{},byDateArtRub:{},byDateArtBuyRub:{},perArt:{},perArtNet:{},byDateArtNet:{}}
+  : JSON.parse(fs.readFileSync(ordFile,'utf8'));
 const dates=[...new Set(Object.keys(ord.byDateArt).map(k=>k.split('_')[0]))].sort();
 const dIdx={};dates.forEach((d,i)=>dIdx[d]=i);
 Object.keys(ord.byDateArt).map(k=>k.slice(11)).forEach(a=>ensure(a)); // артикулы с заказами
@@ -108,7 +117,8 @@ const wGross={},wNet={}; let wGrossAll=0,wNetAll=0;
 Object.entries(ord.byDateArt||{}).forEach(([k,q])=>{ if(winSet.has(k.slice(0,10))){const a=k.slice(11);wGross[a]=(wGross[a]||0)+q;wGrossAll+=q;} });
 Object.entries(ord.byDateArtNet||{}).forEach(([k,q])=>{ if(winSet.has(k.slice(0,10))){const a=k.slice(11);wNet[a]=(wNet[a]||0)+q;wNetAll+=q;} });
 const buyoutAll = wGrossAll>0 ? wNetAll/wGrossAll : 1;
-ozCat.forEach(c=>{ const g=wGross[c.sku]||0, n=wNet[c.sku]||0;
+// без накопителя оставляем ozBuyout из снимка (в --reuse каталог перенесён целиком)
+if(!keepOrders) ozCat.forEach(c=>{ const g=wGross[c.sku]||0, n=wNet[c.sku]||0;
   c.ozBuyout = g>=10 ? +(n/g).toFixed(4) : +buyoutAll.toFixed(4); });
 const buyoutWindow = winDates.length ? winDates[0]+'…'+winDates[winDates.length-1] : null;
 
@@ -116,12 +126,20 @@ const buyoutWindow = winDates.length ? winDates[0]+'…'+winDates[winDates.lengt
 // объект ozon пересобирался с нуля и каждый прогон молча стирал `funnel`, из-за чего
 // вкладка «Товар» на Озоне оставалась пустой. Не убирай перенос.
 const prevFunnel = (RD.ozon && RD.ozon.funnel) || [];
+const prevSeries = (RD.ozon && RD.ozon.orderSeries) || null;
+const prevMeta   = (RD.ozon && RD.ozon.meta) || {};
+// без накопителя заказы и всё, что из них считается (% выкупа, окно, ordersMeta),
+// берём из снимка — пересчитывать не из чего
+const series = keepOrders && prevSeries ? prevSeries : {dates,byArt,money:ozMoney};
 RD.ozon={
   catalog:ozCat,
   funnel:prevFunnel,
-  orderSeries:{dates,byArt,money:ozMoney},
-  ordersMeta:{period:dates[0]+'…'+dates[dates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
-  meta:{ stockDate: stockFile? stockDate : (RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||null, buyoutAll:+buyoutAll.toFixed(4), buyoutWindow }
+  orderSeries:series,
+  ordersMeta: keepOrders && RD.ozon && RD.ozon.ordersMeta ? RD.ozon.ordersMeta
+    : {period:dates[0]+'…'+dates[dates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
+  meta:{ stockDate: stockFile? stockDate : prevMeta.stockDate||null,
+    buyoutAll: keepOrders? (prevMeta.buyoutAll!=null? prevMeta.buyoutAll : +buyoutAll.toFixed(4)) : +buyoutAll.toFixed(4),
+    buyoutWindow: keepOrders? (prevMeta.buyoutWindow||null) : buyoutWindow }
 };
 
 // 5) переписать wb-data.js
@@ -132,10 +150,12 @@ fs.writeFileSync(path.join(OUT,'wb-data.js'),
 const linked=ozCat.filter(c=>c.wbSku).length;
 console.log('REAL_DATA.ozon собран:');
 console.log('  каталог Озона:',ozCat.length,'товаров · связано с ВБ:',linked,'· без связки:',ozCat.length-linked);
-console.log('  заказы: дней',dates.length,'('+dates[0]+'…'+dates[dates.length-1]+') · товаров с заказами:',ozCat.filter(c=>byArt[c.sku]&&byArt[c.sku].some(x=>x>0)).length);
+console.log('  заказы:', keepOrders
+  ? ('из снимка без изменений — дней '+series.dates.length+' ('+series.dates[0]+'…'+series.dates[series.dates.length-1]+')')
+  : ('дней '+dates.length+' ('+dates[0]+'…'+dates[dates.length-1]+') · товаров с заказами: '+ozCat.filter(c=>byArt[c.sku]&&byArt[c.sku].some(x=>x>0)).length));
 console.log('  остатки:',stockFile?('строк '+stockRows+' · сумма «Доступно» '+stockSum+' шт · дата '+stockDate):'(файл не передан)');
 if(stockFile) console.log('  в пути на Озон:',(sumZayav+sumPath),'шт = заявки на поставку '+sumZayav+' + физически в пути '+sumPath);
 console.log('  товаров с остатком >0:',ozCat.filter(c=>c.ozStock>0).length);
-console.log('  % выкупа: окно',buyoutWindow,'· общий',Math.round(buyoutAll*100)+'%');
+console.log('  % выкупа: окно '+(RD.ozon.meta.buyoutWindow||'—')+' · общий '+Math.round(RD.ozon.meta.buyoutAll*100)+'%'+(keepOrders?' (из снимка)':''));
 console.log('  воронка Озона: перенесена без изменений —',prevFunnel.length,'строк'
   +(prevFunnel.length? ' ('+[...new Set(prevFunnel.map(r=>r.date))].sort().slice(-1)[0]+' последняя дата)' : ' (пусто — запеките ozon-funnel-build.cjs)'));
