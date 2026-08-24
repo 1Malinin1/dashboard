@@ -32,11 +32,16 @@ function ensure(art){ if(seen.has(art)) return byA[art]; seen.add(art);
   const c={sku:art, name:art, category:'Без категории', wbSku:supToWb[art]||null, ozStock:0, ozTransit:0};
   byA[art]=c; ozCat.push(c); return c; }
 if(reuse){
-  // сохраняем существующий каталог целиком (name/category/wbSku/ozonSku и пр.), обнуляем только
-  // остатки — их зальёт отчёт остатков ниже; товар без остатка в отчёте останется с 0.
+  // Сохраняем существующий каталог целиком (name/category/wbSku/ozonSku и пр.).
+  // Остатки обнуляем ТОЛЬКО если передан отчёт остатков — он полный снимок, и товар,
+  // которого в нём нет, обязан стать нулём. Без отчёта остатки остаются как были:
+  // раньше обнуление стояло безусловно, и заливка одних ЗАКАЗОВ молча стирала
+  // остатки и «в пути» на Озоне (27 337 и 3 160 шт превратились бы в нули).
   const prev=(RD.ozon&&RD.ozon.catalog)||[];
   if(!prev.length){ console.error('--reuse: в снимке нет каталога Озона. Соберите его один раз из файла «Июль».'); process.exit(1); }
-  prev.forEach(c=>{ const cc=Object.assign({},c); cc.ozStock=0; cc.ozTransit=0; byA[cc.sku]=cc; ozCat.push(cc); seen.add(cc.sku); });
+  prev.forEach(c=>{ const cc=Object.assign({},c);
+    if(stockFile){ cc.ozStock=0; cc.ozTransit=0; }
+    byA[cc.sku]=cc; ozCat.push(cc); seen.add(cc.sku); });
 } else {
   const wb=XLSX.read(fs.readFileSync(catalogFile),{type:'buffer',cellStyles:false,cellFormula:false});
   const rows=XLSX.utils.sheet_to_json(wb.Sheets['Июль'],{header:1,raw:false,defval:''});
@@ -130,13 +135,44 @@ const prevSeries = (RD.ozon && RD.ozon.orderSeries) || null;
 const prevMeta   = (RD.ozon && RD.ozon.meta) || {};
 // без накопителя заказы и всё, что из них считается (% выкупа, окно, ordersMeta),
 // берём из снимка — пересчитывать не из чего
-const series = keepOrders && prevSeries ? prevSeries : {dates,byArt,money:ozMoney};
+/* ДОБОР ИСТОРИИ ИЗ СНИМКА. Накопитель `ozon-orders.json` эфемерный (gitignored) и не
+   переживает пересоздание контейнера. Если после этого залить свежую партию отчётов,
+   в накопителе будут ТОЛЬКО её дни — и пересборка ряда стёрла бы всю прежнюю историю
+   заказов Озона (реальный риск 24.08: в накопителе 07–23.08, в снимке 03.05–06.08).
+   Поэтому дни, которых в накопителе нет, переносим из снимка как есть. Дни, которые
+   в накопителе ЕСТЬ, всегда берутся из него — он свежее и учитывает переотгрузки. */
+let finalDates=dates, finalByArt=byArt, finalMoney=ozMoney, backfilled=[];
+if(!keepOrders && prevSeries && (prevSeries.dates||[]).length){
+  const accSet=new Set(dates);
+  backfilled=prevSeries.dates.filter(d=>!accSet.has(d));
+  if(backfilled.length){
+    finalDates=[...new Set(prevSeries.dates.concat(dates))].sort();
+    const fIdx={}; finalDates.forEach((d,i)=>fIdx[d]=i);
+    const pIdx={}; prevSeries.dates.forEach((d,i)=>pIdx[d]=i);
+    const prevByArt=prevSeries.byArt||{};
+    finalByArt={};
+    new Set([...Object.keys(byArt),...Object.keys(prevByArt)]).forEach(a=>{
+      const row=new Array(finalDates.length).fill(0);
+      const old=prevByArt[a]; if(old) backfilled.forEach(d=>{ row[fIdx[d]]=old[pIdx[d]]||0; });
+      const cur=byArt[a];     if(cur) dates.forEach((d,i)=>{ row[fIdx[d]]=cur[i]||0; });
+      finalByArt[a]=row;
+    });
+    // деньги — карта по дням: дни накопителя перекрывают, прочие остаются из снимка
+    finalMoney=Object.assign({},prevSeries.money||{});
+    Object.keys(ozMoney).forEach(d=>{ finalMoney[d]=ozMoney[d]; });
+    // каждый товар каталога обязан иметь ряд ровно длиной с ось дат
+    ozCat.forEach(c=>{ if(!finalByArt[c.sku]) finalByArt[c.sku]=new Array(finalDates.length).fill(0); });
+    const bad=Object.entries(finalByArt).filter(([,r])=>r.length!==finalDates.length);
+    if(bad.length){ console.error('ряды заказов разной длины ('+bad.length+') — снимок не записан'); process.exit(1); }
+  }
+}
+const series = keepOrders && prevSeries ? prevSeries : {dates:finalDates,byArt:finalByArt,money:finalMoney};
 RD.ozon={
   catalog:ozCat,
   funnel:prevFunnel,
   orderSeries:series,
   ordersMeta: keepOrders && RD.ozon && RD.ozon.ordersMeta ? RD.ozon.ordersMeta
-    : {period:dates[0]+'…'+dates[dates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
+    : {period:finalDates[0]+'…'+finalDates[finalDates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
   meta:{ stockDate: stockFile? stockDate : prevMeta.stockDate||null,
     buyoutAll: keepOrders? (prevMeta.buyoutAll!=null? prevMeta.buyoutAll : +buyoutAll.toFixed(4)) : +buyoutAll.toFixed(4),
     buyoutWindow: keepOrders? (prevMeta.buyoutWindow||null) : buyoutWindow }
@@ -152,7 +188,10 @@ console.log('REAL_DATA.ozon собран:');
 console.log('  каталог Озона:',ozCat.length,'товаров · связано с ВБ:',linked,'· без связки:',ozCat.length-linked);
 console.log('  заказы:', keepOrders
   ? ('из снимка без изменений — дней '+series.dates.length+' ('+series.dates[0]+'…'+series.dates[series.dates.length-1]+')')
-  : ('дней '+dates.length+' ('+dates[0]+'…'+dates[dates.length-1]+') · товаров с заказами: '+ozCat.filter(c=>byArt[c.sku]&&byArt[c.sku].some(x=>x>0)).length));
+  : ('дней '+finalDates.length+' ('+finalDates[0]+'…'+finalDates[finalDates.length-1]+') · товаров с заказами: '
+     +ozCat.filter(c=>series.byArt[c.sku]&&series.byArt[c.sku].some(x=>x>0)).length));
+if(!keepOrders) console.log('    из них из свежих отчётов: '+dates.length+' дн ('+dates[0]+'…'+dates[dates.length-1]+')'
+  +' · перенесено из снимка: '+backfilled.length+' дн'+(backfilled.length? ' ('+backfilled[0]+'…'+backfilled[backfilled.length-1]+')':''));
 console.log('  остатки:',stockFile?('строк '+stockRows+' · сумма «Доступно» '+stockSum+' шт · дата '+stockDate):'(файл не передан)');
 if(stockFile) console.log('  в пути на Озон:',(sumZayav+sumPath),'шт = заявки на поставку '+sumZayav+' + физически в пути '+sumPath);
 console.log('  товаров с остатком >0:',ozCat.filter(c=>c.ozStock>0).length);
