@@ -62,6 +62,8 @@ const layout = isOrders ? 'B' : 'A';
 if(layout==='A'&&hr<0){ console.error('не нашёл строку-шапку с ячейкой «Номенклатура.Код»'); process.exit(1); }
 const bySup={}, byWh={}; let taken=0, skipped={}, total=0;
 let cols=[];   // колонки-склады из шапки (нужны и ниже, при мерже по складам)
+const inbCols={china:[],order:[]};   // колонки «едет ко мне» — это не склад
+const inbBy={china:{},order:{}};
 
 if(layout==='A'){
   const H=rows[hr].map(S);
@@ -70,6 +72,12 @@ if(layout==='A'){
   for(let i=iCode+1;i<H.length;i++){ const h=H[i]; if(!h) continue; if(/^Итог/i.test(h)) break;
     // «плановый запас» и прочие справочные колонки складами не являются
     if(/плановый|запас|норма/i.test(h)) continue;
+    // В одном файле продавец присылает и склады, и то, что едет К НЕМУ. Это НЕ склад:
+    // «в пути ко мне (Китай)» → inbound.china, «заказано производству» → inbound.order.
+    // Без этого разделения колонка Китая становилась бы третьим складом и попадала
+    // в покрытие/подсорт как реальный остаток.
+    if(/китай|в пути ко мне/i.test(h)){ inbCols.china.push({i,name:h}); continue; }
+    if(/заказан|производств|свободн/i.test(h)){ inbCols.order.push({i,name:h}); continue; }
     cols.push({i,name:canonWh(h)}); }
   if(!cols.length){ console.error('не нашёл колонок складов в шапке: '+JSON.stringify(H)); process.exit(1); }
   console.log('раскладка «ведомость по складам» · шапка в строке '+(hr+1)+' · склады: '+cols.map(c=>c.name).join(' · '));
@@ -78,8 +86,12 @@ if(layout==='A'){
     if(!k||!/^\d+$/.test(k)) continue;                       // «Итог» и пустые строки
     let sum=0; const wh={};
     cols.forEach(c=>{ const v=num(r[c.i]); if(v>0){ wh[c.name]=(wh[c.name]||0)+v; sum+=v; } });
-    if(sum<=0) continue;
-    if(!supSet.has(k)){ skipped[k]=(skipped[k]||0)+sum; continue; }
+    let inbSum=0;
+    ['china','order'].forEach(t=>inbCols[t].forEach(c=>{ const v=num(r[c.i]); if(v>0){ inbSum+=v;
+      if(supSet.has(k)) inbBy[t][k]=(inbBy[t][k]||0)+v; } }));
+    if(sum<=0 && inbSum<=0) continue;
+    if(!supSet.has(k)){ skipped[k]=(skipped[k]||0)+sum+inbSum; continue; }
+    if(sum<=0) continue;   // только «в пути» — склада нет, но inbound уже записан выше
     const e=bySup[k]||(bySup[k]={qty:0,wh:{}});
     e.qty+=sum; Object.entries(wh).forEach(([n,v])=>{ e.wh[n]=(e.wh[n]||0)+v; byWh[n]=(byWh[n]||0)+v; });
     taken++; total+=sum;
@@ -131,6 +143,15 @@ if(kind==='stock'){
   console.log('склады из файла (перезаписаны): '+[...fileWh].join(' · ')
     +(kept.size? ' | сохранены как были: '+[...kept].join(' · ') : ' | других складов в снимке не было'));
   RD.warehouse={date:dateArg, split:false, byWh, bySup};
+  // колонки «едет ко мне» из этого же файла — полная замена соответствующего слоя
+  ['china','order'].forEach(t=>{ if(!inbCols[t].length) return;
+    const tot=Object.values(inbBy[t]).reduce((a,b)=>a+b,0);
+    RD.inbound=RD.inbound||{};
+    const was=(RD.inbound[t]&&RD.inbound[t].total)||0;
+    RD.inbound[t]={date:dateArg, total:tot, bySup:inbBy[t]};
+    console.log((t==='china'?'Едет из Китая':'Заказано производству')+': '
+      +was.toLocaleString('ru-RU')+' → '+tot.toLocaleString('ru-RU')+' шт (позиций '+Object.keys(inbBy[t]).length+')');
+  });
 } else {
   RD.inbound=RD.inbound||{};
   RD.inbound[kind]={date:dateArg, total, bySup:Object.fromEntries(Object.entries(bySup).map(([k,v])=>[k,v.qty]))};
