@@ -1570,15 +1570,24 @@ function buyoutFromFunnel(funnel){
 let _buyoutWin={};
 function buyoutInfo(mp){
   if(_buyoutWin[mp]!==undefined) return _buyoutWin[mp];
+  /* У ВБ приоритет — ИЗМЕРЕННОЕ окно из сводного отчёта аналитики за период
+     (`scripts/wb-buyout-window.cjs` → `RD.meta.buyoutWin`). Оно точнее подённой воронки:
+     сводный отчёт выгружается разом за период, поэтому выкуп в нём не «заморожен» на дату
+     каждого дня. Плюс там есть отмены, а значит видно, сколько заказов ещё в пути, — окно
+     принимается только когда их доля мала (иначе выкуп занижен). */
+  const bw = mp!=="ozon" && RD && RD.meta && RD.meta.buyoutWin;
+  if(bw && bw.all>0) return (_buyoutWin[mp]={from:bw.from,to:bw.to,all:bw.all,
+    pctBySku:bw.bySku||{}, dead:[], mature:true, measured:true, openPct:bw.openPct});
   const f = mp==="ozon" ? (typeof OZ_FUNNEL!=="undefined"? OZ_FUNNEL:[]) : (FUNNEL_CACHE||[]);
   return (_buyoutWin[mp]=buyoutFromFunnel(f));
 }
 // итоговый % выкупа товара: окно (если зрелое) → иначе прежний источник площадки
 function buyoutOf(mp,sku,fallback){
   const bi=buyoutInfo(mp);
-  if(bi && bi.mature){ const e=bi.bySku[sku];
-    return (e && e.o>=BUYOUT_MIN_ORD) ? e.b/e.o : bi.all; }
-  return fallback;
+  if(!bi || !bi.mature) return fallback;
+  if(bi.pctBySku){ const p=bi.pctBySku[sku]; return p>0? p : bi.all; }   // измеренное окно
+  const e=bi.bySku[sku];                                                 // окно из воронки
+  return (e && e.o>=BUYOUT_MIN_ORD) ? e.b/e.o : bi.all;
 }
 function simpleTurnList(){
   const oz = _appliedMp==="ozon";
@@ -2025,8 +2034,10 @@ function turnHowTo(view,oz,mp){
   const _bi = (mp==="all")? null : buyoutInfo(oz? "ozon":"wb");
   const _dr = d=>d? d.slice(8,10)+"."+d.slice(5,7) : "";
   const buyTxt = (_bi && _bi.mature)
-    ? "% выкупа за окно "+_dr(_bi.from)+"–"+_dr(_bi.to)+" (последняя неделя пропущена — по ней выкуп ещё не дозрел); "
-      +"по товару свой процент при 10+ заказах в окне, иначе общий "+Math.round(_bi.all*100)+"%"
+    ? "% выкупа за дозревшее окно "+_dr(_bi.from)+"–"+_dr(_bi.to)
+      +(_bi.measured? " (замер по сводному отчёту, в пути на момент замера "+_bi.openPct+"%)"
+                    : " (свежая неделя пропущена — по ней выкуп ещё не дозрел)")
+      +"; по товару свой процент при 10+ заказах, иначе общий "+Math.round(_bi.all*100)+"%"
     : (oz? "% выкупа из статусов заказов Озона (за дозревшее окно)"
          : "% выкупа 14-дневный из каталога ВБ");
   const P=Math.round(TURN_PEAK_BUYOUT*100);
