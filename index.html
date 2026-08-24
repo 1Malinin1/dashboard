@@ -1589,6 +1589,26 @@ function buyoutOf(mp,sku,fallback){
   const e=bi.bySku[sku];                                                 // окно из воронки
   return (e && e.o>=BUYOUT_MIN_ORD) ? e.b/e.o : bi.all;
 }
+/* KPI остатка на «Оборачиваемости». Подпись раньше была «Суммарный остаток, шт» — и продавец
+   сравнил её со своим складом в Москве (36 674 против 27 337) и решил, что часть товара
+   потерялась. Это РАЗНЫЕ МЕСТА: KPI показывает то, что уже лежит НА ПЛОЩАДКЕ и доступно
+   покупателю, а свой склад — то, что ещё не отгружено (он живёт в виде «Подсорт со склада»).
+   Поэтому подпись называет площадку прямо, а в подсказке — вся картина «где лежит товар». */
+function stockKpi(oz,stockSum,rows){
+  const W=(RD&&RD.warehouse)||null, byWh=(W&&W.byWh)||{};
+  let msk=0,nsk=0; Object.entries(byWh).forEach(([n,q])=>{
+    if(/солнечногор/i.test(n)) msk+=q; else if(/евросиб/i.test(n)) nsk+=q; });
+  const transit=rows.reduce((a,r)=>a+((r.covered||0)-(r.stock||0)),0);
+  const tip="Это товар, который уже лежит на складах "+(oz?"Ozon":"Wildberries")+" и доступен покупателю.\n"
+    +"На "+(oz?"Ozon":"WB")+": "+fmt(stockSum)+" шт"
+    +(transit>0? "\nЕдет на "+(oz?"Ozon":"WB")+": "+fmt(transit)+" шт":"")
+    +(W? "\n\nВаш склад (не на площадке, на "+fmtDate(W.date)+"):"
+        +"\n  Москва, СХ Солнечногорск: "+fmt(msk)+" шт"
+        +"\n  Новосибирск, Евросиб: "+fmt(nsk)+" шт"
+        +"\n  всего на своём складе: "+fmt(msk+nsk)+" шт"
+        +"\n\nСвой склад в этот KPI НЕ входит — сколько с него отгрузить, показывает «Подсорт со склада»." : "");
+  return {lbl:"Остаток на "+(oz?"Ozon":"складах WB")+", шт", val:fmt(stockSum), tip};
+}
 function simpleTurnList(){
   const oz = _appliedMp==="ozon";
   const win=7, lastIdx=RDATES.length-1, days=Math.min(win,RDATES.length);
@@ -2570,14 +2590,18 @@ function renderTurnoverSimple(){
     {lbl:"Товаров к дозаказу (<130 дн)",val:toOrder.length+" из "+rows.length,valColor:toOrder.length?"var(--accent)":"var(--text-1)"},
     {lbl:"Дозаказать всего, шт",val:fmt(orderTotal)},
     {lbl:"Критично — нет остатка",val:crit,valColor:crit>0?"var(--crit-txt)":"var(--text-1)"},
-    {lbl:"Суммарный остаток, шт",val:fmt(stockSum)},
+    stockKpi(oz,stockSum,rows),
   ].map(kpiCard).join("");
+  wireKpiTips("turnKpis");
   // KPI посчитаны — дальше можно уйти в другой вид (у каждого своя таблица и подпись счётчика)
   if(turnView==="months"){ renderTurnMonths(); return; }
   if(turnView==="buyPeak"){ renderTurnPurchase("peak"); return; }
   if(turnView==="buyAvg"){ renderTurnPurchase("avg"); return; }
+  // подпись счётчика обязана называть ТОТ источник выкупа, который реально применён
   let bwTxt;
-  if(oz){ const _m=RD.ozon&&RD.ozon.meta, _bw=_m&&_m.buyoutWindow;
+  const _bi=buyoutInfo(oz?"ozon":"wb");
+  if(_bi && _bi.mature) bwTxt="% выкупа за "+fmtDate(_bi.from)+"–"+fmtDate(_bi.to);
+  else if(oz){ const _m=RD.ozon&&RD.ozon.meta, _bw=_m&&_m.buyoutWindow;
     bwTxt="% выкупа за "+(_bw? (fmtDate(_bw.split("…")[0])+"–"+fmtDate(_bw.split("…")[1])) : "период"); }
   else bwTxt="% выкупа — 14-дневный из каталога";
   document.getElementById("turnCount").textContent=rows.length+" из "+all.length+" товаров · заказы за 7 дн · "+bwTxt;
