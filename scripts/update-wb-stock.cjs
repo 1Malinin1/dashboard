@@ -22,7 +22,12 @@ const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:fa
 let hr=0; for(let i=0;i<Math.min(6,rows.length);i++){ if(rows[i].map(x=>''+x).indexOf('Артикул WB')>=0){hr=i;break;} }
 const H=rows[hr].map(x=>''+x);
 const iWB=H.indexOf('Артикул WB'), iSup=H.indexOf('Артикул продавца');
-const iStock=H.findIndex(h=>/всего наход/i.test(h));
+// Два формата остатков FBO, продавец их чередует:
+//   · отчёт ВБ «Остатки на складах» → «Всего находится на складах» (колонки складов = его разбивка);
+//   · выгрузка сервиса XWAY → «Текущий остаток товара» (одна колонка, когда ВБ виснет и не отдаёт отчёт).
+// Оба про ОДНО И ТО ЖЕ: товар на складах WB (FBO). Товар на своём складе, который продаётся
+// по FBS, сюда НЕ входит — он живёт в REAL_DATA.warehouse.
+const iStock=H.findIndex(h=>/всего наход/i.test(h) || /текущий остаток/i.test(h));
 if(iWB<0||iStock<0){console.error('не нашёл колонки (Артикул WB='+iWB+', Всего находится='+iStock+')');process.exit(1);}
 
 const repByWB={}, repBySup={}; let repRows=0, repTotal=0;
