@@ -62,22 +62,29 @@ if(hr<0){ console.error('не нашёл шапку с «Артикул WB»'); 
 const H=(rows[hr]||[]).map(x=>(''+x).replace(/\s+/g,' ').trim());
 const col=re=>H.findIndex(h=>re.test(h));
 const iSku=col(/^Артикул WB$/i);
-const C={ o:col(/^Заказали товаров, шт$/i), b:col(/^Выкупили, шт$/i), x:col(/^Отменили, шт$/i) };
-const P={ o:col(/^Заказали товаров, шт \(предыдущий/i), b:col(/^Выкуп[а-я]*, шт \(предыдущий/i), x:col(/^Отменили, шт \(предыдущий/i) };
+const C={ o:col(/^Заказали товаров, шт$/i), b:col(/^Выкупили, шт$/i), x:col(/^Отменили, шт$/i),
+  ro:col(/^Заказали на сумму, ₽$/i), rb:col(/^Выкупили на сумму, ₽$/i) };
+const P={ o:col(/^Заказали товаров, шт \(предыдущий/i), b:col(/^Выкуп[а-я]*, шт \(предыдущий/i), x:col(/^Отменили, шт \(предыдущий/i),
+  ro:col(/^Заказали на сумму, ₽ \(предыдущий/i), rb:col(/^Выкупили на сумму, ₽ \(предыдущий/i) };
 if(iSku<0||C.o<0||C.b<0){ console.error('не нашёл колонки (Артикул WB / Заказали / Выкупили)'); process.exit(1); }
 
 function collect(idx){
   if(idx.o<0||idx.b<0) return null;
-  const bySku={}; let o=0,b=0,x=0,rowsN=0;
+  const bySku={}; let o=0,b=0,x=0,rowsN=0,ro=0,rb=0;
   for(let i=hr+1;i<rows.length;i++){ const r=rows[i]; const sku=(''+(r[iSku]||'')).trim();
     if(!ourSku.has(sku)) continue;
-    const ro=num(r[idx.o]), rb=num(r[idx.b]), rx=idx.x>=0? num(r[idx.x]) : 0;
-    const e=bySku[sku]||(bySku[sku]={o:0,b:0}); e.o+=ro; e.b+=rb;
-    o+=ro; b+=rb; x+=rx; rowsN++; }
+    const rro=num(r[idx.o]), rrb=num(r[idx.b]), rx=idx.x>=0? num(r[idx.x]) : 0;
+    const e=bySku[sku]||(bySku[sku]={o:0,b:0}); e.o+=rro; e.b+=rrb;
+    o+=rro; b+=rrb; x+=rx; rowsN++;
+    if(idx.ro>=0) ro+=num(r[idx.ro]); if(idx.rb>=0) rb+=num(r[idx.rb]); }
   if(!o) return null;
   const open=Math.max(0,o-b-x);
   return {ordered:o,bought:b,cancelled:x,open,openPct:+(open/o*100).toFixed(1),
-    all:+(b/o).toFixed(4), ofNotCancelled:+((o-x)>0? b/(o-x):0).toFixed(4), rows:rowsN, bySku};
+    all:+(b/o).toFixed(4), ofNotCancelled:+((o-x)>0? b/(o-x):0).toFixed(4),
+    // ДЕНЕЖНЫЙ выкуп — выкуплено ₽ ÷ заказано ₽. Именно он нужен модели финансов:
+    // выручка считается из ЗАКАЗАННЫХ рублей, а не из штук (чек выкупленного отличается).
+    orderedRub:ro, boughtRub:rb, moneyAll: ro? +(rb/ro).toFixed(4) : null,
+    rows:rowsN, bySku};
 }
 const cur=collect(C), prev=collect(P);
 if(!cur){ console.error('в файле нет наших товаров с заказами'); process.exit(1); }
@@ -93,6 +100,7 @@ Object.entries(win.bySku).forEach(([s,v])=>{ if(v.o>=MIN_ORD) bySkuPct[s]=+(v.b/
 RD.meta=RD.meta||{};
 RD.meta.buyoutWin={
   from:per.from, to:per.to, all:win.all, bySku:bySkuPct,
+  moneyAll:win.moneyAll, orderedRub:win.orderedRub, boughtRub:win.boughtRub,
   ordered:win.ordered, bought:win.bought, cancelled:win.cancelled,
   open:win.open, openPct:win.openPct, minOrd:MIN_ORD, picked:pick,
   source:'wb-analytics-period', builtAt:new Date().toISOString(),
@@ -111,6 +119,8 @@ function show(l,p,per){
     +' · ещё в пути '+p.open+' ('+p.openPct+'%)');
   console.log('   выкуп от ВСЕХ заказов (идёт в расчёт): '+pc(p.all)
     +'   · от неотменённых (как показывает ВБ): '+pc(p.ofNotCancelled));
+  if(p.moneyAll!=null) console.log('   ДЕНЕЖНЫЙ выкуп (для модели финансов): '+pc(p.moneyAll)
+    +'   (заказано '+Math.round(p.orderedRub).toLocaleString('ru-RU')+' ₽ → выкуплено '+Math.round(p.boughtRub).toLocaleString('ru-RU')+' ₽)');
 }
 console.log('Сводный отчёт воронки ВБ · наших карточек '+cur.rows);
 show('ТЕКУЩИЙ ПЕРИОД',cur,pCur);
