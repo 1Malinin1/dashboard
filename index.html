@@ -1815,28 +1815,44 @@ function turnFilteredRows(all, exceptKey){
     const set=turnColFilters[def.key]; if(set&&set.size) rows=rows.filter(r=>set.has(def.val(r))); });
   return rows;
 }
+/* Одна механика колоночных фильтров на несколько таблиц. Раньше она была намертво привязана
+   к «Оборачиваемости» (turnColFilters/turnColDefs/renderTurnoverSimple). Контекст описывает,
+   где брать набор фильтров, описания колонок, базовые строки и что перерисовывать. */
+const CF_CTX={
+  turn:{ filters:()=>turnColFilters, defs:()=>turnColDefs(), base:()=>turnBaseRows(),
+         filtered:(all,except)=>turnFilteredRows(all,except), render:()=>renderTurnoverSimple() },
+  sr:{   filters:()=>srColFilters,   defs:()=>srColDefs(),   base:()=>srDecorate(srRows()),
+         filtered:(all,except)=>srFilteredRows(all,except),  render:()=>renderStockRateTab() }
+};
 // заголовок «сортируемый + фильтруемый» (кнопка-воронка). Ключ сортировки = ключ фильтра.
-function thSortF(label,key,state,extraClass){
+function thSortF(label,key,state,extraClass,ctxName){
+  const ctx=CF_CTX[ctxName||"turn"];
   const active=state.key===key, arrow=active?(state.dir===1?"▲":"▼"):"";
-  const fset=turnColFilters[key], fActive=fset&&fset.size;
+  const fset=ctx.filters()[key], fActive=fset&&fset.size;
   return `<th class="sortable${active?" active":""}${extraClass?" "+extraClass:""}" data-key="${esc(key)}">`
     +`<span class="th-in">${label}<span class="sort-arrow">${arrow}</span>`
-    +`<span class="col-filter${fActive?" active":""}" data-fkey="${esc(key)}" title="Фильтр по колонке" role="button" tabindex="0">`
+    +`<span class="col-filter${fActive?" active":""}" data-fkey="${esc(key)}" data-fctx="${esc(ctxName||"turn")}" title="Фильтр по колонке" role="button" tabindex="0">`
     +`<svg viewBox="0 0 12 12" width="10" height="10" aria-hidden="true"><path d="M0.6 1.4h10.8L7.1 6.9v4.3L4.9 9.9V6.9z"/></svg>`
     +(fActive?`<b class="cf-count">${fset.size}</b>`:"")+`</span></span></th>`;
 }
-let _colFilterKey=null, _colFilterPanel=null;
+let _colFilterKey=null, _colFilterPanel=null, _colFilterAt=0;
 function closeColFilter(){ if(_colFilterPanel){_colFilterPanel.remove();_colFilterPanel=null;} _colFilterKey=null; }
-function openColFilter(anchor,key){
+/* Закрытие ПО ПРОКРУТКЕ, но не сразу после открытия. Широкая таблица («Запас и темп»)
+   при клике по шапке подскроливается, браузер шлёт scroll — и панель закрывалась в тот же
+   миг, в котором открылась: продавец видел, что воронка «не работает». Даём 400 мс форы. */
+function closeColFilterOnScroll(){ if(Date.now()-_colFilterAt<400) return; closeColFilter(); }
+function openColFilter(anchor,key,ctxName){
   if(_colFilterKey===key){ closeColFilter(); return; }   // повторный клик по той же колонке — закрыть
   closeColFilter(); closeAllUisel();
-  const def=turnColDef(key); if(!def) return;
-  const all=turnBaseRows();
-  const base=turnFilteredRows(all,key);                  // значения — с учётом ДРУГИХ активных фильтров
+  const ctx=CF_CTX[ctxName||"turn"];
+  const def=ctx.defs().find(d=>d.key===key); if(!def) return;
+  const all=ctx.base();
+  const base=ctx.filtered(all,key);                      // значения — с учётом ДРУГИХ активных фильтров
   const counts=new Map();
   base.forEach(r=>{ const v=def.val(r); counts.set(v,(counts.get(v)||0)+1); });
   const vals=[...counts.keys()].sort((a,b)=>{ const d=def.sortVal(a)-def.sortVal(b); return d||(""+a).localeCompare(""+b,"ru"); });
-  const set=turnColFilters[key]||(turnColFilters[key]=new Set());
+  const F=ctx.filters();
+  const set=F[key]||(F[key]=new Set());
   const panel=document.createElement("div"); panel.className="uisel-panel colfilter-panel";
   panel.addEventListener("click",e=>e.stopPropagation());
   const searchable=vals.length>12; let searchInput=null;
@@ -1845,7 +1861,7 @@ function openColFilter(anchor,key){
   const allRow=document.createElement("button"); allRow.type="button"; allRow.className="uisel-opt uisel-all";
   allRow.innerHTML=`<span class="uisel-check"></span><span class="uisel-txt">Все значения</span>`;
   const syncAll=()=>allRow.classList.toggle("selected",set.size===0);
-  const apply=()=>{ if(set.size===0) delete turnColFilters[key]; else turnColFilters[key]=set; renderTurnoverSimple(); };
+  const apply=()=>{ const F2=ctx.filters(); if(set.size===0) delete F2[key]; else F2[key]=set; ctx.render(); };
   allRow.addEventListener("click",()=>{ set.clear(); [...listWrap.querySelectorAll(".uisel-opt")].forEach(el=>{ if(!el.classList.contains("uisel-all")) el.classList.remove("selected"); }); syncAll(); apply(); });
   listWrap.appendChild(allRow);
   vals.forEach(v=>{
@@ -1866,7 +1882,7 @@ function openColFilter(anchor,key){
   const pw=Math.max(190,panel.offsetWidth); let left=r.left; if(left+pw>window.innerWidth-12) left=window.innerWidth-12-pw;
   panel.style.left=Math.max(12,left)+"px";
   panel.style.maxHeight=Math.max(180,Math.min(360,window.innerHeight-r.bottom-24))+"px";
-  _colFilterPanel=panel; _colFilterKey=key;
+  _colFilterPanel=panel; _colFilterKey=key; _colFilterAt=Date.now();
   if(searchable) searchInput.focus();
 }
 // ---- Вид «По месяцам»: история заказов по артикулу помесячно ----
@@ -4387,11 +4403,24 @@ function srDecorate(rows){
   });
 }
 let srSortState={key:"days",dir:1};
-function srFiltered(){
-  const rows=srDecorate(srRows());
+/* Колоночные фильтры вкладки (Excel-стиль, та же механика, что в «Оборачиваемости»):
+   val(r) — каноничное значение колонки, оно же подпись в списке; sortVal — порядок списка. */
+let srColFilters={};
+function srColDefs(){
+  const pnum=v=>{const n=parseFloat((""+v).replace(/\s/g,"").replace(/[^\d.,-]/g,"").replace(",","."));return isNaN(n)?0:n;};
+  return [
+    {key:"category", val:r=>r.category||"—", sortVal:()=>0},
+    {key:"sup",      val:r=>r.sup,           sortVal:pnum},
+    {key:"verdict",  val:r=>SR_VERDICT[r.verdict].lbl,
+      sortVal:v=>({"Не хватит и Озону":0,"Поднять цену":1,"Разогнать":2,"Держать":3})[v]!=null
+        ?({"Не хватит и Озону":0,"Поднять цену":1,"Разогнать":2,"Держать":3})[v]:9},
+  ];
+}
+// строки с учётом панели (поиск/категории/сегмент) + всех колоночных фильтров, кроме exceptKey
+function srFilteredRows(all,exceptKey){
   const pred=catPred(selCats("srCat"));      // null = без фильтра категорий
   const q=(document.getElementById("srSearch").value||"").trim().toLowerCase();
-  return rows.filter(r=>{
+  let rows=all.filter(r=>{
     if(pred && !pred(r.category)) return false;
     if(srAction==="ship"){ if(!(r.shipIn!=null && r.shipIn<=0)) return false; }
     else if(srAction!=="all" && r.verdict!==srAction) return false;
@@ -4399,7 +4428,11 @@ function srFiltered(){
       if(hay.indexOf(q)<0) return false; }
     return true;
   });
+  srColDefs().forEach(def=>{ if(def.key===exceptKey) return;
+    const set=srColFilters[def.key]; if(set&&set.size) rows=rows.filter(r=>set.has(def.val(r))); });
+  return rows;
 }
+function srFiltered(){ return srFilteredRows(srDecorate(srRows()),null); }
 function renderStockRateTab(){
   const fresh=document.getElementById("srFreshness");
   if(!RD){ renderNoData("srTable"); fresh.innerHTML=""; document.getElementById("srKpis").innerHTML=""; return; }
@@ -4452,10 +4485,10 @@ function renderStockRateTab(){
     shipIn:r=>r.shipIn==null?1e9:r.shipIn,
     etaLeft:r=>r.etaLeft==null?1e9:r.etaLeft});
   let html=`<thead><tr>${thSort("Наименование","name",srSortState,"metric")}`
-    +`${thSort("Категория","category",srSortState)}${thSort("Артикул","sup",srSortState)}`
+    +`${thSortF("Категория","category",srSortState,null,"sr")}${thSortF("Артикул","sup",srSortState,null,"sr")}`
     +`${thSort("Запас всего","total",srSortState)}${thSort("Хватит, дн","days",srSortState)}`
     +`${thSort("ВБ: заказов/дн","ordWb",srSortState)}${thSort("ВБ: ЦЕЛЬ заказов/дн","targetOrders",srSortState)}`
-    +`${thSort("Что делать на ВБ","verdict",srSortState)}`
+    +`${thSortF("Что делать на ВБ","verdict",srSortState,null,"sr")}`
     +`${thSort("Ozon: продаж/дн","spdOz",srSortState)}${thSort("Ozon: хватит","ozDays",srSortState)}`
     +`${thSort("Ozon: отгрузить","shipIn",srSortState)}${thSort("Партия","etaLeft",srSortState)}</tr></thead><tbody>`;
   sorted.forEach(r=>{
@@ -5261,11 +5294,11 @@ function enhanceSelect(sel){
 document.addEventListener("click",()=>{closeAllUisel();closeColFilter();});
 document.addEventListener("keydown",e=>{ if(e.key==="Escape"){closeAllUisel();closeColFilter();} });
 // прокрутка/ресайз сбивают позицию fixed-панели — просто закрываем
-window.addEventListener("scroll",()=>{closeAllUisel();closeColFilter();});
-window.addEventListener("resize",()=>{closeAllUisel();closeColFilter();});
+window.addEventListener("scroll",()=>{closeAllUisel();closeColFilterOnScroll();});
+window.addEventListener("resize",()=>{closeAllUisel();closeColFilterOnScroll();});
 // внутренний скролл таблицы закрывает панель (позиция fixed съедет), НО скролл
 // самого списка значений внутри панели — не трогаем, иначе не долистать до нижних значений.
-document.addEventListener("scroll",e=>{ if(_colFilterPanel && _colFilterPanel.contains(e.target)) return; closeColFilter(); },true);
+document.addEventListener("scroll",e=>{ if(_colFilterPanel && _colFilterPanel.contains(e.target)) return; closeColFilterOnScroll(); },true);
 // заменяем ВСЕ выпадающие списки на кастомные (открываются вниз)
 document.querySelectorAll("select").forEach(enhanceSelect);
 
@@ -5622,7 +5655,11 @@ wireSortable("srTable",srSortState,renderStockRateTab);
 // клик по кнопке-воронке в заголовке → фильтр по значениям колонки (Excel-стиль)
 document.getElementById("turnTable").addEventListener("click",e=>{
   const cf=e.target.closest(".col-filter"); if(!cf) return;
-  e.stopPropagation(); openColFilter(cf,cf.dataset.fkey);
+  e.stopPropagation(); openColFilter(cf,cf.dataset.fkey,cf.dataset.fctx);
+});
+document.getElementById("srTable").addEventListener("click",e=>{
+  const cf=e.target.closest(".col-filter"); if(!cf) return;
+  e.stopPropagation(); openColFilter(cf,cf.dataset.fkey,cf.dataset.fctx);
 });
 wireSortable("dynTable",dynSortState,renderDynamicsTab);
 document.getElementById("dynViewSeg").addEventListener("click",e=>{
