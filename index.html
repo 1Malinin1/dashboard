@@ -491,6 +491,15 @@
   #homeWeeksTable td .sub2{display:block;font-size:10px;font-weight:500;line-height:1.25;
     margin-top:2px;white-space:nowrap}
   #homeWeeksTable td .sub2.mut{color:var(--muted)}
+  /* месяц ВБ — свёрнутая строка-итог; недели раскрываются по клику */
+  #homeWeeksTable tr.m-row{cursor:pointer}
+  #homeWeeksTable tr.m-row>td{font-weight:650;
+    background:color-mix(in srgb,var(--accent) 7%,transparent)}
+  #homeWeeksTable tr.m-row:hover>td{background:color-mix(in srgb,var(--accent) 13%,transparent)}
+  #homeWeeksTable tr.m-row td.metric{font-size:14px}
+  #homeWeeksTable .m-caret{display:inline-block;width:14px;color:var(--accent);font-size:11px}
+  #homeWeeksTable tr.w-row>td:first-child{padding-left:30px}
+  #homeWeeksTable tr.w-row>td{color:var(--text-2)}
   /* мини-бар доли прибыли прямо в ячейке (data-ink) */
   table.rnp td.share-cell{position:relative;overflow:hidden}
   .share-fill{position:absolute;left:0;top:50%;transform:translateY(-50%);height:56%;
@@ -4080,14 +4089,58 @@ function weeklyBreakdown(cat,q){
   }
   return weeks;   // от самой свежей к самой старой
 }
+/* ---- МЕСЯЦ ПО-ВБ: месяц состоит из ЦЕЛЫХ недель (пн–вс) ----
+   WB закрывает месяц не календарём, а неделями: июль у продавца закрылся 02.08, август
+   идёт 03.08–30.08. Правило, которое это воспроизводит: неделя относится к тому месяцу,
+   где лежит её ЧЕТВЕРГ (он же — месяц, в котором не меньше 4 дней недели).
+   Проверка на реальных датах: 27.07–02.08 → четверг 30.07 → июль (как и закрыл ВБ);
+   03–09.08 → 06.08 → август; 31.08–06.09 → 03.09 → сентябрь, поэтому август и
+   заканчивается 30.08. Не заменяй на «месяц первого дня недели» — 31.08 уехало бы в август. */
+const RU_MONTHS_FULL=["Январь","Февраль","Март","Апрель","Май","Июнь",
+  "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+function wbMonthOfWeek(fromIso){
+  const t=new Date(fromIso+"T00:00:00Z"); t.setUTCDate(t.getUTCDate()+3);   // четверг недели
+  return {key:t.toISOString().slice(0,7), y:t.getUTCFullYear(), m:t.getUTCMonth()};
+}
+// сколько ЦЕЛЫХ недель по этому правилу вообще в месяце — чтобы честно пометить неполный
+function wbWeeksInMonth(key){
+  const [y,m]=key.split("-").map(Number);
+  let n=0; const t=new Date(Date.UTC(y,m-1,1));
+  // первый четверг месяца
+  while(t.getUTCDay()!==4) t.setUTCDate(t.getUTCDate()+1);
+  while(t.getUTCMonth()===m-1){ n++; t.setUTCDate(t.getUTCDate()+7); }
+  return n;
+}
+function groupWeeksByWbMonth(weeks){
+  const out=[], byKey={};
+  weeks.forEach(w=>{                                   // weeks идут от свежей к старой
+    const mk=wbMonthOfWeek(w.from);
+    let g=byKey[mk.key];
+    if(!g){ g=byKey[mk.key]={key:mk.key,label:RU_MONTHS_FULL[mk.m]+" "+mk.y,weeks:[],
+      qty:0,revenue:0,wbHold:0,cogs:0,ad:0,profit:0,est:false}; out.push(g); }
+    g.weeks.push(w);
+    g.qty+=w.qty; g.revenue+=w.revenue; g.wbHold+=w.wbHold;
+    g.cogs+=w.cogs; g.ad+=w.ad; g.profit+=w.profit; g.est=g.est||w.est;
+  });
+  out.forEach(g=>{ g.margin=g.revenue? g.profit/g.revenue : 0;
+    g.from=g.weeks[g.weeks.length-1].from; g.to=g.weeks[0].to;
+    g.full=g.weeks.length>=wbWeeksInMonth(g.key); });
+  return out;
+}
+let homeWeeksOpen={};        // какие месяцы развёрнуты (ключ «ГГГГ-ММ»)
+function toggleHomeMonth(key){ homeWeeksOpen[key]=!homeWeeksOpen[key];
+  renderHomeWeeks(selCats("homeCat"),document.getElementById("homeSearch").value.trim().toLowerCase()); }
 function renderHomeWeeks(cat,q){
   const card=document.getElementById("homeWeeksCard"); if(!card) return;
   const w=weeklyBreakdown(cat,q);
   if(w.length<2){ card.hidden=true; return; }        // одна неделя — разбивать нечего
   card.hidden=false;
+  const months=groupWeeksByWbMonth(w);
   const best=w.reduce((a,b)=>b.profit>a.profit?b:a), worst=w.reduce((a,b)=>b.profit<a.profit?b:a);
   document.getElementById("homeWeeksNote").textContent=
-    w.length+" "+plural(w.length,"неделя","недели","недель")+" · лучшая "+fmtDate(best.from)+" ("+rub(best.profit)+")";
+    months.length+" "+plural(months.length,"месяц","месяца","месяцев")+" · "
+    +w.length+" "+plural(w.length,"неделя","недели","недель")
+    +" · месяц закрывается неделями, как у ВБ · нажмите на месяц, чтобы раскрыть недели";
   // % к прошлой неделе — только там, где база положительна. У прибыли база бывает
   // отрицательной, и процент превращается в бессмыслицу («−823%» при переходе
   // −43 630 → −402 561), поэтому для прибыли показываем разницу в рублях.
@@ -4097,21 +4150,32 @@ function renderHomeWeeks(cat,q){
   const dRub=(cur,prev,key)=>{ if(!prev) return "";
     const d=cur[key]-prev[key]; if(!Math.round(d)) return "";
     return `<span class="sub2 ${d>=0?"delta-up":"delta-down"}">${d>=0?"+":"−"}${rub(Math.abs(d))} к пред.</span>`; };
-  let html=`<thead><tr><th class="metric">Неделя</th><th>Продано</th><th>Выручка</th>`
+  const cells=(r,prev,useRub)=>`<td>${fmt(r.qty)}</td>`
+    +`<td>${rub(r.revenue)}${dPct(r,prev,"revenue")}</td>`
+    +`<td>${rub(r.wbHold)}</td><td>${rub(r.cogs)}</td><td>${r.ad? rub(r.ad):"—"}</td>`
+    +`<td style="font-weight:700;color:${r.profit>=0?"var(--good-txt)":"var(--crit-txt)"}">${rub(r.profit)}`
+    +`${useRub?dRub(r,prev,"profit"):""}</td>`
+    +`<td class="${r.margin<0?"delta-down":""}">${pct(r.margin)}</td>`;
+  let html=`<thead><tr><th class="metric">Месяц / неделя</th><th>Продано</th><th>Выручка</th>`
     +`<th>Удерж. WB</th><th>Себест.</th><th>Реклама</th><th>Прибыль</th><th>Маржа</th></tr></thead><tbody>`;
-  w.forEach((r,i)=>{
-    const prev=w[i+1];                                  // следующая в списке = предыдущая по времени
-    const mark = r===best? ' title="Лучшая неделя по прибыли"' : (r===worst? ' title="Худшая неделя по прибыли"':'');
-    html+=`<tr${mark}><td class="metric">${fmtDate(r.from)} – ${fmtDate(r.to)}`
-      +`<span class="sub2 ${r.est?"acc":"mut"}">${r.days===7? "7 дней" : r.days+" "+plural(r.days,"день","дня","дней")}`
-      +`${r.est? " · оценка":""}`
-      +`${r===best? " · лучшая":""}${r===worst&&r!==best? " · худшая":""}</span></td>`
-      +`<td>${fmt(r.qty)}</td>`
-      +`<td>${rub(r.revenue)}${dPct(r,prev,"revenue")}</td>`
-      +`<td>${rub(r.wbHold)}</td><td>${rub(r.cogs)}</td><td>${r.ad? rub(r.ad):"—"}</td>`
-      +`<td style="font-weight:700;color:${r.profit>=0?"var(--good-txt)":"var(--crit-txt)"}">${rub(r.profit)}`
-      +`${dRub(r,prev,"profit")}</td>`
-      +`<td class="${r.margin<0?"delta-down":""}">${pct(r.margin)}</td></tr>`;
+  months.forEach((g,gi)=>{
+    const pg=months[gi+1];                              // следующий в списке = предыдущий по времени
+    const open=!!homeWeeksOpen[g.key];
+    html+=`<tr class="m-row" onclick="toggleHomeMonth('${g.key}')" title="Нажмите, чтобы ${open?"свернуть":"раскрыть"} недели">`
+      +`<td class="metric"><span class="m-caret">${open?"▾":"▸"}</span>${esc(g.label)}`
+      +`<span class="sub2 ${g.est?"acc":"mut"}">${fmtDate(g.from)} – ${fmtDate(g.to)} · ${g.weeks.length} `
+      +`${plural(g.weeks.length,"неделя","недели","недель")}${g.full?"":" · неполный"}${g.est?" · оценка":""}</span></td>`
+      +cells(g,pg,true)+`</tr>`;
+    if(!open) return;
+    g.weeks.forEach((r,i)=>{
+      const prev=g.weeks[i+1]||(pg? pg.weeks[0] : null);
+      const mark = r===best? ' title="Лучшая неделя по прибыли"' : (r===worst? ' title="Худшая неделя по прибыли"':'');
+      html+=`<tr class="w-row"${mark}><td class="metric">${fmtDate(r.from)} – ${fmtDate(r.to)}`
+        +`<span class="sub2 ${r.est?"acc":"mut"}">${r.days===7? "7 дней" : r.days+" "+plural(r.days,"день","дня","дней")}`
+        +`${r.est? " · оценка":""}`
+        +`${r===best? " · лучшая":""}${r===worst&&r!==best? " · худшая":""}</span></td>`
+        +cells(r,prev,true)+`</tr>`;
+    });
   });
   document.getElementById("homeWeeksTable").innerHTML=html+"</tbody>";
 }
