@@ -4071,14 +4071,25 @@ function productPnL(dates,cat,q){
 /* ---- РАЗБИВКА ПО НЕДЕЛЯМ ----
    Кнопки периода дают накопительный итог («последние N дней»), и по ним нельзя понять,
    сколько принесла отдельно взятая неделя. Здесь — каждая загруженная неделя сама по себе.
-   Границы режем по 7 дней С КОНЦА истории: WB отдаёт отчёты понедельник–воскресенье,
-   и такие куски совпадают с календарными неделями (проверено на снимке). Неполный
-   «хвост» в начале истории показываем как есть, с числом дней. */
+
+   Недели — КАЛЕНДАРНЫЕ, с понедельника. Раньше история резалась кусками по 7 дней С КОНЦА,
+   и это совпадало с пн–вс только пока последний загруженный день был воскресеньем. Стоило
+   добавить понедельник 24.08 — все границы уехали на день (недели стали 04–10.08, 11–17.08),
+   а в начале истории появился обрубок в один день. У ВБ отчётность и закрытие месяца идут
+   строго по неделям пн–вс, поэтому привязываемся к понедельнику даты, а не к длине массива.
+   Неполная текущая неделя честно показывается как «N дней». */
+function mondayOf(iso){
+  const t=new Date(iso+"T00:00:00Z");
+  t.setUTCDate(t.getUTCDate()-((t.getUTCDay()+6)%7));    // 0=вс → сдвиг к понедельнику
+  return t.toISOString().slice(0,10);
+}
 function weeklyBreakdown(cat,q){
   const all=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
+  const byMon={};
+  all.forEach(d=>{ const m=mondayOf(d); (byMon[m]||(byMon[m]=[])).push(d); });
   const weeks=[];
-  for(let end=all.length; end>0; end-=7){
-    const from=Math.max(0,end-7), dates=all.slice(from,end);
+  for(const mon of Object.keys(byMon).sort().reverse()){
+    const dates=byMon[mon];
     const now=finAggregate(dates,cat,q), ad=adAggregate(dates,cat,q);
     // неделя помечается «оценка», если хоть один её день посчитан моделью, а не отчётом
     const est = !!financeEstFrom && dates.some(d=>d>=financeEstFrom);
@@ -4124,7 +4135,9 @@ function groupWeeksByWbMonth(weeks){
   });
   out.forEach(g=>{ g.margin=g.revenue? g.profit/g.revenue : 0;
     g.from=g.weeks[g.weeks.length-1].from; g.to=g.weeks[0].to;
-    g.full=g.weeks.length>=wbWeeksInMonth(g.key); });
+    // месяц полный, только если пришли ВСЕ его недели И каждая целиком (7 дней):
+    // иначе один загруженный понедельник выдавал август за закрытый месяц
+    g.full=g.weeks.length>=wbWeeksInMonth(g.key) && g.weeks.every(w=>w.days===7); });
   return out;
 }
 let homeWeeksOpen={};        // какие месяцы развёрнуты (ключ «ГГГГ-ММ»)

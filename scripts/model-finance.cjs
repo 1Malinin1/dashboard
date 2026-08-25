@@ -68,9 +68,12 @@ const moneyDates=Object.keys(M).sort();
 const FROM=arg('--from', addD(lastFact,1));
 const TO=arg('--to', moneyDates[moneyDates.length-1]||S.dates[S.dates.length-1]);
 const ADS=parseFloat(arg('--ads','0'))||0;
-// Денежный выкуп: доля заказанных ₽, которая доходит до выручки. По умолчанию берём
-// штучный выкуп дозревшего окна — он ближе всего к правде и уже проверен на зрелость.
-const MB=parseFloat(arg('--buyout', BW&&BW.all? String(BW.all) : '0.75'));
+/* Денежный выкуп: доля заказанных ₽, которая доходит до выручки. Берём именно ДЕНЕЖНЫЙ
+   (`buyoutWin.moneyAll`, выкуплено ₽ ÷ заказано ₽), а не штучный: чек выкупленного товара
+   отличается от чека заказанного, и на реальных данных разница 66.7% против 75.0% —
+   это 12% выручки. Штучный остаётся запасным вариантом для старых снимков. */
+const MB=parseFloat(arg('--buyout',
+  (BW&&BW.moneyAll)? String(BW.moneyAll) : (BW&&BW.all? String(BW.all) : '0.75')));
 if(FROM>TO){ console.error('нечего моделировать: from '+FROM+' > to '+TO); process.exit(1); }
 
 const catBySku={}; RD.catalog.forEach(x=>catBySku[''+x.sku]=x);
