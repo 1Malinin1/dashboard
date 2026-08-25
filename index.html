@@ -500,6 +500,14 @@
   #homeWeeksTable .m-caret{display:inline-block;width:14px;color:var(--accent);font-size:11px}
   #homeWeeksTable tr.w-row>td:first-child{padding-left:30px}
   #homeWeeksTable tr.w-row>td{color:var(--text-2)}
+  /* «Запас и темп»: колонок много, поэтому наименование не растягивает таблицу,
+     а категория и артикул держат свою узкую ширину */
+  #srTable td.name-cell{max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #srTable td.sr-cat{max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-2)}
+  #srTable td.sr-art{white-space:nowrap;font-variant-numeric:tabular-nums}
+  #srTable td .sub2{display:block;font-size:10px;font-weight:500;line-height:1.25;margin-top:2px;white-space:nowrap}
+  #srTable td .sub2.mut{color:var(--muted)}
+  #srTable th,#srTable td{padding-left:9px;padding-right:9px}
   /* мини-бар доли прибыли прямо в ячейке (data-ink) */
   table.rnp td.share-cell{position:relative;overflow:hidden}
   .share-fill{position:absolute;left:0;top:50%;transform:translateY(-50%);height:56%;
@@ -4397,13 +4405,15 @@ function renderStockRateTab(){
   renderSrHowTo();
   if(!rows.length){ document.getElementById("srTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
   const sorted=sortRows(rows,srSortState,{
-    name:r=>r.name, total:r=>r.total, days:r=>r.days===Infinity?1e9:r.days,
+    name:r=>r.name, category:r=>r.category||"", sup:r=>r.sup,
+    total:r=>r.total, days:r=>r.days===Infinity?1e9:r.days,
     spdWb:r=>r.spdWb, target:r=>r.target==null?-1:r.target,
     verdict:r=>({short:0,up:1,down:2,hold:3,none:4})[r.verdict],
     spdOz:r=>r.spdOz, ozDays:r=>r.ozDays===Infinity?1e9:r.ozDays,
     shipIn:r=>r.shipIn==null?1e9:r.shipIn,
     etaLeft:r=>r.etaLeft==null?1e9:r.etaLeft});
-  let html=`<thead><tr>${thSort("Товар / категория","name",srSortState,"metric")}`
+  let html=`<thead><tr>${thSort("Наименование","name",srSortState,"metric")}`
+    +`${thSort("Категория","category",srSortState)}${thSort("Артикул","sup",srSortState)}`
     +`${thSort("Запас всего","total",srSortState)}${thSort("Хватит, дн","days",srSortState)}`
     +`${thSort("ВБ: продаж/дн","spdWb",srSortState)}${thSort("ВБ: цель/дн","target",srSortState)}`
     +`${thSort("Что делать на ВБ","verdict",srSortState)}`
@@ -4425,8 +4435,10 @@ function renderStockRateTab(){
               +(r.whQty? `<span class="sub2 mut">на складе ${fmt(r.whQty)}</span>`
                        : `<span class="sub2 delta-down">склад пуст</span>`)));
     html+=`<tr class="${crit?"row-critical":""}">`
-      +`<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}`
-        +`<span class="sub2 mut">${esc(r.category||"")}${r.wbSku?" · "+esc(r.wbSku):""} · 1С ${esc(r.sup)}</span></td>`
+      +`<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}</td>`
+      +`<td class="sr-cat">${esc(r.category||"—")}</td>`
+      +`<td class="sr-art">${esc(r.sup)}`
+        +`${r.wbSku?`<span class="sub2 mut" title="Артикул Wildberries">ВБ ${esc(r.wbSku)}</span>`:""}</td>`
       +`<td style="font-weight:650">${fmt(r.total)}`
         +`<span class="sub2 mut">ВБ ${fmt(r.stockWb)} · Оз ${fmt(r.stockOz)} · скл ${fmt(r.whQty)}</span></td>`
       +`<td style="font-weight:650">${dTxt}</td>`
@@ -4473,8 +4485,8 @@ function exportStockRateXLSX(){
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
   const inf=v=>v===Infinity?"∞":(v==null?"":Math.round(v));
   const cols=[
-    {h:"Код 1С",v:r=>r.sup,w:11},{h:"Артикул ВБ",v:r=>r.wbSku||"",w:13},
-    {h:"Название",v:r=>r.name||"",w:44},{h:"Категория",v:r=>r.category||"",w:20},
+    {h:"Наименование",v:r=>r.name||"",w:44},{h:"Категория",v:r=>r.category||"",w:20},
+    {h:"Артикул (код 1С)",v:r=>r.sup,w:17},{h:"Артикул ВБ",v:r=>r.wbSku||"",w:13},
     {h:"Остаток ВБ (FBO), шт",v:r=>r.stockWb,w:20},
     {h:"Остаток Ozon (+в пути), шт",v:r=>r.stockOz,w:24},
     {h:"Свой склад Нск, шт",v:r=>r.whNsk,w:18},
