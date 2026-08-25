@@ -4254,13 +4254,18 @@ function srRows(){
   const inb=RD.inbound||{};
   const today=new Date().toISOString().slice(0,10);
   const dleft=iso=>iso? Math.round((new Date(iso+"T00:00:00Z")-new Date(today+"T00:00:00Z"))/864e5) : null;
-  // ближайшая партия по коду: своя дата кода важнее общей даты партии
+  /* Ближайшая партия по коду. Своя дата кода важнее общей даты партии.
+     Дат у партии ДВЕ: `eta` — приход на склад продавца, `etaSale` — выход в продажу
+     на площадке (между ними ещё месяц на приёмку и отгрузку). Для «на сколько хватит»
+     нужна ВТОРАЯ: пока партия лежит непринятой, продажи она не закрывает. */
   const batchFor=sup=>{
     let best=null;
     ["china","order"].forEach(k=>{ const b=inb[k]; if(!b) return;
       const q=(b.bySup||{})[sup]||0; if(!q) return;
-      const eta=((b.etaBySup||{})[sup])||b.eta||null;
-      const cand={kind:k,qty:q,eta,left:dleft(eta)};
+      const toWh  = ((b.etaBySup||{})[sup])||b.eta||null;
+      const toSale= ((b.etaSaleBySup||{})[sup])||b.etaSale||null;
+      const eta   = toSale||toWh;                    // считаем по выходу в продажу
+      const cand={kind:k,qty:q,eta,etaWh:toWh,left:dleft(eta)};
       if(!best) best=cand;
       else if(cand.eta && (!best.eta || cand.eta<best.eta)) best=cand;   // едет раньше
       else if(!cand.eta && !best.eta && cand.qty>best.qty) best=cand;
@@ -4286,7 +4291,7 @@ function srRows(){
       stockWb, stockOz, whQty, whMsk, whNsk, whOther, total,
       spdWb, spdOz, spd,
       days: spd>0? total/spd : (total>0? Infinity : 0),
-      batch:b, incoming:b? b.qty:0, eta:b? b.eta:null, etaLeft:b? b.left:null};
+      batch:b, incoming:b? b.qty:0, eta:b? b.eta:null, etaWh:b? b.etaWh:null, etaLeft:b? b.left:null};
   }).filter(r=>r.total>0 || r.spd>0 || r.incoming>0);
 }
 // цель и вердикт зависят от выбранного горизонта
@@ -4295,7 +4300,7 @@ function srDecorate(rows){
   return rows.map(r=>{
     let hz=null, hzSrc="";
     if(srHorizonMode==="eta"){
-      if(r.etaLeft!=null && r.etaLeft>0){ hz=r.etaLeft; hzSrc="до партии "+fmtDate(r.eta); }
+      if(r.etaLeft!=null && r.etaLeft>0){ hz=r.etaLeft; hzSrc="до продажи партии "+fmtDate(r.eta); }
       else if(r.etaLeft!=null && r.etaLeft<=0){ hz=null; hzSrc="партия просрочена ("+fmtDate(r.eta)+")"; }
       else hzSrc = r.incoming>0 ? "дата партии не задана" : "партии нет";
     } else { hz=+srHorizonMode; hzSrc=hz+" дн"; }
@@ -4386,10 +4391,11 @@ function renderStockRateTab(){
       +`<td class="${r.incoming?"":"d-zero"}">${r.incoming? fmt(r.incoming):"—"}</td>`
       +`<td>${r.etaLeft!=null? (r.etaLeft>0? r.etaLeft : `<span class="delta-down">просрочена</span>`)
              : `<span class="muted">${esc(r.hzSrc)}</span>`}`
-        +`${r.eta?`<span class="sub2 mut">${fmtDate(r.eta)}</span>`:""}</td>`
+        +`${r.eta?`<span class="sub2 mut" title="Дата, когда партия встанет в продажу${r.etaWh&&r.etaWh!==r.eta?`; на ваш склад приедет ${fmtDate(r.etaWh)}`:""}">в продажу ${fmtDate(r.eta)}${r.etaWh&&r.etaWh!==r.eta?` · на склад ${fmtDate(r.etaWh)}`:""}</span>`:""}</td>`
       +`<td style="font-weight:700">${r.target!=null? r.target.toLocaleString("ru-RU",{maximumFractionDigits:1}) : "—"}`
         +`${r.target!=null&&r.spd>0?`<span class="sub2 ${r.gap>0?"delta-down":"delta-up"}">сейчас ${r.spd.toFixed(1)}</span>`:""}</td>`
-      +`<td><span class="badge ${v.cls}" title="${esc(v.tip)}"><span class="d"></span>${v.lbl}</span></td></tr>`;
+      +`<td><span class="badge ${v.cls}" title="${esc(r.verdict==="none"? v.tip+"\n"+r.hzSrc : v.tip)}"><span class="d"></span>`
+        +`${r.verdict==="none"? (r.incoming>0? "дата не задана" : "нет партии") : v.lbl}</span></td></tr>`;
   });
   document.getElementById("srTable").innerHTML=html+"</tbody>";
 }
