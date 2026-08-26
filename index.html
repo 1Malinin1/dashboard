@@ -2287,7 +2287,11 @@ function resupplyRows(){
     const st={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(!s) return;
       const out=(""+(c.productionStatus||"")).trim()==="На вывод";
       st[s]=(st[s]===undefined)? out : (st[s]&&out); });
-    Object.keys(st).forEach(s=>{ if(st[s]) outSup.add(s); });
+    /* НО: выводимый товар, который ЛЕЖИТ НА СКЛАДЕ, в подсорте остаётся. Просьба продавца
+       26.08: «если у этих товаров где-то есть остаток — пока считай, мне нужно их быстрее
+       распродать». Распродать можно только на площадке, значит везти его как раз нужно.
+       Выкидываем лишь те, по которым везти нечего. */
+    Object.keys(st).forEach(s=>{ if(st[s] && !((wh[s]&&wh[s].qty)>0)) outSup.add(s); });
   }
   const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh),...Object.keys(chinaBy),...Object.keys(orderBy)])]
     .filter(s=>!outSup.has(s));
