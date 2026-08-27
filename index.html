@@ -1576,7 +1576,14 @@ function whKey(n){ const s=""+n;
 // На склады Wildberries поставок больше нет — вся отгрузка со своих складов идёт на Ozon.
 const WB_FBO_SUPPLY=false;
 // Нск-1 (FBS) должен держать столько дней продаж ВБ; меньше — сигнал «перемести с Евросиба».
-const NSK1_MIN_DAYS=30;
+/* ДВА РАЗНЫХ ВОПРОСА — ДВА РАЗНЫХ СЧЁТА (правило продавца 27.08.2026):
+     · «сколько продавать в день / поднимать или снижать цену» — считается по ВСЕМУ запасу
+       (остаток на складах WB + все свои склады + Ozon), см. вкладку «Запас и темп»;
+     · «что везти с Евросиба на Нск-1» — смотрим ТОЛЬКО на Нск-1: именно с него уходит FBS
+       на Wildberries, и там должно лежать минимум NSK1_MIN_DAYS дней продаж.
+   Как только на Нск-1 остаётся меньше — довозим с Евросиба ровно до этого минимума.
+   Порог 14 дней: пока запаса хватает на две недели, гонять товар между складами незачем. */
+const NSK1_MIN_DAYS=14;
 /* ПОКРЫТИЕ ВБ = ОСТАТОК НА СКЛАДАХ WB + СВОЙ FBS-ЗАПАС (решение продавца 27.08.2026).
    Пока на складах WB что-то лежит — это считается (что будет дальше, пока неизвестно),
    но продажа идёт и по FBS, то есть товар уходит покупателю прямо с наших складов.
@@ -2225,7 +2232,7 @@ function turnHowTo(view,oz,mp){
       "Продаж/дн на ВБ = заказы за 7 дней ÷ 7 × "+buyTxt,
       "«ВБ: дней» = (остаток на складах WB + свободный FBS-запас) ÷ продаж/дн. FBS-запас — это вся Москва плюс Нск-1 за вычетом того, что забрал Ozon",
       "FBS уходит покупателю со склада Нск-1 (Склад FBS), поэтому «Нск-1: дней» = остаток на Нск-1 ÷ продаж/дн",
-      "Если на Нск-1 меньше "+NSK1_MIN_DAYS+" дней продаж — нужно ПЕРЕМЕСТИТЬ товар с Евросиба",
+      "Если на Нск-1 осталось меньше "+NSK1_MIN_DAYS+" дней продаж — ПЕРЕМЕЩАЕМ товар с Евросиба",
       "Переместить = продаж/дн × "+NSK1_MIN_DAYS+" − остаток на Нск-1 (не больше, чем свободно на Евросибе)",
       "Москва тоже торгует по FBS, но перемещения между городами не считаем — только Евросиб → Нск-1"];
     const notes=[];
@@ -2243,7 +2250,8 @@ function turnHowTo(view,oz,mp){
       "Если паллет на складе меньше, чем на машину, — машина не собирается, показываем просто паллеты. Если у товара не набирается даже паллета, в строке стоит пометка.",
       "ДОБОР МАШИНЫ: неполную машину от "+TRUCK_TOPUP_MIN+" паллет добиваем до "+PALLETS_PER_TRUCK+" — везти полупустую дороже, чем довезти то, что скоро понадобится. Добираем только тем, что на Озоне продастся за "+Math.round(TOPUP_SELL_DAYS/30)+" месяца (покрытие товара после добора не выходит за этот срок), и раздаём по одной паллете разным кодам — чтобы не создавать застой. Такие штуки помечены «добор машины». Если добить до полной нечем — не добираем вообще.");
     notes.push(O? ("Статус: «Срочно» — покрытие меньше "+Math.round(RESUPPLY_DAYS/3)+" дней; «Подсорт» — меньше "+RESUPPLY_DAYS+"; «Нет на складе» — отгружать нечего.")
-                : ("Статус: «Срочно» — на Нск-1 меньше "+Math.round(NSK1_MIN_DAYS/3)+" дней продаж; «Подсорт» — меньше "+NSK1_MIN_DAYS+"; «Нет на складе» — переместить нечего, на Евросибе этого товара нет."));
+                : ("Статус: «Срочно» — на Нск-1 меньше "+Math.round(NSK1_MIN_DAYS/2)+" дней продаж; «Подсорт» — меньше "+NSK1_MIN_DAYS+"; «Нет на складе» — переместить нечего, на Евросибе этого товара нет."));
+    if(W) notes.push("ЗДЕСЬ И В «ЗАПАСЕ И ТЕМПЕ» СЧИТАЕТСЯ РАЗНОЕ, и так задумано. Решение «поднять или снизить цену» принимается по ВСЕМУ запасу — склады WB, все ваши склады и Ozon вместе. А перемещение между складами смотрит ТОЛЬКО на Нск-1: именно с него уходит FBS на Wildberries, и там должно лежать минимум "+NSK1_MIN_DAYS+" дней продаж. Московский остаток в этот счёт не входит — подвезти его в Новосибирск нельзя.");
     notes.push("Колонка «Склад» — сумма трёх складов, рядом разбивка: Мск (СХ Солнечногорск), Нск-1 (Склад FBS), Евросиб (Склад Евросиб).",
       "Колонка «Приедет ко мне» — то, что ещё в дороге К ВАМ, а не на площадку: из Китая примерно через месяц, заказанное производству — около 3 месяцев до склада и 4 до площадки. Отгружать это сейчас нельзя, но при решении «ждать или заказывать ещё» смотреть нужно.");
     return {title:"Как считается подсорт со склада"+(both?"":(O?" — Ozon":" — Wildberries")), steps, notes};
@@ -2416,17 +2424,20 @@ function resupplyRows(){
            const from2=Math.min(shipO,restNsk2); restNsk2-=from2; restNsk1-=(shipO-from2);
            usedNsk2+=from2; usedNsk1+=(shipO-from2); }
     /* ПЕРЕМЕЩЕНИЕ ЕВРОСИБ → НСК-1 вместо отгрузки на ВБ. FBS на Wildberries уходит
-       со склада Нск-1; когда там кончается то, что продаётся, товар надо подвезти
-       со второго новосибирского склада. Продавец просил сигнализировать сам. */
-    const nsk1Days = w.spd>0 ? whNsk1/w.spd : (whNsk1>0? Infinity : 0);
-    const moveNeed = (!WB_FBO_SUPPLY && w.spd>0)
-      ? Math.max(0, Math.ceil(w.spd*NSK1_MIN_DAYS) - whNsk1) : 0;
+       со склада Нск-1, поэтому здесь смотрим ТОЛЬКО на него — Москва в этот счёт не входит
+       (она торгует по FBS со своей стороны, но подвезти в Новосибирск её остаток нельзя).
+       Берём то, что на Нск-1 РЕАЛЬНО останется: за вычетом паллет, которые с него уже
+       забрал Ozon в этой же раскладке. */
+    const nsk1Free = Math.max(0, whNsk1-usedNsk1);
+    const nsk1Days = w.spd>0 ? nsk1Free/w.spd : (nsk1Free>0? Infinity : 0);
+    const moveNeed = (!WB_FBO_SUPPLY && w.spd>0 && nsk1Days<NSK1_MIN_DAYS)
+      ? Math.max(0, Math.ceil(w.spd*NSK1_MIN_DAYS) - nsk1Free) : 0;
     const move = Math.min(moveNeed, Math.max(0,restNsk2));      // только то, что реально свободно
     restNsk2 -= move; usedNsk2 += move;
-    /* ПОКРЫТИЕ ВБ = остаток на складах WB + свободный FBS-запас. Москва входит целиком
-       (она не отгружает на Ozon), Нск-1 — за вычетом того, что Озон уже забрал в этой же
-       раскладке (`usedNsk1`), иначе один товар посчитается и там и там. */
-    const wbFbsFree = whMsk + Math.max(0, whNsk1-usedNsk1);
+    /* ПОКРЫТИЕ ВБ (для оборачиваемости и решения по цене) — наоборот, по ВСЕМУ FBS-запасу:
+       Москва целиком (она не отгружает на Ozon) + свободный Нск-1. Это разные вопросы:
+       выше — «что везти между складами», здесь — «на сколько вообще хватит товара». */
+    const wbFbsFree = whMsk + nsk1Free;
     const wCovAll = w.covered + wbFbsFree;
     const wDaysAll = w.spd>0 ? wCovAll/w.spd : (wCovAll>0? Infinity : 0);
     // пометки «не набирается паллета»
@@ -2447,7 +2458,7 @@ function resupplyRows(){
     /* Статус ВБ теперь не про отгрузку, а про ПЕРЕМЕЩЕНИЕ на Нск-1: сколько дней FBS
        продержится на том складе, с которого он отгружается покупателю. */
     const stW = !WB_FBO_SUPPLY
-      ? (moveNeed<=0? "ok" : (move<=0? "nostock" : (nsk1Days<NSK1_MIN_DAYS/3? "urgent":"need")))
+      ? (moveNeed<=0? "ok" : (move<=0? "nostock" : (nsk1Days<NSK1_MIN_DAYS/2? "urgent":"need")))
       : mkSt(needW,w.days,split?have.wb:haveAll);
     let status;
     if(needO<=0 && moveNeed<=0) status="ok";
@@ -2467,7 +2478,7 @@ function resupplyRows(){
       whBy:whB, whMsk, whNsk, whNsk1, whNsk2, whOther, china:(chinaBy[sup]||0), onOrder:(orderBy[sup]||0),
       palOz, palWb, palShipO, palShipW, palNote, launchNote, isLaunchO, isLaunchW,
       oNsk1, oNsk2, usedNsk1, usedNsk2, topUpO:0, topUpW:0,
-      move, moveNeed, nsk1Days, wbFbsFree, wCovAll, wDaysAll,
+      move, moveNeed, nsk1Days, nsk1Free, wbFbsFree, wCovAll, wDaysAll,
       ship, rest, status, stW, stO, minDays};
   });
   topUpTrucks(all);
@@ -2605,19 +2616,23 @@ function renderTruckPlan(rows,filtered){
   /* На Wildberries машин нет — поставок туда больше не делаем. Вместо плана машин
      показываем перемещение Евросиб → Нск-1: это тот самый сигнал, который продавец
      просил выдавать сам («на Нск-1 заканчивается товар для FBS — перемести»). */
-  const movers=(mp==="ozon")? [] : rows.filter(r=>r.move>0||r.moveNeed>0)
-    .sort((a,b)=>(a.nsk1Days===Infinity?1e9:a.nsk1Days)-(b.nsk1Days===Infinity?1e9:b.nsk1Days));
+  /* В карточке — ТОЛЬКО то, что реально можно увезти, и сверху самое крупное. Коды,
+     которых нет и на Евросибе, задачей логистики не являются: они уходят в строку-итог,
+     иначе список начинался с десятка «нечем» и полезное уезжало вниз. */
+  const moveAll=(mp==="ozon")? [] : rows.filter(r=>r.moveNeed>0);
+  const movers=moveAll.filter(r=>r.move>0).sort((a,b)=>b.move-a.move);
+  const moveGapN=moveAll.length-movers.length;
   if(!plan.length && !movers.length){ el.innerHTML=""; el.hidden=true; return; }
   el.hidden=false;
   const nameMp=m=>m==="ozon"?"Ozon":"Wildberries";
-  const moveQty=movers.reduce((a,r)=>a+r.move,0), moveGap=movers.filter(r=>r.move<=0);
-  const moveCard=movers.length? `<div class="tp-card"><div class="tp-head">Евросиб → Нск-1 (FBS)</div>`
-    +`<div class="tp-sum"><b>${fmt(moveQty)}</b> шт · <b>${movers.filter(r=>r.move>0).length}</b> кодов`
-    +(moveGap.length? ` · <b>${moveGap.length}</b> нечем закрыть`:"")
-    +` · цель — ${NSK1_MIN_DAYS} дней продаж ВБ на Нск-1</div>`
-    +movers.slice(0,12).map(r=>`<div class="tp-truck"><b>${esc(r.sup)}</b> — ${r.move>0? fmt(r.move)+" шт":"нечем"}`
-      +`<span class="tp-items">${esc((r.name||"").slice(0,40))} · на Нск-1 ${fmt(r.whNsk1)} шт (${dTxt(r.nsk1Days)} дн)</span></div>`).join("")
+  const moveQty=movers.reduce((a,r)=>a+r.move,0);
+  const moveCard=moveAll.length? `<div class="tp-card"><div class="tp-head">Евросиб → Нск-1 (FBS)</div>`
+    +`<div class="tp-sum"><b>${fmt(moveQty)}</b> шт · <b>${movers.length}</b> кодов`
+    +` · везём, когда на Нск-1 осталось меньше ${NSK1_MIN_DAYS} дней продаж ВБ</div>`
+    +movers.slice(0,12).map(r=>`<div class="tp-truck"><b>${esc(r.sup)}</b> — ${fmt(r.move)} шт`
+      +`<span class="tp-items">${esc((r.name||"").slice(0,38))} · на Нск-1 ${fmt(r.nsk1Free)} шт (${dTxt(r.nsk1Days)} дн) · на Евросибе ${fmt(r.whNsk2)}</span></div>`).join("")
     +(movers.length>12? `<div class="tp-truck"><span class="tp-items">… и ещё ${movers.length-12} кодов</span></div>`:"")
+    +(moveGapN? `<div class="tp-truck"><span class="tp-items">Ещё ${moveGapN} кодов кончаются на Нск-1, но и на Евросибе их нет — перемещением не закрыть.</span></div>`:"")
     +`</div>` : "";
   const cards=plan.map(p=>{
     const list=p.trucks.map((t,i)=>{
@@ -2725,8 +2740,8 @@ function renderTurnResupply(){
       +`<td style="font-weight:650">${fmt(r.have)}${r.whOther?`<span class="sub2 mut">+${fmt(r.whOther)} проч.</span>`:""}${r.split&&r.have?`<span class="sub2 mut">ВБ ${fmt(r.haveWb)} / Оз ${fmt(r.haveOz)}</span>`:""}</td>`;
     // под днями — из чего сложилось покрытие: остаток на площадке + то, что уже едет на неё
     if(showW) html+=`<td title="Покрытие ВБ = остаток на складах WB + свободный FBS-запас (вся Москва + незанятый Озоном Нск-1). Поставок на склады WB больше нет — эта часть только убывает.">${r.wSpd>0? dTxt(r.wDaysAll) : "—"}<span class="sub2 mut">FBO ${fmt(r.wStock)}${r.wbFbsFree?` + FBS <b class="acc">${fmt(r.wbFbsFree)}</b>`:""} · ${r.wSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
-      +`<td title="На сколько дней продаж ВБ хватит остатка на складе Нск-1 — именно с него уходит FBS покупателю.">${r.wSpd>0? dTxt(r.nsk1Days) : "—"}<span class="sub2 mut">${fmt(r.whNsk1)} на Нск-1</span></td>`
-      +`<td style="font-weight:700;${r.move?"color:var(--accent)":""}" title="Перемещение Евросиб → Нск-1, чтобы на Нск-1 было не меньше ${NSK1_MIN_DAYS} дней продаж ВБ по FBS.">${r.move? fmt(r.move)+" шт"
+      +`<td title="На сколько дней продаж ВБ хватит остатка на складе Нск-1 — именно с него уходит FBS покупателю. Показан остаток за вычетом того, что с Нск-1 забрал Ozon.">${r.wSpd>0? dTxt(r.nsk1Days) : "—"}<span class="sub2 mut">${fmt(r.nsk1Free)} на Нск-1</span></td>`
+      +`<td style="font-weight:700;${r.move?"color:var(--accent)":""}" title="Везём с Евросиба, когда на Нск-1 осталось меньше ${NSK1_MIN_DAYS} дней продаж ВБ по FBS; довозим ровно до этого минимума.">${r.move? fmt(r.move)+" шт"
         +`<span class="sub2 mut">${fmt(r.whNsk2)} на Евросибе</span>`
         : (r.moveNeed>0? `<span class="sub2 crit">нужно ${fmt(r.moveNeed)}, на Евросибе нет</span>` : "—")}</td>`;
     if(showO) html+=`<td>${r.oSpd>0? dTxt(r.oDays) : "—"}<span class="sub2 mut" title="Остаток на Озоне + поставки, которые Озон уже показывает в пути">${both? fmt(r.oCov) : fmt(r.oStock)+(r.oTransit?` +<b class="acc">${fmt(r.oTransit)}</b> в пути`:"")} · ${r.oSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
@@ -2923,6 +2938,7 @@ function exportResupplyXLSX(){
     {h:"ВБ: продаж/дн",    v:r=>+r.wSpd.toFixed(2), w:13},
     {h:"ВБ: хватит дней (FBO+FBS)", v:r=>inf(r.wDaysAll), w:26},
     {h:"Нск-1: хватит дней",  v:r=>inf(r.nsk1Days), w:18},
+    {h:"Нск-1: остаток шт",  v:r=>r.nsk1Free, w:18},
     {h:"Нужно на Нск-1 до "+NSK1_MIN_DAYS+" дн", v:r=>r.moveNeed||"", w:24});
   if(O) cols.push(
     {h:"Ozon: остаток",    v:r=>r.oStock, w:13},
@@ -2967,7 +2983,8 @@ function exportResupplyXLSX(){
       +"; добираем только тем, что продастся за "+Math.round(TOPUP_SELL_DAYS/30)+" месяца, разными кодами"],
     ["Товары «На вывод»", "исключены из подсорта — выводим из ассортимента"],
     ["Три склада и маршруты", "Москва (СХ Солнечногорск) — только FBS для Wildberries, никуда не отгружает; Нск-1 (Склад FBS) — FBS для Wildberries + поставки на Ozon; Нск-2 (Склад Евросиб) — поставки на Ozon + перемещение на Нск-1"],
-    ["Wildberries", "поставок на склады WB больше нет — продажа только по FBS со своих складов; на вкладке ВБ показано перемещение Евросиб → Нск-1 (цель — "+NSK1_MIN_DAYS+" дней продаж на Нск-1)"],
+    ["Wildberries", "поставок на склады WB больше нет — продажа только по FBS со своих складов; на вкладке ВБ показано перемещение Евросиб → Нск-1: везём, когда на Нск-1 осталось меньше "+NSK1_MIN_DAYS+" дней продаж, довозим ровно до этого минимума"],
+    ["Оборачиваемость и цена", "считаются по ВСЕМУ запасу (склады WB + все свои склады + Ozon) — это отдельный вопрос от перемещения между складами"],
     ["Отгрузка", "только целыми паллетами; "+PALLETS_PER_TRUCK+" паллет = машина, машина собирается с одного склада на одну площадку"],
     ["Вместимость паллеты", (RD&&RD.pallets)? ("из файла продавца от "+fmtDateLong(RD.pallets.date)+(W&&O?"; у ВБ и Озона разная":" (для "+(O?"Озона":"ВБ")+")")) : "не загружена"],
     ["Едет из Китая", (RD&&RD.inbound&&RD.inbound.china)? (fmt(RD.inbound.china.total)+" шт — ориентировочно через месяц у продавца на складе") : "не загружено"],
