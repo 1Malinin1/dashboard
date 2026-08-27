@@ -5868,13 +5868,17 @@ function combinedDataset(){
   const align=(series,src)=>{ const out=new Array(dates.length).fill(0);
     if(series) src.forEach((d,i)=>{ out[uIdx[d]]+=series[i]||0; }); return out; };
   const bySku={}, catalog=[];
-  // ключ = чистый код товара (арт.поставщика для ВБ / артикул для Озона) — по нему и сливаем
-  const add=(c,series,src,code)=>{ const al=align(series,src);
-    if(!bySku[code]){ bySku[code]=al; catalog.push({sku:code,name:c.name,category:c.category}); }
+  /* ключ = чистый код товара (арт.поставщика для ВБ / артикул для Озона) — по нему и сливаем.
+     КАТЕГОРИЯ В РЕЖИМЕ «ВСЕГО» — ВСЕГДА ВБ-шная. С 27.08 у Озона свои названия («Каталка»
+     вместо «Пушкары»), и если бы сюда попадали они, один и тот же товар оказывался бы
+     в двух разных категориях, а фильтр на «Всего» делил бы выборку пополам. ВБ-категория
+     детальнее и есть у всех связанных товаров (`wbCategory` ставит ozon-build.cjs). */
+  const add=(c,series,src,code,cat)=>{ const al=align(series,src);
+    if(!bySku[code]){ bySku[code]=al; catalog.push({sku:code,name:c.name,category:cat||c.category}); }
     else { for(let i=0;i<dates.length;i++) bySku[code][i]+=al[i]; } };
   WBDATA.catalog.forEach(c=>{ const code=(c.supplierCode!=null&&(""+c.supplierCode).trim())?(""+c.supplierCode).trim():(""+c.sku);
-    add(c, WBDATA.bySku[c.sku], WBDATA.dates, code); });
-  OZDATA.catalog.forEach(c=>{ add(c, OZDATA.bySku[c.sku], OZDATA.dates, (""+c.sku).trim()); });
+    add(c, WBDATA.bySku[c.sku], WBDATA.dates, code, c.category); });
+  OZDATA.catalog.forEach(c=>{ add(c, OZDATA.bySku[c.sku], OZDATA.dates, (""+c.sku).trim(), c.wbCategory||c.category); });
   return {catalog,bySku,dates};
 }
 // «перенавести» активные ряды/каталог на выбранную площадку
@@ -5887,7 +5891,12 @@ function applyMpData(mp){
     if(typeof selectedSku!=="undefined") selectedSku=null;   // выбор товара/периодов свой на каждой площадке
     _prodPeriodsMp=null;
     if(typeof turnColFilters!=="undefined"){ turnColFilters={}; closeColFilter(); }   // фильтры колонок — свои на каждой площадке
-    ["dynCat","turnCat","turnProduct"].forEach(id=>{const cs=document.getElementById(id); if(cs) cs.innerHTML="";}); }  // категории/товары перезаполнятся под площадку
+    /* Категории у площадок теперь РАЗНЫЕ по названиям (у Озона свои: «Каталка» и т.п.),
+       поэтому выбор категорий при смене площадки надо сбрасывать — иначе выбранные
+       на ВБ «Пушкары» на Озоне не совпадут ни с чем и таблица окажется пустой. */
+    ["dynCat","turnCat","turnProduct","srCat","prodCat","anCat","finCat","homeCat"].forEach(id=>{
+      const cs=document.getElementById(id); if(cs){ cs.innerHTML=""; cs.dataset.selected=""; } });
+    if(typeof srColFilters!=="undefined"){ srColFilters={}; } }  // категории/товары перезаполнятся под площадку
 }
 function hydrateData(){
   RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
