@@ -155,10 +155,15 @@ let rows=sups.map(sup=>{
   const moveNeed = (!WB_FBO_SUPPLY && w.spd>0) ? Math.max(0, Math.ceil(w.spd*NSK1_MIN_DAYS)-mNsk1) : 0;
   const move = Math.min(moveNeed, Math.max(0,rNsk2));
   rNsk2-=move; usedNsk2+=move;
+  /* ПОКРЫТИЕ ВБ = остаток на складах WB + свободный FBS-запас (вся Москва + Нск-1 минус
+     то, что забрал Ozon). Держи синхронно с wbFbsBySup/resupplyRows в index.html. */
+  const wbFbsFree = mMsk + Math.max(0, mNsk1-usedNsk1);
+  const wCovAll = w.covered + wbFbsFree;
+  const wDaysAll = w.spd>0 ? wCovAll/w.spd : (wCovAll>0? Infinity : 0);
   return {sup,name:(w.name||o.name||sup),have,palOz,palWb,palO,palW,oN1,oN2,
     whMsk:mMsk,whNsk1:mNsk1,whNsk2:mNsk2,whNsk:mNsk1+mNsk2,usedNsk1,usedNsk2,
     oCov:o.covered,wCov:w.covered,topUpO:0,
-    noPal:(!P&&needO>0), move, moveNeed, nsk1Days,
+    noPal:(!P&&needO>0), move, moveNeed, nsk1Days, wbFbsFree, wCovAll, wDaysAll,
     wDays:w.days,oDays:o.days,wSpd:w.spd,oSpd:o.spd,needW,needO,shipW,shipO,
     rest:have-shipO-move, china:chinaBy[sup]||0, order:orderBy[sup]||0, launch:launchO,
     minDays:Math.min(w.spd>0?w.days:Infinity,o.spd>0?o.days:Infinity)};
@@ -231,6 +236,8 @@ if(launches.length) console.log('Стартовые партии (товара �
   +F(launches.reduce((a,r)=>a+r.shipO,0))+' шт');
 console.log('ПЕРЕМЕСТИТЬ Евросиб → Нск-1 (FBS на ВБ): '+F(rows.reduce((a,r)=>a+r.move,0))+' шт по '
   +movers.filter(r=>r.move>0).length+' кодам'+(moveGap.length? '  ·  нечем закрыть '+moveGap.length+' кодов':''));
+console.log('Покрытие ВБ: FBO '+F(rows.reduce((a,r)=>a+(r.wCov||0),0))+' шт + FBS со своих складов '
+  +F(rows.reduce((a,r)=>a+r.wbFbsFree,0))+' шт (Москва целиком + Нск-1 без того, что забрал Ozon)');
 console.log('Останется на складе: '+F(rows.reduce((a,r)=>a+r.rest,0))+' шт из '+F(Object.values(wh).reduce((a,v)=>a+v.qty,0)));
 
 // ---- план машин: паллеты по (склад × площадка), машина = 33 паллеты, ассортимент round-robin ----
