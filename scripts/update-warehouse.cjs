@@ -21,11 +21,18 @@
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const XLSX=require('./node_modules/xlsx');
 const OUT=path.join(__dirname,'..','decrypted');
-const kind=(process.argv[2]||'').toLowerCase();
-const file=process.argv[3];
-const dateArg=process.argv[4]||new Date().toISOString().slice(0,10);
+let argv=process.argv.slice(2);
+/* --wh <склад> — ЯВНО СКАЗАТЬ, ЧЕЙ ЭТО ФАЙЛ. Складов у продавца три, и два из них
+   в Новосибирске: «FBS» (Нск-1) и «Евросиб» (Нск-2). 1С печатает в шапке одну и ту же
+   подпись, поэтому по имени колонки их не различить — выгрузка второго склада молча
+   затирала бы первый. Значение: msk | nsk1 | nsk2 (или прямое имя склада). */
+const takeArg=k=>{const i=argv.indexOf(k); if(i<0) return null; const v=argv[i+1]; argv.splice(i,2); return v;};
+const whArg=takeArg('--wh');
+const kind=(argv[0]||'').toLowerCase();
+const file=argv[1];
+const dateArg=argv[2]||new Date().toISOString().slice(0,10);
 if(!['stock','china','order'].includes(kind)||!file){
-  console.error('usage: node scripts/update-warehouse.cjs <stock|china|order> <файл.xls> [ГГГГ-ММ-ДД]');process.exit(1);}
+  console.error('usage: node scripts/update-warehouse.cjs [--wh msk|nsk1|nsk2] <stock|china|order> <файл.xls> [ГГГГ-ММ-ДД]');process.exit(1);}
 
 const S=v=>(''+(v==null?'':v)).replace(/ /g,' ').replace(/\s+/g,' ').trim();
 // 1С печатает разделитель разрядов и пробелом, и ЗАПЯТОЙ: «487 160» и «474,092» → 487160/474092.
@@ -37,9 +44,18 @@ const num=v=>{ const s=S(v).replace(/[\s ]/g,'').replace(/,/g,''); if(!s) return
 // Без приведения к одному имени мерж по складам добавил бы ВТОРОЙ склад рядом со старым
 // и задвоил остаток (старый бы сохранился как «отсутствующий в файле»). Приводим к каноничным
 // именам — тем, что понимает дашборд (whShort в index.html).
-const canonWh=v=>{ const s=S(v);
-  if(/евросиб|новосиб|^нск$/i.test(s)) return 'Склад Евросиб';
-  if(/солнечногор|москв|^мск$/i.test(s)) return 'СХ Солнечногорск';
+// ТРИ СКЛАДА (правила продавца 27.08.2026):
+//   СХ Солнечногорск (Москва) — только FBS для Wildberries, никуда не отгружает;
+//   Склад FBS (Новосибирск-1) — FBS для Wildberries + поставки на Ozon;
+//   Склад Евросиб (Новосибирск-2) — поставки на Ozon + перемещение на Нск-1.
+const WH_MSK='СХ Солнечногорск', WH_NSK1='Склад FBS', WH_NSK2='Склад Евросиб';
+const WH_ALIAS={msk:WH_MSK, nsk1:WH_NSK1, nsk2:WH_NSK2};
+const whForced=whArg? (WH_ALIAS[(''+whArg).toLowerCase()]||S(whArg)) : null;
+const canonWh=v=>{ if(whForced) return whForced; const s=S(v);
+  if(/(^|\W)fbs(\W|$)|фбс/i.test(s)) return WH_NSK1;
+  if(/евросиб/i.test(s)) return WH_NSK2;
+  if(/солнечногор|москв|^мск$/i.test(s)) return WH_MSK;
+  if(/новосиб|^нск$/i.test(s)) return WH_NSK2;   // «просто Новосибирск» без уточнения — Евросиб
   return s; };
 
 const ctx={};vm.createContext(ctx);
