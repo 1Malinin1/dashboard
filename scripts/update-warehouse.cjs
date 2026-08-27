@@ -72,10 +72,15 @@ const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:fa
 // поэтому ищем ТОЧНОЕ совпадение ячейки. Раскладку «по заказам» опознаём по строкам
 // «Заказ поставщику …» — в ней колонок складов нет вообще.
 const isOrders = rows.some(r=>(r||[]).some(x=>/^Заказ поставщику\b/i.test(S(x))));
-let hr=-1;
-for(let i=0;i<Math.min(24,rows.length);i++){ if((rows[i]||[]).some(x=>S(x)==='Номенклатура.Код')){ hr=i; break; } }
+/* Колонка кода: в ведомости 1С это «Номенклатура.Код», а в рабочем файле продавца
+   (свод по трём складам) — просто «Код». Ищем по точному совпадению обеих подписей. */
+const CODE_HDRS=['Номенклатура.Код','Код'];
+let hr=-1, iCodeFound=-1;
+for(let i=0;i<Math.min(24,rows.length);i++){
+  const idx=(rows[i]||[]).findIndex(x=>CODE_HDRS.includes(S(x)));
+  if(idx>=0){ hr=i; iCodeFound=idx; break; } }
 const layout = isOrders ? 'B' : 'A';
-if(layout==='A'&&hr<0){ console.error('не нашёл строку-шапку с ячейкой «Номенклатура.Код»'); process.exit(1); }
+if(layout==='A'&&hr<0){ console.error('не нашёл строку-шапку с ячейкой «Номенклатура.Код» или «Код»'); process.exit(1); }
 const bySup={}, byWh={}; let taken=0, skipped={}, total=0;
 let cols=[];   // колонки-склады из шапки (нужны и ниже, при мерже по складам)
 const inbCols={china:[],order:[]};   // колонки «едет ко мне» — это не склад
@@ -83,11 +88,15 @@ const inbBy={china:{},order:{}};
 
 if(layout==='A'){
   const H=rows[hr].map(S);
-  const iCode=H.findIndex(x=>x==='Номенклатура.Код');
+  const iCode=iCodeFound>=0? iCodeFound : H.findIndex(x=>CODE_HDRS.includes(x));
   // колонки складов — всё между кодом и «Итог» (сам «Итог» не берём, чтобы не задвоить)
   for(let i=iCode+1;i<H.length;i++){ const h=H[i]; if(!h) continue; if(/^Итог/i.test(h)) break;
     // «плановый запас» и прочие справочные колонки складами не являются
     if(/плановый|запас|норма/i.test(h)) continue;
+    /* Рабочий файл продавца везёт рядом со складами справочные колонки: вместимость
+       паллеты («Паллет Озон (св-во Номенклатура)») и название («Номенклатура»).
+       Складами они не являются — иначе вместимость попала бы в остаток как отдельный склад. */
+    if(/^паллет/i.test(h) || /^номенклатура$/i.test(h) || /наименован|название/i.test(h)) continue;
     // В одном файле продавец присылает и склады, и то, что едет К НЕМУ. Это НЕ склад:
     // «в пути ко мне (Китай)» → inbound.china, «заказано производству» → inbound.order.
     // Без этого разделения колонка Китая становилась бы третьим складом и попадала
@@ -116,7 +125,7 @@ if(layout==='A'){
   // Б: строки-заголовки «Заказ поставщику …», под ними пары код/количество.
   // Колонку кода берём из шапки, количество — следующая за ней.
   const HB=(hr>=0? rows[hr]:[]).map(S);
-  const iCode=Math.max(1,HB.findIndex(x=>x==='Номенклатура.Код'));
+  const iCode=Math.max(1,HB.findIndex(x=>CODE_HDRS.includes(x)));
   const iQty=iCode+1;
   console.log('раскладка «ведомость по заказам поставщикам»');
   let orders=0;

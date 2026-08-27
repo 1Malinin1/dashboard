@@ -4440,19 +4440,24 @@ function srRows(){
   const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh)])];
   return sups.map(sup=>{
     const w=W[sup]||{spd:0,stock:0,transit:0,name:""}, o=O[sup]||{spd:0,stock:0,transit:0,name:""};
-    const whB=(wh[sup]&&wh[sup].wh)||{}; let whMsk=0,whNsk=0,whOther=0;
-    Object.entries(whB).forEach(([n,q])=>{ if(/солнечногор/i.test(n)) whMsk+=q;
-      else if(/евросиб/i.test(n)) whNsk+=q; else whOther+=q; });
+    const whB=(wh[sup]&&wh[sup].wh)||{}; const wq={msk:0,nsk1:0,nsk2:0,other:0};
+    Object.entries(whB).forEach(([n,q])=>{ wq[whKey(n)]+=q; });
+    const whMsk=wq.msk, whNsk1=wq.nsk1, whNsk2=wq.nsk2, whOther=wq.other, whNsk=whNsk1+whNsk2;
     const whQty=whMsk+whNsk+whOther;
     const stockWb=w.stock||0, stockOz=(o.stock||0)+(o.transit||0);
     const total=stockWb+stockOz+whQty;
+    /* Сколько из этого запаса вообще МОЖЕТ дойти до Ozon: то, что уже на Озоне, плюс два
+       новосибирских склада. Москва на Ozon не отгружает, поэтому её остаток Озону недоступен
+       и целиком остаётся Wildberries — без этой оговорки спрос Озона вычитался бы из товара,
+       до которого он физически не дотянется. */
+    const ozReach=stockOz+whNsk1+whNsk2;
     const spdWb=w.spd||0, spdOz=o.spd||0, spd=spdWb+spdOz;
     const b=batchFor(sup);
     const wbCard=(RD.catalog||[]).find(c=>(""+(c.supplierCode||"")).trim()===sup);
     return {sup, name:(w.name||o.name||(wbCard&&wbCard.name)||sup),
       category:(wbCard&&wbCard.category)||"",
       wbSku:wbCard? ""+wbCard.sku : null,
-      stockWb, stockOz, whQty, whMsk, whNsk, whOther, total,
+      stockWb, stockOz, whQty, whMsk, whNsk, whNsk1, whNsk2, whOther, total, ozReach,
       spdWb, spdOz, spd,
       days: spd>0? total/spd : (total>0? Infinity : 0),
       ordWb:ordW[sup]||0, ordOz:ordO[sup]||0,
@@ -4471,8 +4476,9 @@ function srDecorate(rows){
       else if(r.etaLeft!=null && r.etaLeft<=0){ hz=null; hzSrc="партия просрочена ("+fmtDate(r.eta)+")"; }
       else hzSrc = r.incoming>0 ? "дата партии не задана" : "партии нет";
     } else { hz=+srHorizonMode; hzSrc=hz+" дн"; }
-    // Озон съест своё независимо от цены — на ВБ остаётся то, что после него
-    const ozTake = hz>0 ? r.spdOz*hz : 0;
+    /* Озон съест своё независимо от цены — на ВБ остаётся то, что после него. Но взять он
+       может только из того, до чего дотягивается (`ozReach`): Москва на Ozon не отгружает. */
+    const ozTake = hz>0 ? Math.min(r.spdOz*hz, r.ozReach) : 0;
     const wbAvail = hz>0 ? Math.max(0, r.total-ozTake) : null;
     const target = hz>0 ? wbAvail/hz : null;                 // сколько можно продавать в день НА ВБ
     let verdict="none", ratio=null;
@@ -4637,9 +4643,9 @@ function renderSrHowTo(){
   const hz = srHorizonMode==="eta" ? "до даты прихода партии по этому товару" : srHorizonMode+" дней";
   el.innerHTML=`<div class="howto-t">КАК СЧИТАЕТСЯ ЗАПАС И ТЕМП</div>`
     +`<div class="howto-s">`
-    +[`Запас = остаток на ВБ (FBO) + остаток и поставки Ozon + ваш склад (он же FBS)`,
+    +[`Запас = остаток на складах ВБ (FBO) + остаток и поставки Ozon + все три ваших склада (с них идёт FBS)`,
       `Продаж/дн = заказы за 7 дней ÷ 7 × % выкупа — отдельно по ВБ и по Ozon`,
-      `Ozon съест за горизонт (${hz}) = его продаж/дн × дни — этот объём из запаса вычитается`,
+      `Ozon съест за горизонт (${hz}) = его продаж/дн × дни, но не больше того, до чего он дотягивается (Озон + Нск-1 + Евросиб)`,
       `ВБ доступно = запас − то, что съест Ozon; делим на горизонт → цель ПРОДАЖ в день`,
       `ВБ: ЦЕЛЬ ЗАКАЗОВ/ДН = цель продаж ÷ % выкупа товара — вот это число ставится в репрайсер`,
       `Темп ВБ выше цели на 15% — «поднять цену», ниже на 15% — «разогнать», в пределах — «держать»`,
@@ -4648,6 +4654,8 @@ function renderSrHowTo(){
     +`<div class="howto-n">`
     +[`ЦЕНОЙ ВЫ УПРАВЛЯЕТЕ ТОЛЬКО НА ВБ. Ozon следует за ценой ВБ (условие удержания индекса цен), поэтому его спрос — заданная величина: разогнать или притормозить его нельзя. В расчёте он вычитается из общего запаса, а цель по темпу считается для остатка, который достаётся ВБ.`,
       `Ключ строки — код 1С: товар физически один, поэтому ВБ и Ozon считаются общим запасом. Товар на вашем складе учтён РОВНО ОДИН РАЗ, хотя он одновременно продаётся на ВБ по FBS и может уехать на Ozon.`,
+      `Wildberries считается ЦЕЛИКОМ: и остаток на складах WB (FBO), и ваш склад (FBS) — это один и тот же товар, которым вы торгуете на ВБ. Поэтому цель по темпу держит вас и от аута, и от залежавшегося остатка к приходу партии.`,
+      `Москва (СХ Солнечногорск) на Ozon не отгружает, поэтому её остаток Озону недоступен и целиком достаётся Wildberries. Спрос Озона вычитается только из того, до чего он дотягивается: остаток на Озоне + Нск-1 (Склад FBS) + Евросиб.`,
       `«Ozon: отгрузить» — единственный рычаг по Ozon: цена не управляется, поэтому вопрос только в том, когда отправить товар, чтобы не уйти в аут. Срок доставки принят ${OZ_LEAD_DAYS} дней — скажите, если у вас другой, поправлю.`,
       `Горизонт — до даты, когда партия ВСТАНЕТ В ПРОДАЖУ (а не приедет к вам на склад): пока она лежит непринятой, продажи она не закрывает.`,
       `Цель «0/дн» на ВБ означает, что при нынешнем спросе Ozon весь запас уйдёт на него — на ВБ продавать нечего, цену надо поднимать сильно.`,
