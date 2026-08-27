@@ -84,12 +84,24 @@ let wbHit=0, wbMiss=[], wbOld=0, wbNew=0;
 RD.catalog.forEach(c=>{ wbOld += (c.pending&&c.pending.qty)||0; });
 // снимаем старое «в пути» у всех — файл является полным списком того, что едет
 RD.catalog.forEach(c=>{ c.pending=null; });
+/* ПОСТАВОК НА СКЛАДЫ WILDBERRIES БОЛЬШЕ НЕТ (решение продавца 27.08.2026): ВБ продаётся
+   только по FBS со своих складов. Поэтому вкладки «вб» в файле «на оптовых» больше не
+   означают «поедет на ВБ» — это просто товар на складе, он уже посчитан в REAL_DATA.warehouse.
+   Записав его в pending, мы задвоили бы его в ЗАКУПЕ («есть сейчас» = остаток + в пути +
+   склад + Китай + заказано). Поэтому pending остаётся пустым; счётчик оставлен, чтобы
+   в отчёте было видно, сколько в файле числилось «на ВБ». */
+const WB_FBO_SUPPLY=false;
 Object.entries(wbInc).forEach(([code,qty])=>{
   const arr=bySup[code]; if(!arr){ wbMiss.push({code,qty}); return; }
+  if(!WB_FBO_SUPPLY){ wbHit++; return; }
   const q=Math.round(qty/arr.length);   // один код → несколько sku: делим поровну (обычно 1:1)
   arr.forEach(c=>{ c.pending={qty:q, asOf, source:'на оптовых'}; wbNew+=q; });
   wbHit++;
 });
+if(!WB_FBO_SUPPLY) console.log('ВБ «в пути» НЕ ЗАПОЛНЯЕТСЯ: поставок на склады Wildberries больше нет'
+  +' (продажа по FBS). В файле по вкладкам ВБ числилось '
+  +Math.round(Object.values(wbInc).reduce((a,x)=>a+x,0)).toLocaleString('ru-RU')+' шт — этот товар'
+  +' уже учтён как остаток вашего склада.');
 
 // ---- применяем к Озону (ключ: ozon.catalog.sku = арт. поставщика) ----
 const ozBySku={}; (RD.ozon&&RD.ozon.catalog||[]).forEach(c=>ozBySku[(''+c.sku).replace(/[\s ]/g,'').trim()]=c);
