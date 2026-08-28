@@ -10,7 +10,11 @@
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const XLSX=require('./node_modules/xlsx');
 const ROOT=path.join(__dirname,'..'), OUT=path.join(ROOT,'decrypted');
-const files=process.argv.slice(2);
+let _av=process.argv.slice(2);
+const _di=_av.indexOf('--date'); let DATE_ARG=null;
+if(_di>=0){ DATE_ARG=_av[_di+1]; _av.splice(_di,2); }
+if(DATE_ARG && !/^\d{4}-\d{2}-\d{2}$/.test(DATE_ARG)){console.error('--date в формате ГГГГ-ММ-ДД');process.exit(1);}
+const files=_av;
 if(!files.length){console.error('usage: node scripts/bake-funnel.cjs <день1.xlsx> ...');process.exit(1);}
 function num(v){const n=parseFloat((''+v).replace(/[\s ]/g,'').replace(',','.'));return isNaN(n)?0:n;}
 
@@ -43,12 +47,27 @@ function findSheet(wb){
   }
   return {rows:null,hr:0};
 }
+/* Дата дня: обычно с листа «Общая информация», но продавец иногда шлёт тот же день
+   в раскладке сводного отчёта — там этого листа нет. Тогда берём дату из имени файла
+   (в нём начало и конец периода, ДДММГГГГ) и принимаем ТОЛЬКО если они совпадают.
+   Держи синхронно с wb-extend-orders.cjs — файлы одни и те же. */
+function dateFromName(f){
+  const b=path.basename(f); const all=[...b.matchAll(/(\d{2})(\d{2})(20\d{2})/g)].map(m=>m[3]+'-'+m[2]+'-'+m[1]);
+  const uniq=[...new Set(all)];
+  return uniq.length===1? uniq[0] : null;
+}
 function readDay(f){
   const wb=XLSX.read(fs.readFileSync(f),{type:'buffer',cellStyles:false,cellFormula:false});
-  const oi=XLSX.utils.sheet_to_json(wb.Sheets['Общая информация'],{header:1,raw:false,defval:''});
-  let per='';oi.forEach(r=>{ if((''+r[0]).toLowerCase().includes('текущий')) per=''+r[1]; });
-  const m=per.match(/(\d{2})-(\d{2})-(\d{4})/); if(!m) throw new Error('нет даты периода в "'+per+'" ('+f+')');
-  const iso=m[3]+'-'+m[2]+'-'+m[1];
+  let iso=DATE_ARG||null;
+  if(!iso && wb.Sheets['Общая информация']){
+    const oi=XLSX.utils.sheet_to_json(wb.Sheets['Общая информация'],{header:1,raw:false,defval:''});
+    let per='';oi.forEach(r=>{ if((''+r[0]).toLowerCase().includes('текущий')) per=''+r[1]; });
+    const m=per.match(/(\d{2})-(\d{2})-(\d{4})/); if(m) iso=m[3]+'-'+m[2]+'-'+m[1];
+  }
+  if(!iso){ iso=dateFromName(f);
+    if(iso) console.log('  (дата взята из имени файла: '+iso+')'); }
+  if(!iso) throw new Error('не удалось определить дату для '+path.basename(f)
+    +' — нет листа «Общая информация», и даты периода в имени файла не совпадают. Укажите --date ГГГГ-ММ-ДД');
   const {rows,hr}=findSheet(wb);
   if(!rows) throw new Error('не нашёл лист с воронкой в '+f+' (листы: '+wb.SheetNames.join(', ')+')');
   const H=rows[hr].map(x=>''+x);

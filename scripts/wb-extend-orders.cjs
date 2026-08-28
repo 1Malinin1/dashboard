@@ -7,8 +7,12 @@
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const XLSX=require('./node_modules/xlsx');
 const OUT=path.join(__dirname,'..','decrypted');
-const files=process.argv.slice(2);
-if(!files.length){console.error('usage: node scripts/wb-extend-orders.cjs <день1.xlsx> ...');process.exit(1);}
+let _av=process.argv.slice(2);
+const _di=_av.indexOf('--date'); let DATE_ARG=null;
+if(_di>=0){ DATE_ARG=_av[_di+1]; _av.splice(_di,2); }
+const files=_av;
+if(!files.length){console.error('usage: node scripts/wb-extend-orders.cjs [--date ГГГГ-ММ-ДД] <день1.xlsx> ...');process.exit(1);}
+if(DATE_ARG && !/^\d{4}-\d{2}-\d{2}$/.test(DATE_ARG)){console.error('--date в формате ГГГГ-ММ-ДД');process.exit(1);}
 const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
 const RD=ctx.__RD;
@@ -27,12 +31,30 @@ function findSheet(wb){
   }
   return {rows:null,hr:0,name:null};
 }
+/* ДАТА ДНЯ. Обычная подённая выгрузка несёт её на листе «Общая информация». Но продавец
+   иногда шлёт ТОТ ЖЕ день в раскладке сводного отчёта (один лист «Товары», колонки
+   «… (предыдущий период)») — там этого листа нет вовсе. Тогда берём дату из имени файла:
+   в нём стоят начало и конец периода (ДДММГГГГ). Принимаем ТОЛЬКО если они совпадают —
+   иначе это отчёт за диапазон, и раскидать его по дням нельзя; в таком случае просим --date.
+   Колонки в обеих раскладках ищутся ПО ИМЕНИ, поэтому сам разбор одинаков. */
+function dateFromName(f){
+  const b=path.basename(f); const all=[...b.matchAll(/(\d{2})(\d{2})(20\d{2})/g)].map(m=>m[3]+'-'+m[2]+'-'+m[1]);
+  if(!all.length) return null;
+  const uniq=[...new Set(all)];
+  return uniq.length===1? uniq[0] : null;
+}
 function readDay(f){
   const wb=XLSX.read(fs.readFileSync(f),{type:'buffer',cellStyles:false,cellFormula:false});
-  const oi=XLSX.utils.sheet_to_json(wb.Sheets['Общая информация'],{header:1,raw:false,defval:''});
-  let per='';oi.forEach(r=>{ if((''+r[0]).toLowerCase().includes('текущий')) per=''+r[1]; });
-  const m=per.match(/(\d{2})-(\d{2})-(\d{4})/); if(!m) throw new Error('нет даты в "'+per+'" ('+f+')');
-  const iso=m[3]+'-'+m[2]+'-'+m[1];
+  let iso=DATE_ARG||null;
+  if(!iso && wb.Sheets['Общая информация']){
+    const oi=XLSX.utils.sheet_to_json(wb.Sheets['Общая информация'],{header:1,raw:false,defval:''});
+    let per='';oi.forEach(r=>{ if((''+r[0]).toLowerCase().includes('текущий')) per=''+r[1]; });
+    const m=per.match(/(\d{2})-(\d{2})-(\d{4})/); if(m) iso=m[3]+'-'+m[2]+'-'+m[1];
+  }
+  if(!iso){ iso=dateFromName(f);
+    if(iso) console.log('  (дата взята из имени файла: '+iso+' — листа «Общая информация» в выгрузке нет)'); }
+  if(!iso) throw new Error('не удалось определить дату для '+path.basename(f)
+    +' — нет листа «Общая информация», и в имени файла даты периода не совпадают. Укажите --date ГГГГ-ММ-ДД');
   // Лист с товарами ищем ПО СОДЕРЖИМОМУ, а не по имени: он называется «Товары», но если
   // выгрузка отфильтрована по бренду — «Vulpes» (и «Промосервисы Vulpes» рядом, его надо
   // пропустить — там нет «Показы»). Берём первый лист, где в шапке есть «Артикул WB».
