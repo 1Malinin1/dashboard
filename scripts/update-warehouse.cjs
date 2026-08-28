@@ -195,7 +195,13 @@ const label={stock:'Остатки своих складов',china:'В пути
 const uk=Object.keys(skipped);
 console.log('\n'+label+' на '+dateArg+': позиций '+Object.keys(bySup).length+' · '+total.toLocaleString('ru-RU')+' шт');
 if(kind==='stock') Object.entries(byWh).forEach(([n,v])=>console.log('   '+n+': '+v.toLocaleString('ru-RU')+' шт'));
-console.log('Кодов не из нашего каталога (пропущено): '+uk.length
+/* Коды не из каталога — это РОЗНИЧНЫЕ товары продавца, которых нет ни на ВБ, ни на Озоне
+   (подтверждено 28.08.2026). Их пропуск — норма, а не потеря данных: связывать их с
+   маркетплейсами не нужно. Формулировка мягкая специально, чтобы будущая сессия не начала
+   «чинить» это. */
+const skipQty=uk.reduce((a,k)=>a+skipped[k],0);
+console.log('Розничные коды (нет на ВБ и Озоне, в расчёт не идут): '+uk.length+' кодов · '
+  +Math.round(skipQty).toLocaleString('ru-RU')+' шт'
   +(uk.length? ' · '+uk.slice(0,12).map(k=>k+' ('+skipped[k]+')').join(', ')+(uk.length>12?' …':'') : ''));
 const top=Object.entries(bySup).sort((a,b)=>b[1].qty-a[1].qty).slice(0,8);
 if(top.length){ console.log('\nТоп по количеству:');
