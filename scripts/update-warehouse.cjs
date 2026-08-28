@@ -48,12 +48,18 @@ const num=v=>{ const s=S(v).replace(/[\s ]/g,'').replace(/,/g,''); if(!s) return
 //   СХ Солнечногорск (Москва) — только FBS для Wildberries, никуда не отгружает;
 //   Склад FBS (Новосибирск-1) — FBS для Wildberries + поставки на Ozon;
 //   Склад Евросиб (Новосибирск-2) — поставки на Ozon + перемещение на Нск-1.
-const WH_MSK='СХ Солнечногорск', WH_NSK1='Склад FBS', WH_NSK2='Склад Евросиб';
-const WH_ALIAS={msk:WH_MSK, nsk1:WH_NSK1, nsk2:WH_NSK2};
+const WH_MSK='СХ Солнечногорск', WH_MSK2='РЦ Солнечногорский', WH_NSK1='Склад FBS', WH_NSK2='Склад Евросиб';
+const WH_ALIAS={msk:WH_MSK, msk2:WH_MSK2, nsk1:WH_NSK1, nsk2:WH_NSK2};
 const whForced=whArg? (WH_ALIAS[(''+whArg).toLowerCase()]||S(whArg)) : null;
+/* «РЦ Солнечногорский (Москва)» — ОТДЕЛЬНАЯ площадка, появилась 28.08.2026. Держим её
+   отдельным складом, а не сливаем с «СХ Солнечногорск»: продавец видит обе строки, а на
+   маршрутизацию это не влияет — оба московских склада ведут себя одинаково (только FBS
+   для Wildberries, никуда не отгружают), и `whKey()` в index.html разбирает их по «солнечногор».
+   Проверка порядка важна: правило РЦ стоит ДО общего московского, иначе он бы схлопнулся. */
 const canonWh=v=>{ if(whForced) return whForced; const s=S(v);
   if(/(^|\W)fbs(\W|$)|фбс/i.test(s)) return WH_NSK1;
   if(/евросиб/i.test(s)) return WH_NSK2;
+  if(/рц\s*солнечногор/i.test(s)) return WH_MSK2;
   if(/солнечногор|москв|^мск$/i.test(s)) return WH_MSK;
   if(/новосиб|^нск$/i.test(s)) return WH_NSK2;   // «просто Новосибирск» без уточнения — Евросиб
   return s; };
