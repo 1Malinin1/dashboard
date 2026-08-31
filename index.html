@@ -740,6 +740,7 @@
     <button class="tab-btn" data-tab="stockrate" role="tab" aria-selected="false">Запас и темп</button>
     <button class="tab-btn" data-tab="product" role="tab" aria-selected="false">Товар</button>
     <button class="tab-btn" data-tab="finance" role="tab" aria-selected="false">Финансы</button>
+    <button class="tab-btn" data-tab="ads" role="tab" aria-selected="false">Реклама</button>
     <button class="tab-btn" data-tab="analytics" role="tab" aria-selected="false">Аналитика</button>
   </nav>
 
@@ -941,6 +942,30 @@
     <div class="howto" id="srHowTo"></div>
     <div class="table-card">
       <div class="table-scroll"><table class="rnp" id="srTable"></table></div>
+    </div>
+  </section>
+
+  <section id="tab-ads" class="tab-panel" hidden>
+    <div class="freshness" id="adFreshness"></div>
+    <div class="kpis4" id="adKpis"></div>
+    <div class="toolbar">
+      <input type="search" id="adSearch" placeholder="Поиск: артикул, код 1С или название…">
+      <select id="adGroupSel"></select>
+      <select id="adPeriod">
+        <option value="14">Период: 14 дней</option>
+        <option value="28" selected>Период: 28 дней</option>
+        <option value="56">Период: 56 дней</option>
+      </select>
+      <div class="seg" id="adViewSeg" role="group" aria-label="Что показать">
+        <button data-v="cand" aria-pressed="true">Кандидаты</button>
+        <button data-v="tags">По склейкам</button>
+      </div>
+      <span class="count" id="adCount"></span>
+      <button class="btn" id="adExportBtn">Скачать Excel</button>
+    </div>
+    <div class="howto" id="adHowTo"></div>
+    <div class="table-card">
+      <div class="table-scroll"><table class="rnp" id="adTable"></table></div>
     </div>
   </section>
 
@@ -4556,6 +4581,230 @@ function srFilteredRows(all,exceptKey){
   return rows;
 }
 function srFiltered(){ return srFilteredRows(srDecorate(srRows()),null); }
+/* ===================== РЕКЛАМА (Wildberries) =====================
+   Повторяет ручной отбор продавца (согласовано 31.08.2026):
+     1) выбираем ГРУППУ (Пушкары, Рули, Песок, Светофоры, Набор для бокса) — это его
+        собственная разбивка, крупнее ВБ-категории, приходит из выгрузки XWAY;
+     2) внутри группы товары разбиты на СКЛЕЙКИ (`adTag`) — карточки, слитые в одну:
+        в выдаче они конкурируют как одна позиция, и реклама ставится на склейку;
+     3) внутри КАЖДОЙ склейки считаем Парето ПО ВЫРУЧКЕ (заказано ₽ за период):
+        накопленная доля до 80% — категория A, до 95% — B, дальше C;
+     4) кандидат под рекламу = A, у которого московского FBS-остатка хватает
+        не меньше чем на AD_MIN_MSK_DAYS дней продаж.
+   Почему именно Москва: там основной спрос, товар доезжает быстро. Почему «дней», а не
+   «больше нуля»: реклама разгоняет продажи, и позиция с остатком на пару дней встанет
+   посреди кампании — бюджет уйдёт, а карточка просядет в выдаче. На реальных данных
+   такой фильтр убрал ровно двух кандидатов из двадцати (2 шт и 25 шт в Москве при
+   продажах 5-7 шт/день), остальные имеют запас на 40-500 дней. */
+const AD_MIN_MSK_DAYS=21;
+let adGroup=null, adPeriod=28, adView="cand";
+// московский FBS-остаток по коду 1С: оба московских склада, Нск-1 сюда НЕ входит
+function adMskBySup(){
+  const wh=(RD&&RD.warehouse&&RD.warehouse.bySup)||{}, out={};
+  Object.entries(wh).forEach(([sup,v])=>{ let m=0;
+    Object.entries(v.wh||{}).forEach(([n,q])=>{ if(whKey(n)==="msk") m+=q; });
+    out[sup]=m; });
+  return out;
+}
+function adRows(){
+  if(!RD||!WBDATA) return [];
+  const S=RD.orderSeries, dates=S.dates||[], M=S.money||{};
+  if(!dates.length) return [];
+  const win=dates.slice(Math.max(0,dates.length-adPeriod)), winSet=new Set(win);
+  const idx={}; dates.forEach((d,i)=>idx[d]=i);
+  const msk=adMskBySup();
+  // воронка за то же окно — показы/переходы/заказы нужны, чтобы понимать «есть ли куда расти»
+  const fun={};
+  (typeof FUNNEL_CACHE!=="undefined"? FUNNEL_CACHE:[]).forEach(r=>{ if(!winSet.has(r.date)) return;
+    const e=fun[r.sku]||(fun[r.sku]={imp:0,cv:0,ord:0});
+    e.imp+=r.impressions||0; e.cv+=r.cardViews||0; e.ord+=r.ordersQty||0; });
+  const bo=(RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.all)||0.75;
+  const rows=(RD.catalog||[]).filter(c=>c.adGroup && (!adGroup||c.adGroup===adGroup)).map(c=>{
+    const sku=""+c.sku, sup=(""+(c.supplierCode||"")).trim();
+    const arr=S.bySku[sku]||[];
+    let qty=0, rub=0;
+    win.forEach(d=>{ qty+=arr[idx[d]]||0; const m=M[d]&&M[d][sku]; if(m) rub+=m[0]||0; });
+    const f=fun[sku]||{imp:0,cv:0,ord:0};
+    const spd=qty/win.length*bo;                       // продаж/дн ≈ заказы × выкуп
+    const m=msk[sup]||0;
+    const mskDays = spd>0 ? m/spd : (m>0? Infinity : 0);
+    return {sku, sup, tag:c.adTag||"—", group:c.adGroup, name:c.name||sku,
+      category:c.category||"", factory:(""+(c.factoryCode||"")).trim(),
+      qty, rub, spd, msk:m, mskDays, fbo:c.wbStock||0,
+      imp:f.imp, ctr:f.imp? f.cv/f.imp*100:0, cr:f.cv? f.ord/f.cv*100:0,
+      price:qty? rub/qty:0};
+  });
+  // Парето ПО ВЫРУЧКЕ внутри каждой склейки
+  const byTag={}; rows.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
+  Object.values(byTag).forEach(list=>{
+    const tot=list.reduce((a,x)=>a+x.rub,0);
+    [...list].sort((a,b)=>b.rub-a.rub).forEach((x,i,arr)=>{
+      const acc=arr.slice(0,i+1).reduce((a,y)=>a+y.rub,0);
+      const sh=tot? acc/tot : 1;
+      x.abc = sh<=0.8? "A" : (sh<=0.95? "B" : "C");
+      x.share = tot? x.rub/tot*100 : 0; x.tagTotal=tot; });
+  });
+  rows.forEach(r=>{
+    r.ok = r.abc==="A" && r.mskDays>=AD_MIN_MSK_DAYS;
+    r.why = r.abc!=="A" ? "не категория A"
+      : (r.msk<=0 ? "в Москве нет остатка"
+      : (r.mskDays<AD_MIN_MSK_DAYS ? "в Москве хватит на "+Math.round(r.mskDays)+" дн" : ""));
+  });
+  return rows;
+}
+function adFiltered(){
+  const q=(document.getElementById("adSearch")?.value||"").trim().toLowerCase();
+  let rows=adRows();
+  if(q) rows=rows.filter(r=>(r.sku+" "+r.sup+" "+r.factory+" "+r.name+" "+r.tag).toLowerCase().includes(q));
+  return rows;
+}
+const adFmtD = v => v===Infinity? "∞" : Math.round(v);
+function renderAdsTab(){
+  const el=document.getElementById("adTable"); if(!el) return;
+  /* Группы сортируем по числу карточек: первой должна открываться самая крупная
+     («Пушкары», 75 товаров), а не та, что случайно раньше в каталоге. */
+  const gCnt={}; (RD.catalog||[]).forEach(c=>{ if(c.adGroup) gCnt[c.adGroup]=(gCnt[c.adGroup]||0)+1; });
+  const groups=Object.keys(gCnt).sort((a,b)=>gCnt[b]-gCnt[a]);
+  const sel=document.getElementById("adGroupSel");
+  if(sel && sel.options.length!==groups.length+1){
+    sel.innerHTML=groups.map(g=>`<option value="${esc(g)}">${esc(g)} (${gCnt[g]})</option>`).join("")
+      +`<option value="">Все группы</option>`;
+    if(!adGroup) adGroup=groups[0]||null;
+    sel.value=adGroup||"";
+    if(typeof enhanceSelect==="function") enhanceSelect(sel);
+  }
+  const fresh=document.getElementById("adFreshness");
+  if(fresh){
+    const noTags=!groups.length;
+    fresh.innerHTML = noTags
+      ? `Разбивка по склейкам не загружена — <b>вкладка пуста</b>. Пришлите выгрузку XWAY с колонками «Группа» и «Теги».`
+      : `Склейки на ${fmtDateLong((RD.meta&&RD.meta.adTagsDate)||"")} · заказы по ${RLAST? fmtDateLong(RLAST):"—"} · склад на ${(RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date):"—"} · только Wildberries`;
+  }
+  const all=adFiltered();
+  const cand=all.filter(r=>r.ok).sort((a,b)=>b.rub-a.rub);
+  const drop=all.filter(r=>r.abc==="A" && !r.ok).sort((a,b)=>b.rub-a.rub);
+  const totRub=all.reduce((a,r)=>a+r.rub,0), candRub=cand.reduce((a,r)=>a+r.rub,0);
+  const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  document.getElementById("adKpis").innerHTML=[
+    {lbl:"Кандидатов под рекламу", val:cand.length+" из "+all.length,
+     valColor:cand.length?"var(--accent)":"var(--text-1)",
+     tip:`<div class="t-hd">Кто попадает в кандидаты</div>`
+       +tr2("Категория A внутри своей склейки")+tr2("и московского остатка хватает на "+AD_MIN_MSK_DAYS+"+ дней")
+       +tr2("Всего в выборке",all.length)+tr2("Категория A",all.filter(r=>r.abc==="A").length)
+       +tr2("Из них отсеяно по остатку",drop.length)},
+    {lbl:"Их выручка за период, ₽", val:fmt(Math.round(candRub))},
+    {lbl:"Доля от группы", val:(totRub? (candRub/totRub*100).toFixed(0):0)+"%",
+     tip:`<div class="t-hd">Сколько денег закрывают кандидаты</div>`
+       +tr2("Выручка кандидатов",fmt(Math.round(candRub))+" ₽")
+       +tr2("Выручка всей выборки",fmt(Math.round(totRub))+" ₽")
+       +tr2("Остальное идёт на ассоциативных конверсиях")},
+    {lbl:"Отсеяно: мало остатка в Мск", val:drop.length,
+     valColor:drop.length?"var(--crit-txt)":"var(--text-1)"},
+  ].map(kpiCard).join("");
+  wireKpiTips("adKpis");
+  renderAdHowTo();
+  document.getElementById("adCount").textContent =
+    (adView==="cand"? cand.length+" кандидатов" : all.length+" товаров")
+    +" · период "+adPeriod+" дн"+(adGroup? " · "+adGroup : " · все группы");
+  if(!all.length){ el.innerHTML=`<tbody><tr><td class="empty-hint">Нет товаров под текущие фильтры</td></tr></tbody>`; return; }
+  const cell = r => `<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}`
+      +`<span class="sub2 mut">${esc(r.category)} · ${skuLink(r.sku)} · 1С ${esc(r.sup)}${r.factory?" · ф. "+esc(r.factory):""}</span></td>`;
+  const abcBadge = a => `<span class="badge ${a==="A"?"good":(a==="B"?"warning":"nodata")}"><span class="d"></span>${a}</span>`;
+  const body = r => `<td>${abcBadge(r.abc)}</td>`
+      +`<td style="font-weight:650">${fmt(Math.round(r.rub))}<span class="sub2 mut">${r.share.toFixed(1)}% склейки</span></td>`
+      +`<td>${fmt(r.qty)}<span class="sub2 mut">${r.spd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
+      +`<td class="${r.msk?"":"d-zero"}">${r.msk? fmt(r.msk):"—"}<span class="sub2 ${r.mskDays<AD_MIN_MSK_DAYS?"crit":"mut"}">${r.spd>0? adFmtD(r.mskDays)+" дн":"нет продаж"}</span></td>`
+      +`<td>${fmt(r.imp)}</td><td>${r.ctr.toFixed(1)}</td><td>${r.cr.toFixed(2)}</td>`
+      +`<td>${fmt(Math.round(r.price))}</td>`
+      +`<td>${r.ok? `<span class="badge good"><span class="d"></span>Брать</span>`
+           : `<span class="muted">${esc(r.why)}</span>`}</td>`;
+  let html=`<thead><tr><th class="metric">Товар</th>`
+    +(adView==="tags"? `<th>Склейка</th>`:`<th>Склейка</th>`)
+    +`<th>ABC</th><th>Заказано ₽</th><th>Заказы</th><th>Москва</th><th>Показы</th><th>CTR %</th><th>CR %</th><th>Чек</th><th>Решение</th></tr></thead><tbody>`;
+  if(adView==="cand"){
+    cand.forEach(r=>{ html+=`<tr>`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
+    if(drop.length){
+      html+=`<tr class="row-sep"><td colspan="11" style="padding-top:14px;color:var(--text-2)">`
+        +`Категория A, но остатка в Москве меньше чем на ${AD_MIN_MSK_DAYS} дней — реклама кончится вместе с товаром:</td></tr>`;
+      drop.forEach(r=>{ html+=`<tr style="opacity:.62">`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
+    }
+  } else {
+    const byTag={}; all.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
+    Object.entries(byTag).sort((a,b)=>b[1][0].tagTotal-a[1][0].tagTotal).forEach(([tag,list])=>{
+      const tot=list[0].tagTotal, mskT=list.reduce((a,x)=>a+x.msk,0), n=list.filter(x=>x.ok).length;
+      html+=`<tr class="row-group"><td colspan="11" style="font-weight:700;padding-top:12px">`
+        +`Склейка «${esc(tag)}» · ${list.length} карточек · ${fmt(Math.round(tot))} ₽ · Москва ${fmt(mskT)} шт · кандидатов ${n}</td></tr>`;
+      [...list].sort((a,b)=>b.rub-a.rub).forEach(r=>{ html+=`<tr>`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
+    });
+  }
+  html+="</tbody>"; el.innerHTML=html;
+}
+function renderAdHowTo(){
+  const el=document.getElementById("adHowTo"); if(!el) return;
+  el.innerHTML=`<div class="howto-t">КАК ОТБИРАЮТСЯ ТОВАРЫ ПОД РЕКЛАМУ${adGroup? " — "+esc(adGroup):""}</div>`
+    +`<div class="howto-s">`
+    +[`Берём группу и делим товары на СКЛЕЙКИ — карточки, слитые в одну: в выдаче они конкурируют как одна позиция`,
+      `Внутри каждой склейки считаем выручку за ${adPeriod} дней и раскладываем по Парето: до 80% накопленной доли — A, до 95% — B, остальное C`,
+      `Смотрим остаток в МОСКВЕ по FBS и делим на продажи в день → на сколько дней его хватит`,
+      `Кандидат = категория A И московского остатка хватает минимум на ${AD_MIN_MSK_DAYS} дней`,
+      `Остальные товары склейки едут на ассоциативных конверсиях — реклама на них не ставится`]
+      .map(x=>`<span>${esc(x)}</span>`).join('<i>→</i>')+`</div>`
+    +`<div class="howto-n">`
+    +[`Парето считается ВНУТРИ склейки, а не по всей группе: так лидер находится в каждой склейке, включая слабые. По всей группе кандидатов было бы вдвое меньше, и слабые склейки выпали бы целиком.`,
+      `База Парето — ВЫРУЧКА, а не штуки: реклама окупается с денег. На ваших данных расхождение между двумя базами всего в паре позиций.`,
+      `Почему именно Москва: там основной спрос и товар доезжает быстро. Остаток на Нск-1 в этот счёт не входит, хотя тоже продаётся по FBS.`,
+      `Почему «хватит дней», а не «остаток больше нуля»: реклама разгоняет продажи, и позиция с запасом на пару дней встанет посреди кампании — бюджет уйдёт, а карточка просядет в выдаче. Такие показаны отдельным блоком внизу, чтобы вы их видели.`,
+      `Продажи в день = заказы ÷ дней периода × % выкупа по магазину. Показы, CTR и конверсия — из воронки за тот же период, чтобы было видно, есть ли куда расти.`,
+      `Вкладка считает только Wildberries. Для Ozon сделаем отдельно.`]
+      .map(x=>`<div>${esc(x)}</div>`).join("")+`</div>`;
+}
+function exportAdsXLSX(){
+  const all=adFiltered();
+  if(!all.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
+  const rows=[...all].sort((a,b)=>(b.ok-a.ok)||(b.rub-a.rub));
+  const cols=[
+    {h:"Решение", v:r=>r.ok?"БРАТЬ В РЕКЛАМУ":r.why, w:26},
+    {h:"Группа", v:r=>r.group, w:16},
+    {h:"Склейка", v:r=>r.tag, w:20},
+    {h:"ABC внутри склейки", v:r=>r.abc, w:19},
+    {h:"Артикул ВБ", v:r=>r.sku, w:13},
+    {h:"Код 1С", v:r=>r.sup, w:11},
+    {h:"Код фабрики", v:r=>r.factory, w:14},
+    {h:"Название", v:r=>r.name, w:44},
+    {h:"Категория", v:r=>r.category, w:20},
+    {h:"Заказано ₽ за "+adPeriod+" дн", v:r=>Math.round(r.rub), w:22, tot:"rub"},
+    {h:"Доля в склейке, %", v:r=>+r.share.toFixed(1), w:18},
+    {h:"Заказов, шт", v:r=>r.qty, w:13, tot:"qty"},
+    {h:"Продаж в день", v:r=>+r.spd.toFixed(2), w:15},
+    {h:"Остаток Москва, шт", v:r=>r.msk, w:19},
+    {h:"Хватит дней (Москва)", v:r=>r.spd>0? adFmtD(r.mskDays):"", w:21},
+    {h:"Остаток на складах WB", v:r=>r.fbo, w:22},
+    {h:"Показы", v:r=>r.imp, w:12},
+    {h:"CTR, %", v:r=>+r.ctr.toFixed(2), w:10},
+    {h:"Конверсия в заказ, %", v:r=>+r.cr.toFixed(2), w:21},
+    {h:"Средний чек, ₽", v:r=>Math.round(r.price), w:16}];
+  const data=[cols.map(c=>c.h)];
+  const sums={rub:0,qty:0};
+  rows.forEach(r=>{ sums.rub+=r.rub; sums.qty+=r.qty; data.push(cols.map(c=>c.v(r))); });
+  const tot=new Array(cols.length).fill(""); tot[0]="ИТОГО";
+  cols.forEach((c,i)=>{ if(c.tot) tot[i]=Math.round(sums[c.tot]); });
+  data.push(tot);
+  const extra=[["Площадка","Wildberries"],
+    ["Группа", adGroup||"все группы"],
+    ["Период", adPeriod+" дней, заказы по "+(RLAST? fmtDateLong(RLAST):"—")],
+    ["Склейки на дату", (RD.meta&&RD.meta.adTagsDate)? fmtDateLong(RD.meta.adTagsDate):"—"],
+    ["Склад на дату", (RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date):"—"],
+    ["Правило отбора","категория A внутри своей склейки И московского FBS-остатка хватает минимум на "+AD_MIN_MSK_DAYS+" дней продаж"],
+    ["База Парето","выручка (заказано ₽): до 80% накопленной доли — A, до 95% — B, дальше C"],
+    ["Область Парето","внутри каждой склейки отдельно, а не по всей группе"],
+    ["Почему Москва","там основной спрос и быстрая доставка; остаток на Нск-1 в расчёт не входит"],
+    ["Почему «хватит дней»","реклама разгоняет продажи: позиция с запасом на пару дней встанет посреди кампании"],
+    ["Остальные товары","едут на ассоциативных конверсиях, реклама на них не ставится"],
+    ["Файл сформирован", fmtDateLong(new Date().toISOString().slice(0,10))]];
+  xlsxDownload("реклама-отбор-"+(adGroup||"все")+".xlsx",
+    [{name:"Как считается", rows:extra.map(x=>[x[0],x[1]]), widths:[30,80]},
+     {name:"Кандидаты", rows:data, widths:cols.map(c=>c.w), bold:[0,data.length-1]}]);
+}
 function renderStockRateTab(){
   const fresh=document.getElementById("srFreshness");
   if(!RD){ renderNoData("srTable"); fresh.innerHTML=""; document.getElementById("srKpis").innerHTML=""; return; }
@@ -5700,7 +5949,7 @@ function renderProductPeriods(){
 /* =========================================================================
    13. ВКЛАДКИ
    ========================================================================= */
-const TABS=["home","dynamics","turnover","stockrate","product","finance","analytics"];
+const TABS=["home","dynamics","turnover","stockrate","product","finance","ads","analytics"];
 function switchTab(name){
   TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
   document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
@@ -5714,6 +5963,7 @@ function switchTab(name){
   if(name==="stockrate") renderStockRateTab();
   if(name==="product"){ renderProductHistoryInfo(); initProductTabControls(); renderCostInfo(); refreshProductView(); }
   if(name==="finance") renderFinanceTab();
+  if(name==="ads") renderAdsTab();
   if(name==="analytics") renderAnalyticsTab();
   try{localStorage.setItem("wb_active_tab",name);}catch(e){}
 }
@@ -5770,6 +6020,15 @@ document.getElementById("srSearch").addEventListener("input",renderStockRateTab)
 document.getElementById("srCat").addEventListener("change",renderStockRateTab);
 document.getElementById("srHorizon").addEventListener("change",e=>{
   srHorizonMode=e.target.value; renderStockRateTab(); });
+// ---- Реклама ----
+document.getElementById("adGroupSel")?.addEventListener("change",e=>{ adGroup=e.target.value||null; renderAdsTab(); });
+document.getElementById("adPeriod")?.addEventListener("change",e=>{ adPeriod=parseInt(e.target.value,10)||28; renderAdsTab(); });
+document.getElementById("adSearch")?.addEventListener("input",()=>renderAdsTab());
+document.getElementById("adViewSeg")?.addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return;
+  adView=b.dataset.v;
+  document.querySelectorAll("#adViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x===b?"true":"false"));
+  renderAdsTab(); });
+document.getElementById("adExportBtn")?.addEventListener("click",exportAdsXLSX);
 document.getElementById("srActionSeg").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   srAction=b.dataset.act;
