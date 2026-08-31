@@ -959,6 +959,7 @@
       <div class="seg" id="adViewSeg" role="group" aria-label="Что показать">
         <button data-v="cand" aria-pressed="true">Кандидаты</button>
         <button data-v="tags">По склейкам</button>
+        <button data-v="perf">Отдача</button>
       </div>
       <span class="count" id="adCount"></span>
       <button class="btn" id="adExportBtn">Скачать Excel</button>
@@ -4597,7 +4598,44 @@ function srFiltered(){ return srFilteredRows(srDecorate(srRows()),null); }
    такой фильтр убрал ровно двух кандидатов из двадцати (2 шт и 25 шт в Москве при
    продажах 5-7 шт/день), остальные имеют запас на 40-500 дней. */
 const AD_MIN_MSK_DAYS=21;
+/* ЦЕЛЬ ПО ДРР (правило продавца 31.08.2026): не более 7%, хорошо 6%, ниже 6% — идеально.
+   ДРР он смотрит В ВЫКУПЕ, а не в заказах: заказ ещё может не выкупиться, поэтому
+   выручку из рекламного отчёта (она в ЗАКАЗАХ) умножаем на % выкупа.
+   И считаем ДРР С АССОЦИАТИВНЫМИ ЗАКАЗАМИ: рекламируемый товар — «лошадка», источник
+   трафика. Если у неё самой ДРР плохой, но с учётом всех пришедших продаж экономика
+   сходится, выключать её незачем. Прямой ДРР показываем рядом — для понимания, но
+   решение принимается по общему. */
+const AD_DRR_GOAL=7, AD_DRR_GREAT=6;
+/* Ниже этого расхода кампанию не судим: у ВБ по многим карточкам списывается рубль-два
+   «перелива», и без порога такие строки висели бы с вердиктом «разобрать» и нулевыми
+   продажами, забивая список. На итог они не влияют — в суммы входят как есть. */
+const AD_MIN_SPEND=500;
 let adGroup=null, adPeriod=28, adView="cand";
+// % выкупа: тем же окном, что и везде на ВБ
+function adBuyout(){ return (RD&&RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.all)||0.75; }
+// строки по рекламе: статистика кампаний + склейка из каталога
+function adPerfRows(){
+  const P=(RD&&RD.adPerf)||null; if(!P||!P.bySku) return [];
+  const bo=adBuyout();
+  return Object.entries(P.bySku).map(([sku,e])=>{
+    const c=(RD.catalog||[]).find(x=>""+x.sku===sku)||{};
+    const revD=e.rub*bo, revA=(e.rub+e.othRub)*bo;    // выручка В ВЫКУПЕ
+    return {sku, sup:(""+(c.supplierCode||"")).trim(), name:c.name||sku,
+      group:c.adGroup||"—", tag:c.adTag||"—", category:c.category||"",
+      spend:e.spend, ord:e.ord, rub:e.rub, othOrd:e.othOrd, othRub:e.othRub,
+      revD, revA,
+      drrD: revD>0? e.spend/revD*100 : (e.spend>0? Infinity : 0),
+      drrA: revA>0? e.spend/revA*100 : (e.spend>0? Infinity : 0),
+      cpo: (e.ord+e.othOrd)>0? e.spend/(e.ord+e.othOrd) : (e.spend>0? Infinity : 0),
+      imp:e.imp, clicks:e.clicks, carts:e.carts,
+      ctr: e.imp? e.clicks/e.imp*100 : 0,
+      cr:  e.clicks? e.ord/e.clicks*100 : 0};
+  }).filter(r=>r.spend>0);
+}
+const adDrrCls = v => v===Infinity? "crit" : (v<=AD_DRR_GREAT? "good" : (v<=AD_DRR_GOAL? "warning" : "crit"));
+const adDrrTxt = v => v===Infinity? "нет продаж" : v.toFixed(1)+"%";
+function adDrrBadge(v){ const c=adDrrCls(v);
+  return `<span class="badge ${c==="good"?"good":(c==="warning"?"warning":"critical")}"><span class="d"></span>${adDrrTxt(v)}</span>`; }
 // московский FBS-остаток по коду 1С: оба московских склада, Нск-1 сюда НЕ входит
 function adMskBySup(){
   const wh=(RD&&RD.warehouse&&RD.warehouse.bySup)||{}, out={};
@@ -4680,6 +4718,7 @@ function renderAdsTab(){
       ? `Разбивка по склейкам не загружена — <b>вкладка пуста</b>. Пришлите выгрузку XWAY с колонками «Группа» и «Теги».`
       : `Склейки на ${fmtDateLong((RD.meta&&RD.meta.adTagsDate)||"")} · заказы по ${RLAST? fmtDateLong(RLAST):"—"} · склад на ${(RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date):"—"} · только Wildberries`;
   }
+  if(adView==="perf"){ renderAdsPerf(); return; }
   const all=adFiltered();
   const cand=all.filter(r=>r.ok).sort((a,b)=>b.rub-a.rub);
   const drop=all.filter(r=>r.abc==="A" && !r.ok).sort((a,b)=>b.rub-a.rub);
@@ -4739,8 +4778,110 @@ function renderAdsTab(){
   }
   html+="</tbody>"; el.innerHTML=html;
 }
+/* Вид «Отдача»: разбор действующих кампаний сверху вниз — как продавец делает руками.
+   Итог → группа → склейка → товар. На каждом уровне ДРР В ВЫКУПЕ, и прямой, и с
+   ассоциативными заказами. Решение принимается по ДРР с ассоциативными: реклама одного
+   товара приносит продажи другим, и «лошадку» с плохим личным ДРР выключать незачем,
+   если по всем пришедшим продажам экономика сходится. */
+function renderAdsPerf(){
+  const el=document.getElementById("adTable");
+  const P=(RD&&RD.adPerf)||null;
+  if(!P){ el.innerHTML=`<tbody><tr><td class="empty-hint">Статистика рекламы не загружена. `
+    +`Пришлите выгрузку XWAY с колонками «Расход, руб.» и «Заказы др. артикулов».</td></tr></tbody>`;
+    document.getElementById("adKpis").innerHTML=""; document.getElementById("adCount").textContent=""; return; }
+  const q=(document.getElementById("adSearch")?.value||"").trim().toLowerCase();
+  let rows=adPerfRows();
+  if(adGroup) rows=rows.filter(r=>r.group===adGroup);
+  if(q) rows=rows.filter(r=>(r.sku+" "+r.sup+" "+r.name+" "+r.tag).toLowerCase().includes(q));
+  const bo=adBuyout();
+  const agg=list=>{ const sp=list.reduce((a,x)=>a+x.spend,0);
+    const rD=list.reduce((a,x)=>a+x.revD,0), rA=list.reduce((a,x)=>a+x.revA,0);
+    const o=list.reduce((a,x)=>a+x.ord+x.othOrd,0);
+    return {sp, rD, rA, o, drrD: rD>0? sp/rD*100:(sp>0?Infinity:0), drrA: rA>0? sp/rA*100:(sp>0?Infinity:0),
+      cpo: o>0? sp/o : (sp>0? Infinity:0)}; };
+  const T=agg(rows);
+  const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  document.getElementById("adKpis").innerHTML=[
+    {lbl:"Расход за период, ₽", val:fmt(Math.round(T.sp)),
+     tip:`<div class="t-hd">Период рекламы</div>`+tr2("С",fmtDateLong(P.from))+tr2("По",fmtDateLong(P.to))
+       +tr2("Кампаний в выборке",rows.length)},
+    {lbl:"ДРР в выкупе (цель ≤"+AD_DRR_GOAL+"%)", val:adDrrTxt(T.drrA),
+     valColor: T.drrA<=AD_DRR_GREAT? "var(--good-txt)" : (T.drrA<=AD_DRR_GOAL? "var(--warn-txt)" : "var(--crit-txt)"),
+     tip:`<div class="t-hd">Как считается</div>`
+       +tr2("Расход",fmt(Math.round(T.sp))+" ₽")
+       +tr2("Заказы с рекламы (все артикулы)",fmt(Math.round(T.rA/bo))+" ₽")
+       +tr2("× % выкупа",(bo*100).toFixed(0)+"%")
+       +tr2("= выручка в выкупе",fmt(Math.round(T.rA))+" ₽")
+       +tr2("ДРР",adDrrTxt(T.drrA))
+       +`<div class="t-hd">Цель</div>`+tr2("не более",AD_DRR_GOAL+"%")+tr2("хорошо",AD_DRR_GREAT+"%")
+       +tr2("идеально","ниже "+AD_DRR_GREAT+"%")},
+    {lbl:"Только свой товар, ДРР", val:adDrrTxt(T.drrD),
+     tip:`<div class="t-hd">Без ассоциативных заказов</div>`
+       +tr2("Выручка в выкупе",fmt(Math.round(T.rD))+" ₽")
+       +tr2("Разница — заказы других артикулов, пришедшие с этой рекламы")
+       +tr2("Решение принимается по общему ДРР, этот — справочно")},
+    {lbl:"CPO, ₽", val: T.cpo===Infinity? "—" : fmt(Math.round(T.cpo)),
+     tip:`<div class="t-hd">Стоимость заказа</div>`+tr2("Расход ÷ все заказы с рекламы")
+       +tr2("Заказов",fmt(T.o))+tr2("Зависит от цены товара — сравнивайте внутри склейки")},
+  ].map(kpiCard).join("");
+  wireKpiTips("adKpis");
+  document.getElementById("adCount").textContent=rows.length+" кампаний · "
+    +fmtDateLong(P.from)+" – "+fmtDateLong(P.to)+(adGroup? " · "+adGroup : " · все группы");
+  renderAdHowTo();
+  if(!rows.length){ el.innerHTML=`<tbody><tr><td class="empty-hint">Под текущие фильтры кампаний нет</td></tr></tbody>`; return; }
+  const byTag={}; rows.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
+  let html=`<thead><tr><th class="metric">Товар / склейка</th><th>Расход ₽</th>`
+    +`<th>Заказы ₽ (выкуп)</th><th>ДРР общий</th><th>ДРР свой</th><th>CPO</th>`
+    +`<th>Заказы</th><th>+ др. арт.</th><th>Показы</th><th>CTR %</th><th>Решение</th></tr></thead><tbody>`;
+  Object.entries(byTag).map(([t,l])=>({t,l,a:agg(l)})).sort((a,b)=>b.a.sp-a.a.sp).forEach(({t,l,a})=>{
+    const verdict = a.drrA<=AD_DRR_GOAL
+      ? `<span class="badge good"><span class="d"></span>В цели</span>`
+      : `<span class="badge critical"><span class="d"></span>Править склейку</span>`;
+    html+=`<tr class="row-group"><td style="font-weight:700;padding-top:12px">Склейка «${esc(t)}» · ${l.length} кампаний</td>`
+      +`<td style="font-weight:700">${fmt(Math.round(a.sp))}</td>`
+      +`<td style="font-weight:700">${fmt(Math.round(a.rA))}</td>`
+      +`<td>${adDrrBadge(a.drrA)}</td><td class="${adDrrCls(a.drrD)}">${adDrrTxt(a.drrD)}</td>`
+      +`<td>${a.cpo===Infinity?"—":fmt(Math.round(a.cpo))}</td>`
+      +`<td colspan="3"></td><td>${verdict}</td></tr>`;
+    [...l].sort((x,y)=>y.spend-x.spend).forEach(r=>{
+      html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}`
+        +`<span class="sub2 mut">${esc(r.category)} · ${skuLink(r.sku)} · 1С ${esc(r.sup)}</span></td>`
+        +`<td>${fmt(Math.round(r.spend))}</td>`
+        +`<td>${fmt(Math.round(r.revA))}<span class="sub2 mut">свой ${fmt(Math.round(r.revD))}</span></td>`
+        +`<td>${adDrrBadge(r.drrA)}</td><td class="${adDrrCls(r.drrD)}">${adDrrTxt(r.drrD)}</td>`
+        +`<td>${r.cpo===Infinity?"—":fmt(Math.round(r.cpo))}</td>`
+        +`<td>${fmt(r.ord)}</td><td>${fmt(r.othOrd)}<span class="sub2 mut">${fmt(Math.round(r.othRub))} ₽</span></td>`
+        +`<td>${fmt(r.imp)}</td><td>${r.ctr.toFixed(1)}</td>`
+        +`<td>${r.spend<AD_MIN_SPEND? `<span class="muted">мелкий расход</span>`
+             : (r.drrA<=AD_DRR_GOAL? `<span class="muted">оставить</span>`
+             : (a.drrA<=AD_DRR_GOAL? `<span class="muted">склейка в цели — тянет трафик</span>`
+             : `<span class="crit">разобрать</span>`))}</td></tr>`;
+    });
+  });
+  html+="</tbody>"; el.innerHTML=html;
+}
 function renderAdHowTo(){
   const el=document.getElementById("adHowTo"); if(!el) return;
+  if(adView==="perf"){
+    const bo=adBuyout(), P=(RD&&RD.adPerf)||{};
+    el.innerHTML=`<div class="howto-t">КАК ЧИТАТЬ ОТДАЧУ РЕКЛАМЫ${adGroup? " — "+esc(adGroup):""}</div>`
+      +`<div class="howto-s">`
+      +[`Смотрим сверху вниз: общий итог → склейка → товар, и правим там, где не попали в цель`,
+        `Выручку из рекламного отчёта (она в ЗАКАЗАХ) умножаем на % выкупа ${(bo*100).toFixed(0)}% — ДРР считается В ВЫКУПЕ`,
+        `ДРР общий = расход ÷ (выручка своего товара + заказы других артикулов, пришедшие с этой рекламы)`,
+        `Цель: не более ${AD_DRR_GOAL}%, хорошо ${AD_DRR_GREAT}%, ниже ${AD_DRR_GREAT}% — идеально`,
+        `Склейка в цели — оставляем всё внутри, даже товар с плохим личным ДРР: он тянет трафик`]
+        .map(x=>`<span>${esc(x)}</span>`).join('<i>→</i>')+`</div>`
+      +`<div class="howto-n">`
+      +[`РЕШЕНИЕ ПРИНИМАЕТСЯ ПО ОБЩЕМУ ДРР, а не по личному. Рекламируемый товар — «лошадка», источник трафика: если у неё самой ДРР плохой, но с учётом всех пришедших продаж экономика сходится, выключать её незачем. Личный ДРР показан рядом справочно.`,
+        `ДРР считается в ВЫКУПЕ, а не в заказах: заказ ещё может не выкупиться, и по заказам картина выглядит лучше, чем есть. Поэтому цифра здесь выше той, что показывает рекламный отчёт.`,
+        `Оценка склейки — средняя по ней: реклама одного товара приносит заказы соседним, и разбирать их поштучно бессмысленно. Если склейка в цели, а товар внутри нет — он помечен «склейка в цели, тянет трафик».`,
+        `CPO зависит от цены товара: у толокара за 6 000 ₽ и у светофора за 500 ₽ нормальный CPO разный. Сравнивайте внутри склейки, а не между.`,
+        `Кампании с расходом меньше ${AD_MIN_SPEND} ₽ помечены «мелкий расход» и не судятся: у ВБ по многим карточкам списывается рубль-два перелива, и без этого порога они висели бы с вердиктом «разобрать» при нулевых продажах.`,
+        `Период — тот, что был в загруженной выгрузке (${P.from? fmtDateLong(P.from):"—"} – ${P.to? fmtDateLong(P.to):"—"}). Селектор периода на этот вид не влияет: он относится к отбору кандидатов.`]
+        .map(x=>`<div>${esc(x)}</div>`).join("")+`</div>`;
+    return;
+  }
   el.innerHTML=`<div class="howto-t">КАК ОТБИРАЮТСЯ ТОВАРЫ ПОД РЕКЛАМУ${adGroup? " — "+esc(adGroup):""}</div>`
     +`<div class="howto-s">`
     +[`Берём группу и делим товары на СКЛЕЙКИ — карточки, слитые в одну: в выдаче они конкурируют как одна позиция`,
