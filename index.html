@@ -4725,6 +4725,12 @@ function adRows(){
     const e=fun[r.sku]||(fun[r.sku]={imp:0,cv:0,ord:0});
     e.imp+=r.impressions||0; e.cv+=r.cardViews||0; e.ord+=r.ordersQty||0; });
   const bo=(RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.all)||0.75;
+  /* ДЕЙСТВУЮЩИЕ КАМПАНИИ — ПРЯМО В ОТБОРЕ (просьба продавца 31.08.2026: «тут я этого
+     не вижу»). Отбор и деньги были в разных видах, и главное — что реклама крутится
+     на товар, которого в Москве нет, — приходилось искать глазами в «Отдаче».
+     Расход берётся за период ЗАГРУЖЕННОЙ ВЫГРУЗКИ, а не за календарное окно отбора:
+     другого источника нет, и это честно подписано в шапке колонки и в подсказке. */
+  const perf={}; adPerfRows().forEach(p=>{ perf[p.sku]=p; });
   const rows=(RD.catalog||[]).filter(c=>c.adGroup && (!adGroup||c.adGroup===adGroup)).map(c=>{
     const sku=""+c.sku, sup=(""+(c.supplierCode||"")).trim();
     const arr=S.bySku[sku]||[];
@@ -4734,9 +4740,11 @@ function adRows(){
     const spd=qty/win.length*bo;                       // продаж/дн ≈ заказы × выкуп
     const m=msk[sup]||0;
     const mskDays = spd>0 ? m/spd : (m>0? Infinity : 0);
+    const p=perf[sku];
     return {sku, sup, tag:c.adTag||"—", group:c.adGroup, name:c.name||sku,
       category:c.category||"", factory:(""+(c.factoryCode||"")).trim(),
       qty, rub, spd, msk:m, mskDays, fbo:c.wbStock||0,
+      adSpend: p? p.spend : 0, adDrr: p? p.drrA : null, adCpo: p? p.cpo : null,
       imp:f.imp, ctr:f.imp? f.cv/f.imp*100:0, cr:f.cv? f.ord/f.cv*100:0,
       price:qty? rub/qty:0};
   });
@@ -4778,6 +4786,15 @@ const adMskBucket = r => r.msk<=0? "нет остатка"
   : (r.mskDays<AD_MIN_MSK_DAYS? "меньше "+AD_MIN_MSK_DAYS+" дн" : AD_MIN_MSK_DAYS+"+ дн"));
 const adMskBucketN = v => v==="нет остатка"? 0 : (v.startsWith("меньше")? 1
   : (v.startsWith("остаток есть")? 2 : 3));
+/* Состояние рекламы у товара — одним значением, чтобы «покажи, где деньги идут в товар
+   без запаса» было одним кликом. Самое опасное сверху. */
+const adRunBucket = r => !(r.adSpend>0)? "нет РК"
+  : (r.adSpend<AD_MIN_SPEND? "мелкий расход"          // рубль-два перелива — не кампания
+  : (r.msk<=0? "РК: остатка в Мск нет"
+  : (r.mskDays<AD_MIN_MSK_DAYS? "РК: запаса меньше "+AD_MIN_MSK_DAYS+" дн"
+  : (r.adDrr!=null && r.adDrr<=AD_DRR_GOAL? "РК в цели" : "РК выше цели"))));
+const adRunBucketN = v => v.startsWith("РК: остатка")? 0 : (v.startsWith("РК: запаса")? 1
+  : (v==="РК выше цели"? 2 : (v==="РК в цели"? 3 : (v==="мелкий расход"? 4 : 5))));
 function adColDefs(){
   if(adView==="perf") return [
     {key:"tag",   val:r=>r.tag||"—",           sortVal:()=>0},
@@ -4795,6 +4812,7 @@ function adColDefs(){
     {key:"tag",   val:r=>r.tag||"—",           sortVal:()=>0},
     {key:"abc",   val:r=>r.abc,                sortVal:v=>({A:0,B:1,C:2})[v]??9},
     {key:"mskSt", val:adMskBucket,             sortVal:adMskBucketN},
+    {key:"adSt",  val:adRunBucket,             sortVal:adRunBucketN},
     // «хватит на N дн» у каждого своё — в списке фильтра сводим к одной причине
     {key:"ok",    val:r=> r.ok? "Брать" : (r.abc!=="A"? "не категория A"
                         : (r.msk<=0? "в Москве нет остатка" : "мало запаса в Москве")), sortVal:()=>0}];
@@ -4848,9 +4866,13 @@ function renderAdsTab(){
   const all=adFiltered();
   const S=list=>sortRows(list,adSortState,{ name:r=>r.name, category:r=>r.category||"", sku:r=>+r.sku||0, sup:r=>+r.sup||0,
     tag:r=>r.tag, abc:r=>({A:0,B:1,C:2})[r.abc]??9, rub:r=>r.rub, qty:r=>r.qty, msk:r=>r.msk,
-    mskSt:r=>r.mskDays===Infinity? 1e9 : r.mskDays,
+    mskSt:r=>r.mskDays===Infinity? 1e9 : r.mskDays, adSt:r=>r.adSpend,
     imp:r=>r.imp, ctr:r=>r.ctr, cr:r=>r.cr, price:r=>r.price, ok:r=>r.ok?0:1 });
   const cand=S(all.filter(r=>r.ok));
+  // кампании, которые крутятся на товар без московского запаса, — деньги в трубу
+  const adP=(RD&&RD.adPerf)||null;
+  const risk=[...all].filter(r=>r.adSpend>=AD_MIN_SPEND && r.mskDays<AD_MIN_MSK_DAYS).sort((a,b)=>b.adSpend-a.adSpend);
+  const riskSpend=risk.reduce((a,r)=>a+r.adSpend,0);
   const drop=S(all.filter(r=>r.abc==="A" && !r.ok));
   const totRub=all.reduce((a,r)=>a+r.rub,0), candRub=cand.reduce((a,r)=>a+r.rub,0);
   const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
@@ -4867,8 +4889,19 @@ function renderAdsTab(){
        +tr2("Выручка кандидатов",fmt(Math.round(candRub))+" ₽")
        +tr2("Выручка всей выборки",fmt(Math.round(totRub))+" ₽")
        +tr2("Остальное идёт на ассоциативных конверсиях")},
-    {lbl:"Отсеяно: мало остатка в Мск", val:drop.length,
-     valColor:drop.length?"var(--crit-txt)":"var(--text-1)"},
+    /* KPI про ДЕНЬГИ, а не про счёт позиций: главное, что видно из этой таблицы, —
+       сколько рекламы крутится на товар, которого в Москве нет или почти нет. Число
+       отсеянных ушло в подсказку. */
+    {lbl:"Реклама без запаса в Мск, ₽", val:fmt(Math.round(riskSpend)),
+     valColor:riskSpend?"var(--crit-txt)":"var(--text-1)",
+     tip:`<div class="t-hd">Деньги идут в товар, которого не хватит</div>`
+       +tr2("Кампаний",risk.length)
+       +tr2("Расход за "+(adP? fmtDateLong(adP.from)+" – "+fmtDateLong(adP.to) : "период выгрузки"),
+            fmt(Math.round(riskSpend))+" ₽")
+       +(risk.length? `<div class="t-hd">Кто именно</div>`
+          +risk.slice(0,6).map(r=>tr2(r.sku+" · "+(r.msk? fmt(r.msk)+" шт, "+adFmtD(r.mskDays)+" дн" : "остатка нет"),
+              fmt(Math.round(r.adSpend))+" ₽")).join("") : "")
+       +`<div class="t-hd">Отбор</div>`+tr2("Категория A, но запаса в Мск мало",drop.length)},
   ].map(kpiCard).join("");
   wireKpiTips("adKpis");
   renderAdHowTo();
@@ -4879,14 +4912,23 @@ function renderAdsTab(){
 /* Артикулы — ОТДЕЛЬНЫМИ КОЛОНКАМИ, а не строкой под названием (просьба продавца 31.08.2026):
    по ним он ищет товар в кабинете ВБ, в 1С и в рекламном кабинете, поэтому их нужно
    копировать и сортировать. В подстроке остаются только категория и код фабрики. */
-  const cell = r => `<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}`
+  const cell = r => `<td class="metric name-cell" title="${esc(r.name)}">${esc(r.name)}`
       +`<span class="sub2 mut">${esc(r.category)}${r.factory?" · ф. "+esc(r.factory):""}</span></td>`
       +`<td class="ad-art">${skuLink(r.sku)}</td><td class="ad-art">${esc(r.sup)}</td>`;
   const abcBadge = a => `<span class="badge ${a==="A"?"good":(a==="B"?"warning":"nodata")}"><span class="d"></span>${a}</span>`;
+  /* Расход по действующей кампании + ДРР. Красным — когда деньги идут в товар,
+     которого в Москве нет или почти нет: это то, что надо выключать первым. */
+  const adCell = r => { if(!(r.adSpend>0)) return `<td class="d-zero">—<span class="sub2 mut">нет РК</span></td>`;
+    if(r.adSpend<AD_MIN_SPEND) return `<td class="muted">${fmt(Math.round(r.adSpend))}<span class="sub2 mut">мелкий расход</span></td>`;
+    const risk = r.mskDays<AD_MIN_MSK_DAYS;
+    return `<td class="${risk?"crit":""}" style="font-weight:${risk?700:500}">${fmt(Math.round(r.adSpend))}`
+      +`<span class="sub2 ${risk?"crit":(r.adDrr<=AD_DRR_GOAL?"mut":"crit")}">`
+      +`${risk? (r.msk<=0? "остатка нет" : "запас "+adFmtD(r.mskDays)+" дн") : "ДРР "+adDrrTxt(r.adDrr)}</span></td>`; };
   const body = r => `<td>${abcBadge(r.abc)}</td>`
       +`<td style="font-weight:650">${fmt(Math.round(r.rub))}<span class="sub2 mut">${r.share.toFixed(1)}% склейки</span></td>`
       +`<td>${fmt(r.qty)}<span class="sub2 mut">${r.spd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
       +`<td class="${r.msk?"":"d-zero"}">${r.msk? fmt(r.msk):"—"}<span class="sub2 ${r.mskDays<AD_MIN_MSK_DAYS?"crit":"mut"}">${r.spd>0? adFmtD(r.mskDays)+" дн":"нет продаж"}</span></td>`
+      +adCell(r)
       +`<td>${fmt(r.imp)}</td><td>${r.ctr.toFixed(1)}</td><td>${r.cr.toFixed(2)}</td>`
       +`<td>${fmt(Math.round(r.price))}</td>`
       +`<td>${r.ok? `<span class="badge good"><span class="d"></span>Брать</span>`
@@ -4895,21 +4937,34 @@ function renderAdsTab(){
   let html=`<thead><tr>${thSortF("Товар / категория","category",adSortState,"metric","ads")}`
     +F("Артикул ВБ","sku")+F("Код 1С","sup")+F("Склейка","tag")+F("ABC","abc")
     +`${thSort("Заказано ₽","rub",adSortState)}${thSort("Заказы","qty",adSortState)}`
-    +F("Москва","mskSt")+`${thSort("Показы","imp",adSortState)}`
+    +F("Москва","mskSt")+F("Реклама ₽","adSt")+`${thSort("Показы","imp",adSortState)}`
     +`${thSort("CTR %","ctr",adSortState)}${thSort("CR %","cr",adSortState)}${thSort("Чек","price",adSortState)}`
     +F("Решение","ok")+`</tr></thead><tbody>`;
   if(adView==="cand"){
     cand.forEach(r=>{ html+=`<tr>`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
     if(drop.length){
-      html+=`<tr class="row-sep"><td colspan="13" style="padding-top:14px;color:var(--text-2)">`
+      html+=`<tr class="row-sep"><td colspan="14" style="padding-top:14px;color:var(--text-2)">`
         +`Категория A, но остатка в Москве меньше чем на ${AD_MIN_MSK_DAYS} дней — реклама кончится вместе с товаром:</td></tr>`;
       drop.forEach(r=>{ html+=`<tr style="opacity:.62">`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
+    }
+    /* ТРЕТИЙ БЛОК — ЧТО ВЫКЛЮЧАТЬ. «Кандидаты» показывают только категорию A, поэтому
+       кампании на товар без московского запаса, не попавший в A, оставались невидимыми:
+       KPI говорил «145 848 ₽ в трубу», а в таблице этих строк не было (продавец так
+       и сказал — «тут я этого не вижу»). Теперь они печатаются отдельным блоком. */
+    const shown=new Set([...cand,...drop].map(r=>r.sku));
+    const off=risk.filter(r=>!shown.has(r.sku));
+    if(off.length){
+      const s=off.reduce((a,r)=>a+r.adSpend,0);
+      html+=`<tr class="row-sep"><td colspan="14" style="padding-top:14px;color:var(--crit-txt)">`
+        +`Реклама крутится, а запаса в Москве нет — ${fmt(Math.round(s))} ₽ за период выгрузки`
+        +`${adP? " ("+fmtDateLong(adP.from)+" – "+fmtDateLong(adP.to)+")":""}. Это первое, что стоит выключить:</td></tr>`;
+      off.forEach(r=>{ html+=`<tr>`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
     }
   } else {
     const byTag={}; all.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
     Object.entries(byTag).sort((a,b)=>b[1][0].tagTotal-a[1][0].tagTotal).forEach(([tag,list])=>{
       const tot=list[0].tagTotal, mskT=list.reduce((a,x)=>a+x.msk,0), n=list.filter(x=>x.ok).length;
-      html+=`<tr class="row-group"><td colspan="13" style="font-weight:700;padding-top:12px">`
+      html+=`<tr class="row-group"><td colspan="14" style="font-weight:700;padding-top:12px">`
         +`Склейка «${esc(tag)}» · ${list.length} карточек · ${fmt(Math.round(tot))} ₽ · Москва ${fmt(mskT)} шт · кандидатов ${n}</td></tr>`;
       [...list].sort((a,b)=>b.rub-a.rub).forEach(r=>{ html+=`<tr>`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
     });
@@ -5010,7 +5065,7 @@ function renderAdsPerf(){
     const verdict = a.drrA<=AD_DRR_GOAL
       ? `<span class="badge good"><span class="d"></span>В цели</span>`
       : `<span class="badge critical"><span class="d"></span>Править склейку</span>`;
-    html+=`<tr class="row-group"><td style="font-weight:700;padding-top:12px">Склейка «${esc(t)}» · ${l.length} кампаний</td>`
+    html+=`<tr class="row-group"><td class="metric" style="font-weight:700;padding-top:12px">Склейка «${esc(t)}» · ${l.length} кампаний</td>`
       +`<td colspan="2"></td>`
       +`<td style="font-weight:700" class="${a.msk?"":"d-zero"}">${a.msk? fmt(a.msk):"—"}`
       +`<span class="sub2 ${a.mskDays<AD_MIN_MSK_DAYS?"crit":"mut"}">${a.spd>0? adFmtD(a.mskDays)+" дн":"нет продаж"}</span></td>`
@@ -5022,7 +5077,7 @@ function renderAdsPerf(){
       +`<td>${fmt(Math.round(a.aov))}<span class="sub2 mut">× ${(a.bo*100).toFixed(0)}% выкуп</span></td>`
       +`<td colspan="3"></td><td>${verdict}</td></tr>`;   // Заказы / «др. арт.» / CTR у склейки не печатаем
     adSortPerf(l).forEach(r=>{
-      html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}`
+      html+=`<tr><td class="metric name-cell" title="${esc(r.name)}">${esc(r.name)}`
         +`<span class="sub2 mut">${esc(r.category)}</span></td>`
         +`<td class="ad-art">${skuLink(r.sku)}</td><td class="ad-art">${esc(r.sup)}</td>`
         +`<td class="${r.msk?"":"d-zero"}">${r.msk? fmt(r.msk):"—"}`
@@ -5081,7 +5136,8 @@ function renderAdHowTo(){
       `Внутри каждой склейки считаем выручку за выбранный период — ${adPeriodTxt()} — и раскладываем по Парето: до 80% накопленной доли — A, до 95% — B, остальное C`,
       `Смотрим остаток в МОСКВЕ по FBS и делим на продажи в день → на сколько дней его хватит`,
       `Кандидат = категория A И московского остатка хватает минимум на ${AD_MIN_MSK_DAYS} дней`,
-      `Остальные товары склейки едут на ассоциативных конверсиях — реклама на них не ставится`]
+      `Остальные товары склейки едут на ассоциативных конверсиях — реклама на них не ставится`,
+      `Колонка «Реклама ₽» показывает, что уже крутится: красным — деньги идут в товар, которого в Москве нет или почти нет`]
       .map(x=>`<span>${esc(x)}</span>`).join('<i>→</i>')+`</div>`
     +`<div class="howto-n">`
     +[`Парето считается ВНУТРИ склейки, а не по всей группе: так лидер находится в каждой склейке, включая слабые. По всей группе кандидатов было бы вдвое меньше, и слабые склейки выпали бы целиком.`,
@@ -5089,6 +5145,7 @@ function renderAdHowTo(){
       `Почему именно Москва: там основной спрос и товар доезжает быстро. Остаток на Нск-1 в этот счёт не входит, хотя тоже продаётся по FBS.`,
       `Почему «хватит дней», а не «остаток больше нуля»: реклама разгоняет продажи, и позиция с запасом на пару дней встанет посреди кампании — бюджет уйдёт, а карточка просядет в выдаче. Такие показаны отдельным блоком внизу, чтобы вы их видели.`,
       `Продажи в день = заказы ÷ дней периода × % выкупа по магазину. Показы, CTR и конверсия — из воронки за тот же период, чтобы было видно, есть ли куда расти.`,
+      `Расход и ДРР в колонке «Реклама ₽» — за период ЗАГРУЖЕННОЙ ВЫГРУЗКИ рекламы${(RD.adPerf&&RD.adPerf.from)? " ("+fmtDateLong(RD.adPerf.from)+" – "+fmtDateLong(RD.adPerf.to)+")":""}, а не за выбранный календарём период: другого источника расхода нет. Поэтому выручка и расход в одной строке могут быть за разные отрезки — сравнивайте их как «что продаётся» и «что сейчас крутится», а точный ДРР смотрите в «Отдаче».`,
       `Вкладка считает только Wildberries. Для Ozon сделаем отдельно.`]
       .map(x=>`<div>${esc(x)}</div>`).join("")+`</div>`;
 }
@@ -5112,6 +5169,8 @@ function exportAdsXLSX(){
     {h:"Продаж в день", v:r=>+r.spd.toFixed(2), w:15},
     {h:"Остаток Москва, шт", v:r=>r.msk, w:19},
     {h:"Хватит дней (Москва)", v:r=>r.spd>0? adFmtD(r.mskDays):"", w:21},
+    {h:"Реклама за период выгрузки, ₽", v:r=>Math.round(r.adSpend||0), w:28, tot:"ad"},
+    {h:"ДРР в выкупе, %", v:r=>r.adDrr==null? "" : (r.adDrr===Infinity? "нет продаж" : +r.adDrr.toFixed(1)), w:17},
     {h:"Остаток на складах WB", v:r=>r.fbo, w:22},
     {h:"Показы", v:r=>r.imp, w:12},
     {h:"CTR, %", v:r=>+r.ctr.toFixed(2), w:10},
@@ -5119,14 +5178,17 @@ function exportAdsXLSX(){
     {h:"Средний чек, ₽", v:r=>Math.round(r.price), w:16}];
   // потолок CPO в выгрузку не идёт: он относится к виду «Отдача», а этот файл — про отбор
   const data=[cols.map(c=>c.h)];
-  const sums={rub:0,qty:0};
-  rows.forEach(r=>{ sums.rub+=r.rub; sums.qty+=r.qty; data.push(cols.map(c=>c.v(r))); });
+  const sums={rub:0,qty:0,ad:0};
+  rows.forEach(r=>{ sums.rub+=r.rub; sums.qty+=r.qty; sums.ad+=r.adSpend||0; data.push(cols.map(c=>c.v(r))); });
   const tot=new Array(cols.length).fill(""); tot[0]="ИТОГО";
   cols.forEach((c,i)=>{ if(c.tot) tot[i]=Math.round(sums[c.tot]); });
   data.push(tot);
   const extra=[["Площадка","Wildberries"],
     ["Группа", adGroup||"все группы"],
     ["Период", adPeriodTxt()],
+    ["Период рекламы (расход и ДРР)", (RD.adPerf&&RD.adPerf.from)
+      ? fmtDateLong(RD.adPerf.from)+" – "+fmtDateLong(RD.adPerf.to)+" — из загруженной выгрузки, не из календаря"
+      : "выгрузка рекламы не загружена"],
     ["Склейки на дату", (RD.meta&&RD.meta.adTagsDate)? fmtDateLong(RD.meta.adTagsDate):"—"],
     ["Склад на дату", (RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date):"—"],
     ["Правило отбора","категория A внутри своей склейки И московского FBS-остатка хватает минимум на "+AD_MIN_MSK_DAYS+" дней продаж"],
