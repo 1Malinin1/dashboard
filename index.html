@@ -508,6 +508,16 @@
   #srTable td .sub2{display:block;font-size:10px;font-weight:500;line-height:1.25;margin-top:2px;white-space:nowrap}
   #srTable td .sub2.mut{color:var(--muted)}
   #srTable th,#srTable td{padding-left:9px;padding-right:9px}
+  /* Вкладка «Реклама». Стиль .sub2 прописан ПО ID каждой таблицы (см. #turnTable/#srTable выше),
+     поэтому новой таблице нужен свой блок — иначе вторая строка ячейки липнет к первой
+     и «1 930» + «537 дн» читаются как «1 930537 дн». */
+  #adTable td .sub2{display:block;font-size:10px;font-weight:500;line-height:1.25;margin-top:2px;white-space:nowrap}
+  #adTable td .sub2.mut{color:var(--muted)}
+  #adTable td .sub2.acc{color:var(--accent);font-weight:600}
+  #adTable td .sub2.crit{color:var(--crit-txt);font-weight:600}
+  #adTable td.name-cell{max-width:270px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #adTable td.crit{color:var(--crit-txt)}
+  #adTable th,#adTable td{padding-left:9px;padding-right:9px}
   /* мини-бар доли прибыли прямо в ячейке (data-ink) */
   table.rnp td.share-cell{position:relative;overflow:hidden}
   .share-fill{position:absolute;left:0;top:50%;transform:translateY(-50%);height:56%;
