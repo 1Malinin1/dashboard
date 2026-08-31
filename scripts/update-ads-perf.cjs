@@ -5,12 +5,19 @@
 // и правит там, где не попадает в цель. Цель — ДРР ≤7% (хорошо 6%, идеально ниже),
 // причём ДРР он смотрит В ВЫКУПЕ, а не в заказах: заказ ещё может не выкупиться.
 //
+// БАЗА ДРР — «ОБЩАЯ СУММА ЗАКАЗОВ», А НЕ «ЗАКАЗЫ С РЕКЛАМЫ». Это была моя ошибка
+// (найдена продавцом 31.08.2026): ДРР = доля рекламных расходов В ВЫРУЧКЕ ТОВАРА, а не
+// окупаемость рекламных заказов. По рекламным заказам выходило 30.6%, по общей выручке —
+// 7.7%, ровно как в кабинете XWAY. Сверка на «Пушкарах» 26-30.08: расход 355 470 ₽,
+// общая сумма заказов 4 608 116 ₽, 1 311 заказов — цифра в цифру с экраном продавца.
+// Не возвращай `rub` (заказы с рекламы) в знаменатель ДРР.
+//
 // ДВА ДРР, И ОБА НУЖНЫ:
-//   · прямой — расход ÷ выручка по ЭТОМУ артикулу;
-//   · с ассоциативными — расход ÷ (выручка этого + заказы ДРУГИХ артикулов, пришедшие
+//   · общий — расход ÷ вся выручка этого артикула;
+//   · с ассоциативными — расход ÷ (вся выручка этого + заказы ДРУГИХ артикулов, пришедшие
 //     с этой рекламы). Продавец рекламирует «лошадку» — источник трафика: если у неё
 //     самой ДРР плохой, но с учётом всех пришедших продаж экономика сходится,
-//     выключать её незачем. Поэтому решение принимается по ВТОРОМУ.
+//     выключать её незачем.
 //
 // ФАЙЛ: выгрузка XWAY, лист «Страница 1». Колонки по имени: «Артикул WB» · «Расход, руб.» ·
 // «Заказы, шт» · «Заказы, руб.» · «Показы» · «Клики» · «Корзины» · «Заказы др. артикулов, шт.»
@@ -64,10 +71,11 @@ const col=re=>H.findIndex(x=>re.test(x));
 const iSku=H.indexOf('Артикул WB'), iSpend=col(/^Расход/i), iOrd=col(/^Заказы, шт/i),
   iRub=col(/^Заказы, руб/i), iImp=col(/^Показы$/i), iClk=col(/^Клики$/i), iCart=col(/^Корзины$/i),
   iOthQ=col(/^Заказы др\. артикулов, шт/i), iOthR=col(/^Заказы др\. артикулов, руб/i),
-  iRk=col(/^Активных РК/i);
+  iRk=col(/^Активных РК/i),
+  iTotQ=col(/^Общее количество заказов/i), iTotR=col(/^Общая сумма заказов/i);
 if(iSpend<0||iRub<0){ console.error('нет колонок «Расход» / «Заказы, руб.»'); process.exit(1); }
 
-const bySkuPerf={}; let n=0, miss=0, tSpend=0, tRub=0, tOth=0, tOrd=0;
+const bySkuPerf={}; let n=0, miss=0, tSpend=0, tRub=0, tOth=0, tOrd=0, tTotRub=0, tTotOrd=0;
 for(let i=hr+1;i<rows.length;i++){
   const sku=S(rows[i][iSku]); if(!sku) continue;
   const spend=num(rows[i][iSpend]);
@@ -78,9 +86,12 @@ for(let i=hr+1;i<rows.length;i++){
     imp:iImp>=0?num(rows[i][iImp]):0, clicks:iClk>=0?num(rows[i][iClk]):0,
     carts:iCart>=0?num(rows[i][iCart]):0,
     ord:iOrd>=0?num(rows[i][iOrd]):0, rub:num(rows[i][iRub]),
-    othOrd:iOthQ>=0?num(rows[i][iOthQ]):0, othRub:iOthR>=0?num(rows[i][iOthR]):0};
+    othOrd:iOthQ>=0?num(rows[i][iOthQ]):0, othRub:iOthR>=0?num(rows[i][iOthR]):0,
+    // ВСЯ выручка артикула за период — это и есть база ДРР
+    totOrd:iTotQ>=0?num(rows[i][iTotQ]):0, totRub:iTotR>=0?num(rows[i][iTotR]):0};
   bySkuPerf[sku]=e; n++;
   tSpend+=e.spend; tRub+=e.rub; tOth+=e.othRub; tOrd+=e.ord;
+  tTotRub+=e.totRub; tTotOrd+=e.totOrd;
 }
 RD.adPerf={from:FROM, to:TO, loadedAt:new Date().toISOString().slice(0,10), bySku:bySkuPerf};
 
@@ -91,11 +102,13 @@ fs.writeFileSync(path.join(OUT,'wb-data.js'),
 const F=v=>Math.round(v).toLocaleString('ru-RU');
 console.log('Реклама за '+FROM+' … '+TO+': карточек с кампанией '+n
   +(miss? ' · нет в каталоге ВБ: '+miss : ''));
-console.log('  расход:            '+F(tSpend)+' ₽');
-console.log('  заказы с рекламы:  '+F(tOrd)+' шт · '+F(tRub)+' ₽ · ДРР '+(tRub? (tSpend/tRub*100).toFixed(1):'—')+'%');
-console.log('  + другие артикулы: '+F(tOth)+' ₽ · ДРР с ними '+((tRub+tOth)? (tSpend/(tRub+tOth)*100).toFixed(1):'—')+'%');
+console.log('  расход:                 '+F(tSpend)+' ₽');
+console.log('  ВСЯ выручка товаров:    '+F(tTotOrd)+' шт · '+F(tTotRub)+' ₽');
+console.log('  ОБЩИЙ ДРР в заказах:    '+(tTotRub? (tSpend/tTotRub*100).toFixed(1):'—')+'%   ← как в кабинете XWAY');
+console.log('  + заказы др. артикулов: '+F(tOth)+' ₽ · ДРР с ними '+((tTotRub+tOth)? (tSpend/(tTotRub+tOth)*100).toFixed(1):'—')+'%');
+console.log('  (справочно: заказы С РЕКЛАМЫ '+F(tOrd)+' шт · '+F(tRub)+' ₽)');
 const bw=RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.all;
-if(bw) console.log('  ДРР В ВЫКУПЕ (цель ≤7%): прямой '+(tRub? (tSpend/(tRub*bw)*100).toFixed(1):'—')
-  +'% · с другими артикулами '+((tRub+tOth)? (tSpend/((tRub+tOth)*bw)*100).toFixed(1):'—')
+if(bw) console.log('  ДРР В ВЫКУПЕ (цель ≤7%): общий '+(tTotRub? (tSpend/(tTotRub*bw)*100).toFixed(1):'—')
+  +'% · с другими артикулами '+((tTotRub+tOth)? (tSpend/((tTotRub+tOth)*bw)*100).toFixed(1):'—')
   +'%   (выкуп '+(bw*100).toFixed(0)+'%)');
 console.log('\nДальше: node scripts/encrypt.cjs <код>');

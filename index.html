@@ -4599,12 +4599,16 @@ function srFiltered(){ return srFilteredRows(srDecorate(srRows()),null); }
    продажах 5-7 шт/день), остальные имеют запас на 40-500 дней. */
 const AD_MIN_MSK_DAYS=21;
 /* ЦЕЛЬ ПО ДРР (правило продавца 31.08.2026): не более 7%, хорошо 6%, ниже 6% — идеально.
-   ДРР он смотрит В ВЫКУПЕ, а не в заказах: заказ ещё может не выкупиться, поэтому
-   выручку из рекламного отчёта (она в ЗАКАЗАХ) умножаем на % выкупа.
+   БАЗА ДРР — ВСЯ ВЫРУЧКА ТОВАРА («Общая сумма заказов» в выгрузке), а НЕ заказы,
+   пришедшие с рекламы. Это была ошибка первой версии, продавец её поймал: ДРР — это
+   доля рекламных расходов в выручке, а не окупаемость рекламных заказов. По рекламным
+   заказам выходило 30.6%, по общей выручке — 7.7%, ровно как в кабинете XWAY.
+   Не возвращай `rub` в знаменатель.
+   ДРР смотрим В ВЫКУПЕ, а не в заказах: заказ ещё может не выкупиться, поэтому выручку
+   умножаем на % выкупа.
    И считаем ДРР С АССОЦИАТИВНЫМИ ЗАКАЗАМИ: рекламируемый товар — «лошадка», источник
    трафика. Если у неё самой ДРР плохой, но с учётом всех пришедших продаж экономика
-   сходится, выключать её незачем. Прямой ДРР показываем рядом — для понимания, но
-   решение принимается по общему. */
+   сходится, выключать её незачем. */
 const AD_DRR_GOAL=7, AD_DRR_GREAT=6;
 /* Ниже этого расхода кампанию не судим: у ВБ по многим карточкам списывается рубль-два
    «перелива», и без порога такие строки висели бы с вердиктом «разобрать» и нулевыми
@@ -4619,14 +4623,15 @@ function adPerfRows(){
   const bo=adBuyout();
   return Object.entries(P.bySku).map(([sku,e])=>{
     const c=(RD.catalog||[]).find(x=>""+x.sku===sku)||{};
-    const revD=e.rub*bo, revA=(e.rub+e.othRub)*bo;    // выручка В ВЫКУПЕ
+    const totRub=e.totRub!=null? e.totRub : e.rub;    // вся выручка артикула за период
+    const revD=totRub*bo, revA=(totRub+e.othRub)*bo;  // выручка В ВЫКУПЕ
     return {sku, sup:(""+(c.supplierCode||"")).trim(), name:c.name||sku,
       group:c.adGroup||"—", tag:c.adTag||"—", category:c.category||"",
       spend:e.spend, ord:e.ord, rub:e.rub, othOrd:e.othOrd, othRub:e.othRub,
-      revD, revA,
+      totOrd:e.totOrd||0, totRub, revD, revA,
       drrD: revD>0? e.spend/revD*100 : (e.spend>0? Infinity : 0),
       drrA: revA>0? e.spend/revA*100 : (e.spend>0? Infinity : 0),
-      cpo: (e.ord+e.othOrd)>0? e.spend/(e.ord+e.othOrd) : (e.spend>0? Infinity : 0),
+      cpo: (e.totOrd+e.othOrd)>0? e.spend/(e.totOrd+e.othOrd) : (e.spend>0? Infinity : 0),
       imp:e.imp, clicks:e.clicks, carts:e.carts,
       ctr: e.imp? e.clicks/e.imp*100 : 0,
       cr:  e.clicks? e.ord/e.clicks*100 : 0};
@@ -4796,7 +4801,7 @@ function renderAdsPerf(){
   const bo=adBuyout();
   const agg=list=>{ const sp=list.reduce((a,x)=>a+x.spend,0);
     const rD=list.reduce((a,x)=>a+x.revD,0), rA=list.reduce((a,x)=>a+x.revA,0);
-    const o=list.reduce((a,x)=>a+x.ord+x.othOrd,0);
+    const o=list.reduce((a,x)=>a+x.totOrd+x.othOrd,0);
     return {sp, rD, rA, o, drrD: rD>0? sp/rD*100:(sp>0?Infinity:0), drrA: rA>0? sp/rA*100:(sp>0?Infinity:0),
       cpo: o>0? sp/o : (sp>0? Infinity:0)}; };
   const T=agg(rows);
@@ -4809,7 +4814,7 @@ function renderAdsPerf(){
      valColor: T.drrA<=AD_DRR_GREAT? "var(--good-txt)" : (T.drrA<=AD_DRR_GOAL? "var(--warn-txt)" : "var(--crit-txt)"),
      tip:`<div class="t-hd">Как считается</div>`
        +tr2("Расход",fmt(Math.round(T.sp))+" ₽")
-       +tr2("Заказы с рекламы (все артикулы)",fmt(Math.round(T.rA/bo))+" ₽")
+       +tr2("Вся выручка товаров + заказы др. артикулов",fmt(Math.round(T.rA/bo))+" ₽")
        +tr2("× % выкупа",(bo*100).toFixed(0)+"%")
        +tr2("= выручка в выкупе",fmt(Math.round(T.rA))+" ₽")
        +tr2("ДРР",adDrrTxt(T.drrA))
@@ -4817,9 +4822,11 @@ function renderAdsPerf(){
        +tr2("идеально","ниже "+AD_DRR_GREAT+"%")},
     {lbl:"Только свой товар, ДРР", val:adDrrTxt(T.drrD),
      tip:`<div class="t-hd">Без ассоциативных заказов</div>`
-       +tr2("Выручка в выкупе",fmt(Math.round(T.rD))+" ₽")
-       +tr2("Разница — заказы других артикулов, пришедшие с этой рекламы")
-       +tr2("Решение принимается по общему ДРР, этот — справочно")},
+       +tr2("Вся выручка рекламируемых товаров",fmt(Math.round(T.rD/bo))+" ₽")
+       +tr2("× % выкупа",(bo*100).toFixed(0)+"%")
+       +tr2("= в выкупе",fmt(Math.round(T.rD))+" ₽")
+       +tr2("ДРР",adDrrTxt(T.drrD))
+       +tr2("Разница с общим — заказы других артикулов, пришедшие с этой рекламы")},
     {lbl:"CPO, ₽", val: T.cpo===Infinity? "—" : fmt(Math.round(T.cpo)),
      tip:`<div class="t-hd">Стоимость заказа</div>`+tr2("Расход ÷ все заказы с рекламы")
        +tr2("Заказов",fmt(T.o))+tr2("Зависит от цены товара — сравнивайте внутри склейки")},
@@ -4831,7 +4838,7 @@ function renderAdsPerf(){
   if(!rows.length){ el.innerHTML=`<tbody><tr><td class="empty-hint">Под текущие фильтры кампаний нет</td></tr></tbody>`; return; }
   const byTag={}; rows.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
   let html=`<thead><tr><th class="metric">Товар / склейка</th><th>Расход ₽</th>`
-    +`<th>Заказы ₽ (выкуп)</th><th>ДРР общий</th><th>ДРР свой</th><th>CPO</th>`
+    +`<th>Выручка ₽ (выкуп)</th><th>ДРР общий</th><th>ДРР свой</th><th>CPO</th>`
     +`<th>Заказы</th><th>+ др. арт.</th><th>Показы</th><th>CTR %</th><th>Решение</th></tr></thead><tbody>`;
   Object.entries(byTag).map(([t,l])=>({t,l,a:agg(l)})).sort((a,b)=>b.a.sp-a.a.sp).forEach(({t,l,a})=>{
     const verdict = a.drrA<=AD_DRR_GOAL
@@ -4850,7 +4857,8 @@ function renderAdsPerf(){
         +`<td>${fmt(Math.round(r.revA))}<span class="sub2 mut">свой ${fmt(Math.round(r.revD))}</span></td>`
         +`<td>${adDrrBadge(r.drrA)}</td><td class="${adDrrCls(r.drrD)}">${adDrrTxt(r.drrD)}</td>`
         +`<td>${r.cpo===Infinity?"—":fmt(Math.round(r.cpo))}</td>`
-        +`<td>${fmt(r.ord)}</td><td>${fmt(r.othOrd)}<span class="sub2 mut">${fmt(Math.round(r.othRub))} ₽</span></td>`
+        +`<td>${fmt(r.totOrd)}<span class="sub2 mut">с рекл. ${fmt(r.ord)}</span></td>`
+        +`<td>${fmt(r.othOrd)}<span class="sub2 mut">${fmt(Math.round(r.othRub))} ₽</span></td>`
         +`<td>${fmt(r.imp)}</td><td>${r.ctr.toFixed(1)}</td>`
         +`<td>${r.spend<AD_MIN_SPEND? `<span class="muted">мелкий расход</span>`
              : (r.drrA<=AD_DRR_GOAL? `<span class="muted">оставить</span>`
@@ -4867,13 +4875,15 @@ function renderAdHowTo(){
     el.innerHTML=`<div class="howto-t">КАК ЧИТАТЬ ОТДАЧУ РЕКЛАМЫ${adGroup? " — "+esc(adGroup):""}</div>`
       +`<div class="howto-s">`
       +[`Смотрим сверху вниз: общий итог → склейка → товар, и правим там, где не попали в цель`,
-        `Выручку из рекламного отчёта (она в ЗАКАЗАХ) умножаем на % выкупа ${(bo*100).toFixed(0)}% — ДРР считается В ВЫКУПЕ`,
-        `ДРР общий = расход ÷ (выручка своего товара + заказы других артикулов, пришедшие с этой рекламы)`,
+        `База ДРР — ВСЯ выручка товара за период, а не только заказы, пришедшие с рекламы`,
+        `Выручка в отчёте стоит в ЗАКАЗАХ, поэтому умножаем её на % выкупа ${(bo*100).toFixed(0)}% — ДРР считается В ВЫКУПЕ`,
+        `ДРР общий = расход ÷ (вся выручка товара + заказы других артикулов, пришедшие с этой рекламы)`,
         `Цель: не более ${AD_DRR_GOAL}%, хорошо ${AD_DRR_GREAT}%, ниже ${AD_DRR_GREAT}% — идеально`,
         `Склейка в цели — оставляем всё внутри, даже товар с плохим личным ДРР: он тянет трафик`]
         .map(x=>`<span>${esc(x)}</span>`).join('<i>→</i>')+`</div>`
       +`<div class="howto-n">`
-      +[`РЕШЕНИЕ ПРИНИМАЕТСЯ ПО ОБЩЕМУ ДРР, а не по личному. Рекламируемый товар — «лошадка», источник трафика: если у неё самой ДРР плохой, но с учётом всех пришедших продаж экономика сходится, выключать её незачем. Личный ДРР показан рядом справочно.`,
+      +[`БАЗА ДРР — ВСЯ ВЫРУЧКА ТОВАРА, а не заказы с рекламы. ДРР — это доля рекламных расходов в выручке; если делить только на рекламные заказы, получается окупаемость рекламы, а не ДРР, и цифра завышается втрое. В кабинете XWAY эта колонка называется «Общий ДРР».`,
+        `РЕШЕНИЕ ПРИНИМАЕТСЯ ПО ОБЩЕМУ ДРР, а не по личному. Рекламируемый товар — «лошадка», источник трафика: если у неё самой ДРР плохой, но с учётом всех пришедших продаж экономика сходится, выключать её незачем. Личный ДРР показан рядом справочно.`,
         `ДРР считается в ВЫКУПЕ, а не в заказах: заказ ещё может не выкупиться, и по заказам картина выглядит лучше, чем есть. Поэтому цифра здесь выше той, что показывает рекламный отчёт.`,
         `Оценка склейки — средняя по ней: реклама одного товара приносит заказы соседним, и разбирать их поштучно бессмысленно. Если склейка в цели, а товар внутри нет — он помечен «склейка в цели, тянет трафик».`,
         `CPO зависит от цены товара: у толокара за 6 000 ₽ и у светофора за 500 ₽ нормальный CPO разный. Сравнивайте внутри склейки, а не между.`,
