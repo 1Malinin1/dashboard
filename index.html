@@ -4629,14 +4629,30 @@ function adPerfRows(){
       group:c.adGroup||"—", tag:c.adTag||"—", category:c.category||"",
       spend:e.spend, ord:e.ord, rub:e.rub, othOrd:e.othOrd, othRub:e.othRub,
       totOrd:e.totOrd||0, totRub, revD, revA,
+      aov: e.totOrd? e.totRub/e.totOrd : 0,        // средний чек В ЗАКАЗАХ
+      bo: buyoutOf("wb", sku, bo),                  // свой % выкупа, иначе общий
+      boOwn: !!(RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.bySku&&RD.meta.buyoutWin.bySku[sku]>0),
       drrD: revD>0? e.spend/revD*100 : (e.spend>0? Infinity : 0),
       drrA: revA>0? e.spend/revA*100 : (e.spend>0? Infinity : 0),
       cpo: (e.totOrd+e.othOrd)>0? e.spend/(e.totOrd+e.othOrd) : (e.spend>0? Infinity : 0),
       imp:e.imp, clicks:e.clicks, carts:e.carts,
       ctr: e.imp? e.clicks/e.imp*100 : 0,
-      cr:  e.clicks? e.ord/e.clicks*100 : 0};
+      cr:  e.clicks? e.ord/e.clicks*100 : 0,
+      max7: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, buyoutOf("wb",sku,bo), AD_DRR_GOAL),
+      max6: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, buyoutOf("wb",sku,bo), AD_DRR_GREAT)};
   }).filter(r=>r.spend>0);
 }
+/* ПОТОЛОК CPO. Выводится прямо из определения ДРР, коэффициентов подбирать не нужно:
+     ДРР = расход ÷ выручка,  CPO = расход ÷ заказы,  выручка = заказы × чек × выкуп
+   ⇒ макс CPO = целевой ДРР × средний чек × % выкупа.
+   Считаем НА ДВУХ УРОВНЯХ (просьба продавца 31.08.2026):
+     · по товару — свой чек и свой % выкупа (разброс по товарам от 30% до 100%,
+       и это влияет на потолок сильнее, чем любая поправка «на свежесть»);
+     · по склейке — её общий чек и выкуп, взвешенные по заказам. Продавец не выключает
+       «лошадку» с плохим личным ДРР, если склейка бьётся, — значит и судить её надо
+       по потолку склейки.
+   Чек берётся В ЗАКАЗАХ (как в отчёте), выкуп домножается отдельно — иначе он учёлся бы дважды. */
+const adMaxCpo = (aov,bo,goal) => aov>0? goal/100*aov*bo : 0;
 const adDrrCls = v => v===Infinity? "crit" : (v<=AD_DRR_GREAT? "good" : (v<=AD_DRR_GOAL? "warning" : "crit"));
 const adDrrTxt = v => v===Infinity? "нет продаж" : v.toFixed(1)+"%";
 function adDrrBadge(v){ const c=adDrrCls(v);
@@ -4802,8 +4818,13 @@ function renderAdsPerf(){
   const agg=list=>{ const sp=list.reduce((a,x)=>a+x.spend,0);
     const rD=list.reduce((a,x)=>a+x.revD,0), rA=list.reduce((a,x)=>a+x.revA,0);
     const o=list.reduce((a,x)=>a+x.totOrd+x.othOrd,0);
-    return {sp, rD, rA, o, drrD: rD>0? sp/rD*100:(sp>0?Infinity:0), drrA: rA>0? sp/rA*100:(sp>0?Infinity:0),
-      cpo: o>0? sp/o : (sp>0? Infinity:0)}; };
+    const oq=list.reduce((a,x)=>a+x.totOrd,0), orub=list.reduce((a,x)=>a+x.totRub,0);
+    const aov = oq? orub/oq : 0;
+    const bow = oq? list.reduce((a,x)=>a+x.bo*x.totOrd,0)/oq : adBuyout();   // взвешенный по заказам
+    return {sp, rD, rA, o, aov, bo:bow,
+      drrD: rD>0? sp/rD*100:(sp>0?Infinity:0), drrA: rA>0? sp/rA*100:(sp>0?Infinity:0),
+      cpo: o>0? sp/o : (sp>0? Infinity:0),
+      max7: adMaxCpo(aov,bow,AD_DRR_GOAL), max6: adMaxCpo(aov,bow,AD_DRR_GREAT)}; };
   const T=agg(rows);
   const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
   document.getElementById("adKpis").innerHTML=[
@@ -4827,9 +4848,18 @@ function renderAdsPerf(){
        +tr2("= в выкупе",fmt(Math.round(T.rD))+" ₽")
        +tr2("ДРР",adDrrTxt(T.drrD))
        +tr2("Разница с общим — заказы других артикулов, пришедшие с этой рекламы")},
-    {lbl:"CPO, ₽", val: T.cpo===Infinity? "—" : fmt(Math.round(T.cpo)),
-     tip:`<div class="t-hd">Стоимость заказа</div>`+tr2("Расход ÷ все заказы с рекламы")
-       +tr2("Заказов",fmt(T.o))+tr2("Зависит от цены товара — сравнивайте внутри склейки")},
+    {lbl:"CPO факт / потолок, ₽",
+     val:(T.cpo===Infinity? "—" : fmt(Math.round(T.cpo)))+" / "+fmt(Math.round(T.max7)),
+     valColor: (T.cpo<=T.max6? "var(--good-txt)" : (T.cpo<=T.max7? "var(--warn-txt)" : "var(--crit-txt)")),
+     tip:`<div class="t-hd">Потолок CPO выводится из цели по ДРР</div>`
+       +tr2("макс CPO = ДРР × чек × выкуп")
+       +tr2("Средний чек",fmt(Math.round(T.aov))+" ₽")+tr2("Выкуп",(T.bo*100).toFixed(0)+"%")
+       +tr2("Потолок при "+AD_DRR_GOAL+"%",fmt(Math.round(T.max7))+" ₽")
+       +tr2("Идеал при "+AD_DRR_GREAT+"%",fmt(Math.round(T.max6))+" ₽")
+       +tr2("Факт",(T.cpo===Infinity?"—":fmt(Math.round(T.cpo))+" ₽"))
+       +`<div class="t-hd">Считается на двух уровнях</div>`
+       +tr2("по товару — свой чек и свой % выкупа")
+       +tr2("по склейке — её общий чек и выкуп, взвешенные по заказам")},
   ].map(kpiCard).join("");
   wireKpiTips("adKpis");
   document.getElementById("adCount").textContent=rows.length+" кампаний · "
@@ -4838,8 +4868,8 @@ function renderAdsPerf(){
   if(!rows.length){ el.innerHTML=`<tbody><tr><td class="empty-hint">Под текущие фильтры кампаний нет</td></tr></tbody>`; return; }
   const byTag={}; rows.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
   let html=`<thead><tr><th class="metric">Товар / склейка</th><th>Расход ₽</th>`
-    +`<th>Выручка ₽ (выкуп)</th><th>ДРР общий</th><th>ДРР свой</th><th>CPO</th>`
-    +`<th>Заказы</th><th>+ др. арт.</th><th>Показы</th><th>CTR %</th><th>Решение</th></tr></thead><tbody>`;
+    +`<th>Выручка ₽ (выкуп)</th><th>ДРР общий</th><th>ДРР свой</th><th>CPO факт</th><th>Макс CPO</th>`
+    +`<th>Чек · выкуп</th><th>Заказы</th><th>+ др. арт.</th><th>CTR %</th><th>Решение</th></tr></thead><tbody>`;
   Object.entries(byTag).map(([t,l])=>({t,l,a:agg(l)})).sort((a,b)=>b.a.sp-a.a.sp).forEach(({t,l,a})=>{
     const verdict = a.drrA<=AD_DRR_GOAL
       ? `<span class="badge good"><span class="d"></span>В цели</span>`
@@ -4848,22 +4878,29 @@ function renderAdsPerf(){
       +`<td style="font-weight:700">${fmt(Math.round(a.sp))}</td>`
       +`<td style="font-weight:700">${fmt(Math.round(a.rA))}</td>`
       +`<td>${adDrrBadge(a.drrA)}</td><td class="${adDrrCls(a.drrD)}">${adDrrTxt(a.drrD)}</td>`
-      +`<td>${a.cpo===Infinity?"—":fmt(Math.round(a.cpo))}</td>`
-      +`<td colspan="3"></td><td>${verdict}</td></tr>`;
+      +`<td style="font-weight:700;${a.cpo>a.max7?"color:var(--crit-txt)":""}">${a.cpo===Infinity?"—":fmt(Math.round(a.cpo))}</td>`
+      +`<td style="font-weight:700">${fmt(Math.round(a.max7))}<span class="sub2 mut">идеал ${fmt(Math.round(a.max6))}</span></td>`
+      +`<td>${fmt(Math.round(a.aov))}<span class="sub2 mut">× ${(a.bo*100).toFixed(0)}% выкуп</span></td>`
+      +`<td colspan="2"></td><td>${verdict}</td></tr>`;
     [...l].sort((x,y)=>y.spend-x.spend).forEach(r=>{
       html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}`
         +`<span class="sub2 mut">${esc(r.category)} · ${skuLink(r.sku)} · 1С ${esc(r.sup)}</span></td>`
         +`<td>${fmt(Math.round(r.spend))}</td>`
         +`<td>${fmt(Math.round(r.revA))}<span class="sub2 mut">свой ${fmt(Math.round(r.revD))}</span></td>`
         +`<td>${adDrrBadge(r.drrA)}</td><td class="${adDrrCls(r.drrD)}">${adDrrTxt(r.drrD)}</td>`
-        +`<td>${r.cpo===Infinity?"—":fmt(Math.round(r.cpo))}</td>`
+        +`<td class="${r.cpo>r.max7?"crit":""}">${r.cpo===Infinity?"—":fmt(Math.round(r.cpo))}`
+        +`${(r.cpo!==Infinity&&r.max7>0&&r.cpo>r.max7)? `<span class="sub2 crit">×${(r.cpo/r.max7).toFixed(1)} к потолку</span>`:""}</td>`
+        +`<td>${fmt(Math.round(r.max7))}<span class="sub2 mut">идеал ${fmt(Math.round(r.max6))}</span></td>`
+        +`<td>${fmt(Math.round(r.aov))}<span class="sub2 ${r.boOwn?"acc":"mut"}">× ${(r.bo*100).toFixed(0)}% выкуп${r.boOwn?"":" (общий)"}</span></td>`
         +`<td>${fmt(r.totOrd)}<span class="sub2 mut">с рекл. ${fmt(r.ord)}</span></td>`
         +`<td>${fmt(r.othOrd)}<span class="sub2 mut">${fmt(Math.round(r.othRub))} ₽</span></td>`
-        +`<td>${fmt(r.imp)}</td><td>${r.ctr.toFixed(1)}</td>`
+        +`<td>${r.ctr.toFixed(1)}</td>`
         +`<td>${r.spend<AD_MIN_SPEND? `<span class="muted">мелкий расход</span>`
              : (r.drrA<=AD_DRR_GOAL? `<span class="muted">оставить</span>`
              : (a.drrA<=AD_DRR_GOAL? `<span class="muted">склейка в цели — тянет трафик</span>`
-             : `<span class="crit">разобрать</span>`))}</td></tr>`;
+             : (r.max7>0 && r.cpo>r.max7
+                ? `<span class="crit">снизить ставку в ${(r.cpo/r.max7).toFixed(1)} раза</span>`
+                : `<span class="crit">разобрать</span>`)))}</td></tr>`;
     });
   });
   html+="</tbody>"; el.innerHTML=html;
@@ -4879,6 +4916,7 @@ function renderAdHowTo(){
         `Выручка в отчёте стоит в ЗАКАЗАХ, поэтому умножаем её на % выкупа ${(bo*100).toFixed(0)}% — ДРР считается В ВЫКУПЕ`,
         `ДРР общий = расход ÷ (вся выручка товара + заказы других артикулов, пришедшие с этой рекламы)`,
         `Цель: не более ${AD_DRR_GOAL}%, хорошо ${AD_DRR_GREAT}%, ниже ${AD_DRR_GREAT}% — идеально`,
+        `Из цели по ДРР выводится потолок CPO: макс CPO = ДРР × средний чек × % выкупа`,
         `Склейка в цели — оставляем всё внутри, даже товар с плохим личным ДРР: он тянет трафик`]
         .map(x=>`<span>${esc(x)}</span>`).join('<i>→</i>')+`</div>`
       +`<div class="howto-n">`
@@ -4886,7 +4924,9 @@ function renderAdHowTo(){
         `РЕШЕНИЕ ПРИНИМАЕТСЯ ПО ОБЩЕМУ ДРР, а не по личному. Рекламируемый товар — «лошадка», источник трафика: если у неё самой ДРР плохой, но с учётом всех пришедших продаж экономика сходится, выключать её незачем. Личный ДРР показан рядом справочно.`,
         `ДРР считается в ВЫКУПЕ, а не в заказах: заказ ещё может не выкупиться, и по заказам картина выглядит лучше, чем есть. Поэтому цифра здесь выше той, что показывает рекламный отчёт.`,
         `Оценка склейки — средняя по ней: реклама одного товара приносит заказы соседним, и разбирать их поштучно бессмысленно. Если склейка в цели, а товар внутри нет — он помечен «склейка в цели, тянет трафик».`,
-        `CPO зависит от цены товара: у толокара за 6 000 ₽ и у светофора за 500 ₽ нормальный CPO разный. Сравнивайте внутри склейки, а не между.`,
+        `ПОТОЛОК CPO не подбирается, а выводится из цели по ДРР: ДРР = расход ÷ выручка, CPO = расход ÷ заказы, выручка = заказы × чек × выкуп, отсюда макс CPO = ДРР × чек × выкуп. Поэтому у толокара за 6 000 ₽ потолок в разы выше, чем у светофора за 223 ₽ — сравнивать их CPO между собой бессмысленно.`,
+        `Потолок считается НА ДВУХ УРОВНЯХ: у товара — по его собственному чеку и его же проценту выкупа (он подписан под чеком; выделенный — свой, серый «общий» — по магазину), у склейки — по её чеку и выкупу, взвешенным по заказам. Разброс выкупа по товарам от 30% до 100%, и он двигает потолок сильнее, чем что-либо ещё: у товара с выкупом 42% потолок вдвое ниже, чем у соседа с 83%.`,
+        `Выкуп берётся из последнего ДОЗРЕВШЕГО окна (сейчас 20.07–02.08). «В моменте» его узнать нельзя: по свежим заказам половина ещё едет, и любая цифра за последнюю неделю занижена. По августу выкуп идёт к 70–72% против июльских 75,6%, то есть потолок CPO сейчас завышен примерно на 6% — учитывайте при пограничных решениях.`,
         `Кампании с расходом меньше ${AD_MIN_SPEND} ₽ помечены «мелкий расход» и не судятся: у ВБ по многим карточкам списывается рубль-два перелива, и без этого порога они висели бы с вердиктом «разобрать» при нулевых продажах.`,
         `Период — тот, что был в загруженной выгрузке (${P.from? fmtDateLong(P.from):"—"} – ${P.to? fmtDateLong(P.to):"—"}). Селектор периода на этот вид не влияет: он относится к отбору кандидатов.`]
         .map(x=>`<div>${esc(x)}</div>`).join("")+`</div>`;
@@ -4934,6 +4974,7 @@ function exportAdsXLSX(){
     {h:"CTR, %", v:r=>+r.ctr.toFixed(2), w:10},
     {h:"Конверсия в заказ, %", v:r=>+r.cr.toFixed(2), w:21},
     {h:"Средний чек, ₽", v:r=>Math.round(r.price), w:16}];
+  // потолок CPO в выгрузку не идёт: он относится к виду «Отдача», а этот файл — про отбор
   const data=[cols.map(c=>c.h)];
   const sums={rub:0,qty:0};
   rows.forEach(r=>{ sums.rub+=r.rub; sums.qty+=r.qty; data.push(cols.map(c=>c.v(r))); });
