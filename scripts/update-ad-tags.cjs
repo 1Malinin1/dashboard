@@ -69,6 +69,28 @@ if(miss.length){
   miss.slice(0,12).forEach(x=>console.log('   '+x.sku+' / 1С '+x.sup+'  '+x.name.slice(0,42)));
   if(miss.length>12) console.log('   … и ещё '+(miss.length-12));
 }
+/* СИГНАЛ ПО ВЫВЕДЕННЫМ ГРУППАМ. Продавец решил не смотреть рекламу по части групп
+   («весь товар там на вывод»), но сам предупредил: если ассортимент в них поменяется —
+   сигнализировать, возможно группы обновятся новым товаром. Поэтому при каждой заливке
+   сверяем состав со слепком `meta.adOutMembers` (его снимает scripts/ad-out-groups.cjs). */
+const outG=(RD.meta&&RD.meta.adOutGroups)||[];
+if(outG.length){
+  const snap=(RD.meta&&RD.meta.adOutMembers)||{};
+  const news=[];
+  outG.forEach(g=>{ const was=new Set(snap[g]||[]);
+    const now=RD.catalog.filter(c=>S(c.adGroup)===g).map(c=>''+c.sku);
+    const add=now.filter(x=>!was.has(x));
+    if(add.length) news.push({g,add,total:now.length}); });
+  console.log('\nВыведенные из рекламы группы: '+outG.join(', ')
+    +' (слепок от '+((RD.meta&&RD.meta.adOutAt)||'—')+')');
+  if(!news.length) console.log('   состав не изменился — смотреть их по-прежнему не нужно');
+  else { console.log('   !!! АССОРТИМЕНТ ИЗМЕНИЛСЯ — проверьте, не пора ли вернуть группу в расчёт:');
+    news.forEach(x=>{ console.log('   '+x.g+': новых '+x.add.length+' из '+x.total+' — '
+      +x.add.slice(0,10).join(', ')+(x.add.length>10? ' …':''));
+      x.add.slice(0,10).forEach(sku=>{ const c=bySku[sku];
+        if(c) console.log('        '+sku+'  '+(c.name||'').slice(0,52)); }); });
+    console.log('   Обновить слепок после разбора: node scripts/ad-out-groups.cjs resnap'); }
+}
 const noTag=RD.catalog.filter(c=>!c.adGroup).length;
 console.log('\nВ каталоге ВБ без склейки: '+noTag+' из '+RD.catalog.length);
 console.log('Дальше: node scripts/encrypt.cjs <код>');

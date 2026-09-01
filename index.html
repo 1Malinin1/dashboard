@@ -4738,6 +4738,13 @@ function adBuyout(){ return (RD&&RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.a
    Это ВРЕМЕННАЯ подпорка, а не замена склейкам: Парето по всей категории грубее, чем
    по склейке. Как только придёт выгрузка XWAY по этим категориям — `update-ad-tags.cjs`
    проставит настоящие склейки, и псевдогруппы исчезнут сами. */
+/* ГРУППЫ НА ВЫВОД. Продавец 01.09.2026: весь товар в «Машинках», «Парковках»,
+   «Распродаже» и «Трансформерах» выводится из ассортимента — рекламу по ним не разбираем.
+   Список живёт в снимке (`meta.adOutGroups`, ставит scripts/ad-out-groups.cjs), а не в коде:
+   он изменится. Здесь такие группы выкидываются из отбора, из пирамиды ДРР и из
+   рекомендаций, но НЕ исчезают молча — под пирамидой печатается отдельная строка
+   «исключено», чтобы расход по ним был виден и его можно было сверить. */
+function adOutGroups(){ return new Set((RD&&RD.meta&&RD.meta.adOutGroups)||[]); }
 const AD_NOTAG="без склейки";
 const adGroupOf = c => c.adGroup || c.category || "Без категории";
 const adTagOf   = c => c.adTag || c.adGroup || AD_NOTAG;
@@ -4756,7 +4763,13 @@ function adPerfRows(){
   return Object.entries(P.bySku).map(([sku,e])=>{
     const c=(RD.catalog||[]).find(x=>""+x.sku===sku)||{};
     const totRub=e.totRub!=null? e.totRub : e.rub;    // вся выручка артикула за период
-    const revD=totRub*bo, revA=(totRub+e.othRub)*bo;  // выручка В ВЫКУПЕ
+    /* ВЫКУП БЕРЁМ СВОЙ У КАЖДОГО ТОВАРА, а не общий по магазину (правка продавца
+       01.09.2026: «у тебя во всех категориях один и тот же процент выкупа?»). Разброс
+       большой и он двигает ДРР: у «Пушкаров» взвешенный выкуп 66.8% против 75.6% по
+       магазину — их ДРР был занижен на 1.4 п.п. Общий процент остаётся фолбэком для
+       товаров, у которых своих заказов в окне замера мало. */
+    const boS=buyoutOf("wb", sku, bo);
+    const revD=totRub*boS, revA=(totRub+e.othRub)*boS;  // выручка В ВЫКУПЕ
     const sup=(""+(c.supplierCode||"")).trim();
     const m=msk[sup]||0, spd=(e.totOrd||0)/days*buyoutOf("wb",sku,bo);
     return {sku, sup, name:c.name||sku,
@@ -4765,7 +4778,7 @@ function adPerfRows(){
       spend:e.spend, ord:e.ord, rub:e.rub, othOrd:e.othOrd, othRub:e.othRub,
       totOrd:e.totOrd||0, totRub, revD, revA,
       aov: e.totOrd? e.totRub/e.totOrd : 0,        // средний чек В ЗАКАЗАХ
-      bo: buyoutOf("wb", sku, bo),                  // свой % выкупа, иначе общий
+      bo: boS,                                      // свой % выкупа, иначе общий
       boOwn: !!(RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.bySku&&RD.meta.buyoutWin.bySku[sku]>0),
       drrD: revD>0? e.spend/revD*100 : (e.spend>0? Infinity : 0),
       drrA: revA>0? e.spend/revA*100 : (e.spend>0? Infinity : 0),
@@ -4773,9 +4786,9 @@ function adPerfRows(){
       imp:e.imp, clicks:e.clicks, carts:e.carts,
       ctr: e.imp? e.clicks/e.imp*100 : 0,
       cr:  e.clicks? e.ord/e.clicks*100 : 0,
-      max7: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, buyoutOf("wb",sku,bo), AD_DRR_GOAL),
-      max6: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, buyoutOf("wb",sku,bo), AD_DRR_GREAT)};
-  });   // ВСЕ карточки, включая нерекламируемые: они в знаменателе ДРР склейки
+      max7: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, boS, AD_DRR_GOAL),
+      max6: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, boS, AD_DRR_GREAT)};
+  }).filter(r=>!adOutGroups().has(r.group));   // ВСЕ карточки уровня, кроме групп на вывод
 }
 /* ПОТОЛОК CPO. Выводится прямо из определения ДРР, коэффициентов подбирать не нужно:
      ДРР = расход ÷ выручка,  CPO = расход ÷ заказы,  выручка = заказы × чек × выкуп
@@ -4820,7 +4833,9 @@ function adRows(){
      Расход берётся за период ЗАГРУЖЕННОЙ ВЫГРУЗКИ, а не за календарное окно отбора:
      другого источника нет, и это честно подписано в шапке колонки и в подсказке. */
   const perf={}; adPerfRows().forEach(p=>{ perf[p.sku]=p; });
-  const rows=(RD.catalog||[]).filter(c=>!adGroup||adGroupOf(c)===adGroup).map(c=>{
+  const out=adOutGroups();
+  const rows=(RD.catalog||[]).filter(c=>{ const g=adGroupOf(c);
+      return !out.has(g) && (!adGroup||g===adGroup); }).map(c=>{
     const sku=""+c.sku, sup=(""+(c.supplierCode||"")).trim();
     const arr=S.bySku[sku]||[];
     let qty=0, rub=0;
@@ -4940,12 +4955,15 @@ function renderAdsTab(){
      склеек ещё нет, — они помечены. Иначе первой открывалась бы самая большая категория
      без склеек («Машинки», 162), а не «Пушкары», по которым реклама и ведётся. */
   const real=adRealGroups();
-  const gCnt={}; (RD.catalog||[]).forEach(c=>{ const g=adGroupOf(c); gCnt[g]=(gCnt[g]||0)+1; });
+  const outG=adOutGroups();
+  const gCnt={}; (RD.catalog||[]).forEach(c=>{ const g=adGroupOf(c);
+    if(outG.has(g)) return; gCnt[g]=(gCnt[g]||0)+1; });
   /* Порядок и выбор по умолчанию — ПО РАСХОДУ РЕКЛАМЫ, а не по числу карточек.
-     По количеству первой открывалась категория «Машинки» (162 карточки, но 4 089 ₽
-     расхода), а разбирать надо «Пушкары» — 443 154 ₽. Категории без склеек уходят вниз. */
+     По количеству первой открывалась «Машинки» (162 карточки при 46 167 ₽ выручки),
+     а разбирать надо «Пушкары» — 5,6 млн ₽. Правило продавца: смотрим туда, где больше
+     зарабатываем, там и теряем больше. Категории без склеек уходят вниз. */
   const gSpend={};
-  try{ adPerfRows().forEach(r=>{ gSpend[r.group]=(gSpend[r.group]||0)+(r.spend||0); }); }catch(e){}
+  try{ adPerfRows().forEach(r=>{ gSpend[r.group]=(gSpend[r.group]||0)+(r.totRub||0); }); }catch(e){}
   const groups=Object.keys(gCnt).sort((a,b)=>
     (real.has(b)-real.has(a)) || ((gSpend[b]||0)-(gSpend[a]||0)) || (gCnt[b]-gCnt[a]));
   const sel=document.getElementById("adGroupSel");
@@ -5098,18 +5116,35 @@ function renderAdsTab(){
    считало бы их дважды. Благодаря этому уровни складываются: сумма склеек = категория,
    сумма категорий = весь ассортимент, и цифра в заказах совпадает с кабинетом XWAY
    (26–30.08: 7.8%), а в выкупе выходит выше — именно её продавец и держит ≤7%. */
+/* Что осталось за бортом: выведенные группы. Считаем ПО СЫРОМУ СНИМКУ (adPerfRows их уже
+   выкинул), чтобы расход по ним был виден и сходился с кабинетом. */
+function adOutSummary(){
+  const P=(RD&&RD.adPerf)||null, out=adOutGroups(); if(!P||!out.size) return null;
+  const bySku={}; (RD.catalog||[]).forEach(c=>bySku[""+c.sku]=c);
+  const bo=adBuyout(); let sp=0, ord=0, rev=0, n=0, ads=0; const gs={};
+  Object.entries(P.bySku||{}).forEach(([sku,e])=>{ const c=bySku[sku]; if(!c) return;
+    const g=c.adGroup||""; if(!out.has(g)) return;
+    const b=buyoutOf("wb",sku,bo);
+    sp+=e.spend||0; ord+=e.totRub||0; rev+=(e.totRub||0)*b; n++; if(e.spend>0) ads++;
+    gs[g]=(gs[g]||0)+(e.spend||0); });
+  return {sp, ord, rev, n, ads, groups:gs, drr: rev>0? sp/rev*100 : (sp>0? Infinity:0)};
+}
 function adLevels(){
   const rows=adPerfRows(), bo=adBuyout();
   const mk=list=>{ const sp=list.reduce((a,r)=>a+r.spend,0);
-    const ord=list.reduce((a,r)=>a+r.totRub,0), rev=ord*bo;
-    return {sp, ord, rev, drr: rev>0? sp/rev*100 : (sp>0? Infinity:0),
+    const ord=list.reduce((a,r)=>a+r.totRub,0);
+    const rev=list.reduce((a,r)=>a+r.revD,0);      // у каждого товара свой % выкупа
+    return {sp, ord, rev, boEff: ord>0? rev/ord : bo,
+      drr: rev>0? sp/rev*100 : (sp>0? Infinity:0),
       n:list.length, ads:list.filter(r=>r.spend>0).length}; };
   const byG={}; rows.forEach(r=>(byG[r.group]||(byG[r.group]=[])).push(r));
+  /* Порядок — ПО ВЫРУЧКЕ, а не по расходу (правило продавца 01.09.2026: «всегда смотрим
+     сначала туда, где больше всего зарабатываем, там и теряем больше всего»). */
   const groups=Object.entries(byG).map(([g,l])=>({key:g, ...mk(l)}))
-    .sort((a,b)=>b.sp-a.sp);
+    .sort((a,b)=>b.ord-a.ord);
   const cur=adGroup? (byG[adGroup]||[]) : rows;
   const byT={}; cur.forEach(r=>(byT[r.tag]||(byT[r.tag]=[])).push(r));
-  const tags=Object.entries(byT).map(([t,l])=>({key:t, ...mk(l)})).sort((a,b)=>b.sp-a.sp);
+  const tags=Object.entries(byT).map(([t,l])=>({key:t, ...mk(l)})).sort((a,b)=>b.ord-a.ord);
   return {all:mk(rows), groups, tags, bo};
 }
 function renderAdDrrLevels(){
@@ -5129,7 +5164,7 @@ function renderAdDrrLevels(){
   const line=(o,cls,nmSub,click)=>`<div class="lv ${cls}"${click?` data-k="${esc(click.k)}" data-v="${esc(click.v)}"`:""}>`
     +`<div class="lv-nm">${esc(o.key||o.name)}${nmSub?`<small>${esc(nmSub)}</small>`:""}</div>`
     +`<div class="lv-n">${fmt(Math.round(o.sp))} ₽</div>`
-    +`<div class="lv-n">${fmt(Math.round(o.rev))} ₽</div>`
+    +`<div class="lv-n">${fmt(Math.round(o.rev))} ₽<small style="display:block;font-size:10px;color:var(--muted);font-weight:500">выкуп ${(o.boEff*100).toFixed(0)}%</small></div>`
     +`<div class="lv-n">${badge(o.drr,o.sp)}</div>`
     +bar(o.sp)+`</div>`;
   const head=`<div class="lv" style="padding-bottom:0"><div class="lv-nm" style="color:var(--muted);font-size:11px">Уровень</div>`
@@ -5139,15 +5174,23 @@ function renderAdDrrLevels(){
     +`<div class="lv total">`
       +`<div class="lv-nm">Весь ассортимент<small>${L.all.ads} кампаний на ${L.all.n} карточках · ${fmtDateLong(P.from)} – ${fmtDateLong(P.to)}</small></div>`
       +`<div class="lv-n">${fmt(Math.round(L.all.sp))} ₽</div>`
-      +`<div class="lv-n">${fmt(Math.round(L.all.rev))} ₽</div>`
+      +`<div class="lv-n">${fmt(Math.round(L.all.rev))} ₽<small style="display:block;font-size:10px;color:var(--muted);font-weight:500">выкуп ${(L.all.boEff*100).toFixed(0)}%</small></div>`
       +`<div class="lv-n">${badge(L.all.drr,L.all.sp)}</div>`+bar(L.all.sp)+`</div>`
-    +`<div class="lv-h">Категории — клик выбирает</div>`
+    +`<div class="lv-h">Категории — по выручке, клик выбирает</div>`
     +L.groups.map(g=>line(g,"clickable"+(adGroup===g.key?" sel":""),
         g.ads+" кампаний · "+g.n+" карточек",{k:"group",v:g.key})).join("")
     +`<div class="lv-h">Склейки${adGroup? " — категория «"+esc(adGroup)+"»" : " — все категории"} · клик фильтрует таблицу</div>`
     +L.tags.map(t=>line(t,"clickable"+((adColFilters.tag&&adColFilters.tag.has(t.key))?" sel":""),
-        t.ads+" кампаний · "+t.n+" карточек",{k:"tag",v:t.key})).join("")
-    +`</div>`;
+        t.ads+" кампаний · "+t.n+" карточек",{k:"tag",v:t.key})).join("");
+  const X=adOutSummary();
+  if(X && X.n) html+=`<div class="lv-h">Не считается — товар на вывод</div>`
+    +`<div class="lv" style="opacity:.62">`
+      +`<div class="lv-nm">${esc(Object.keys(X.groups).join(" · "))}<small>${X.ads} кампаний на ${X.n} карточках · решение от ${
+          (RD.meta&&RD.meta.adOutAt)? fmtDateLong(RD.meta.adOutAt):"—"}</small></div>`
+      +`<div class="lv-n">${fmt(Math.round(X.sp))} ₽</div>`
+      +`<div class="lv-n">${fmt(Math.round(X.rev))} ₽</div>`
+      +`<div class="lv-n">${badge(X.drr,X.sp)}</div>`+bar(X.sp)+`</div>`;
+  html+=`</div>`;
   el.innerHTML=html;
 }
 /* Сортировка в «Отдаче» — ВНУТРИ склейки: сами склейки всегда идут по расходу сверху вниз
