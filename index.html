@@ -4866,12 +4866,34 @@ function adPerfRows(){
       boOwn: !!(RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.bySku&&RD.meta.buyoutWin.bySku[sku]>0),
       drrD: revD>0? e.spend/revD*100 : (e.spend>0? Infinity : 0),
       drrA: revA>0? e.spend/revA*100 : (e.spend>0? Infinity : 0),
-      cpo: (e.totOrd+e.othOrd)>0? e.spend/(e.totOrd+e.othOrd) : (e.spend>0? Infinity : 0),
+      /* CPO — ПО СВОИМ ЗАКАЗАМ карточки. Ассоциативные заказы соседей в знаменателе
+         были ошибкой (найдена продавцом 01.09.2026): потолок CPO выводится из цели по ДРР
+         как `цель × чек × выкуп`, а ДРР считается по своим заказам — значит и CPO обязан
+         считаться по ним же. Иначе выходило «ДРР 10.5% мимо цели, но CPO в потолке», чего
+         быть не может: CPO/потолок = ДРР/цель ТОЖДЕСТВЕННО. На «Пушкарах» 26–31.08 своё
+         CPO 282 ₽ против потолка 188 ₽ (×1.50) — ровно как 10.5% против 7%.
+         Заказы соседей учтены там, где им место: в выручке склейки (знаменатель ДРР). */
+      cpo: e.totOrd>0? e.spend/e.totOrd : (e.spend>0? Infinity : 0),
+      cpoAll: (e.totOrd+e.othOrd)>0? e.spend/(e.totOrd+e.othOrd) : (e.spend>0? Infinity : 0),
+      cpc: e.clicks>0? e.spend/e.clicks : 0,
+      ctr: e.imp>0? e.clicks/e.imp*100 : 0,
+      crClick: e.clicks>0? e.ord/e.clicks*100 : 0,     // клик → заказ, по рекламным заказам
       imp:e.imp, clicks:e.clicks, carts:e.carts,
-      ctr: e.imp? e.clicks/e.imp*100 : 0,
       cr:  e.clicks? e.ord/e.clicks*100 : 0,
       max7: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, boS, AD_DRR_GOAL),
-      max6: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, boS, AD_DRR_GREAT)};
+      max6: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, boS, AD_DRR_GREAT),
+      /* CPO С АССОЦИАТИВНЫМИ — ПАРНАЯ метрика, а не подмена (уточнение продавца 01.09.2026:
+         «не исключай CPO с учётом ассоциативных, но не так, как ты сделал изначально»).
+         Правило: если заказы соседей идут в ЧИСЛИТЕЛЬ (в счёт заказов), их выручка обязана
+         идти и в ЗНАМЕНАТЕЛЬ ДРР, и в чек, из которого выводится потолок. Тогда обе пары
+         внутренне согласованы и каждая проверяется своим тождеством:
+             CPO_свой  / потолок_свой  = ДРР_свой  / цель
+             CPO_асс   / потолок_асс   = ДРР_асс   / цель
+         Прежняя ошибка была в смешении: заказы брались с ассоциативными, а выручка — без.
+         ВАЖНО: пара «с ассоциативными» имеет смысл ТОЛЬКО НА УРОВНЕ ТОВАРА. На склейке и
+         категории выручка соседей уже внутри уровня, и добавлять её второй раз нельзя. */
+      aovA: (e.totOrd+e.othOrd)>0? (e.totRub+e.othRub)/(e.totOrd+e.othOrd) : 0,
+      maxA: adMaxCpo((e.totOrd+e.othOrd)>0? (e.totRub+e.othRub)/(e.totOrd+e.othOrd):0, boS, AD_DRR_GOAL)};
   }).filter(r=>!adOutGroups().has(r.group));   // ВСЕ карточки уровня, кроме групп на вывод
 }
 /* ПОТОЛОК CPO. Выводится прямо из определения ДРР, коэффициентов подбирать не нужно:
@@ -5367,10 +5389,10 @@ function renderAdsPerf(){
   const bo=adBuyout();
   const agg=list=>{ const sp=list.reduce((a,x)=>a+x.spend,0);
     const rD=list.reduce((a,x)=>a+x.revD,0), rA=list.reduce((a,x)=>a+x.revA,0);
-    const o=list.reduce((a,x)=>a+x.totOrd+x.othOrd,0);
+    const o=list.reduce((a,x)=>a+x.totOrd,0);      // СВОИ заказы: см. комментарий у cpo
     const oq=list.reduce((a,x)=>a+x.totOrd,0), orub=list.reduce((a,x)=>a+x.totRub,0);
     const aov = oq? orub/oq : 0;
-    const bow = oq? list.reduce((a,x)=>a+x.bo*x.totOrd,0)/oq : adBuyout();   // взвешенный по заказам
+    const bow = orub>0? rD/orub : adBuyout();   // взвешенный ПО ВЫРУЧКЕ (см. adNodeAgg)
     /* Склад в Москве — ПО КОДУ 1С, а не по карточкам: у одного кода бывает несколько
        артикулов ВБ, и обычная сумма по строкам задвоила бы остаток. */
     const seen=new Set(); let mskT=0;
@@ -5447,7 +5469,10 @@ function renderAdsPerf(){
       +`<span class="sub2 ${a.mskDays<AD_MIN_MSK_DAYS?"crit":"mut"}">${a.spd>0? adFmtD(a.mskDays)+" дн":"нет продаж"}</span></td>`
       +`<td style="font-weight:700">${fmt(Math.round(a.sp))}</td>`
       +`<td style="font-weight:700">${fmt(Math.round(a.rA))}</td>`
-      +`<td>${adDrrBadge(a.drrA)}</td><td class="${adDrrCls(a.drrD)}">${adDrrTxt(a.drrD)}</td>`
+      /* У СКЛЕЙКИ «ДРР с ассоциативными» НЕ ПОКАЗЫВАЕМ: заказы соседей — это карточки
+         той же склейки, их выручка уже в знаменателе. Сложить второй раз = двойной счёт. */
+      +`<td class="muted" title="Заказы соседей уже внутри склейки — второй раз не считаем">—</td>`
+      +`<td>${adDrrBadge(a.drrD)}</td>`
       +`<td style="font-weight:700;${a.cpo>a.max7?"color:var(--crit-txt)":""}">${a.cpo===Infinity?"—":fmt(Math.round(a.cpo))}</td>`
       +`<td style="font-weight:700">${fmt(Math.round(a.max7))}<span class="sub2 mut">идеал ${fmt(Math.round(a.max6))}</span></td>`
       +`<td>${fmt(Math.round(a.aov))}<span class="sub2 mut">× ${(a.bo*100).toFixed(0)}% выкуп</span></td>`
@@ -5462,7 +5487,8 @@ function renderAdsPerf(){
         +`<td>${fmt(Math.round(r.revA))}<span class="sub2 mut">свой ${fmt(Math.round(r.revD))}</span></td>`
         +`<td>${adDrrBadge(r.drrA)}</td><td class="${adDrrCls(r.drrD)}">${adDrrTxt(r.drrD)}</td>`
         +`<td class="${r.cpo>r.max7?"crit":""}">${r.cpo===Infinity?"—":fmt(Math.round(r.cpo))}`
-        +`${(r.cpo!==Infinity&&r.max7>0&&r.cpo>r.max7)? `<span class="sub2 crit">×${(r.cpo/r.max7).toFixed(1)} к потолку</span>`:""}</td>`
+        +`${(r.cpo!==Infinity&&r.max7>0&&r.cpo>r.max7)? `<span class="sub2 crit">×${(r.cpo/r.max7).toFixed(1)} к потолку</span>`:""}`
+        +`${(r.othOrd>0&&r.cpoAll!==Infinity)? `<span class="sub2 ${r.cpoAll<=r.maxA?"acc":"mut"}">с ассоц. ${fmt(Math.round(r.cpoAll))} ₽ / ${fmt(Math.round(r.maxA))}</span>`:""}</td>`
         +`<td>${fmt(Math.round(r.max7))}<span class="sub2 mut">идеал ${fmt(Math.round(r.max6))}</span></td>`
         +`<td>${fmt(Math.round(r.aov))}<span class="sub2 ${r.boOwn?"acc":"mut"}">× ${(r.bo*100).toFixed(0)}% выкуп${r.boOwn?"":" (общий)"}</span></td>`
         +`<td>${fmt(r.totOrd)}<span class="sub2 mut">с рекл. ${fmt(r.ord)}</span></td>`
@@ -6866,51 +6892,101 @@ function recChanges(){
 
    Потолок CPO выводится из цели по ДРР (adMaxCpo) на данных ЭТОГО уровня — у склейки свой
    чек и свой выкуп, поэтому потолок у неё свой, и сравнивать товар с чужим потолком нельзя. */
-function adHypo(o){
+/* ПОЧЕМУ ДИАГНОЗ СТРОИТСЯ НА ВОРОНКЕ, А НЕ НА CPO (переделано 01.09.2026 после разбора
+   с продавцом). Потолок CPO выводится из цели по ДРР: `потолок = цель × чек × выкуп`,
+   а `ДРР = расход ÷ (свои заказы × чек × выкуп)`. Значит `CPO/потолок = ДРР/цель`
+   ТОЖДЕСТВЕННО — это одна величина в двух единицах, и «ДРР мимо цели, но CPO в потолке»
+   означает только одно: где-то разъехались знаменатели. Так и было: ДРР считался по своим
+   заказам, а CPO — по своим ПЛЮС ассоциативным. Исправлено.
+   Из этого следует и второе: по CPO нельзя судить о кликах. `CPO = CPC ÷ конверсия(клик→заказ)`,
+   и высокий CPO бывает и от дорогого клика, и от плохой конверсии — по нему одному не различить.
+   Раньше здесь стояло «клики не дорогие, а мало конвертят», выведенное из CPO, — подмена.
+
+   ЧТО ДЕЛАЕМ ВМЕСТО ЭТОГО. Раскладываем ДРР на рычаги, которыми реально управляют:
+       ДРР = CPC ÷ (конверсия клик→заказ × чек × выкуп)
+   и сравниваем каждый рычаг с уровнем выше (товар — со своей склейкой, склейка — с категорией).
+   Тогда видно, ЧТО чинить: ставку, карточку, цену или выкуп. Плюс считаем, во сколько раз
+   нужно улучшить: `k = ДРР ÷ цель` — и переводим это в две конкретные цифры:
+   «клик должен стоить X ₽ вместо Y» и «конверсия должна быть Z% вместо W%». */
+function adHypo(o, par){
   const goal=AD_DRR_GOAL;
-  const inGoal = o.drr<=goal, ideal = o.drr<=AD_DRR_GREAT;
-  const noSales = o.drr===Infinity || (o.spend>0 && !(o.ord>0));
-  const cpoOver = o.max7>0 && o.cpo>o.max7 ? o.cpo/o.max7 : 0;
-  if(o.spend<AD_MIN_SPEND) return {v:"skip", t:"мелкий расход", w:"Меньше "+fmt(AD_MIN_SPEND)+" ₽ за период — не судим, это перелив."};
-  if(noSales) return {v:"off", t:"выключить",
-    w:"Расход "+fmt(Math.round(o.spend))+" ₽ при нулевых заказах. Деньги уходят в никуда."};
-  if(!inGoal && cpoOver>1.05) return {v:"bid", t:"снизить ставку в "+cpoOver.toFixed(1)+" раза",
-    w:"ДРР "+o.drr.toFixed(1)+"% при цели "+goal+"%. CPO "+fmt(Math.round(o.cpo))+" ₽ против потолка "
-      +fmt(Math.round(o.max7))+" ₽ — платим за заказ дороже, чем позволяет юнитка."};
-  if(!inGoal) return {v:"card", t:"дело не в ставке — смотреть карточку",
-    w:"ДРР "+o.drr.toFixed(1)+"% мимо цели, но CPO "+fmt(Math.round(o.cpo))+" ₽ укладывается в потолок "
-      +fmt(Math.round(o.max7))+" ₽. Значит клики не дорогие, а мало конвертят: смотрите CTR, главное фото и цену."};
-  if(o.mskDays!=null && o.mskDays<AD_MIN_MSK_DAYS) return {v:"stock", t:"сначала завезти в Москву",
-    w:"ДРР "+o.drr.toFixed(1)+"% — в цели, но московского остатка хватит на "+adFmtD(o.mskDays)
-      +" дн. Разгонять нечего: кампания встанет вместе с товаром."};
-  return {v:"grow", t: ideal? "можно добавлять бюджет" : "держать, есть небольшой запас",
-    w:"ДРР "+o.drr.toFixed(1)+"% при цели "+goal+"%"+(ideal? " — это лучше «хорошо»." : ".")
-      +" CPO "+fmt(Math.round(o.cpo))+" ₽ при потолке "+fmt(Math.round(o.max7))+" ₽"
-      +(o.mskDays!=null&&o.mskDays!==Infinity? ", в Москве запас на "+adFmtD(o.mskDays)+" дн":"")+"."};
+  const F=v=>fmt(Math.round(v));
+  const pc=(v,d)=>v.toFixed(d==null?1:d)+"%";
+  if(o.spend<AD_MIN_SPEND) return {v:"skip", t:"мелкий расход",
+    w:"Меньше "+F(AD_MIN_SPEND)+" ₽ за период — не судим, это перелив."};
+  if(!(o.ownOrd>0)) return {v:"off", t:"выключить",
+    w:"Расход "+F(o.spend)+" ₽ при нулевых заказах"+(o.clicks>0? " и "+F(o.clicks)+" кликах":"")+". Деньги уходят в никуда."};
+  const k=o.drr/goal;
+  const base="ДРР "+pc(o.drr)+" при цели "+goal+"% — это CPO "+F(o.cpo)+" ₽ против потолка "
+    +F(o.max7)+" ₽ (одна и та же величина: потолок = цель × чек "+F(o.aov)+" ₽ × выкуп "+pc(o.bo*100,0)+").";
+  if(o.drr<=goal){
+    if(o.mskDays!=null && o.mskDays<AD_MIN_MSK_DAYS) return {v:"stock", t:"сначала завезти в Москву",
+      w:base+" Но московского остатка хватит на "+adFmtD(o.mskDays)+" дн — разгонять нечего, кампания встанет вместе с товаром."};
+    return {v:"grow", t: o.drr<=AD_DRR_GREAT? "можно добавлять бюджет" : "держать, запас небольшой",
+      w:base+(o.mskDays!=null&&o.mskDays!==Infinity? " В Москве запас на "+adFmtD(o.mskDays)+" дн." : "")};
+  }
+  // ---- мимо цели: ищем рычаг ----
+  const parts=[];
+  if(o.cpc>0) parts.push("клик стоит "+o.cpc.toFixed(1)+" ₽, нужен "+(o.cpc/k).toFixed(1)+" ₽");
+  if(o.crClick>0) parts.push("конверсия клик→заказ "+pc(o.crClick,2)+", нужна "+pc(o.crClick*k,2));
+  const need=parts.length? " Чтобы попасть в цель при прочем неизменном: "+parts.join("; или ")+"." : "";
+  // сравнение с уровнем выше — что именно хуже соседей
+  const cmp=[];
+  if(par){
+    if(par.cpc>0 && o.cpc>par.cpc*1.15) cmp.push({k:"bid", d:o.cpc/par.cpc,
+      t:"клик дороже, чем в среднем по уровню выше ("+o.cpc.toFixed(1)+" против "+par.cpc.toFixed(1)+" ₽)"});
+    if(par.crClick>0 && o.crClick<par.crClick*0.85) cmp.push({k:"card", d:par.crClick/o.crClick,
+      t:"карточка конвертит хуже соседей: из клика в заказ "+pc(o.crClick,2)+" против "+pc(par.crClick,2)});
+    if(par.ctr>0 && o.ctr<par.ctr*0.85) cmp.push({k:"ctr", d:par.ctr/o.ctr,
+      t:"CTR ниже соседей — "+pc(o.ctr,2)+" против "+pc(par.ctr,2)+", карточку хуже кликают из выдачи"});
+    if(par.aov>0 && o.aov<par.aov*0.85) cmp.push({k:"aov", d:par.aov/o.aov,
+      t:"чек ниже соседей ("+F(o.aov)+" против "+F(par.aov)+" ₽) — тот же клик окупается хуже"});
+    if(par.bo>0 && o.bo<par.bo*0.9) cmp.push({k:"bo", d:par.bo/o.bo,
+      t:"выкуп ниже соседей ("+pc(o.bo*100,0)+" против "+pc(par.bo*100,0)+") — часть заказов не доезжает"});
+  }
+  cmp.sort((a,b)=>b.d-a.d);          // ведёт рычаг с самым большим отклонением
+  const why=cmp.length? " Что именно не так: "+cmp.map(x=>x.t).join("; ")+"."
+    : (par? " Все рычаги — на уровне соседей: и клик, и конверсия, и чек. Значит дело в объёме:"
+        +" на эту позицию льётся больше денег, чем она отбивает своей выручкой." : "");
+  const lead=cmp.length? cmp[0].k : "bid";
+  const T={bid:"снизить ставку в "+k.toFixed(1)+" раза", card:"дело в карточке, не в ставке",
+    ctr:"поднимать CTR — карточку мало кликают", aov:"дешёвый товар: пересмотреть цену или ставку",
+    bo:"разобраться с выкупом"}[lead];
+  return {v: lead==="bid"? "bid" : "card", t:T, w:base+need+why};
 }
-const AD_HYPO_CLS={off:"crit",bid:"crit",card:"warn",stock:"warn",grow:"good",skip:"info"};
+const AD_HYPO_CLS={off:"crit",bid:"crit",card:"warn",stock:"warn",grow:"good",skip:"info",keep:"good"};
 /* Свод по набору карточек: расход, выручка в выкупе (у каждого товара свой %), CPO, потолок,
    запас в Москве по коду 1С (у одного кода бывает несколько артикулов — считаем через Set). */
 function adNodeAgg(list){
   const sp=list.reduce((a,r)=>a+r.spend,0);
   const ordRub=list.reduce((a,r)=>a+r.totRub,0);
   const rev=list.reduce((a,r)=>a+r.revD,0);
-  const ord=list.reduce((a,r)=>a+r.totOrd+r.othOrd,0);
-  const oq=list.reduce((a,r)=>a+r.totOrd,0);
-  const aov=oq? ordRub/oq : 0;
-  const boW=oq? list.reduce((a,r)=>a+r.bo*r.totOrd,0)/oq : adBuyout();
+  const ownOrd=list.reduce((a,r)=>a+r.totOrd,0);      // СВОИ заказы — база CPO и ДРР
+  const adOrd=list.reduce((a,r)=>a+r.ord,0);          // заказы, пришедшие с рекламы
+  const imp=list.reduce((a,r)=>a+(r.imp||0),0);
+  const clicks=list.reduce((a,r)=>a+(r.clicks||0),0);
+  const carts=list.reduce((a,r)=>a+(r.carts||0),0);
+  const aov=ownOrd? ordRub/ownOrd : 0;
+  /* Выкуп взвешиваем ПО ВЫРУЧКЕ, а не по заказам: потолок = цель × чек × выкуп, и только
+     при revenue-взвешенном выкупе `заказы × чек × выкуп` в точности равно выручке в выкупе.
+     С order-взвешенным тождество ДРР/цель = CPO/потолок расходилось на 1–2%. */
+  const boW=ordRub>0? rev/ordRub : adBuyout();
   const seen=new Set(); let msk=0, spd=0;
   list.forEach(r=>{ if(r.sup&&!seen.has(r.sup)){ seen.add(r.sup); msk+=r.msk||0; } spd+=r.spd||0; });
-  return {spend:sp, ordRub, rev, ord, oq, aov, bo:boW, msk, spd,
+  return {spend:sp, ordRub, rev, ownOrd, adOrd, imp, clicks, carts, aov, bo:boW, msk, spd,
+    cpc: clicks>0? sp/clicks : 0,
+    ctr: imp>0? clicks/imp*100 : 0,
+    crClick: clicks>0? adOrd/clicks*100 : 0,
     mskDays: spd>0? msk/spd : (msk>0? Infinity : null),
     drr: rev>0? sp/rev*100 : (sp>0? Infinity:0),
-    cpo: ord>0? sp/ord : (sp>0? Infinity:0),
+    cpo: ownOrd>0? sp/ownOrd : (sp>0? Infinity:0),
     max7: adMaxCpo(aov,boW,AD_DRR_GOAL), n:list.length, ads:list.filter(r=>r.spend>0).length};
 }
 /* Дерево гипотез. Только живой ассортимент и только группы, которые продавец смотрит. */
 function recAdTree(){
   let pr=[]; try{ pr=recAlive(adPerfRows()); }catch(e){ return []; }
   if(!pr.length) return [];
+  const ALL=adNodeAgg(pr);                 // весь кабинет — ориентир для категорий
   const byG={}; pr.forEach(r=>(byG[r.group]||(byG[r.group]=[])).push(r));
   // категории без единой кампании в дерево не пускаем — гипотезу строить не из чего
   Object.keys(byG).forEach(g=>{ if(!byG[g].some(r=>r.spend>0)) delete byG[g]; });
@@ -6922,17 +6998,32 @@ function recAdTree(){
       const ta=adNodeAgg(l);
       const items=l.filter(r=>r.spend>0).map(r=>{
         const ia=adNodeAgg([r]);
-        const h=adHypo(ia);
-        // товар внутри склейки, которая в цели, не «разбираем» — он тянет трафик
-        const soft = ta.drr<=AD_DRR_GOAL && (h.v==="bid"||h.v==="card");
-        return {...r, agg:ia, hypo: soft? {v:"keep",t:"оставить — склейка в цели",
-          w:"Личный ДРР "+(ia.drr===Infinity?"—":ia.drr.toFixed(1)+"%")+", но склейка укладывается в "
-            +ta.drr.toFixed(1)+"%. Это «лошадка»: её заказы приходят соседним карточкам."} : h};
+        let h=adHypo(ia, ta);            // товар сравниваем со своей склейкой
+        /* «ЛОШАДКУ» СУДИМ ПО АССОЦИАТИВНОЙ ЭКОНОМИКЕ. Если своя не сходится, а с заказами,
+           которые эта реклама привела соседям, — сходится, выключать нечего. Пара честная:
+           в числителе заказы соседей, в знаменателе их же выручка (см. aovA/maxA). */
+        const bad = h.v==="bid"||h.v==="card";
+        if(bad && r.othOrd>0 && r.drrA<=AD_DRR_GOAL){
+          h={v:"keep", t:"оставить — с ассоциативными окупается",
+            w:"Свой ДРР "+(ia.drr===Infinity?"—":ia.drr.toFixed(1)+"%")+" мимо цели, но эта реклама привела ещё "
+              +fmt(r.othOrd)+" заказов соседним карточкам на "+fmt(Math.round(r.othRub))+" ₽. "
+              +"С ними ДРР "+r.drrA.toFixed(1)+"% при цели "+AD_DRR_GOAL+"%, CPO "+fmt(Math.round(r.cpoAll))
+              +" ₽ против потолка "+fmt(Math.round(r.maxA))+" ₽. Это «лошадка»: она тянет трафик на склейку."};
+        } else if(bad && ta.drr<=AD_DRR_GOAL){
+          h={v:"keep", t:"оставить — склейка в цели",
+            w:"Личный ДРР "+(ia.drr===Infinity?"—":ia.drr.toFixed(1)+"%")+", но склейка укладывается в "
+              +ta.drr.toFixed(1)+"%: заказы, которые она приводит, уходят соседним карточкам "
+              +"и уже посчитаны в выручке склейки. Выключать незачем."};
+        } else if(bad && r.othOrd>0){
+          h={...h, w:h.w+" С ассоциативными заказами ("+fmt(r.othOrd)+" шт на "+fmt(Math.round(r.othRub))
+            +" ₽) ДРР "+r.drrA.toFixed(1)+"% — тоже мимо цели, так что дело не в них."};
+        }
+        return {...r, agg:ia, hypo:h};
       }).sort((x,y)=>y.spend-x.spend);
       const cut=n=>{ n=n||""; return n.length>42? n.slice(0,41)+"…" : n; };
       const tWorst=items.map(r=>({name:cut(r.name), over:r.agg.spend-r.agg.rev*AD_DRR_GOAL/100, drr:r.agg.drr}))
         .filter(x=>x.over>0).sort((x,y)=>y.over-x.over).slice(0,3);
-      return {tag:t, agg:ta, hypo:adHypo(ta), items, worst:tWorst};
+      return {tag:t, agg:ta, hypo:adHypo(ta,a), items, worst:tWorst};   // склейку — с категорией
     }).sort((x,y)=>y.agg.ordRub-x.agg.ordRub);
     /* КУДА СМОТРЕТЬ. Вердикт уровня сам по себе не говорит, что чинить: у «Пушкаров»
        ДРР 10.5%, а внутри и склейки в цели, и склейки на 25%. Поэтому к каждому узлу
@@ -6940,7 +7031,7 @@ function recAdTree(){
     const worst=(children,name)=>children
       .map(c=>({name:name(c), over: c.agg.spend - c.agg.rev*AD_DRR_GOAL/100, drr:c.agg.drr}))
       .filter(x=>x.over>0).sort((x,y)=>y.over-x.over).slice(0,3);
-    return {group:g, agg:a, hypo:adHypo(a), tags,
+    return {group:g, agg:a, hypo:adHypo(a,ALL), tags,
       worst: worst(tags, c=>"«"+c.tag+"»")};
   }).sort((x,y)=>y.agg.ordRub-x.agg.ordRub);
 }
