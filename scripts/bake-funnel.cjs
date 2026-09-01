@@ -30,7 +30,11 @@ const rd={};vm.createContext(rd);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-reports.js'),'utf8')
   +'\nglobalThis.__B={BAKED_AT,BAKED_PERIOD,BAKED_FINANCE_ROWS,BAKED_ADS_ROWS,BAKED_FINANCE,BAKED_ADS,'
   +'BAKED_FUNNEL:(typeof BAKED_FUNNEL!=="undefined"?BAKED_FUNNEL:[]),'
-  +'BAKED_FUNNEL_ROWS:(typeof BAKED_FUNNEL_ROWS!=="undefined"?BAKED_FUNNEL_ROWS:0)};',rd);
+  +'BAKED_FUNNEL_ROWS:(typeof BAKED_FUNNEL_ROWS!=="undefined"?BAKED_FUNNEL_ROWS:0),'
+  /* MODELED_FINANCE переносим КАК ЕСТЬ. Файл отчётов переписывается целиком, и без этой
+     строки заливка ОДНОЙ ВОРОНКИ молча стирала оценку финансов за недели после факта:
+     на «Главной» история схлопывалась с 9 недель до 5 (реальный инцидент 01.09.2026). */
+  +'MODELED_FINANCE:(typeof MODELED_FINANCE!=="undefined"?MODELED_FINANCE:[])};',rd);
 const B=rd.__B;
 
 // 3) парсим подённые файлы воронки
@@ -116,7 +120,8 @@ fs.writeFileSync(path.join(OUT,'wb-reports.js'),
   +'const BAKED_FINANCE_ROWS='+B.BAKED_FINANCE_ROWS+', BAKED_ADS_ROWS='+B.BAKED_ADS_ROWS+', BAKED_FUNNEL_ROWS='+B.BAKED_FUNNEL_ROWS+';\n'
   +'const BAKED_FINANCE='+JSON.stringify(B.BAKED_FINANCE)+';\n'
   +'const BAKED_ADS='+JSON.stringify(B.BAKED_ADS)+';\n'
-  +'const BAKED_FUNNEL='+JSON.stringify(B.BAKED_FUNNEL)+';\n');
+  +'const BAKED_FUNNEL='+JSON.stringify(B.BAKED_FUNNEL)+';\n'
+  +'const MODELED_FINANCE='+JSON.stringify(B.MODELED_FINANCE||[])+';\n');
 
 const allDates=[...new Set(merged.map(r=>r.date))].sort();
 console.log('\nВоронка в снимке: '+merged.length+' строк · дней '+allDates.length

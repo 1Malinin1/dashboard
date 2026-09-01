@@ -4654,6 +4654,21 @@ function initAdDateBounds(){ const dates=adDates(), f=document.getElementById("a
 let adSortState={key:"rub",dir:1};
 // % выкупа: тем же окном, что и везде на ВБ
 function adBuyout(){ return (RD&&RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.all)||0.75; }
+/* СКЛЕЙКИ ЗАДАНЫ НЕ У ВСЕГО КАТАЛОГА, И ВКЛАДКА ОБЯЗАНА РАБОТАТЬ БЕЗ НИХ (31.08.2026).
+   Выгрузка XWAY покрыла 107 карточек из 413: Пушкары, Песок, Светофоры, Рули, Набор для
+   бокса. Раньше `adRows()` отбрасывал всё остальное — Машинки, Парковки, Трансформеры,
+   Игровые наборы просто не существовали на вкладке, и вместе с ними прятались живые
+   кампании (55 карточек, 29 808 ₽ за 26–30.08).
+   Теперь товар без склейки попадает в псевдогруппу по СВОЕЙ КАТЕГОРИИ ВБ, а склейкой
+   считается вся категория целиком (то же правило, что и у пустого тега внутри группы).
+   Это ВРЕМЕННАЯ подпорка, а не замена склейкам: Парето по всей категории грубее, чем
+   по склейке. Как только придёт выгрузка XWAY по этим категориям — `update-ad-tags.cjs`
+   проставит настоящие склейки, и псевдогруппы исчезнут сами. */
+const AD_NOTAG="без склейки";
+const adGroupOf = c => c.adGroup || c.category || "Без категории";
+const adTagOf   = c => c.adTag || c.adGroup || AD_NOTAG;
+// группы, у которых склейки заданы по-настоящему (для пометки в списке)
+function adRealGroups(){ const s=new Set(); (RD&&RD.catalog||[]).forEach(c=>{ if(c.adGroup) s.add(c.adGroup); }); return s; }
 // строки по рекламе: статистика кампаний + склейка из каталога
 function adPerfRows(){
   const P=(RD&&RD.adPerf)||null; if(!P||!P.bySku) return [];
@@ -4672,7 +4687,7 @@ function adPerfRows(){
     const m=msk[sup]||0, spd=(e.totOrd||0)/days*buyoutOf("wb",sku,bo);
     return {sku, sup, name:c.name||sku,
       msk:m, spd, mskDays: spd>0? m/spd : (m>0? Infinity : 0),
-      group:c.adGroup||"—", tag:c.adTag||"—", category:c.category||"",
+      group:c.sku!=null? adGroupOf(c) : "—", tag:c.sku!=null? adTagOf(c) : "—", category:c.category||"",
       spend:e.spend, ord:e.ord, rub:e.rub, othOrd:e.othOrd, othRub:e.othRub,
       totOrd:e.totOrd||0, totRub, revD, revA,
       aov: e.totOrd? e.totRub/e.totOrd : 0,        // средний чек В ЗАКАЗАХ
@@ -4731,7 +4746,7 @@ function adRows(){
      Расход берётся за период ЗАГРУЖЕННОЙ ВЫГРУЗКИ, а не за календарное окно отбора:
      другого источника нет, и это честно подписано в шапке колонки и в подсказке. */
   const perf={}; adPerfRows().forEach(p=>{ perf[p.sku]=p; });
-  const rows=(RD.catalog||[]).filter(c=>c.adGroup && (!adGroup||c.adGroup===adGroup)).map(c=>{
+  const rows=(RD.catalog||[]).filter(c=>!adGroup||adGroupOf(c)===adGroup).map(c=>{
     const sku=""+c.sku, sup=(""+(c.supplierCode||"")).trim();
     const arr=S.bySku[sku]||[];
     let qty=0, rub=0;
@@ -4741,7 +4756,7 @@ function adRows(){
     const m=msk[sup]||0;
     const mskDays = spd>0 ? m/spd : (m>0? Infinity : 0);
     const p=perf[sku];
-    return {sku, sup, tag:c.adTag||"—", group:c.adGroup, name:c.name||sku,
+    return {sku, sup, tag:adTagOf(c), group:adGroupOf(c), name:c.name||sku,
       category:c.category||"", factory:(""+(c.factoryCode||"")).trim(),
       qty, rub, spd, msk:m, mskDays, fbo:c.wbStock||0,
       adSpend: p? p.spend : 0, adDrr: p? p.drrA : null, adCpo: p? p.cpo : null,
@@ -4845,11 +4860,17 @@ function renderAdsTab(){
   initAdDateBounds();
   /* Группы сортируем по числу карточек: первой должна открываться самая крупная
      («Пушкары», 75 товаров), а не та, что случайно раньше в каталоге. */
-  const gCnt={}; (RD.catalog||[]).forEach(c=>{ if(c.adGroup) gCnt[c.adGroup]=(gCnt[c.adGroup]||0)+1; });
-  const groups=Object.keys(gCnt).sort((a,b)=>gCnt[b]-gCnt[a]);
+  /* Сначала группы с НАСТОЯЩИМИ склейками (по числу карточек), потом категории, где
+     склеек ещё нет, — они помечены. Иначе первой открывалась бы самая большая категория
+     без склеек («Машинки», 162), а не «Пушкары», по которым реклама и ведётся. */
+  const real=adRealGroups();
+  const gCnt={}; (RD.catalog||[]).forEach(c=>{ const g=adGroupOf(c); gCnt[g]=(gCnt[g]||0)+1; });
+  const groups=Object.keys(gCnt).sort((a,b)=>
+    (real.has(b)-real.has(a)) || (gCnt[b]-gCnt[a]));
   const sel=document.getElementById("adGroupSel");
   if(sel && sel.options.length!==groups.length+1){
-    sel.innerHTML=groups.map(g=>`<option value="${esc(g)}">${esc(g)} (${gCnt[g]})</option>`).join("")
+    sel.innerHTML=groups.map(g=>`<option value="${esc(g)}">${esc(g)} (${gCnt[g]})`
+      +`${real.has(g)?"":" · нет склеек"}</option>`).join("")
       +`<option value="">Все группы</option>`;
     if(!adGroup) adGroup=groups[0]||null;
     sel.value=adGroup||"";
@@ -4860,7 +4881,11 @@ function renderAdsTab(){
     const noTags=!groups.length;
     fresh.innerHTML = noTags
       ? `Разбивка по склейкам не загружена — <b>вкладка пуста</b>. Пришлите выгрузку XWAY с колонками «Группа» и «Теги».`
-      : `Склейки на ${fmtDateLong((RD.meta&&RD.meta.adTagsDate)||"")} · заказы по ${RLAST? fmtDateLong(RLAST):"—"} · склад на ${(RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date):"—"} · только Wildberries`;
+      : `Склейки на ${fmtDateLong((RD.meta&&RD.meta.adTagsDate)||"")} · заказы по ${RLAST? fmtDateLong(RLAST):"—"} · склад на ${(RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date):"—"} · только Wildberries`
+        +(()=>{ const tot=(RD.catalog||[]).length, tagged=(RD.catalog||[]).filter(c=>c.adGroup).length;
+          return tagged<tot? `<br><span style="color:var(--warn-txt)">Склейки заданы у ${tagged} карточек из ${tot}.`
+            +` У остальных группировка идёт по категории ВБ и вся категория считается одной склейкой —`
+            +` это грубее. Пришлите выгрузку XWAY с колонками «Группа» и «Теги» по недостающим категориям.</span>` : ""; })();
   }
   if(adView==="perf"){ renderAdsPerf(); return; }
   const all=adFiltered();

@@ -30,7 +30,11 @@ vm.runInContext(fs.readFileSync(path.join(OUT, 'wb-reports.js'), 'utf8')
   + ' BAKED_FUNNEL: (typeof BAKED_FUNNEL!=="undefined"? BAKED_FUNNEL : []),'
   + ' BAKED_FUNNEL_ROWS: (typeof BAKED_FUNNEL_ROWS!=="undefined"? BAKED_FUNNEL_ROWS : 0),'
   + ' BAKED_ACC_FIN: (typeof BAKED_ACC_FIN!=="undefined"? BAKED_ACC_FIN : 0),'
-  + ' BAKED_ACC_ADS: (typeof BAKED_ACC_ADS!=="undefined"? BAKED_ACC_ADS : 0)};', ctx);
+  + ' BAKED_ACC_ADS: (typeof BAKED_ACC_ADS!=="undefined"? BAKED_ACC_ADS : 0),'
+  /* MODELED_FINANCE — оценка за недели после факта; переносим КАК ЕСТЬ по той же
+     причине, что и воронку: файл переписывается целиком, и без переноса пересборка
+     молча стирала бы оценку. */
+  + ' MODELED_FINANCE: (typeof MODELED_FINANCE!=="undefined"? MODELED_FINANCE : [])};', ctx);
 const old = ctx.__O;
 
 function load(f) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch (e) { return {}; } }
@@ -79,7 +83,8 @@ const js = '// Зашитый снимок отчётов (финансы + ре
   + 'const BAKED_ACC_FIN=' + finRaw.length + ', BAKED_ACC_ADS=' + adsRaw.length + ';\n'
   + 'const BAKED_FINANCE=' + JSON.stringify(mergedFin) + ';\n'
   + 'const BAKED_ADS=' + JSON.stringify(mergedAds) + ';\n'
-  + 'const BAKED_FUNNEL=' + JSON.stringify(old.BAKED_FUNNEL) + ';\n';
+  + 'const BAKED_FUNNEL=' + JSON.stringify(old.BAKED_FUNNEL) + ';\n'
+  + 'const MODELED_FINANCE=' + JSON.stringify(old.MODELED_FINANCE || []) + ';\n';
 fs.writeFileSync(path.join(OUT, 'wb-reports.js'), js);
 console.log('\ndecrypted/wb-reports.js пересобран:', (js.length / 1024 | 0), 'KB · finance агрегатов', mergedFin.length,
   '· ads агрегатов', mergedAds.length, '· строк воронки', old.BAKED_FUNNEL.length, '(перенесены без изменений) · период', period);

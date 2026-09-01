@@ -35,7 +35,9 @@ const c2={};vm.createContext(c2);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-reports.js'),'utf8')
   +'\nglobalThis.__B={BAKED_AT,BAKED_PERIOD,BAKED_FINANCE_ROWS,BAKED_ADS_ROWS,'
   +'BAKED_FUNNEL_ROWS:(typeof BAKED_FUNNEL_ROWS!=="undefined"?BAKED_FUNNEL_ROWS:0),'
-  +'BAKED_FINANCE,BAKED_ADS,BAKED_FUNNEL:(typeof BAKED_FUNNEL!=="undefined"?BAKED_FUNNEL:[])};',c2);
+  +'BAKED_FINANCE,BAKED_ADS,BAKED_FUNNEL:(typeof BAKED_FUNNEL!=="undefined"?BAKED_FUNNEL:[]),'
+  // оценку финансов переносим как есть — иначе вырезание одного дня стёрло бы её целиком
+  +'MODELED_FINANCE:(typeof MODELED_FINANCE!=="undefined"?MODELED_FINANCE:[])};',c2);
 const B=c2.__B, before=B.BAKED_FUNNEL.length;
 const kept=B.BAKED_FUNNEL.filter(r=>r.date!==day);
 fs.writeFileSync(path.join(OUT,'wb-reports.js'),
@@ -44,7 +46,8 @@ fs.writeFileSync(path.join(OUT,'wb-reports.js'),
   +'const BAKED_FINANCE_ROWS='+B.BAKED_FINANCE_ROWS+', BAKED_ADS_ROWS='+B.BAKED_ADS_ROWS+', BAKED_FUNNEL_ROWS='+kept.length+';\n'
   +'const BAKED_FINANCE='+JSON.stringify(B.BAKED_FINANCE)+';\n'
   +'const BAKED_ADS='+JSON.stringify(B.BAKED_ADS)+';\n'
-  +'const BAKED_FUNNEL='+JSON.stringify(kept)+';\n');
+  +'const BAKED_FUNNEL='+JSON.stringify(kept)+';\n'
+  +'const MODELED_FINANCE='+JSON.stringify((B.MODELED_FINANCE||[]).filter(r=>r.date!==day))+';\n');
 
 console.log('Удалён день '+day+': заказов '+qty+' шт · '+Math.round(rub).toLocaleString('ru-RU')+' ₽ · строк воронки '+(before-kept.length));
 console.log('Ряд заказов: дней '+os.dates.length+' (по '+os.dates[os.dates.length-1]+')');
