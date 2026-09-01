@@ -211,6 +211,32 @@
   .truckplan .tp-truck{font-size:11.5px;color:var(--text-2);padding:4px 0;border-top:1px dashed var(--border)}
   .truckplan .tp-items{display:block;color:var(--muted);font-size:10.5px;line-height:1.5;margin-top:2px}
   /* «Как считается» — цепочка расчёта над таблицей оборачиваемости */
+  /* ---- Группировка по склейкам в таблицах рекламы ----
+     Раньше строка склейки отличалась от строк товаров только жирным шрифтом и сливалась
+     с ними: при подсчёте продавец сбивался, где заголовок, а где карточка. Теперь у
+     склейки своя полоса с рамкой сверху, а товары внутри — с отступом и вертикальной
+     направляющей, так что группа читается как блок. */
+  #adTable tbody tr.row-group > td{
+    background:color-mix(in srgb,var(--accent) 10%,var(--surface));
+    border-top:2px solid color-mix(in srgb,var(--accent) 50%,transparent);
+    padding-top:13px;padding-bottom:11px;font-size:12.5px}
+  #adTable tbody tr.row-group:hover > td{
+    background:color-mix(in srgb,var(--accent) 14%,var(--surface))}
+  #adTable tbody tr.row-group > td.metric{
+    background:color-mix(in srgb,var(--accent) 10%,var(--surface));
+    border-left:3px solid var(--accent);letter-spacing:-.01em}
+  #adTable tbody tr.row-group:hover > td.metric{
+    background:color-mix(in srgb,var(--accent) 14%,var(--surface))}
+  /* товары внутри склейки — с отступом и направляющей */
+  #adTable tbody tr.in-grp > td.metric{
+    padding-left:22px;border-left:3px solid color-mix(in srgb,var(--accent) 22%,transparent)}
+  /* последняя строка группы — небольшой отбой снизу */
+  #adTable tbody tr.grp-last > td{padding-bottom:12px}
+  /* в видах отбора строка склейки идёт одной ячейкой на всю ширину */
+  #adTable tbody tr.row-group > td[colspan]{border-left:3px solid var(--accent)}
+  #adTable td.grp-head{text-align:left;font-weight:700;padding-top:12px}
+  #adTable td.grp-head .grp-in{position:sticky;left:12px;display:inline-block;font-weight:inherit}
+  #adTable tbody tr.row-sep > td{background:var(--surface-2);border-top:1px solid var(--border)}
   /* ---- Карточка «что изменилось» ---- */
   .chg-card{border-radius:9px;padding:10px 12px;margin-top:6px;background:var(--surface-2);
     border-left:3px solid var(--muted)}
@@ -5238,8 +5264,8 @@ function renderAdsTab(){
   if(adView==="cand"){
     cand.forEach(r=>{ html+=`<tr>`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
     if(drop.length){
-      html+=`<tr class="row-sep"><td colspan="14" style="padding-top:14px;color:var(--text-2)">`
-        +`Категория A, но остатка в Москве меньше чем на ${AD_MIN_MSK_DAYS} дней — реклама кончится вместе с товаром:</td></tr>`;
+      html+=`<tr class="row-sep"><td colspan="14" class="grp-head" style="padding-top:14px;color:var(--text-2)"><span class="grp-in">`
+        +`Категория A, но остатка в Москве меньше чем на ${AD_MIN_MSK_DAYS} дней — реклама кончится вместе с товаром:</span></td></tr>`;
       drop.forEach(r=>{ html+=`<tr style="opacity:.62">`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
     }
     /* ТРЕТИЙ БЛОК — ЧТО ВЫКЛЮЧАТЬ. «Кандидаты» показывают только категорию A, поэтому
@@ -5250,9 +5276,9 @@ function renderAdsTab(){
     const off=risk.filter(r=>!shown.has(r.sku));
     if(off.length){
       const s=off.reduce((a,r)=>a+r.adSpend,0);
-      html+=`<tr class="row-sep"><td colspan="14" style="padding-top:14px;color:var(--crit-txt)">`
+      html+=`<tr class="row-sep"><td colspan="14" class="grp-head" style="padding-top:14px;color:var(--crit-txt)"><span class="grp-in">`
         +`Реклама крутится, а запаса в Москве нет — ${fmt(Math.round(s))} ₽ за период выгрузки`
-        +`${adP? " ("+fmtDateLong(adP.from)+" – "+fmtDateLong(adP.to)+")":""}. Это первое, что стоит выключить:</td></tr>`;
+        +`${adP? " ("+fmtDateLong(adP.from)+" – "+fmtDateLong(adP.to)+")":""}. Это первое, что стоит выключить:</span></td></tr>`;
       off.forEach(r=>{ html+=`<tr>`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
     }
   } else {
@@ -5263,11 +5289,14 @@ function renderAdsTab(){
       const seenS=new Set(); let mskT=0;
       list.forEach(x=>{ if(x.sup&&!seenS.has(x.sup)){ seenS.add(x.sup); mskT+=x.msk||0; } });
       const tD=adTagDrr(tag);
-      html+=`<tr class="row-group"><td colspan="14" style="font-weight:700;padding-top:12px">`
-        +`Склейка «${esc(tag)}» · ${list.length} карточек · ${fmt(Math.round(tot))} ₽ · Москва ${fmt(mskT)} шт · кандидатов ${n}`
+      /* Заголовок склейки прижат влево и ЛИПНЕТ при горизонтальной прокрутке: ячейка
+         растянута на всю ширину таблицы, и без sticky подпись уезжала за правый край. */
+      html+=`<tr class="row-group"><td colspan="14" class="grp-head">`
+        +`<span class="grp-in">Склейка «${esc(tag)}» · ${list.length} карточек · ${fmt(Math.round(tot))} ₽`
+        +` · Москва ${fmt(mskT)} шт · кандидатов ${n}`
         +(tD? ` · расход ${fmt(Math.round(tD.spend))} ₽ · ДРР ${adDrrBadge(tD.drr)}` : ` · <span class="muted">рекламы нет</span>`)
-        +`</td></tr>`;
-      [...list].sort((a,b)=>b.rub-a.rub).forEach(r=>{ html+=`<tr>`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
+        +`</span></td></tr>`;
+      [...list].sort((a,b)=>b.rub-a.rub).forEach(r=>{ html+=`<tr class="in-grp">`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
     });
   }
   html+="</tbody>"; el.innerHTML=html;
@@ -5495,7 +5524,7 @@ function renderAdsPerf(){
       +`<td>${fmt(Math.round(a.aov))}<span class="sub2 mut">× ${(a.bo*100).toFixed(0)}% выкуп</span></td>`
       +`<td colspan="3"></td><td>${verdict}</td></tr>`;   // Заказы / «др. арт.» / CTR у склейки не печатаем
     adSortPerf(l).forEach(r=>{
-      html+=`<tr><td class="metric name-cell" title="${esc(r.name)}">${esc(r.name)}`
+      html+=`<tr class="in-grp"><td class="metric name-cell" title="${esc(r.name)}">${esc(r.name)}`
         +`<span class="sub2 mut">${esc(r.category)}</span></td>`
         +`<td class="ad-art">${skuLink(r.sku)}</td><td class="ad-art">${esc(r.sup)}</td>`
         +`<td class="${r.msk?"":"d-zero"}">${r.msk? fmt(r.msk):"—"}`
