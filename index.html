@@ -248,8 +248,29 @@
   .chg-d{font-variant-numeric:tabular-nums;font-weight:700;font-size:13.5px;text-align:right;white-space:nowrap}
   .chg-d.up{color:var(--good-txt)} .chg-d.down{color:var(--crit-txt)}
   .chg-d small{display:block;font-size:11px;font-weight:600;opacity:.75}
-  .chg-why{margin-top:6px;font-size:12px;line-height:1.55;color:var(--text-2)}
-  .chg-why div{padding:1px 0}
+  /* факторное разложение — полосками, а не строкой текста: продавец читает вклад глазами */
+  .chg-steps{margin-top:9px;padding:8px 10px;border-radius:8px;background:var(--surface)}
+  .chg-steps .cs-t{font-size:10.5px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;
+    color:var(--muted);margin-bottom:5px}
+  .cs-row{display:grid;grid-template-columns:158px minmax(150px,1fr) minmax(70px,1.1fr) 128px;
+    gap:10px;align-items:center;padding:3px 0;font-size:12px}
+  .cs-row+.cs-row{border-top:1px dashed var(--border)}
+  .cs-n{color:var(--text-1);font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .cs-v{font-variant-numeric:tabular-nums;color:var(--text-2)}
+  .cs-v small{display:block;font-size:10.5px;color:var(--muted)}
+  .cs-bar{height:8px;border-radius:5px;background:var(--surface-3);overflow:hidden;display:flex}
+  .cs-bar i{display:block;height:100%;border-radius:5px}
+  .cs-bar i.down{background:var(--crit-txt)} .cs-bar i.up{background:var(--good-txt)}
+  .cs-e{text-align:right;font-variant-numeric:tabular-nums;font-weight:700;white-space:nowrap}
+  .cs-e.down{color:var(--crit-txt)} .cs-e.up{color:var(--good-txt)}
+  .cs-e.nil{color:var(--muted);font-weight:500;font-size:11px}
+  .chg-noise{color:var(--warn-txt);font-weight:600}
+  .chg-why{margin-top:7px;font-size:12px;line-height:1.55;color:var(--text-2);
+    display:flex;flex-direction:column;gap:3px}
+  .chg-why .cw{padding:3px 8px;border-radius:6px;background:var(--surface)}
+  .chg-why .cw.stock{background:color-mix(in srgb,var(--crit-txt) 12%,var(--surface))}
+  .chg-why .cw.price{background:color-mix(in srgb,var(--warn-txt) 12%,var(--surface))}
+  .chg-why .cw.rival{background:color-mix(in srgb,var(--accent) 10%,var(--surface))}
   .chg-why .num{font-variant-numeric:tabular-nums;font-weight:650;color:var(--text-1)}
   .chg-act{margin-top:7px;padding-top:7px;border-top:1px dashed var(--border);
     font-size:12.5px;line-height:1.5;color:var(--text-1);font-weight:520}
@@ -5725,7 +5746,7 @@ function renderStockRateTab(){
                        : `<span class="sub2 delta-down">склад пуст</span>`)));
     html+=`<tr class="${crit?"row-critical":""}">`
       +`<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}</td>`
-      +`<td class="sr-cat">${esc(r.category||"—")}</td>`
+      +`<td class="sr-cat" title="${esc(r.category||"—")}">${esc(r.category||"—")}</td>`
       +`<td class="sr-art">${esc(r.sup)}`
         +`${r.wbSku?`<span class="sub2 mut" title="Артикул Wildberries">ВБ ${esc(r.wbSku)}</span>`:""}</td>`
       +`<td style="font-weight:650">${fmt(r.total)}`
@@ -6895,10 +6916,10 @@ function recAdsInWindow(dates){
 
    Из этого же собирается ДЕЙСТВИЕ — по ведущему фактору, а не «смотрите карточку». */
 const REC_STEPS=[
-  {k:"imp",  n:"показы",           v:a=>a.imp},
-  {k:"ctr",  n:"CTR (показ→переход)", v:a=>a.imp>0? a.cv/a.imp : 0},
-  {k:"cart", n:"переход→корзина",  v:a=>a.cv>0? a.cart/a.cv : 0},
-  {k:"ord",  n:"корзина→заказ",    v:a=>a.cart>0? a.ord/a.cart : 0},
+  {k:"imp",  n:"показы",          v:a=>a.imp},
+  {k:"ctr",  n:"показ→переход",   v:a=>a.imp>0? a.cv/a.imp : 0},   // это и есть CTR
+  {k:"cart", n:"переход→корзина", v:a=>a.cv>0? a.cart/a.cv : 0},
+  {k:"ord",  n:"корзина→заказ",   v:a=>a.cart>0? a.ord/a.cart : 0},
 ];
 /* Вклад каждой ступени в изменение заказов, в штуках. Идём последовательно: подменяем
    ступени одну за другой и смотрим, на сколько сдвинулся результат. Сумма вкладов равна
@@ -6982,15 +7003,25 @@ function recDiag(r){
   if(down && r.zeroDays>=2) out.push({k:"stock",t:`товара не было на ВБ <b class="num">${r.zeroDays}</b> дн из ${REC_WIN} — заказы просто некому было отдать`});
   if(!down && r.zeroDays===0 && r.q0>0 && r.dq>0 && r.q0<r.q1*0.5) {}
   // 2. факторное разложение
-  let lead=null;
+  let lead=null, steps=null;
   if(r.factors){
     const sorted=[...r.factors].sort((x,y)=>Math.abs(y.eff)-Math.abs(x.eff));
     lead=sorted.find(x=>(down? x.eff<0 : x.eff>0))||sorted[0];
-    const fmtStep=x=>{
-      const val = x.k==="imp" ? `${fmt(Math.round(x.from))} → ${fmt(Math.round(x.to))}`
-        : `${(x.from*100).toFixed(2)}% → ${(x.to*100).toFixed(2)}%`;
-      return `${x.n} ${pcs(x.ratio-1)} (${val}) → <b class="num">${x.eff>0?"+":""}${x.eff.toFixed(0)}</b> зак.`; };
-    out.push({k:"factors", t:"из чего сложилось: "+sorted.map(fmtStep).join("; ")});
+    /* ЕДИНИЦЫ РАЗНЫЕ, И ИХ НЕЛЬЗЯ ПУТАТЬ (правка продавца 01.09.2026: «переход→корзина −6%,
+       где тут 6%, когда тут 0,6»). У ШТУЧНЫХ величин (показы) изменение — в процентах.
+       У КОНВЕРСИЙ — в ПРОЦЕНТНЫХ ПУНКТАХ: 10,63% → 9,99% это −0,64 п.п., а −6% — это
+       относительное изменение, другая величина. Показываем п.п. как основное, относительное
+       рядом мелким, чтобы больше не смешивались. */
+    const dec=(v,n)=>v.toFixed(n).replace(".",",");
+    steps=sorted.map(x=>{
+      const rate = x.k!=="imp";
+      return {n:x.n, eff:x.eff, rate,
+        val: rate? `${dec(x.from*100,2)}% → ${dec(x.to*100,2)}%`
+                 : `${fmt(Math.round(x.from))} → ${fmt(Math.round(x.to))}`,
+        d: rate? `${x.to>=x.from?"+":"−"}${dec(Math.abs((x.to-x.from)*100),2)} п.п.`
+               : pcs(x.ratio-1),
+        rel: rate? `(${pcs(x.ratio-1)} относительно)` : ""};
+    });
   }
   // 3. цена
   if(Math.abs(r.dPrice)>=0.04 && r.p0>0)
@@ -7006,7 +7037,7 @@ function recDiag(r){
   }
   // 5. сосед забрал спрос
   if(r.rival) out.push({k:"rival",
-    t:`внутри склейки вырос ${skuLink(r.rival.sku)} (+<b class="num">${r.rival.d}</b> зак.${
+    t:`внутри склейки вырос ${skuLink(r.rival.sku)} (+<b class="num">${r.rival.d}</b> ${plural(r.rival.d,"заказ","заказа","заказов")}${
       r.rival.price>0&&r.p1>0? `, цена ${fmt(Math.round(r.rival.price))} ₽ против ${fmt(Math.round(r.p1))} ₽`:""})`
       +(r.rivalNear? " — та же ценовая полка, похоже, спрос перетёк к нему"
                    : " — но полка другая, прямой заменой он не выглядит")});
@@ -7035,7 +7066,7 @@ function recDiag(r){
     act="Проседают показы — это выдача, а не карточка. Проверьте позиции по ключам и дайте рекламный импульс, чтобы вернуть охват.";
   else if(!down) act="Рост держится на "+(lead? lead.n : "объёме")+" — закрепите: следите за остатком и не трогайте цену.";
   if(noise && down) act=(act? act+" ":"")+"Важно: падение в пределах статистического шума, решение можно отложить на неделю.";
-  return {items:out, noise, lead, act};
+  return {items:out, steps, noise, lead, act};
 }
 /* ===== ГИПОТЕЗЫ ПО РЕКЛАМЕ: КАТЕГОРИЯ → СКЛЕЙКА → ТОВАР =====
    Просьба продавца 01.09.2026: «мне нужны рекомендации (или гипотезы) по каждой
@@ -7278,8 +7309,8 @@ function recBuild(){
   if(upSr.length) add({sev:"warn", key:"srUp",
     title:"Поднять цену: "+upSr.length+" позиций продаются быстрее, чем нужно",
     why:`Темп выше цели больше чем на ${Math.round(SR_BAND*100)}% — товар кончится раньше, чем придёт партия. Цель в таблице дана в ЗАКАЗАХ в день, её и вводите в репрайсер.`,
-    items: upSr.slice(0,6).map(r=>({n:(r.targetOrders!=null? Math.round(r.targetOrders):"—")+" зак/дн", x:r.name,
-      w:"сейчас "+Math.round(r.ordWb||0)+" зак/дн"})),
+    items: upSr.slice(0,6).map(r=>({n:(r.targetOrders!=null? Math.round(r.targetOrders):"—")+" заказов в день", x:r.name,
+      w:"сейчас "+Math.round(r.ordWb||0)+" в день"})),
     keys: upSr.flatMap(r=>[r.sup,r.wbSku]), n: upSr.length, tab:"stockrate", rank: 6});
   // ---- 8. Дозаказ на фабрику ----
   const reorder=recAlive(rs).filter(r=>{ const spd=(r.wSpd||0)+(r.oSpd||0); if(spd<=0) return false;
@@ -7356,14 +7387,29 @@ function renderRecsTab(){
     +(ch.adNote? " "+ch.adNote.charAt(0).toUpperCase()+ch.adNote.slice(1)+"." : "");
   if(!ch.rows.length){ el.innerHTML=`<div class="rec-empty">Мало истории заказов, чтобы сравнивать недели.</div>`; }
   else {
-    const row=r=>`<div class="chg-card ${r.dr>=0?"up":"down"}">`
-      +`<div class="chg-h"><span class="chg-nm">${esc(r.name)}`
-        +`<small>${esc(r.category)}${r.tag?" · склейка «"+esc(r.tag)+"»":""} · ${skuLink(r.sku)}${r.sup?" · 1С "+esc(r.sup):""}</small></span>`
-      +`<span class="chg-d ${r.dr>=0?"up":"down"}">${r.dr>=0?"+":"−"}${fmt(Math.abs(Math.round(r.dr)))} ₽`
-        +`<small>${r.q0} → ${r.q1} шт${r.diag.noise? " · на грани шума":""}</small></span></div>`
-      +(r.diag.items.length? `<div class="chg-why">`+r.diag.items.map(x=>`<div>${x.t}</div>`).join("")+`</div>`:"")
-      +(r.diag.act? `<div class="chg-act">${esc(r.diag.act)}</div>`:"")
-      +`</div>`;
+    const row=r=>{
+      const st=r.diag.steps||[];
+      const mx=Math.max(1,...st.map(x=>Math.abs(x.eff)));
+      const bars=st.length? `<div class="chg-steps"><div class="cs-t">Из чего сложилось изменение заказов</div>`
+        +st.map(x=>`<div class="cs-row">`
+          +`<span class="cs-n">${esc(x.n)}</span>`
+          +`<span class="cs-v">${x.val}<small>${x.d}${x.rel? " "+x.rel:""}</small></span>`
+          +`<span class="cs-bar"><i class="${x.eff>=0?"up":"down"}" style="width:${Math.round(Math.abs(x.eff)/mx*100)}%"></i></span>`
+          +`<span class="cs-e ${Math.abs(x.eff)<0.5?"nil":(x.eff>=0?"up":"down")}">${
+              Math.abs(x.eff)<0.5? "почти не повлияло"
+              : `${x.eff>=0?"+":"−"}${Math.abs(x.eff).toFixed(0)} ${plural(Math.round(Math.abs(x.eff)),"заказ","заказа","заказов")}`}</span>`
+          +`</div>`).join("")+`</div>` : "";
+      const facts=r.diag.items.filter(x=>x.k!=="factors");
+      return `<div class="chg-card ${r.dr>=0?"up":"down"}">`
+        +`<div class="chg-h"><span class="chg-nm">${esc(r.name)}`
+          +`<small>${esc(r.category)}${r.tag?" · склейка «"+esc(r.tag)+"»":""} · ${skuLink(r.sku)}${r.sup?" · 1С "+esc(r.sup):""}</small></span>`
+        +`<span class="chg-d ${r.dr>=0?"up":"down"}">${r.dr>=0?"+":"−"}${fmt(Math.abs(Math.round(r.dr)))} ₽`
+          +`<small>${r.q0} → ${r.q1} шт${r.diag.noise? ` · <span class="chg-noise">на грани шума</span>`:""}</small></span></div>`
+        +bars
+        +(facts.length? `<div class="chg-why">`+facts.map(x=>`<div class="cw ${x.k}">${x.t}</div>`).join("")+`</div>`:"")
+        +(r.diag.act? `<div class="chg-act">${esc(r.diag.act)}</div>`:"")
+        +`</div>`;
+    };
     el.innerHTML=`<div class="rec-sec" style="margin-top:10px">Просело сильнее всего</div>`
       +drop.slice(0,6).map(row).join("")
       +`<div class="rec-sec">Выросло сильнее всего</div>`
