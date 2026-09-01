@@ -3996,7 +3996,32 @@ function aggregateAdRows(raw){
     b.spend+=r.spend||0; }
   return Object.values(byKey);
 }
-let adsIsBaked=false, adsHasBaked=false;
+let adsIsBaked=false, adsHasBaked=false, adsFromPerf=0, adsPerfFrom=null, adsPerfTo=null;
+/* ТРЕТИЙ ИСТОЧНИК РАСХОДА — ВЫГРУЗКИ XWAY (`adPerf.parts`). Вопрос продавца 01.09.2026:
+   «я гружу данные по рекламе — ты считаешь затраты и вносишь их?» Не вносил, и это была
+   дыра в прибыли: «История затрат» ВБ закончилась 02.08 (её продавцу закрыли), оценка
+   `model-finance.cjs` шла с рекламой = 0, а по XWAY за 26–31.08 реально потрачено
+   503 249 ₽ — прибыль августа была завышена на всю эту сумму.
+   Теперь расход из XWAY подмешивается за даты, которых НЕТ в «Истории затрат» (факт
+   всегда сильнее). Сумма за период — фактическая, а РАЗНЕСЕНИЕ ПО ДНЯМ равномерное:
+   выгрузка даёт итог за период, а не по дням. На неделю/месяц это не влияет, внутри
+   периода выгрузки день может отличаться от реального. */
+function adRowsFromPerf(excludeDates){
+  const P=(typeof RD!=="undefined"&&RD&&RD.adPerf)||null; if(!P) return [];
+  const parts=P.parts||[{from:P.from,to:P.to,bySku:P.bySku}];
+  const out=[];
+  parts.forEach(p=>{
+    const days=[]; for(let d=p.from; d<=p.to; d=addDays(d,1)) days.push(d);
+    const use=days.filter(d=>!excludeDates.has(d));
+    if(!use.length || !days.length) return;
+    Object.entries(p.bySku).forEach(([sku,e])=>{
+      const sp=e.spend||0; if(sp<=0) return;
+      const per=sp/days.length;                        // ровно по дням периода выгрузки
+      use.forEach(d=>out.push({id:"perf_"+d+"_"+sku, date:d, sku, spend:per, src:"xway"}));
+    });
+  });
+  return out;
+}
 async function fdbRefreshAdsCache(){
   const raw=await fdbGetAll(ADS_STORE);
   const baked=(typeof BAKED_ADS!=="undefined")? BAKED_ADS : [];
@@ -4006,7 +4031,12 @@ async function fdbRefreshAdsCache(){
   adsIsBaked=(raw.length===0 && baked.length>0);
   adsHasBaked=(bakedKept.length>0);
   ADS_ROW_COUNT=raw.length + (bakedKept.length && typeof BAKED_ADS_ROWS!=="undefined"? BAKED_ADS_ROWS : 0);
-  ADS_CACHE=bakedKept.concat(uploaded).sort((a,b)=>a.date<b.date?-1:1);
+  const have=new Set(bakedKept.map(r=>r.date).concat(uploaded.map(r=>r.date)));
+  const perf=adRowsFromPerf(have);
+  adsFromPerf=perf.reduce((a,r)=>a+r.spend,0);
+  const pd=[...new Set(perf.map(r=>r.date))].sort();
+  adsPerfFrom=pd[0]||null; adsPerfTo=pd[pd.length-1]||null;
+  ADS_CACHE=bakedKept.concat(uploaded,perf).sort((a,b)=>a.date<b.date?-1:1);
 }
 // расход рекламы по артикулам за набор дат (строки без даты относим к последнему дню периода)
 function adSpendBySku(dates){
@@ -5902,6 +5932,9 @@ function renderHomeTab(){
     + (financeEstFrom
         ? ` · <span class="acc" title="Отчёт «О реализации» за эти даты недоступен. Выручка посчитана от фактических заказов через % выкупа, «итого к оплате» — 62% от выручки (коэффициент снят с 5 фактических недель, ошибка 0,3%). Себестоимость точная, реклама — по факту загрузок.">факт по ${fmtDateLong(addDays(financeEstFrom,-1))}, дальше <b>ОЦЕНКА</b> (${fmtDate(financeEstFrom)}–${fmtDate(financeEstTo)})</span>`
         : (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : ""))
+    + (adsFromPerf>0
+        ? ` · <span class="acc" title="Расход из выгрузок XWAY за даты, которых нет в «Истории затрат» ВБ. Сумма за период фактическая, по дням разнесена ровно — выгрузка даёт итог за период, а не по дням.">реклама из XWAY: <b>${fmt(Math.round(adsFromPerf))} ₽</b> за ${fmtDate(adsPerfFrom)}–${fmtDate(adsPerfTo)}</span>`
+        : ``)
     + localDataResetLink();
 
   const catSel=document.getElementById("homeCat");
