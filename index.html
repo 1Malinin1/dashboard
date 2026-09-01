@@ -2038,10 +2038,25 @@ function renderFocusBar(){
   if(!recFocus){ el.hidden=true; el.innerHTML=""; return; }
   el.hidden=false;
   el.innerHTML=`<span class="fb-t">Показаны только позиции из рекомендации:</span>`
-    +`<b>${esc(recFocus.label)}</b><span class="fb-n">${recFocus.keys.size} поз.</span>`
+    +`<b>${esc(recFocus.label)}</b><span class="fb-n">${recFocus.n||recFocus.keys.size} поз.</span>`
     +`<button class="fb-x" id="focusClear">показать все</button>`;
 }
-function setFocus(f){ recFocus=f; renderFocusBar(); }
+/* Ставя фокус, СНИМАЕМ собственные фильтры целевой вкладки. Иначе получается то, на что
+   продавец и указал: полоса говорит «9 позиций», а в таблице 7 — потому что поверх фокуса
+   продолжал работать выбранный на «Рекламе» фильтр по категории. Фокус — это готовый
+   список, и он должен показываться целиком. */
+function clearSel(id){ const s=document.getElementById(id); if(!s) return;
+  [...s.options].forEach(o=>o.selected=false);
+  if(typeof enhanceSelect==="function") enhanceSelect(s); }
+function clearInput(id){ const e=document.getElementById(id); if(e) e.value=""; }
+function setFocus(f){
+  recFocus=f;
+  if(f && f.tab==="turnover"){ turnColFilters={}; clearInput("turnSearch"); clearSel("turnCat"); clearSel("turnProduct"); }
+  if(f && f.tab==="stockrate"){ srColFilters={}; clearInput("srSearch"); clearSel("srCat"); srAction="all";
+    document.querySelectorAll("#srActionSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.act==="all"?"true":"false")); }
+  if(f && f.tab==="ads"){ adColFilters={}; clearInput("adSearch"); }
+  renderFocusBar();
+}
 function clearFocus(rerender){ recFocus=null; renderFocusBar(); if(rerender) renderActiveTab(); }
 function turnFilteredRows(all, exceptKey){
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
@@ -4882,6 +4897,26 @@ function adMskBySup(){
     out[sup]=m; });
   return out;
 }
+/* ДРР склейки/категории для видов отбора. Считается по тому же правилу, что и в «Отдаче»:
+   расход ÷ (выручка ВСЕХ карточек уровня в заказах × свой % выкупа каждой). Кешируется
+   на один рендер — иначе adPerfRows() пересобирался бы на каждую строку таблицы. */
+let _adDrrCache=null;
+function adDrrLevelsCache(){
+  if(_adDrrCache) return _adDrrCache;
+  const byTag={}, byGroup={}; let all={spend:0,rev:0};
+  adPerfRows().forEach(r=>{
+    const t=byTag[r.tag]||(byTag[r.tag]={spend:0,rev:0});
+    t.spend+=r.spend; t.rev+=r.revD;
+    const g=byGroup[r.group]||(byGroup[r.group]={spend:0,rev:0});
+    g.spend+=r.spend; g.rev+=r.revD;
+    all.spend+=r.spend; all.rev+=r.revD; });
+  const fin=o=>({...o, drr: o.rev>0? o.spend/o.rev*100 : (o.spend>0? Infinity:0)});
+  Object.keys(byTag).forEach(k=>byTag[k]=fin(byTag[k]));
+  Object.keys(byGroup).forEach(k=>byGroup[k]=fin(byGroup[k]));
+  return (_adDrrCache={tag:byTag, group:byGroup, all:fin(all)});
+}
+const adTagDrr = t => { const c=adDrrLevelsCache().tag[t]; return (c&&c.spend>0)? c : null; };
+const adGroupDrr = g => { const c=adDrrLevelsCache().group[g]; return (c&&c.spend>0)? c : null; };
 function adRows(){
   if(!RD||!WBDATA) return [];
   const S=RD.orderSeries, dates=S.dates||[], M=S.money||{};
@@ -4903,8 +4938,10 @@ function adRows(){
      другого источника нет, и это честно подписано в шапке колонки и в подсказке. */
   const perf={}; adPerfRows().forEach(p=>{ perf[p.sku]=p; });
   const out=adOutGroups();
+  // при активном фокусе выбранная категория не сужает список — фокус и есть выборка
+  const gSel = (recFocus && recFocus.tab==="ads")? null : adGroup;
   const rows=(RD.catalog||[]).filter(c=>{ const g=adGroupOf(c);
-      return !out.has(g) && (!adGroup||g===adGroup); }).map(c=>{
+      return !out.has(g) && (!gSel||g===gSel); }).map(c=>{
     const sku=""+c.sku, sup=(""+(c.supplierCode||"")).trim();
     const arr=S.bySku[sku]||[];
     let qty=0, rub=0;
@@ -4997,7 +5034,8 @@ function adBaseRows(){
   if(adView!=="perf") return adRows();
   // в таблицу и в фильтры идут только карточки С кампанией; нулевые нужны лишь в знаменателе
   const rows=adPerfRows().filter(r=>r.spend>0);
-  return adGroup? rows.filter(r=>r.group===adGroup) : rows;
+  const gSel = (recFocus && recFocus.tab==="ads")? null : adGroup;
+  return gSel? rows.filter(r=>r.group===gSel) : rows;
 }
 function adFilteredRows(all,exceptKey){
   const defs=adColDefs();
@@ -5016,6 +5054,7 @@ function adFiltered(){
 const adFmtD = v => v===Infinity? "∞" : Math.round(v);
 function renderAdsTab(){
   const el=document.getElementById("adTable"); if(!el) return;
+  _adDrrCache=null;                    // ДРР уровней пересобираем на каждый рендер
   initAdDateBounds();
   { const c=document.getElementById("adDrrTree"); if(c) c.hidden = adView!=="perf"; }
   /* Группы сортируем по числу карточек: первой должна открываться самая крупная
@@ -5078,11 +5117,29 @@ function renderAdsTab(){
        +tr2("Всего в выборке",all.length)+tr2("Категория A",all.filter(r=>r.abc==="A").length)
        +tr2("Из них отсеяно по остатку",drop.length)},
     {lbl:"Их выручка за период, ₽", val:fmt(Math.round(candRub))},
-    {lbl:"Доля от группы", val:(totRub? (candRub/totRub*100).toFixed(0):0)+"%",
-     tip:`<div class="t-hd">Сколько денег закрывают кандидаты</div>`
-       +tr2("Выручка кандидатов",fmt(Math.round(candRub))+" ₽")
-       +tr2("Выручка всей выборки",fmt(Math.round(totRub))+" ₽")
-       +tr2("Остальное идёт на ассоциативных конверсиях")},
+    /* ДРР ПРЯМО В ОТБОРЕ (просьба продавца 01.09.2026). Раньше здесь висела «доля от группы»,
+       а ДРР жил только в «Отдаче» — приходилось переключать вид, чтобы понять, окупается ли
+       то, что отбираешь. Показываем ДРР выбранной категории; весь кабинет и доля кандидатов
+       ушли в подсказку. Формула та же, что везде: расход ÷ (выручка × свой % выкупа). */
+    (()=>{ const L=adDrrLevelsCache();
+      const cur = adGroup? (adGroupDrr(adGroup)||{spend:0,rev:0,drr:0}) : L.all;
+      const bo=adBuyout();
+      return {lbl:"ДРР в выкупе"+(adGroup? " — "+adGroup : " — весь кабинет")+" (цель ≤"+AD_DRR_GOAL+"%)",
+        val: cur.spend>0? adDrrTxt(cur.drr) : "нет рекламы",
+        valColor: cur.spend<=0? "var(--muted)"
+          : (cur.drr<=AD_DRR_GREAT? "var(--good-txt)" : (cur.drr<=AD_DRR_GOAL? "var(--warn-txt)" : "var(--crit-txt)")),
+        tip:`<div class="t-hd">Как считается</div>`
+          +tr2("Расход",fmt(Math.round(cur.spend))+" ₽")
+          +tr2("Выручка в выкупе",fmt(Math.round(cur.rev))+" ₽")
+          +tr2("ДРР в выкупе",cur.spend>0? adDrrTxt(cur.drr):"—")
+          +tr2("ДРР в заказах (кабинет XWAY)",cur.rev>0? (cur.spend/(cur.rev/bo)*100).toFixed(1)+"%":"—")
+          +`<div class="t-hd">Весь кабинет</div>`
+          +tr2("Расход",fmt(Math.round(L.all.spend))+" ₽")
+          +tr2("ДРР в выкупе",L.all.spend>0? adDrrTxt(L.all.drr):"—")
+          +`<div class="t-hd">Кандидаты</div>`
+          +tr2("Их выручка",fmt(Math.round(candRub))+" ₽")
+          +tr2("Доля от выборки",(totRub? (candRub/totRub*100).toFixed(0):0)+"%")
+          +tr2("Расход и ДРР — за период загруженной выгрузки рекламы")}; })(),
     /* KPI про ДЕНЬГИ, а не про счёт позиций: главное, что видно из этой таблицы, —
        сколько рекламы крутится на товар, которого в Москве нет или почти нет. Число
        отсеянных ушло в подсказку. */
@@ -5101,7 +5158,8 @@ function renderAdsTab(){
   renderAdHowTo();
   document.getElementById("adCount").textContent =
     (adView==="cand"? cand.length+" кандидатов" : all.length+" товаров")
-    +" · "+adPeriodTxt()+(adGroup? " · "+adGroup : " · все группы");
+    +" · "+adPeriodTxt()
+    +((recFocus&&recFocus.tab==="ads")? " · по рекомендации" : (adGroup? " · "+adGroup : " · все группы"));
   if(!all.length){ el.innerHTML=`<tbody><tr><td class="empty-hint">Нет товаров под текущие фильтры</td></tr></tbody>`; return; }
 /* Артикулы — ОТДЕЛЬНЫМИ КОЛОНКАМИ, а не строкой под названием (просьба продавца 31.08.2026):
    по ним он ищет товар в кабинете ВБ, в 1С и в рекламном кабинете, поэтому их нужно
@@ -5112,12 +5170,16 @@ function renderAdsTab(){
   const abcBadge = a => `<span class="badge ${a==="A"?"good":(a==="B"?"warning":"nodata")}"><span class="d"></span>${a}</span>`;
   /* Расход по действующей кампании + ДРР. Красным — когда деньги идут в товар,
      которого в Москве нет или почти нет: это то, что надо выключать первым. */
+  /* ДРР ПОКАЗЫВАЕМ ВСЕГДА (просьба продавца 01.09.2026: «нету отображения ДРР ни по кабинету,
+     ни по склейке, ни по артикулу»). Раньше у рискованных строк вместо ДРР печаталась причина,
+     и цифры не было там, где она нужнее всего. Теперь и то и другое. */
   const adCell = r => { if(!(r.adSpend>0)) return `<td class="d-zero">—<span class="sub2 mut">нет РК</span></td>`;
     if(r.adSpend<AD_MIN_SPEND) return `<td class="muted">${fmt(Math.round(r.adSpend))}<span class="sub2 mut">мелкий расход</span></td>`;
-    const risk = r.mskDays<AD_MIN_MSK_DAYS;
-    return `<td class="${risk?"crit":""}" style="font-weight:${risk?700:500}">${fmt(Math.round(r.adSpend))}`
-      +`<span class="sub2 ${risk?"crit":(r.adDrr<=AD_DRR_GOAL?"mut":"crit")}">`
-      +`${risk? (r.msk<=0? "остатка нет" : "запас "+adFmtD(r.mskDays)+" дн") : "ДРР "+adDrrTxt(r.adDrr)}</span></td>`; };
+    const risk = r.mskDays<AD_MIN_MSK_DAYS, bad = !(r.adDrr<=AD_DRR_GOAL);
+    return `<td class="${risk||bad?"crit":""}" style="font-weight:${risk?700:500}">${fmt(Math.round(r.adSpend))}`
+      +`<span class="sub2 ${bad?"crit":"mut"}">ДРР ${adDrrTxt(r.adDrr)}</span>`
+      +(risk? `<span class="sub2 crit">${r.msk<=0? "остатка нет" : "запас "+adFmtD(r.mskDays)+" дн"}</span>`:"")
+      +`</td>`; };
   const body = r => `<td>${abcBadge(r.abc)}</td>`
       +`<td style="font-weight:650">${fmt(Math.round(r.rub))}<span class="sub2 mut">${r.share.toFixed(1)}% склейки</span></td>`
       +`<td>${fmt(r.qty)}<span class="sub2 mut">${r.spd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
@@ -5157,9 +5219,15 @@ function renderAdsTab(){
   } else {
     const byTag={}; all.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
     Object.entries(byTag).sort((a,b)=>b[1][0].tagTotal-a[1][0].tagTotal).forEach(([tag,list])=>{
-      const tot=list[0].tagTotal, mskT=list.reduce((a,x)=>a+x.msk,0), n=list.filter(x=>x.ok).length;
+      const tot=list[0].tagTotal, n=list.filter(x=>x.ok).length;
+      // склад по коду 1С: у одного кода бывает несколько артикулов ВБ
+      const seenS=new Set(); let mskT=0;
+      list.forEach(x=>{ if(x.sup&&!seenS.has(x.sup)){ seenS.add(x.sup); mskT+=x.msk||0; } });
+      const tD=adTagDrr(tag);
       html+=`<tr class="row-group"><td colspan="14" style="font-weight:700;padding-top:12px">`
-        +`Склейка «${esc(tag)}» · ${list.length} карточек · ${fmt(Math.round(tot))} ₽ · Москва ${fmt(mskT)} шт · кандидатов ${n}</td></tr>`;
+        +`Склейка «${esc(tag)}» · ${list.length} карточек · ${fmt(Math.round(tot))} ₽ · Москва ${fmt(mskT)} шт · кандидатов ${n}`
+        +(tD? ` · расход ${fmt(Math.round(tD.spend))} ₽ · ДРР ${adDrrBadge(tD.drr)}` : ` · <span class="muted">рекламы нет</span>`)
+        +`</td></tr>`;
       [...list].sort((a,b)=>b.rub-a.rub).forEach(r=>{ html+=`<tr>`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
     });
   }
@@ -5287,8 +5355,14 @@ function renderAdsPerf(){
      законно идут в зачёт. `rows` — что показываем (только с кампанией), `fullByTag` —
      из чего считаем. Проверка: Пушкары 26–30.08 дают 7.8% (на экране продавца 7.7%),
      а по одним рекламируемым выходило 11.3%. */
+  /* При активном фокусе знаменатель считается ПО ФОКУСНОМУ НАБОРУ, а не по всей склейке:
+     продавец пришёл разбирать конкретные кампании, и KPI обязан описывать именно их —
+     иначе на экране «9 позиций», а расход в шапке за всю категорию. */
+  const focused = !!(recFocus && recFocus.tab==="ads" && recFocus.keys.size);
+  const gSel = focused? null : adGroup;
   const fullByTag={};
-  adPerfRows().forEach(r=>{ if(adGroup && r.group!==adGroup) return;
+  (focused? focusApply(adPerfRows()) : adPerfRows()).forEach(r=>{
+    if(gSel && r.group!==gSel) return;
     (fullByTag[r.tag]||(fullByTag[r.tag]=[])).push(r); });
   const bo=adBuyout();
   const agg=list=>{ const sp=list.reduce((a,x)=>a+x.spend,0);
@@ -5351,7 +5425,8 @@ function renderAdsPerf(){
   ].map(kpiCard).join("");
   wireKpiTips("adKpis");
   document.getElementById("adCount").textContent=rows.length+" кампаний · "
-    +fmtDateLong(P.from)+" – "+fmtDateLong(P.to)+(adGroup? " · "+adGroup : " · все группы");
+    +fmtDateLong(P.from)+" – "+fmtDateLong(P.to)
+    +(focused? " · по рекомендации" : (adGroup? " · "+adGroup : " · все группы"));
   renderAdHowTo();
   if(!rows.length){ el.innerHTML=`<tbody><tr><td class="empty-hint">Под текущие фильтры кампаний нет</td></tr></tbody>`; return; }
   const byTag={}; rows.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
@@ -6882,7 +6957,7 @@ function recBuild(){
     title:"Отгрузить на Ozon "+fmt(qO)+" шт со своего склада",
     why:`Считаю по правилу «держать на площадке 30 дней запаса». Срочных (покрытие меньше 10 дней) — <b class="num">${shipO.filter(r=>r.oDays<10).length}</b> из ${shipO.length}. Товар есть на складе, отгрузка не требует ничего, кроме поставки.`,
     items: shipO.slice(0,6).map(r=>({n:fmt(r.shipO)+" шт", x:r.name, w:(r.oDays===Infinity?"∞":Math.round(r.oDays))+" дн на Озоне"})),
-    keys: shipO.map(r=>r.sup), tab:"turnover", view:"resupply", rank: 3});
+    keys: shipO.flatMap(r=>[r.sup,r.skuWb]), n: shipO.length, tab:"turnover", view:"resupply", rank: 3});
   // ---- 2. Перемещение Евросиб → Нск-1 ----
   const mv=recAlive(rs.filter(r=>r.move>0)).sort((a,b)=>a.nsk1Days-b.nsk1Days);
   const qM=mv.reduce((a,r)=>a+r.move,0);
@@ -6890,7 +6965,7 @@ function recBuild(){
     title:"Перевезти Евросиб → Нск-1: "+fmt(qM)+" шт",
     why:`FBS на Wildberries уходит со склада Нск-1. По <b class="num">${mv.length}</b> кодам там осталось меньше ${NSK1_MIN_DAYS} дней продаж, а на Евросибе товар есть. Пока не перевезёте — эти заказы просто не будут выкупаться.`,
     items: mv.slice(0,6).map(r=>({n:fmt(r.move)+" шт", x:r.name, w:"на Нск-1 "+fmt(r.nsk1Free)+" шт"})),
-    keys: mv.map(r=>r.sup), tab:"turnover", view:"resupply", rank: 4});
+    keys: mv.flatMap(r=>[r.sup,r.skuWb]), n: mv.length, tab:"turnover", view:"resupply", rank: 4});
   // ---- 3. Нечем закрыть ----
   const cant=recAlive(rs.filter(r=>r.needO>0 && r.shipO<r.needO && r.have<=0));
   if(cant.length) add({sev:"crit", key:"cant",
@@ -6898,7 +6973,7 @@ function recBuild(){
     why:`Товар кончается на площадке, а на складе его нет. Здесь помогает только производство или закуп — чем раньше поставите в план, тем короче простой.`,
     items: cant.slice(0,6).map(r=>({n:fmt(r.needO-r.shipO)+" шт", x:r.name,
       w:(r.china+r.onOrder>0? "едет "+fmt(r.china+r.onOrder)+" шт" : "ничего не едет")})),
-    keys: cant.map(r=>r.sup), tab:"turnover", view:"resupply", rank: 1});
+    keys: cant.flatMap(r=>[r.sup,r.skuWb]), n: cant.length, tab:"turnover", view:"resupply", rank: 1});
   /* ---- 4. Реклама на товар без запаса в Москве ----
      ВСЕГДА по всему ассортименту: `adRows()` фильтрует по выбранной на «Рекламе»
      категории, и без этой развязки рекомендации молча сужались до неё — продавец
@@ -6912,7 +6987,7 @@ function recBuild(){
     why:`<b class="num">${money(riskSum)} ₽</b> за период выгрузки ушло на <b class="num">${risk.length}</b> кампаний, у которых московского FBS-остатка хватает меньше чем на ${AD_MIN_MSK_DAYS} дней. Реклама разгоняет спрос, товар кончается в середине кампании — деньги уходят, карточка проседает в выдаче.`,
     items: risk.slice(0,6).map(r=>({n:money(r.adSpend)+" ₽", x:r.name,
       w:(r.msk>0? "Мск "+fmt(r.msk)+" шт · "+adFmtD(r.mskDays)+" дн" : "в Москве пусто")})),
-    keys: risk.map(r=>r.sku), tab:"ads", view:"perf", rank: 2});
+    keys: risk.map(r=>r.sku), n: risk.length, tab:"ads", view:"perf", rank: 2});
   // ---- 5. Склейки выше цели по ДРР ----
   let pr=[]; try{ pr=adPerfRows(); }catch(e){ pr=[]; }
   if(pr.length){
@@ -6930,6 +7005,7 @@ function recBuild(){
       items: over.slice(0,6).map(x=>({n:x.drr===Infinity?"нет продаж":x.drr.toFixed(1)+"%", x:"Склейка «"+x.tag+"» · "+x.n+" кампаний",
         w:"перерасход "+money(x.over)+" ₽"})),
       keys: over.flatMap(x=>(byTag[x.tag]||[]).filter(r=>r.spend>0).map(r=>r.sku)),
+      n: over.reduce((a,x)=>a+(byTag[x.tag]||[]).filter(r=>r.spend>0).length,0),
       tab:"ads", view:"perf", rank: 5});
   }
   // ---- 6. Кандидаты без рекламы ----
@@ -6939,7 +7015,7 @@ function recBuild(){
     why:`Категория A внутри своей склейки, и московского остатка хватает минимум на ${AD_MIN_MSK_DAYS} дней. Это те позиции, на которых реклама не встанет посреди кампании.`,
     items: idle.slice(0,6).map(r=>({n:money(r.rub)+" ₽", x:r.name,
       w:"Мск "+fmt(r.msk)+" шт · "+adFmtD(r.mskDays)+" дн"})),
-    keys: idle.map(r=>r.sku), tab:"ads", view:"cand", rank: 7});
+    keys: idle.map(r=>r.sku), n: idle.length, tab:"ads", view:"cand", rank: 7});
   // ---- 7. Цена и темп ----
   let sr=[]; try{ sr=srRows(); }catch(e){ sr=[]; }
   const shortSr=recAlive(sr.filter(r=>r.verdict==="short"));
@@ -6948,13 +7024,13 @@ function recBuild(){
     title:"Не хватит даже Озону: "+shortSr.length+" позиций",
     why:`По этим кодам весь запас выбирает Ozon — на Wildberries не остаётся ничего даже при нулевых продажах. Поднимать цену тут помогает лишь частично: цена общая, она притормозит и Ozon.`,
     items: shortSr.slice(0,6).map(r=>({n:fmt(Math.round(r.stock||0))+" шт", x:r.name, w:"до партии "+(r.hz||"?")+" дн"})),
-    keys: shortSr.map(r=>r.sup), tab:"stockrate", rank: 2});
+    keys: shortSr.flatMap(r=>[r.sup,r.wbSku]), n: shortSr.length, tab:"stockrate", rank: 2});
   if(upSr.length) add({sev:"warn", key:"srUp",
     title:"Поднять цену: "+upSr.length+" позиций продаются быстрее, чем нужно",
     why:`Темп выше цели больше чем на ${Math.round(SR_BAND*100)}% — товар кончится раньше, чем придёт партия. Цель в таблице дана в ЗАКАЗАХ в день, её и вводите в репрайсер.`,
     items: upSr.slice(0,6).map(r=>({n:(r.targetOrders!=null? Math.round(r.targetOrders):"—")+" зак/дн", x:r.name,
       w:"сейчас "+Math.round(r.ordWb||0)+" зак/дн"})),
-    keys: upSr.map(r=>r.sup), tab:"stockrate", rank: 6});
+    keys: upSr.flatMap(r=>[r.sup,r.wbSku]), n: upSr.length, tab:"stockrate", rank: 6});
   // ---- 8. Дозаказ на фабрику ----
   const reorder=recAlive(rs).filter(r=>{ const spd=(r.wSpd||0)+(r.oSpd||0); if(spd<=0) return false;
       const have=(r.wCovAll||0)+(r.oCov||0)+(r.have||0)+(r.china||0)+(r.onOrder||0);
@@ -6965,7 +7041,7 @@ function recBuild(){
     why:`Считаю всю трубу — остаток на площадках, свой склад, то что едет из Китая и уже заказано производству. Если этого меньше чем на ${TURN_MIN_DAYS} дней продаж, партию пора ставить в план: до полки товар идёт около 4 месяцев.`,
     items: reorder.slice(0,6).map(r=>({n:Math.round(r._days)+" дн", x:r.name,
       w:"нужно ~"+fmt(Math.ceil(((r.wSpd||0)+(r.oSpd||0))*TURN_COVER_DAYS))+" шт"})),
-    keys: reorder.map(r=>r.sup), tab:"turnover", view:"buyAvg", rank: 8});
+    keys: reorder.flatMap(r=>[r.sup,r.skuWb]), n: reorder.length, tab:"turnover", view:"buyAvg", rank: 8});
   // ---- 9. Чего не хватает в данных ----
   const gaps=[];
   const noTag=(RD.catalog||[]).filter(c=>!c.adGroup).length;
@@ -7053,8 +7129,8 @@ function renderRecsTab(){
         +`<span class="ri-x">${esc(i.x)}</span><span class="ri-w">${esc(i.w||"")}</span></div>`).join("")
       +`</div>`:"")
     +(r.tab? `<button class="rec-go" data-tab="${r.tab}"${r.view?` data-view="${r.view}"`:""}`
-        +`${r.keys&&r.keys.length?` data-keys="${esc([...new Set(r.keys.map(String))].join("|"))}" data-label="${esc(r.title)}"`:""}>`
-        +`Открыть${r.keys&&r.keys.length? " "+[...new Set(r.keys.map(String))].length+" поз." : ""} →</button>`:"")
+        +`${r.keys&&r.keys.length?` data-keys="${esc([...new Set(r.keys.filter(Boolean).map(String))].join("|"))}" data-n="${r.n||0}" data-label="${esc(r.title)}"`:""}>`
+        +`Открыть${r.n? " "+r.n+" поз." : ""} →</button>`:"")
     +`</div>`).join("");
 }
 let _recOpenG=null, _recOpenT=null;      // какой уровень дерева раскрыт
@@ -7084,7 +7160,8 @@ function renderRecAdTree(){
         +`<span class="htn-v ${vcls(t.hypo)}">${esc(t.hypo.t)}</span></div>`
         +`<div class="htn-w">${esc(t.hypo.w)}${t.worst&&t.worst.length? ` <b>Главный вклад:</b> `
             +t.worst.map(x=>esc(x.name)+" ("+(x.drr===Infinity?"нет продаж":x.drr.toFixed(0)+"%")+", перерасход "+money(x.over)+" ₽)").join(", ")+"." : ""}</div>`
-        +`<button class="htn-go" data-keys="${esc(t.items.map(r=>r.sku).join("|"))}" data-label="Склейка «${esc(t.tag)}»">Открыть в «Отдаче» →</button></div>`;
+        +`<button class="htn-go" data-keys="${esc(t.items.map(r=>r.sku).join("|"))}" data-n="${t.items.length}"`
+          +` data-label="Склейка «${esc(t.tag)}»">Открыть ${t.items.length} кампаний в «Отдаче» →</button></div>`;
       if(!openT) return;
       const big=t.items.filter(r=>r.spend>=AD_MIN_SPEND), small=t.items.length-big.length;
       big.forEach(r=>{
@@ -7129,7 +7206,8 @@ document.getElementById("recAdTree").addEventListener("click",e=>{
   const go=e.target.closest(".htn-go");
   if(go){ e.stopPropagation();
     const keys=(go.dataset.keys||"").split("|").filter(Boolean);
-    if(keys.length) setFocus({keys:new Set(keys), label:go.dataset.label||"", tab:"ads", view:"perf"});
+    if(keys.length) setFocus({keys:new Set(keys), n:+(go.dataset.n||0)||keys.length,
+      label:go.dataset.label||"", tab:"ads", view:"perf"});
     adView="perf"; adColFilters={}; adGroup=null;
     document.querySelectorAll("#adViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v==="perf"?"true":"false"));
     switchTab("ads"); window.scrollTo({top:0,behavior:"smooth"}); return; }
@@ -7245,7 +7323,8 @@ document.getElementById("recList").addEventListener("click",e=>{
   /* Переход ФИЛЬТРУЕТ целевую таблицу под эту рекомендацию: продавец должен увидеть
      ровно те позиции, о которых речь, а не весь раздел. Ключи лежат в data-keys. */
   const keys=(b.dataset.keys||"").split("|").filter(Boolean);
-  if(keys.length) setFocus({keys:new Set(keys), label:b.dataset.label||"", tab, view});
+  if(keys.length) setFocus({keys:new Set(keys.filter(Boolean)), n:+(b.dataset.n||0)||keys.length,
+    label:b.dataset.label||"", tab, view});
   else clearFocus(false);
   if(view && tab==="turnover"){ turnView=view; turnColFilters={};
     document.querySelectorAll("#turnViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.view===view?"true":"false")); }
