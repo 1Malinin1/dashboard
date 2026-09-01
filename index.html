@@ -211,6 +211,58 @@
   .truckplan .tp-truck{font-size:11.5px;color:var(--text-2);padding:4px 0;border-top:1px dashed var(--border)}
   .truckplan .tp-items{display:block;color:var(--muted);font-size:10.5px;line-height:1.5;margin-top:2px}
   /* «Как считается» — цепочка расчёта над таблицей оборачиваемости */
+  /* ---- Пирамида ДРР ---- */
+  .drrlv{margin-top:10px}
+  .drrlv .lv-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);margin:12px 0 6px}
+  .drrlv .lv{display:grid;grid-template-columns:minmax(140px,1.4fr) 92px 116px 124px minmax(60px,1fr);
+    gap:10px;align-items:center;padding:7px 9px;border-radius:8px;font-size:12.5px}
+  .drrlv .lv .badge{white-space:nowrap}
+  .drrlv .lv+.lv{margin-top:2px}
+  .drrlv .lv.clickable{cursor:pointer}
+  .drrlv .lv.clickable:hover{background:var(--surface-2)}
+  .drrlv .lv.sel{background:color-mix(in srgb,var(--accent) 9%,var(--surface));
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 35%,transparent)}
+  .drrlv .lv.total{background:var(--surface-2);font-weight:650;padding:10px 9px}
+  .drrlv .lv-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1)}
+  .drrlv .lv-nm small{display:block;font-size:10.5px;color:var(--muted);font-weight:500}
+  .drrlv .lv-n{font-variant-numeric:tabular-nums;text-align:right;color:var(--text-2)}
+  .drrlv .lv-bar{height:7px;border-radius:4px;background:var(--surface-3);overflow:hidden}
+  .drrlv .lv-bar i{display:block;height:100%;border-radius:4px}
+  /* ---- Рекомендации ---- */
+  .rec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+    padding:13px 15px 12px;margin-bottom:10px;position:relative;overflow:hidden}
+  .rec::before{content:"";position:absolute;left:0;top:0;bottom:0;width:3px;background:var(--muted)}
+  .rec.crit::before{background:var(--crit-txt)} .rec.warn::before{background:var(--warn-txt)}
+  .rec.good::before{background:var(--good-txt)} .rec.info::before{background:var(--accent)}
+  .rec-hd{display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;margin-bottom:6px}
+  .rec-t{font-size:14px;font-weight:680;color:var(--text-1);letter-spacing:-.01em}
+  .rec-money{margin-left:auto;font-size:14px;font-weight:700;font-variant-numeric:tabular-nums}
+  .rec-money.crit{color:var(--crit-txt)} .rec-money.good{color:var(--good-txt)}
+  .rec-why{font-size:12.5px;line-height:1.6;color:var(--text-2)}
+  .rec-why b{color:var(--text-1);font-weight:650}
+  .rec-why .num{font-variant-numeric:tabular-nums;font-weight:650;color:var(--text-1)}
+  .rec-items{margin-top:7px;display:flex;flex-direction:column;gap:3px}
+  .rec-item{display:flex;gap:10px;font-size:12px;line-height:1.45;color:var(--text-2);
+    padding:3px 0;border-top:1px dashed var(--border)}
+  .rec-item .ri-n{flex:0 0 auto;font-variant-numeric:tabular-nums;font-weight:650;color:var(--text-1);min-width:96px}
+  .rec-item .ri-x{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .rec-item .ri-w{flex:0 0 auto;color:var(--muted)}
+  .rec-go{margin-top:9px;display:inline-flex;align-items:center;gap:6px;font-size:12px;
+    font-weight:600;color:var(--accent);background:none;border:1px solid var(--border-2);
+    border-radius:7px;padding:5px 10px;cursor:pointer}
+  .rec-go:hover{background:var(--surface-3);border-color:var(--accent)}
+  .rec-sec{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);margin:16px 0 8px}
+  .rec-empty{padding:22px;text-align:center;color:var(--muted);font-size:13px}
+  .chg{display:grid;grid-template-columns:1fr auto auto;gap:2px 14px;align-items:center;
+    font-size:12.5px;margin-top:8px}
+  .chg .c-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1);padding:5px 0}
+  .chg .c-nm span{display:block;font-size:11px;color:var(--muted)}
+  .chg .c-d{font-variant-numeric:tabular-nums;font-weight:700;text-align:right}
+  .chg .c-d.up{color:var(--good-txt)} .chg .c-d.down{color:var(--crit-txt)}
+  .chg .c-why{font-size:11.5px;color:var(--text-2);max-width:52%}
+  .chg .c-row{display:contents}
   .howto{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-lg);
     padding:11px 14px;margin-bottom:12px;font-size:12.5px;line-height:1.55;color:var(--text-2)}
   .howto b{color:var(--text-1);font-weight:650}
@@ -745,7 +797,8 @@
   </header>
 
   <nav class="tabs" id="tabs" role="tablist">
-    <button class="tab-btn" data-tab="home" role="tab" aria-selected="true">Главная</button>
+    <button class="tab-btn" data-tab="recs" role="tab" aria-selected="true">Рекомендации</button>
+    <button class="tab-btn" data-tab="home" role="tab" aria-selected="false">Главная</button>
     <button class="tab-btn" data-tab="dynamics" role="tab" aria-selected="false">Динамика заказов</button>
     <button class="tab-btn" data-tab="turnover" role="tab" aria-selected="false">Оборачиваемость</button>
     <button class="tab-btn" data-tab="stockrate" role="tab" aria-selected="false">Запас и темп</button>
@@ -762,7 +815,23 @@
     <button class="mp-btn" data-mp="all" type="button">Всего</button>
   </div>
 
-  <section id="tab-home" class="tab-panel">
+  <section id="tab-recs" class="tab-panel">
+    <div class="freshness" id="recFreshness"></div>
+    <div class="kpis4" id="recKpis"></div>
+    <div class="card" style="margin-bottom:14px">
+      <h3>Что изменилось за неделю и почему</h3>
+      <div class="cap" id="recChangedCap">Сравнение последних 7 дней с предыдущими 7 по заказам. Причина ищется по цене, показам, конверсии, остатку и рекламе.</div>
+      <div id="recChanged"></div>
+    </div>
+    <div class="seg" id="recFilterSeg" role="group" aria-label="Что показать" style="margin-bottom:12px">
+      <button data-f="all" aria-pressed="true">Всё</button>
+      <button data-f="crit">Только срочное</button>
+      <button data-f="money">По деньгам</button>
+    </div>
+    <div id="recList"></div>
+  </section>
+
+  <section id="tab-home" class="tab-panel" hidden>
   <div class="freshness" id="homeFreshness"></div>
   <div class="filters">
     <div class="seg" id="homePeriodSeg" role="group" aria-label="Период">
@@ -975,6 +1044,11 @@
       </div>
       <span class="count" id="adCount"></span>
       <button class="btn" id="adExportBtn">Скачать Excel</button>
+    </div>
+    <div class="card" id="adDrrTree" hidden style="margin-bottom:14px">
+      <h3>ДРР по уровням — в выкупе</h3>
+      <div class="cap">Весь ассортимент → категория → склейка → товар. Цель ≤7%, хорошо 6%, ниже 6% — идеально. Клик по строке проваливается на уровень ниже.</div>
+      <div id="adDrrLevels"></div>
     </div>
     <div class="howto" id="adHowTo"></div>
     <div class="table-card">
@@ -4701,7 +4775,7 @@ function adPerfRows(){
       cr:  e.clicks? e.ord/e.clicks*100 : 0,
       max7: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, buyoutOf("wb",sku,bo), AD_DRR_GOAL),
       max6: adMaxCpo(e.totOrd? e.totRub/e.totOrd:0, buyoutOf("wb",sku,bo), AD_DRR_GREAT)};
-  }).filter(r=>r.spend>0);
+  });   // ВСЕ карточки, включая нерекламируемые: они в знаменателе ДРР склейки
 }
 /* ПОТОЛОК CPO. Выводится прямо из определения ДРР, коэффициентов подбирать не нужно:
      ДРР = расход ÷ выручка,  CPO = расход ÷ заказы,  выручка = заказы × чек × выкуп
@@ -4837,7 +4911,8 @@ function adColDefs(){
    которых в таблице нет. */
 function adBaseRows(){
   if(adView!=="perf") return adRows();
-  const rows=adPerfRows();
+  // в таблицу и в фильтры идут только карточки С кампанией; нулевые нужны лишь в знаменателе
+  const rows=adPerfRows().filter(r=>r.spend>0);
   return adGroup? rows.filter(r=>r.group===adGroup) : rows;
 }
 function adFilteredRows(all,exceptKey){
@@ -4858,6 +4933,7 @@ const adFmtD = v => v===Infinity? "∞" : Math.round(v);
 function renderAdsTab(){
   const el=document.getElementById("adTable"); if(!el) return;
   initAdDateBounds();
+  { const c=document.getElementById("adDrrTree"); if(c) c.hidden = adView!=="perf"; }
   /* Группы сортируем по числу карточек: первой должна открываться самая крупная
      («Пушкары», 75 товаров), а не та, что случайно раньше в каталоге. */
   /* Сначала группы с НАСТОЯЩИМИ склейками (по числу карточек), потом категории, где
@@ -4865,8 +4941,13 @@ function renderAdsTab(){
      без склеек («Машинки», 162), а не «Пушкары», по которым реклама и ведётся. */
   const real=adRealGroups();
   const gCnt={}; (RD.catalog||[]).forEach(c=>{ const g=adGroupOf(c); gCnt[g]=(gCnt[g]||0)+1; });
+  /* Порядок и выбор по умолчанию — ПО РАСХОДУ РЕКЛАМЫ, а не по числу карточек.
+     По количеству первой открывалась категория «Машинки» (162 карточки, но 4 089 ₽
+     расхода), а разбирать надо «Пушкары» — 443 154 ₽. Категории без склеек уходят вниз. */
+  const gSpend={};
+  try{ adPerfRows().forEach(r=>{ gSpend[r.group]=(gSpend[r.group]||0)+(r.spend||0); }); }catch(e){}
   const groups=Object.keys(gCnt).sort((a,b)=>
-    (real.has(b)-real.has(a)) || (gCnt[b]-gCnt[a]));
+    (real.has(b)-real.has(a)) || ((gSpend[b]||0)-(gSpend[a]||0)) || (gCnt[b]-gCnt[a]));
   const sel=document.getElementById("adGroupSel");
   if(sel && sel.options.length!==groups.length+1){
     sel.innerHTML=groups.map(g=>`<option value="${esc(g)}">${esc(g)} (${gCnt[g]})`
@@ -4887,6 +4968,7 @@ function renderAdsTab(){
             +` У остальных группировка идёт по категории ВБ и вся категория считается одной склейкой —`
             +` это грубее. Пришлите выгрузку XWAY с колонками «Группа» и «Теги» по недостающим категориям.</span>` : ""; })();
   }
+  renderAdDrrLevels();
   if(adView==="perf"){ renderAdsPerf(); return; }
   const all=adFiltered();
   const S=list=>sortRows(list,adSortState,{ name:r=>r.name, category:r=>r.category||"", sku:r=>+r.sku||0, sup:r=>+r.sup||0,
@@ -5001,6 +5083,73 @@ function renderAdsTab(){
    ассоциативными заказами. Решение принимается по ДРР с ассоциативными: реклама одного
    товара приносит продажи другим, и «лошадку» с плохим личным ДРР выключать незачем,
    если по всем пришедшим продажам экономика сходится. */
+/* ==================== ПИРАМИДА ДРР ====================
+   Продавец смотрит ДРР на ЧЕТЫРЁХ уровнях (правило от 01.09.2026):
+     1) весь ассортимент — на это смотрит руководство;
+     2) категория (она же группа склеек) — руководство и он;
+     3) склейка внутри категории — его рабочий уровень;
+     4) товар — куда он в итоге лезет ставкой.
+   «Чтобы повлиять на ДРР по кабинету, я должен знать ДРР на каждом отрезке».
+
+   ОДНА ФОРМУЛА НА ВСЕХ УРОВНЯХ, И ОНА В ВЫКУПЕ:
+       ДРР = расход ÷ (выручка карточек уровня в ЗАКАЗАХ × % выкупа)
+   Знаменатель — `totRub` («Общая сумма заказов»), БЕЗ «заказов других артикулов»:
+   соседние карточки уже входят в выручку своего же уровня, и добавление othRub
+   считало бы их дважды. Благодаря этому уровни складываются: сумма склеек = категория,
+   сумма категорий = весь ассортимент, и цифра в заказах совпадает с кабинетом XWAY
+   (26–30.08: 7.8%), а в выкупе выходит выше — именно её продавец и держит ≤7%. */
+function adLevels(){
+  const rows=adPerfRows(), bo=adBuyout();
+  const mk=list=>{ const sp=list.reduce((a,r)=>a+r.spend,0);
+    const ord=list.reduce((a,r)=>a+r.totRub,0), rev=ord*bo;
+    return {sp, ord, rev, drr: rev>0? sp/rev*100 : (sp>0? Infinity:0),
+      n:list.length, ads:list.filter(r=>r.spend>0).length}; };
+  const byG={}; rows.forEach(r=>(byG[r.group]||(byG[r.group]=[])).push(r));
+  const groups=Object.entries(byG).map(([g,l])=>({key:g, ...mk(l)}))
+    .sort((a,b)=>b.sp-a.sp);
+  const cur=adGroup? (byG[adGroup]||[]) : rows;
+  const byT={}; cur.forEach(r=>(byT[r.tag]||(byT[r.tag]=[])).push(r));
+  const tags=Object.entries(byT).map(([t,l])=>({key:t, ...mk(l)})).sort((a,b)=>b.sp-a.sp);
+  return {all:mk(rows), groups, tags, bo};
+}
+function renderAdDrrLevels(){
+  const card=document.getElementById("adDrrTree"), el=document.getElementById("adDrrLevels");
+  if(!card||!el) return;
+  if(adView!=="perf" || !(RD&&RD.adPerf)){ card.hidden=true; return; }
+  card.hidden=false;
+  const L=adLevels(), P=RD.adPerf;
+  const maxSp=Math.max(L.all.sp,1);
+  /* Расход меньше порога — ДРР не показываем: «0.0%» при расходе 5 ₽ читается как
+     идеальная кампания, хотя рекламы там просто нет. */
+  const badge=(v,sp)=> sp<AD_MIN_SPEND
+    ? `<span class="badge nodata"><span class="d"></span>${sp>0? "мелкий расход":"нет рекламы"}</span>`
+    : adDrrBadge(v);
+  const bar=sp=>`<div class="lv-bar"><i style="width:${Math.max(2,Math.round(sp/maxSp*100))}%;background:${
+    sp/maxSp>0.5?"var(--accent)":"var(--border-2)"}"></i></div>`;
+  const line=(o,cls,nmSub,click)=>`<div class="lv ${cls}"${click?` data-k="${esc(click.k)}" data-v="${esc(click.v)}"`:""}>`
+    +`<div class="lv-nm">${esc(o.key||o.name)}${nmSub?`<small>${esc(nmSub)}</small>`:""}</div>`
+    +`<div class="lv-n">${fmt(Math.round(o.sp))} ₽</div>`
+    +`<div class="lv-n">${fmt(Math.round(o.rev))} ₽</div>`
+    +`<div class="lv-n">${badge(o.drr,o.sp)}</div>`
+    +bar(o.sp)+`</div>`;
+  const head=`<div class="lv" style="padding-bottom:0"><div class="lv-nm" style="color:var(--muted);font-size:11px">Уровень</div>`
+    +`<div class="lv-n" style="font-size:11px">расход</div><div class="lv-n" style="font-size:11px">выручка в выкупе</div>`
+    +`<div class="lv-n" style="font-size:11px">ДРР</div><div></div></div>`;
+  let html=`<div class="drrlv">`+head
+    +`<div class="lv total">`
+      +`<div class="lv-nm">Весь ассортимент<small>${L.all.ads} кампаний на ${L.all.n} карточках · ${fmtDateLong(P.from)} – ${fmtDateLong(P.to)}</small></div>`
+      +`<div class="lv-n">${fmt(Math.round(L.all.sp))} ₽</div>`
+      +`<div class="lv-n">${fmt(Math.round(L.all.rev))} ₽</div>`
+      +`<div class="lv-n">${badge(L.all.drr,L.all.sp)}</div>`+bar(L.all.sp)+`</div>`
+    +`<div class="lv-h">Категории — клик выбирает</div>`
+    +L.groups.map(g=>line(g,"clickable"+(adGroup===g.key?" sel":""),
+        g.ads+" кампаний · "+g.n+" карточек",{k:"group",v:g.key})).join("")
+    +`<div class="lv-h">Склейки${adGroup? " — категория «"+esc(adGroup)+"»" : " — все категории"} · клик фильтрует таблицу</div>`
+    +L.tags.map(t=>line(t,"clickable"+((adColFilters.tag&&adColFilters.tag.has(t.key))?" sel":""),
+        t.ads+" кампаний · "+t.n+" карточек",{k:"tag",v:t.key})).join("")
+    +`</div>`;
+  el.innerHTML=html;
+}
 /* Сортировка в «Отдаче» — ВНУТРИ склейки: сами склейки всегда идут по расходу сверху вниз
    (разбор ведётся от самой дорогой), а клик по шапке переставляет товары внутри неё.
    Без известного ключа — по расходу, как было. */
@@ -5021,6 +5170,14 @@ function renderAdsPerf(){
   const q=(document.getElementById("adSearch")?.value||"").trim().toLowerCase();
   let rows=adFilteredRows(adBaseRows(),null);
   if(q) rows=rows.filter(r=>(r.sku+" "+r.sup+" "+r.name+" "+r.tag).toLowerCase().includes(q));
+  /* ЗНАМЕНАТЕЛЬ ДРР — ВСЯ СКЛЕЙКА (решение продавца 01.09.2026, как в кабинете XWAY):
+     в выручку идут и карточки без рекламы — «лошадка» тянет продажи соседям, и они
+     законно идут в зачёт. `rows` — что показываем (только с кампанией), `fullByTag` —
+     из чего считаем. Проверка: Пушкары 26–30.08 дают 7.8% (на экране продавца 7.7%),
+     а по одним рекламируемым выходило 11.3%. */
+  const fullByTag={};
+  adPerfRows().forEach(r=>{ if(adGroup && r.group!==adGroup) return;
+    (fullByTag[r.tag]||(fullByTag[r.tag]=[])).push(r); });
   const bo=adBuyout();
   const agg=list=>{ const sp=list.reduce((a,x)=>a+x.spend,0);
     const rD=list.reduce((a,x)=>a+x.revD,0), rA=list.reduce((a,x)=>a+x.revA,0);
@@ -5038,29 +5195,35 @@ function renderAdsPerf(){
       drrD: rD>0? sp/rD*100:(sp>0?Infinity:0), drrA: rA>0? sp/rA*100:(sp>0?Infinity:0),
       cpo: o>0? sp/o : (sp>0? Infinity:0),
       max7: adMaxCpo(aov,bow,AD_DRR_GOAL), max6: adMaxCpo(aov,bow,AD_DRR_GREAT)}; };
-  const T=agg(rows);
+  // итог по вкладке — тоже по всей выборке склеек (знаменатель = все карточки)
+  const T=agg(Object.values(fullByTag).flat());
   const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
   document.getElementById("adKpis").innerHTML=[
     {lbl:"Расход за период, ₽", val:fmt(Math.round(T.sp)),
      tip:`<div class="t-hd">Период рекламы</div>`+tr2("С",fmtDateLong(P.from))+tr2("По",fmtDateLong(P.to))
        +tr2("Кампаний в выборке",rows.length)},
-    {lbl:"ДРР в выкупе (цель ≤"+AD_DRR_GOAL+"%)", val:adDrrTxt(T.drrA),
-     valColor: T.drrA<=AD_DRR_GREAT? "var(--good-txt)" : (T.drrA<=AD_DRR_GOAL? "var(--warn-txt)" : "var(--crit-txt)"),
+    /* ГЛАВНАЯ ЦИФРА — ДРР В ВЫКУПЕ ПО ВЫБОРКЕ, знаменатель без «заказов других артикулов»:
+       на уровне склейки/категории соседние карточки уже сидят в своей же выручке, и их
+       добавление считало бы продажи дважды. `drrA` остаётся только в строке товара. */
+    {lbl:"ДРР в выкупе (цель ≤"+AD_DRR_GOAL+"%)", val:adDrrTxt(T.drrD),
+     valColor: T.drrD<=AD_DRR_GREAT? "var(--good-txt)" : (T.drrD<=AD_DRR_GOAL? "var(--warn-txt)" : "var(--crit-txt)"),
      tip:`<div class="t-hd">Как считается</div>`
        +tr2("Расход",fmt(Math.round(T.sp))+" ₽")
-       +tr2("Вся выручка товаров + заказы др. артикулов",fmt(Math.round(T.rA/bo))+" ₽")
+       +tr2("Выручка всех карточек выборки, в заказах",fmt(Math.round(T.rD/bo))+" ₽")
        +tr2("× % выкупа",(bo*100).toFixed(0)+"%")
-       +tr2("= выручка в выкупе",fmt(Math.round(T.rA))+" ₽")
-       +tr2("ДРР",adDrrTxt(T.drrA))
+       +tr2("= выручка в выкупе",fmt(Math.round(T.rD))+" ₽")
+       +tr2("ДРР в выкупе",adDrrTxt(T.drrD))
+       +tr2("ДРР в заказах (как в кабинете)",(T.rD>0? (T.sp/(T.rD/bo)*100).toFixed(1)+"%":"—"))
        +`<div class="t-hd">Цель</div>`+tr2("не более",AD_DRR_GOAL+"%")+tr2("хорошо",AD_DRR_GREAT+"%")
        +tr2("идеально","ниже "+AD_DRR_GREAT+"%")},
-    {lbl:"Только свой товар, ДРР", val:adDrrTxt(T.drrD),
-     tip:`<div class="t-hd">Без ассоциативных заказов</div>`
-       +tr2("Вся выручка рекламируемых товаров",fmt(Math.round(T.rD/bo))+" ₽")
-       +tr2("× % выкупа",(bo*100).toFixed(0)+"%")
-       +tr2("= в выкупе",fmt(Math.round(T.rD))+" ₽")
-       +tr2("ДРР",adDrrTxt(T.drrD))
-       +tr2("Разница с общим — заказы других артикулов, пришедшие с этой рекламы")},
+    {lbl:"ДРР в заказах (кабинет XWAY)", val:(T.rD>0? (T.sp/(T.rD/bo)*100).toFixed(1)+"%":"—"),
+     tip:`<div class="t-hd">Зачем эта цифра</div>`
+       +tr2("Именно её показывает XWAY — по ней сверяетесь с кабинетом")
+       +tr2("Выручка в заказах",fmt(Math.round(T.rD/bo))+" ₽")
+       +tr2("Расход",fmt(Math.round(T.sp))+" ₽")
+       +tr2("ДРР в заказах",(T.rD>0? (T.sp/(T.rD/bo)*100).toFixed(1)+"%":"—"))
+       +tr2("Ваша цель ≤"+AD_DRR_GOAL+"% задана В ВЫКУПЕ, поэтому в заказах она примерно "
+            +(AD_DRR_GOAL*bo).toFixed(1)+"%")},
     {lbl:"CPO факт / потолок, ₽",
      val:(T.cpo===Infinity? "—" : fmt(Math.round(T.cpo)))+" / "+fmt(Math.round(T.max7)),
      valColor: (T.cpo<=T.max6? "var(--good-txt)" : (T.cpo<=T.max7? "var(--warn-txt)" : "var(--crit-txt)")),
@@ -5086,11 +5249,12 @@ function renderAdsPerf(){
     +`<th>Расход ₽</th><th>Выручка ₽ (выкуп)</th>`+F("ДРР общий","drrA")+F("ДРР свой","drrD")
     +F("CPO факт","cpoOver")+`<th>Макс CPO</th>`+F("Чек · выкуп","boOwn")
     +`<th>Заказы</th><th>+ др. арт.</th><th>CTR %</th><th>Решение</th></tr></thead><tbody>`;
-  Object.entries(byTag).map(([t,l])=>({t,l,a:agg(l)})).sort((a,b)=>b.a.sp-a.a.sp).forEach(({t,l,a})=>{
+  Object.entries(byTag).map(([t,l])=>({t,l,a:agg(fullByTag[t]||l)})).sort((a,b)=>b.a.sp-a.a.sp).forEach(({t,l,a})=>{
     const verdict = a.drrA<=AD_DRR_GOAL
       ? `<span class="badge good"><span class="d"></span>В цели</span>`
       : `<span class="badge critical"><span class="d"></span>Править склейку</span>`;
-    html+=`<tr class="row-group"><td class="metric" style="font-weight:700;padding-top:12px">Склейка «${esc(t)}» · ${l.length} кампаний</td>`
+    html+=`<tr class="row-group"><td class="metric" style="font-weight:700;padding-top:12px">Склейка «${esc(t)}» · ${l.length} кампаний`
+      +`<span class="sub2 mut">выручка по всем ${(fullByTag[t]||l).length} карточкам склейки</span></td>`
       +`<td colspan="2"></td>`
       +`<td style="font-weight:700" class="${a.msk?"":"d-zero"}">${a.msk? fmt(a.msk):"—"}`
       +`<span class="sub2 ${a.mskDays<AD_MIN_MSK_DAYS?"crit":"mut"}">${a.spd>0? adFmtD(a.mskDays)+" дн":"нет продаж"}</span></td>`
@@ -5134,7 +5298,7 @@ function renderAdHowTo(){
     el.innerHTML=`<div class="howto-t">КАК ЧИТАТЬ ОТДАЧУ РЕКЛАМЫ${adGroup? " — "+esc(adGroup):""}</div>`
       +`<div class="howto-s">`
       +[`Смотрим сверху вниз: общий итог → склейка → товар, и правим там, где не попали в цель`,
-        `База ДРР — ВСЯ выручка товара за период, а не только заказы, пришедшие с рекламы`,
+        `База ДРР у склейки — выручка ВСЕХ её карточек, включая те, где реклама не крутится: «лошадка» тянет продажи соседям`,
         `Выручка в отчёте стоит в ЗАКАЗАХ, поэтому умножаем её на % выкупа ${(bo*100).toFixed(0)}% — ДРР считается В ВЫКУПЕ`,
         `ДРР общий = расход ÷ (вся выручка товара + заказы других артикулов, пришедшие с этой рекламы)`,
         `Цель: не более ${AD_DRR_GOAL}%, хорошо ${AD_DRR_GREAT}%, ниже ${AD_DRR_GREAT}% — идеально`,
@@ -6371,7 +6535,298 @@ function renderProductPeriods(){
 /* =========================================================================
    13. ВКЛАДКИ
    ========================================================================= */
-const TABS=["home","dynamics","turnover","stockrate","product","finance","ads","analytics"];
+/* ==================== ВКЛАДКА «РЕКОМЕНДАЦИИ» ====================
+   Первая вкладка: продавец заходит и сразу видит, что делать сегодня и почему.
+   Считается ИЗ ТЕХ ЖЕ функций, что и остальные вкладки (`resupplyRows`, `srRows`,
+   `adRows`, `adPerfRows`), — чтобы цифры не разъезжались: рекомендация обязана
+   совпадать с той вкладкой, куда она отправляет.
+
+   ДВА БЛОКА:
+   · «Что изменилось» — причинно-следственные связи: заказы за последние 7 дней
+     против предыдущих 7, и ПОЧЕМУ они изменились (цена, показы, конверсия,
+     остаток, реклама). Продавец просил именно связи, а не голые дельты.
+   · «Что делать» — действия, отсортированные по деньгам и срочности.
+
+   ЧЕГО ЗДЕСЬ СОЗНАТЕЛЬНО НЕТ: выдумывания причин. Если ни один признак не сработал,
+   так и пишем «причина не видна в данных» — лучше честно, чем правдоподобно. */
+const REC_WIN=7;                    // окно сравнения «неделя к неделе»
+const REC_PRICE_D=0.08;             // ±8% по цене — уже повод
+const REC_IMP_D=0.25;               // ±25% по показам
+const REC_CR_D=0.20;                // ±20% по конверсии
+let recFilter="all";
+const recPct = (a,b) => b>0? (a/b-1) : (a>0? Infinity : 0);
+const recPctTxt = v => (v>0?"+":"")+Math.round(v*100)+"%";
+
+/* Сводка по окну: заказы, деньги, воронка и остаток на конец окна — по каждому sku ВБ. */
+function recWindowAgg(dates){
+  const S=(RD&&RD.orderSeries)||{}, M=S.money||{}, idx={};
+  (S.dates||[]).forEach((d,i)=>idx[d]=i);
+  const set=new Set(dates), out={};
+  const get=s=>out[s]||(out[s]={qty:0,rub:0,imp:0,cv:0,ord:0,buy:0,stock:null,zeroDays:0});
+  dates.forEach(d=>{ const i=idx[d]; if(i==null) return;
+    Object.entries(S.bySku||{}).forEach(([sku,arr])=>{ const q=arr[i]||0; if(q) get(sku).qty+=q; });
+    const m=M[d]||{}; Object.entries(m).forEach(([sku,v])=>{ get(sku).rub+=(v&&v[0])||0; });
+  });
+  (typeof FUNNEL_CACHE!=="undefined"? FUNNEL_CACHE:[]).forEach(r=>{ if(!set.has(r.date)) return;
+    const e=get(""+r.sku);
+    e.imp+=r.impressions||0; e.cv+=r.cardViews||0; e.ord+=r.ordersQty||0; e.buy+=r.buyoutQty||0;
+    if(r.wbStock!=null){ if((r.wbStock||0)<=0) e.zeroDays++; e.stock=r.wbStock; }   // последний день окна
+  });
+  return out;
+}
+/* Расход рекламы по окну — из накопленных частей выгрузки. Часть засчитывается,
+   только если её период ЦЕЛИКОМ внутри окна: иначе сравнивали бы разные отрезки. */
+function recAdsInWindow(dates){
+  const P=(RD&&RD.adPerf)||null; if(!P) return null;
+  const parts=P.parts||[{from:P.from,to:P.to,bySku:P.bySku}];
+  const lo=dates[0], hi=dates[dates.length-1];
+  const inside=parts.filter(p=>p.from>=lo && p.to<=hi);
+  if(!inside.length) return null;
+  const out={}; inside.forEach(p=>Object.entries(p.bySku).forEach(([s,e])=>{ out[s]=(out[s]||0)+(e.spend||0); }));
+  return {bySku:out, from:inside[0].from, to:inside[inside.length-1].to, full:inside.length===parts.length};
+}
+/* ПРИЧИНА ИЗМЕНЕНИЯ. Признаки проверяются по убыванию «весомости»: физика (остаток)
+   сильнее цены, цена сильнее видимости, видимость сильнее конверсии. */
+function recReason(a,b,ad1,ad0){
+  const out=[];
+  const p1=a.qty>0? a.rub/a.qty:0, p0=b.qty>0? b.rub/b.qty:0;
+  const cr1=a.cv>0? a.ord/a.cv:0, cr0=b.cv>0? b.ord/b.cv:0;
+  const down=a.qty<b.qty;
+  if(down && a.zeroDays>=2) out.push({k:"stock",t:`остаток на ВБ был нулевым <b class="num">${a.zeroDays}</b> дн из ${REC_WIN}`});
+  else if(!down && b.zeroDays>=2) out.push({k:"stock",t:`неделю назад товара не было <b class="num">${b.zeroDays}</b> дн — сейчас появился`});
+  if(p0>0&&p1>0){ const d=recPct(p1,p0);
+    if(Math.abs(d)>=REC_PRICE_D) out.push({k:"price",dir:d>0?1:-1,
+      t:`цена ${d>0?"выросла":"упала"} на <b class="num">${Math.abs(Math.round(d*100))}%</b> — ${fmt(Math.round(p0))} → ${fmt(Math.round(p1))} ₽`}); }
+  if(b.imp>300){ const d=recPct(a.imp,b.imp);
+    if(Math.abs(d)>=REC_IMP_D) out.push({k:"imp",dir:d>0?1:-1,
+      t:`показов ${d>0?"больше":"меньше"} на <b class="num">${Math.abs(Math.round(d*100))}%</b> (${fmt(b.imp)} → ${fmt(a.imp)})`}); }
+  if(cr0>0&&b.cv>200){ const d=recPct(cr1,cr0);
+    if(Math.abs(d)>=REC_CR_D) out.push({k:"cr",dir:d>0?1:-1,
+      t:`конверсия в заказ ${d>0?"выросла":"упала"} — ${(cr0*100).toFixed(1)}% → ${(cr1*100).toFixed(1)}%`}); }
+  if(ad1!=null&&ad0!=null){ const d=ad0>0? recPct(ad1,ad0) : (ad1>0? Infinity:0);
+    if(ad0>0 && Math.abs(d)>=0.3) out.push({k:"ads",dir:d>0?1:-1,
+      t:`расход на рекламу ${d>0?"вырос":"снизился"} — ${fmt(Math.round(ad0))} → ${fmt(Math.round(ad1))} ₽`});
+    else if(!ad0 && ad1>0) out.push({k:"ads",dir:1,t:`включили рекламу — <b class="num">${fmt(Math.round(ad1))}</b> ₽`});
+    else if(ad0>0 && !ad1) out.push({k:"ads",dir:-1,t:`рекламу выключили (было ${fmt(Math.round(ad0))} ₽)`}); }
+  /* ПРИЧИНА ДОЛЖНА ОБЪЯСНЯТЬ НАПРАВЛЕНИЕ. «Показов больше» не объясняет падение заказов —
+     такие признаки оставляем, только если рядом есть просевшая конверсия: тогда это как раз
+     и есть объяснение («трафика дали больше, а покупать стали хуже»). Иначе убираем, чтобы
+     не выдавать за причину то, что причиной не является. */
+  const hasCr=out.some(x=>x.k==="cr" && x.dir===(down?-1:1));
+  return out.filter(x=>{
+    if(x.k==="stock") return true;
+    const helps = down? x.dir===-1 : x.dir===1;
+    if(x.k==="price") return down? x.dir===1 : x.dir===-1;   // рост цены роняет заказы, падение — поднимает
+    if(helps) return true;
+    return hasCr && (x.k==="imp"||x.k==="ads");
+  });
+}
+function recChanges(){
+  const S=(RD&&RD.orderSeries)||null;
+  if(!S||!S.dates||S.dates.length<REC_WIN*2) return {rows:[],w1:null,w0:null,adNote:""};
+  const d=S.dates, n=d.length;
+  const w1=d.slice(n-REC_WIN), w0=d.slice(n-REC_WIN*2,n-REC_WIN);
+  const A=recWindowAgg(w1), B=recWindowAgg(w0);
+  const ad1=recAdsInWindow(w1), ad0=recAdsInWindow(w0);
+  const byS={}; (RD.catalog||[]).forEach(c=>byS[""+c.sku]=c);
+  const rows=Object.keys({...A,...B}).map(sku=>{
+    const a=A[sku]||{qty:0,rub:0,imp:0,cv:0,ord:0,zeroDays:0}, b=B[sku]||{qty:0,rub:0,imp:0,cv:0,ord:0,zeroDays:0};
+    const c=byS[sku]||{};
+    const s1=ad1? (ad1.bySku[sku]||0):null, s0=ad0? (ad0.bySku[sku]||0):null;
+    return {sku, name:c.name||sku, category:c.category||"", sup:(""+(c.supplierCode||"")).trim(),
+      q1:a.qty, q0:b.qty, dq:a.qty-b.qty, r1:a.rub, r0:b.rub, dr:a.rub-b.rub,
+      reasons:recReason(a,b,s1,s0)};
+  }).filter(r=>r.q1>0||r.q0>0);
+  rows.sort((x,y)=>Math.abs(y.dr)-Math.abs(x.dr));
+  return {rows, w1, w0,
+    adNote: (ad1&&ad0)? "" : "расход на рекламу за прошлую неделю не загружен — как причину не проверяю"};
+}
+
+/* ---- Действия ---- */
+function recBuild(){
+  const R=[], bo=adBuyout();
+  const add=o=>{ if(o) R.push(o); };
+  const money=v=>fmt(Math.round(v));
+  // ---- 1. Подсорт со склада ----
+  let rs=[]; try{ rs=resupplyRows(); }catch(e){ rs=[]; }
+  const shipO=rs.filter(r=>r.shipO>0).sort((a,b)=>a.oDays-b.oDays);
+  const qO=shipO.reduce((a,r)=>a+r.shipO,0);
+  if(qO>0) add({sev: shipO.some(r=>r.oDays<10)?"crit":"warn", key:"shipO",
+    title:"Отгрузить на Ozon "+fmt(qO)+" шт со своего склада",
+    why:`Считаю по правилу «держать на площадке 30 дней запаса». Срочных (покрытие меньше 10 дней) — <b class="num">${shipO.filter(r=>r.oDays<10).length}</b> из ${shipO.length}. Товар есть на складе, отгрузка не требует ничего, кроме поставки.`,
+    items: shipO.slice(0,6).map(r=>({n:fmt(r.shipO)+" шт", x:r.name, w:(r.oDays===Infinity?"∞":Math.round(r.oDays))+" дн на Озоне"})),
+    tab:"turnover", view:"resupply", rank: 3});
+  // ---- 2. Перемещение Евросиб → Нск-1 ----
+  const mv=rs.filter(r=>r.move>0).sort((a,b)=>a.nsk1Days-b.nsk1Days);
+  const qM=mv.reduce((a,r)=>a+r.move,0);
+  if(qM>0) add({sev:"warn", key:"move",
+    title:"Перевезти Евросиб → Нск-1: "+fmt(qM)+" шт",
+    why:`FBS на Wildberries уходит со склада Нск-1. По <b class="num">${mv.length}</b> кодам там осталось меньше ${NSK1_MIN_DAYS} дней продаж, а на Евросибе товар есть. Пока не перевезёте — эти заказы просто не будут выкупаться.`,
+    items: mv.slice(0,6).map(r=>({n:fmt(r.move)+" шт", x:r.name, w:"на Нск-1 "+fmt(r.nsk1Free)+" шт"})),
+    tab:"turnover", view:"resupply", rank: 4});
+  // ---- 3. Нечем закрыть ----
+  const cant=rs.filter(r=>r.needO>0 && r.shipO<r.needO && r.have<=0);
+  if(cant.length) add({sev:"crit", key:"cant",
+    title:"Нечем закрыть: "+cant.length+" позиций",
+    why:`Товар кончается на площадке, а на складе его нет. Здесь помогает только производство или закуп — чем раньше поставите в план, тем короче простой.`,
+    items: cant.slice(0,6).map(r=>({n:fmt(r.needO-r.shipO)+" шт", x:r.name,
+      w:(r.china+r.onOrder>0? "едет "+fmt(r.china+r.onOrder)+" шт" : "ничего не едет")})),
+    tab:"turnover", view:"resupply", rank: 1});
+  /* ---- 4. Реклама на товар без запаса в Москве ----
+     ВСЕГДА по всему ассортименту: `adRows()` фильтрует по выбранной на «Рекламе»
+     категории, и без этой развязки рекомендации молча сужались до неё — продавец
+     выбрал «Светофоры», вернулся сюда и не увидел перерасход по «Пушкарам». */
+  let ar=[]; { const g=adGroup; adGroup=null;
+    try{ ar=adRows(); }catch(e){ ar=[]; } finally { adGroup=g; } }
+  const risk=ar.filter(r=>r.adSpend>=AD_MIN_SPEND && r.mskDays<AD_MIN_MSK_DAYS).sort((a,b)=>b.adSpend-a.adSpend);
+  const riskSum=risk.reduce((a,r)=>a+r.adSpend,0);
+  if(risk.length) add({sev:"crit", key:"adRisk", money:riskSum,
+    title:"Выключить рекламу на товар без запаса в Москве",
+    why:`<b class="num">${money(riskSum)} ₽</b> за период выгрузки ушло на <b class="num">${risk.length}</b> кампаний, у которых московского FBS-остатка хватает меньше чем на ${AD_MIN_MSK_DAYS} дней. Реклама разгоняет спрос, товар кончается в середине кампании — деньги уходят, карточка проседает в выдаче.`,
+    items: risk.slice(0,6).map(r=>({n:money(r.adSpend)+" ₽", x:r.name,
+      w:(r.msk>0? "Мск "+fmt(r.msk)+" шт · "+adFmtD(r.mskDays)+" дн" : "в Москве пусто")})),
+    tab:"ads", view:"cand", rank: 2});
+  // ---- 5. Склейки выше цели по ДРР ----
+  let pr=[]; try{ pr=adPerfRows(); }catch(e){ pr=[]; }
+  if(pr.length){
+    const byTag={}; pr.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
+    const over=Object.entries(byTag).map(([t,l])=>{
+      const sp=l.reduce((a,x)=>a+x.spend,0), rev=l.reduce((a,x)=>a+x.totRub,0)*bo;
+      const drr=rev>0? sp/rev*100 : (sp>0? Infinity:0);
+      const goal=rev*AD_DRR_GOAL/100;                       // сколько можно было потратить в цели
+      return {tag:t, sp, rev, drr, over: sp-goal, n:l.filter(x=>x.spend>0).length};
+    }).filter(x=>x.sp>=AD_MIN_SPEND && x.drr>AD_DRR_GOAL).sort((a,b)=>b.over-a.over);
+    const overSum=over.reduce((a,x)=>a+x.over,0);
+    if(over.length) add({sev:"warn", key:"drr", money:overSum,
+      title:"Снизить ставки: "+over.length+" склеек выше цели по ДРР",
+      why:`Цель — ДРР не выше ${AD_DRR_GOAL}% в выкупе. Перерасход против цели — <b class="num">${money(overSum)} ₽</b>. Считаю по всей склейке: выручка всех её карточек, включая нерекламируемые, потому что «лошадка» тянет продажи соседям.`,
+      items: over.slice(0,6).map(x=>({n:x.drr===Infinity?"нет продаж":x.drr.toFixed(1)+"%", x:"Склейка «"+x.tag+"» · "+x.n+" кампаний",
+        w:"перерасход "+money(x.over)+" ₽"})),
+      tab:"ads", view:"perf", rank: 5});
+  }
+  // ---- 6. Кандидаты без рекламы ----
+  const idle=ar.filter(r=>r.ok && !(r.adSpend>=AD_MIN_SPEND)).sort((a,b)=>b.rub-a.rub);
+  if(idle.length) add({sev:"info", key:"idle",
+    title:"Можно запускать: "+idle.length+" кандидатов без рекламы",
+    why:`Категория A внутри своей склейки, и московского остатка хватает минимум на ${AD_MIN_MSK_DAYS} дней. Это те позиции, на которых реклама не встанет посреди кампании.`,
+    items: idle.slice(0,6).map(r=>({n:money(r.rub)+" ₽", x:r.name,
+      w:"Мск "+fmt(r.msk)+" шт · "+adFmtD(r.mskDays)+" дн"})),
+    tab:"ads", view:"cand", rank: 7});
+  // ---- 7. Цена и темп ----
+  let sr=[]; try{ sr=srRows(); }catch(e){ sr=[]; }
+  const shortSr=sr.filter(r=>r.verdict==="short");
+  const upSr=sr.filter(r=>r.verdict==="up").sort((a,b)=>(b.ratio||0)-(a.ratio||0));
+  if(shortSr.length) add({sev:"crit", key:"srShort",
+    title:"Не хватит даже Озону: "+shortSr.length+" позиций",
+    why:`По этим кодам весь запас выбирает Ozon — на Wildberries не остаётся ничего даже при нулевых продажах. Поднимать цену тут помогает лишь частично: цена общая, она притормозит и Ozon.`,
+    items: shortSr.slice(0,6).map(r=>({n:fmt(Math.round(r.stock||0))+" шт", x:r.name, w:"до партии "+(r.hz||"?")+" дн"})),
+    tab:"stockrate", rank: 2});
+  if(upSr.length) add({sev:"warn", key:"srUp",
+    title:"Поднять цену: "+upSr.length+" позиций продаются быстрее, чем нужно",
+    why:`Темп выше цели больше чем на ${Math.round(SR_BAND*100)}% — товар кончится раньше, чем придёт партия. Цель в таблице дана в ЗАКАЗАХ в день, её и вводите в репрайсер.`,
+    items: upSr.slice(0,6).map(r=>({n:(r.targetOrders!=null? Math.round(r.targetOrders):"—")+" зак/дн", x:r.name,
+      w:"сейчас "+Math.round(r.ordWb||0)+" зак/дн"})),
+    tab:"stockrate", rank: 6});
+  // ---- 8. Дозаказ на фабрику ----
+  const reorder=rs.filter(r=>{ const spd=(r.wSpd||0)+(r.oSpd||0); if(spd<=0) return false;
+      const have=(r.wCovAll||0)+(r.oCov||0)+(r.have||0)+(r.china||0)+(r.onOrder||0);
+      r._days=have/spd; return r._days<TURN_MIN_DAYS; })
+    .sort((a,b)=>a._days-b._days);
+  if(reorder.length) add({sev:"warn", key:"reorder",
+    title:"Дозаказать на фабрике: "+reorder.length+" позиций",
+    why:`Считаю всю трубу — остаток на площадках, свой склад, то что едет из Китая и уже заказано производству. Если этого меньше чем на ${TURN_MIN_DAYS} дней продаж, партию пора ставить в план: до полки товар идёт около 4 месяцев.`,
+    items: reorder.slice(0,6).map(r=>({n:Math.round(r._days)+" дн", x:r.name,
+      w:"нужно ~"+fmt(Math.ceil(((r.wSpd||0)+(r.oSpd||0))*TURN_COVER_DAYS))+" шт"})),
+    tab:"turnover", view:"buyAvg", rank: 8});
+  // ---- 9. Чего не хватает в данных ----
+  const gaps=[];
+  const noTag=(RD.catalog||[]).filter(c=>!c.adGroup).length;
+  if(noTag) gaps.push({n:noTag+" карточек", x:"нет склейки — Парето считается по всей категории, это грубее",
+    w:"выгрузка XWAY с «Группа» и «Теги»"});
+  const bw=RD.meta&&RD.meta.buyoutWin;
+  if(bw&&bw.to&&RLAST){ const days=Math.round((new Date(RLAST)-new Date(bw.to))/864e5);
+    if(days>21) gaps.push({n:days+" дн", x:"столько прошло с окна замера % выкупа ("+fmt2(bw.to)+")",
+      w:"сводный отчёт аналитики за дозревший период"}); }
+  const noCost=(RD.catalog||[]).filter(c=>c.costPrice==null).length;
+  if(noCost) gaps.push({n:noCost+" товаров", x:"без себестоимости — прибыль и безубыточность по ним не считаются", w:"файл себестоимости"});
+  if(gaps.length) add({sev:"info", key:"gaps",
+    title:"Чего не хватает, чтобы считать точнее",
+    why:`Это не ошибки — это места, где я работаю на допущениях. Каждый пункт закрывается одним файлом.`,
+    items:gaps, rank: 9});
+  return R.sort((a,b)=>(a.rank-b.rank));
+}
+const fmt2 = iso => { try{ return fmtDateLong(iso); }catch(e){ return iso; } };
+
+function renderRecsTab(){
+  const list=document.getElementById("recList"); if(!list) return;
+  const fresh=document.getElementById("recFreshness");
+  if(fresh){ const P=(RD&&RD.adPerf)||null;
+    fresh.innerHTML=`Заказы по ${RLAST? fmtDateLong(RLAST):"—"} · остатки ВБ на ${(RD.meta&&RD.meta.stockSnapshotDate)? fmtDateLong(RD.meta.stockSnapshotDate):"—"}`
+      +` · Ozon на ${(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)? fmtDateLong(RD.ozon.meta.stockDate):"—"}`
+      +` · склад на ${(RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date):"—"}`
+      +(P? ` · реклама ${fmtDateLong(P.from)} – ${fmtDateLong(P.to)}`:` · реклама не загружена`); }
+  const recs=recBuild();
+  const totalMoney=recs.reduce((a,r)=>a+(r.money||0),0);
+  const crit=recs.filter(r=>r.sev==="crit");
+  const ch=recChanges();
+  const drop=ch.rows.filter(r=>r.dr<0), up=ch.rows.filter(r=>r.dr>0);
+  const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  document.getElementById("recKpis").innerHTML=[
+    {lbl:"Срочных задач", val:crit.length, valColor:crit.length?"var(--crit-txt)":"var(--good-txt)",
+     tip:`<div class="t-hd">Что считается срочным</div>`+crit.map(r=>tr2(r.title)).join("")
+       +(crit.length?"":tr2("Ничего срочного — можно заниматься ростом"))},
+    {lbl:"Денег на кону, ₽", val:fmt(Math.round(totalMoney)), valColor:totalMoney?"var(--crit-txt)":"var(--text-1)",
+     tip:`<div class="t-hd">Из чего складывается</div>`
+       +recs.filter(r=>r.money).map(r=>tr2(r.title,fmt(Math.round(r.money))+" ₽")).join("")
+       +tr2("Это расход, который можно перенаправить или вернуть, а не убыток")},
+    {lbl:"Заказы: неделя к неделе", val:(()=>{const a=ch.rows.reduce((s,r)=>s+r.q1,0),b=ch.rows.reduce((s,r)=>s+r.q0,0);
+        return b>0? recPctTxt(a/b-1) : "—";})(),
+     valColor:(()=>{const a=ch.rows.reduce((s,r)=>s+r.q1,0),b=ch.rows.reduce((s,r)=>s+r.q0,0);
+        return a>=b?"var(--good-txt)":"var(--crit-txt)";})(),
+     tip:`<div class="t-hd">Окна сравнения</div>`
+       +(ch.w1? tr2("Последние 7 дней",fmtDateLong(ch.w1[0])+" – "+fmtDateLong(ch.w1[6])):"")
+       +(ch.w0? tr2("Предыдущие 7 дней",fmtDateLong(ch.w0[0])+" – "+fmtDateLong(ch.w0[6])):"")
+       +tr2("Заказано, шт",fmt(ch.rows.reduce((s,r)=>s+r.q1,0))+" против "+fmt(ch.rows.reduce((s,r)=>s+r.q0,0)))
+       +tr2("Заказано, ₽",fmt(Math.round(ch.rows.reduce((s,r)=>s+r.r1,0)))+" против "+fmt(Math.round(ch.rows.reduce((s,r)=>s+r.r0,0))))},
+    {lbl:"Просело товаров", val:drop.length, valColor:drop.length?"var(--warn-txt)":"var(--text-1)",
+     tip:`<div class="t-hd">Падение выручки за неделю</div>`
+       +tr2("Просели",drop.length)+tr2("Выросли",up.length)
+       +tr2("Суммарно",fmt(Math.round(drop.reduce((a,r)=>a+r.dr,0)))+" ₽ против +"+fmt(Math.round(up.reduce((a,r)=>a+r.dr,0)))+" ₽")},
+  ].map(kpiCard).join("");
+  wireKpiTips("recKpis");
+  // ---- что изменилось ----
+  const el=document.getElementById("recChanged");
+  const cap=document.getElementById("recChangedCap");
+  if(cap&&ch.w1) cap.textContent="Последние 7 дней ("+fmtDateLong(ch.w1[0])+" – "+fmtDateLong(ch.w1[6])
+    +") против предыдущих 7. Причина ищется по цене, показам, конверсии, остатку и рекламе."
+    +(ch.adNote? " "+ch.adNote.charAt(0).toUpperCase()+ch.adNote.slice(1)+"." : "");
+  if(!ch.rows.length){ el.innerHTML=`<div class="rec-empty">Мало истории заказов, чтобы сравнивать недели.</div>`; }
+  else {
+    const row=r=>`<div class="c-row"><div class="c-nm">${esc(r.name)}<span>${esc(r.category)} · ${skuLink(r.sku)}${r.sup?" · 1С "+esc(r.sup):""}</span></div>`
+      +`<div class="c-d ${r.dr>=0?"up":"down"}">${r.dr>=0?"+":"−"}${fmt(Math.abs(Math.round(r.dr)))} ₽<span style="display:block;font-size:11px;font-weight:600;opacity:.75">${r.q0} → ${r.q1} шт</span></div>`
+      +`<div class="c-why">${r.reasons.length? r.reasons.map(x=>x.t).join("<br>") : `<span class="muted">причина не видна в данных</span>`}</div></div>`;
+    el.innerHTML=`<div class="rec-sec" style="margin-top:10px">Просело сильнее всего</div><div class="chg">`
+      +drop.slice(0,6).map(row).join("")+`</div>`
+      +`<div class="rec-sec">Выросло сильнее всего</div><div class="chg">`
+      +up.slice(0,4).map(row).join("")+`</div>`;
+  }
+  // ---- список действий ----
+  let show=recs;
+  if(recFilter==="crit") show=recs.filter(r=>r.sev==="crit");
+  if(recFilter==="money") show=recs.filter(r=>r.money).sort((a,b)=>(b.money||0)-(a.money||0));
+  if(!show.length){ list.innerHTML=`<div class="rec-empty">Здесь пусто — по этому фильтру задач нет.</div>`; return; }
+  list.innerHTML=show.map(r=>`<div class="rec ${r.sev}">`
+    +`<div class="rec-hd"><span class="rec-t">${r.title}</span>`
+    +(r.money? `<span class="rec-money ${r.sev==="crit"?"crit":""}">${fmt(Math.round(r.money))} ₽</span>`:"")
+    +`</div><div class="rec-why">${r.why}</div>`
+    +(r.items&&r.items.length? `<div class="rec-items">`
+      +r.items.map(i=>`<div class="rec-item"><span class="ri-n">${i.n}</span>`
+        +`<span class="ri-x">${esc(i.x)}</span><span class="ri-w">${esc(i.w||"")}</span></div>`).join("")
+      +`</div>`:"")
+    +(r.tab? `<button class="rec-go" data-tab="${r.tab}"${r.view?` data-view="${r.view}"`:""}>Открыть →</button>`:"")
+    +`</div>`).join("");
+}
+const TABS=["recs","home","dynamics","turnover","stockrate","product","finance","ads","analytics"];
 function switchTab(name){
   TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
   document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
@@ -6379,6 +6834,7 @@ function switchTab(name){
   const supportsMp = !!MP_TABS[name] && !!OZDATA;
   const sw=document.getElementById("mpSwitch"); if(sw) sw.hidden=!supportsMp;
   applyMpData(supportsMp ? activeMp : "wb");
+  if(name==="recs") renderRecsTab();
   if(name==="home") renderHomeTab();
   if(name==="dynamics") renderDynamicsTab();
   if(name==="turnover") renderTurnoverTab();
@@ -6476,6 +6932,35 @@ document.getElementById("turnTable").addEventListener("click",e=>{
 document.getElementById("srTable").addEventListener("click",e=>{
   const cf=e.target.closest(".col-filter"); if(!cf) return;
   e.stopPropagation(); openColFilter(cf,cf.dataset.fkey,cf.dataset.fctx);
+});
+/* Рекомендации: сегмент фильтра и кнопки «Открыть →» (уводят на нужную вкладку и вид) */
+document.getElementById("recFilterSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); recFilter=b.dataset.f; renderRecsTab();
+});
+document.getElementById("recList").addEventListener("click",e=>{
+  const b=e.target.closest(".rec-go"); if(!b) return;
+  const tab=b.dataset.tab, view=b.dataset.view;
+  if(view && tab==="turnover"){ turnView=view; turnColFilters={};
+    document.querySelectorAll("#turnViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.view===view?"true":"false")); }
+  if(view && tab==="ads"){ adView=view; adColFilters={};
+    document.querySelectorAll("#adViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v===view?"true":"false")); }
+  switchTab(tab); window.scrollTo({top:0,behavior:"smooth"});
+});
+document.getElementById("adDrrLevels").addEventListener("click",e=>{
+  const r=e.target.closest(".lv.clickable"); if(!r) return;
+  if(r.dataset.k==="group"){
+    adGroup = (adGroup===r.dataset.v)? null : r.dataset.v;   // повторный клик — снять выбор
+    const sel=document.getElementById("adGroupSel"); if(sel){ sel.value=adGroup||"";
+      if(typeof enhanceSelect==="function") enhanceSelect(sel); }
+    delete adColFilters.tag;
+  } else {
+    const cur=adColFilters.tag;
+    if(cur && cur.has(r.dataset.v)) delete adColFilters.tag;
+    else adColFilters.tag=new Set([r.dataset.v]);
+  }
+  renderAdsTab();
 });
 document.getElementById("adTable").addEventListener("click",e=>{
   const cf=e.target.closest(".col-filter"); if(!cf) return;
@@ -6631,8 +7116,9 @@ function bootApp(){
     document.querySelectorAll("#mpSwitch .mp-btn").forEach(b=>b.classList.toggle("active",b.dataset.mp===activeMp));
     try{
       const saved=localStorage.getItem("wb_active_tab");
-      switchTab(saved&&TABS.includes(saved)? saved : "home");
-    }catch(e){ switchTab("home"); }
+      // по умолчанию открываем «Рекомендации»: продавец заходит посмотреть, что делать сегодня
+      switchTab(saved&&TABS.includes(saved)? saved : "recs");
+    }catch(e){ switchTab("recs"); }
   });
 }
 addEventListener("resize",()=>{ clearTimeout(window._rt); window._rt=setTimeout(renderActiveTab,150); });
