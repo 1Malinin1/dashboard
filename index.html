@@ -211,6 +211,39 @@
   .truckplan .tp-truck{font-size:11.5px;color:var(--text-2);padding:4px 0;border-top:1px dashed var(--border)}
   .truckplan .tp-items{display:block;color:var(--muted);font-size:10.5px;line-height:1.5;margin-top:2px}
   /* «Как считается» — цепочка расчёта над таблицей оборачиваемости */
+  /* ---- Дерево гипотез по рекламе ---- */
+  .htree{margin-top:12px}
+  .htn{border-radius:9px;padding:9px 11px;margin-top:5px;background:var(--surface-2);cursor:pointer}
+  .htn.lvl2{margin-left:18px;background:var(--surface)}
+  .htn.lvl3{margin-left:36px;background:var(--surface);cursor:default;
+    box-shadow:inset 0 0 0 1px var(--border)}
+  .htn:hover{background:var(--surface-3)}
+  .htn.lvl3:hover{background:var(--surface)}
+  .htn-h{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .htn-nm{font-weight:650;color:var(--text-1);font-size:13px;flex:1 1 200px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .htn.lvl3 .htn-nm{font-weight:520;font-size:12.5px}
+  .htn-nm small{display:block;font-size:10.5px;color:var(--muted);font-weight:500}
+  .htn-n{font-variant-numeric:tabular-nums;font-size:12px;color:var(--text-2);white-space:nowrap}
+  .htn-v{font-size:12px;font-weight:650;white-space:nowrap;padding:2px 9px;border-radius:20px}
+  .htn-v.crit{color:var(--crit-txt);background:color-mix(in srgb,var(--crit-txt) 12%,transparent)}
+  .htn-v.warn{color:var(--warn-txt);background:color-mix(in srgb,var(--warn-txt) 14%,transparent)}
+  .htn-v.good{color:var(--good-txt);background:color-mix(in srgb,var(--good-txt) 13%,transparent)}
+  .htn-v.info{color:var(--muted);background:var(--surface-3)}
+  .htn-w{font-size:12px;line-height:1.5;color:var(--text-2);margin-top:5px}
+  .htn-go{margin-top:6px;background:none;border:1px solid var(--border-2);border-radius:7px;
+    padding:3px 9px;font-size:11.5px;font-weight:600;color:var(--accent);cursor:pointer}
+  /* ---- Полоса фокуса (переход из рекомендации) ---- */
+  .focus-bar{display:flex;align-items:center;gap:9px;flex-wrap:wrap;margin:0 0 10px;
+    padding:8px 12px;border-radius:9px;font-size:12.5px;
+    background:color-mix(in srgb,var(--accent) 10%,var(--surface));
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--accent) 32%,transparent)}
+  .focus-bar .fb-t{color:var(--text-2)}
+  .focus-bar b{color:var(--text-1);font-weight:650}
+  .focus-bar .fb-n{color:var(--muted);font-variant-numeric:tabular-nums}
+  .focus-bar .fb-x{margin-left:auto;background:none;border:1px solid var(--border-2);
+    border-radius:7px;padding:4px 10px;font-size:12px;font-weight:600;color:var(--accent);cursor:pointer}
+  .focus-bar .fb-x:hover{background:var(--surface-3);border-color:var(--accent)}
   /* ---- Пирамида ДРР ---- */
   .drrlv{margin-top:10px}
   .drrlv .lv-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
@@ -796,6 +829,7 @@
     </div>
   </header>
 
+  <div class="focus-bar" id="focusBar" hidden></div>
   <nav class="tabs" id="tabs" role="tablist">
     <button class="tab-btn" data-tab="recs" role="tab" aria-selected="true">Рекомендации</button>
     <button class="tab-btn" data-tab="home" role="tab" aria-selected="false">Главная</button>
@@ -829,6 +863,12 @@
       <button data-f="money">По деньгам</button>
     </div>
     <div id="recList"></div>
+    <div class="card" style="margin:16px 0 0">
+      <h3>Гипотезы по рекламе: категория → склейка → товар</h3>
+      <div class="cap">На каждом уровне свой вердикт и почему. Потолок CPO считается по данным
+        этого же уровня — у склейки свой чек и свой % выкупа. Клик по строке разворачивает уровень ниже.</div>
+      <div id="recAdTree"></div>
+    </div>
   </section>
 
   <section id="tab-home" class="tab-panel" hidden>
@@ -1980,6 +2020,29 @@ function turnColDefs(){
 }
 function turnColDef(key){ return turnColDefs().find(d=>d.key===key); }
 // строки с учётом фильтров панели (поиск/категории/товары) + всех колоночных фильтров, кроме exceptKey
+/* ===== ФОКУС ИЗ РЕКОМЕНДАЦИИ =====
+   Просьба продавца 01.09.2026: «я должен не только перемещаться туда, где нужно увидеть
+   информацию, а ещё и список сам должен отфильтровываться» — нажал «Открыть» в блоке
+   «Нечем закрыть» и вижу ТОЛЬКО эти пять позиций, а не всю таблицу.
+   Фокус — это набор ключей (код 1С и/или артикул ВБ), который накладывается поверх
+   обычных фильтров целевой таблицы. Живёт до явного сброса или ухода на другую вкладку,
+   и всегда виден полосой сверху — иначе продавец забудет, что таблица урезана. */
+let recFocus=null;      // {keys:Set, label, tab, view}
+function focusApply(rows){
+  if(!recFocus||!recFocus.keys.size) return rows;
+  const k=recFocus.keys;
+  return rows.filter(r=> k.has(""+(r.sup||"")) || k.has(""+(r.sku||"")) || k.has(""+(r.skuWb||"")));
+}
+function renderFocusBar(){
+  const el=document.getElementById("focusBar"); if(!el) return;
+  if(!recFocus){ el.hidden=true; el.innerHTML=""; return; }
+  el.hidden=false;
+  el.innerHTML=`<span class="fb-t">Показаны только позиции из рекомендации:</span>`
+    +`<b>${esc(recFocus.label)}</b><span class="fb-n">${recFocus.keys.size} поз.</span>`
+    +`<button class="fb-x" id="focusClear">показать все</button>`;
+}
+function setFocus(f){ recFocus=f; renderFocusBar(); }
+function clearFocus(rerender){ recFocus=null; renderFocusBar(); if(rerender) renderActiveTab(); }
 function turnFilteredRows(all, exceptKey){
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
@@ -1989,7 +2052,7 @@ function turnFilteredRows(all, exceptKey){
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku)||(r.sup&&selProd.includes(r.sup)));
   turnColDefs().forEach(def=>{ if(def.key===exceptKey) return;
     const set=turnColFilters[def.key]; if(set&&set.size) rows=rows.filter(r=>set.has(def.val(r))); });
-  return rows;
+  return focusApply(rows);
 }
 /* Одна механика колоночных фильтров на несколько таблиц. Раньше она была намертво привязана
    к «Оборачиваемости» (turnColFilters/turnColDefs/renderTurnoverSimple). Контекст описывает,
@@ -3760,6 +3823,7 @@ async function fdbRefreshCache(){
   funnelHasBaked=(bakedKept.length>0);
   FUNNEL_CACHE=bakedKept.concat(raw).sort((a,b)=>a.date<b.date?-1:1);
   _buyoutWin={};   // % выкупа ВБ считается по этой воронке — пересобрать окно
+  _recOutCache=null;  // список выведенных из ассортимента кодов — тоже производная каталога
   _wbFbsCache=null; // покрытие ВБ включает FBS-запас — пересобрать раскладку складов
 }
 
@@ -4672,7 +4736,7 @@ function srFilteredRows(all,exceptKey){
   });
   srColDefs().forEach(def=>{ if(def.key===exceptKey) return;
     const set=srColFilters[def.key]; if(set&&set.size) rows=rows.filter(r=>set.has(def.val(r))); });
-  return rows;
+  return focusApply(rows);
 }
 function srFiltered(){ return srFilteredRows(srDecorate(srRows()),null); }
 /* ===================== РЕКЛАМА (Wildberries) =====================
@@ -4937,11 +5001,11 @@ function adBaseRows(){
 }
 function adFilteredRows(all,exceptKey){
   const defs=adColDefs();
-  return all.filter(r=>defs.every(d=>{
+  return focusApply(all.filter(r=>defs.every(d=>{
     if(d.key===exceptKey) return true;
     const set=adColFilters[d.key];
     return !set || !set.size || set.has(d.val(r));
-  }));
+  })));
 }
 function adFiltered(){
   const q=(document.getElementById("adSearch")?.value||"").trim().toLowerCase();
@@ -6597,6 +6661,29 @@ function renderProductPeriods(){
 
    ЧЕГО ЗДЕСЬ СОЗНАТЕЛЬНО НЕТ: выдумывания причин. Если ни один признак не сработал,
    так и пишем «причина не видна в данных» — лучше честно, чем правдоподобно. */
+/* ТОВАР НА ВЫВОДЕ В РЕКОМЕНДАЦИИ НЕ ПОПАДАЕТ (просьба продавца 01.09.2026).
+   Определяем по производственному статусу каталога ВБ. Правило то же, что в подсорте:
+   считаем по ВСЕМ карточкам кода 1С — если хоть одна НЕ «На вывод», товар живой.
+   Сейчас на выводе 302 карточки из 413, поэтому без этого фильтра половина советов
+   была про товар, который продавец и так убирает из ассортимента. */
+let _recOutCache=null;
+function recOutSups(){
+  if(_recOutCache) return _recOutCache;
+  const alive=new Set(), all=new Set();
+  (RD&&RD.catalog||[]).forEach(c=>{ const sup=(""+(c.supplierCode||"")).trim(); if(!sup) return;
+    all.add(sup);
+    if(!/на вывод/i.test(c.productionStatus||"")) alive.add(sup); });
+  const out=new Set([...all].filter(x=>!alive.has(x)));
+  return (_recOutCache=out);
+}
+function recIsOut(r){
+  const out=recOutSups();
+  const sup=(""+(r.sup||"")).trim();
+  if(sup) return out.has(sup);
+  const c=(RD&&RD.catalog||[]).find(x=>""+x.sku===""+r.sku);
+  return c? /на вывод/i.test(c.productionStatus||"") : false;
+}
+const recAlive = list => list.filter(r=>!recIsOut(r));
 const REC_WIN=7;                    // окно сравнения «неделя к неделе»
 const REC_PRICE_D=0.08;             // ±8% по цене — уже повод
 const REC_IMP_D=0.25;               // ±25% по показам
@@ -6684,12 +6771,104 @@ function recChanges(){
     return {sku, name:c.name||sku, category:c.category||"", sup:(""+(c.supplierCode||"")).trim(),
       q1:a.qty, q0:b.qty, dq:a.qty-b.qty, r1:a.rub, r0:b.rub, dr:a.rub-b.rub,
       reasons:recReason(a,b,s1,s0)};
-  }).filter(r=>r.q1>0||r.q0>0);
+  }).filter(r=>(r.q1>0||r.q0>0) && !recIsOut(r));   // товар на выводе не разбираем
   rows.sort((x,y)=>Math.abs(y.dr)-Math.abs(x.dr));
   return {rows, w1, w0,
     adNote: (ad1&&ad0)? "" : "расход на рекламу за прошлую неделю не загружен — как причину не проверяю"};
 }
 
+/* ===== ГИПОТЕЗЫ ПО РЕКЛАМЕ: КАТЕГОРИЯ → СКЛЕЙКА → ТОВАР =====
+   Просьба продавца 01.09.2026: «мне нужны рекомендации (или гипотезы) по каждой
+   категории — склейке — товару». На каждом уровне одна и та же логика, меняется только
+   набор карточек в знаменателе:
+
+     ДРР в цели  + запаса в Мск хватает   → можно добавлять бюджет, есть куда расти
+     ДРР в цели  + запаса мало            → сначала пополнить Москву, иначе придётся тушить
+     ДРР мимо    + CPO выше потолка       → ставка дорогая: снизить в (CPO ÷ потолок) раз
+     ДРР мимо    + CPO в потолке          → дело не в ставке, а в карточке: CTR или конверсия
+     расход есть + продаж нет             → выключить
+     склейка в цели, а товар мимо         → оставить: он тянет трафик соседям
+
+   Потолок CPO выводится из цели по ДРР (adMaxCpo) на данных ЭТОГО уровня — у склейки свой
+   чек и свой выкуп, поэтому потолок у неё свой, и сравнивать товар с чужим потолком нельзя. */
+function adHypo(o){
+  const goal=AD_DRR_GOAL;
+  const inGoal = o.drr<=goal, ideal = o.drr<=AD_DRR_GREAT;
+  const noSales = o.drr===Infinity || (o.spend>0 && !(o.ord>0));
+  const cpoOver = o.max7>0 && o.cpo>o.max7 ? o.cpo/o.max7 : 0;
+  if(o.spend<AD_MIN_SPEND) return {v:"skip", t:"мелкий расход", w:"Меньше "+fmt(AD_MIN_SPEND)+" ₽ за период — не судим, это перелив."};
+  if(noSales) return {v:"off", t:"выключить",
+    w:"Расход "+fmt(Math.round(o.spend))+" ₽ при нулевых заказах. Деньги уходят в никуда."};
+  if(!inGoal && cpoOver>1.05) return {v:"bid", t:"снизить ставку в "+cpoOver.toFixed(1)+" раза",
+    w:"ДРР "+o.drr.toFixed(1)+"% при цели "+goal+"%. CPO "+fmt(Math.round(o.cpo))+" ₽ против потолка "
+      +fmt(Math.round(o.max7))+" ₽ — платим за заказ дороже, чем позволяет юнитка."};
+  if(!inGoal) return {v:"card", t:"дело не в ставке — смотреть карточку",
+    w:"ДРР "+o.drr.toFixed(1)+"% мимо цели, но CPO "+fmt(Math.round(o.cpo))+" ₽ укладывается в потолок "
+      +fmt(Math.round(o.max7))+" ₽. Значит клики не дорогие, а мало конвертят: смотрите CTR, главное фото и цену."};
+  if(o.mskDays!=null && o.mskDays<AD_MIN_MSK_DAYS) return {v:"stock", t:"сначала завезти в Москву",
+    w:"ДРР "+o.drr.toFixed(1)+"% — в цели, но московского остатка хватит на "+adFmtD(o.mskDays)
+      +" дн. Разгонять нечего: кампания встанет вместе с товаром."};
+  return {v:"grow", t: ideal? "можно добавлять бюджет" : "держать, есть небольшой запас",
+    w:"ДРР "+o.drr.toFixed(1)+"% при цели "+goal+"%"+(ideal? " — это лучше «хорошо»." : ".")
+      +" CPO "+fmt(Math.round(o.cpo))+" ₽ при потолке "+fmt(Math.round(o.max7))+" ₽"
+      +(o.mskDays!=null&&o.mskDays!==Infinity? ", в Москве запас на "+adFmtD(o.mskDays)+" дн":"")+"."};
+}
+const AD_HYPO_CLS={off:"crit",bid:"crit",card:"warn",stock:"warn",grow:"good",skip:"info"};
+/* Свод по набору карточек: расход, выручка в выкупе (у каждого товара свой %), CPO, потолок,
+   запас в Москве по коду 1С (у одного кода бывает несколько артикулов — считаем через Set). */
+function adNodeAgg(list){
+  const sp=list.reduce((a,r)=>a+r.spend,0);
+  const ordRub=list.reduce((a,r)=>a+r.totRub,0);
+  const rev=list.reduce((a,r)=>a+r.revD,0);
+  const ord=list.reduce((a,r)=>a+r.totOrd+r.othOrd,0);
+  const oq=list.reduce((a,r)=>a+r.totOrd,0);
+  const aov=oq? ordRub/oq : 0;
+  const boW=oq? list.reduce((a,r)=>a+r.bo*r.totOrd,0)/oq : adBuyout();
+  const seen=new Set(); let msk=0, spd=0;
+  list.forEach(r=>{ if(r.sup&&!seen.has(r.sup)){ seen.add(r.sup); msk+=r.msk||0; } spd+=r.spd||0; });
+  return {spend:sp, ordRub, rev, ord, oq, aov, bo:boW, msk, spd,
+    mskDays: spd>0? msk/spd : (msk>0? Infinity : null),
+    drr: rev>0? sp/rev*100 : (sp>0? Infinity:0),
+    cpo: ord>0? sp/ord : (sp>0? Infinity:0),
+    max7: adMaxCpo(aov,boW,AD_DRR_GOAL), n:list.length, ads:list.filter(r=>r.spend>0).length};
+}
+/* Дерево гипотез. Только живой ассортимент и только группы, которые продавец смотрит. */
+function recAdTree(){
+  let pr=[]; try{ pr=recAlive(adPerfRows()); }catch(e){ return []; }
+  if(!pr.length) return [];
+  const byG={}; pr.forEach(r=>(byG[r.group]||(byG[r.group]=[])).push(r));
+  // категории без единой кампании в дерево не пускаем — гипотезу строить не из чего
+  Object.keys(byG).forEach(g=>{ if(!byG[g].some(r=>r.spend>0)) delete byG[g]; });
+  return Object.entries(byG).map(([g,list])=>{
+    const a=adNodeAgg(list);
+    const byT={}; list.forEach(r=>(byT[r.tag]||(byT[r.tag]=[])).push(r));
+    Object.keys(byT).forEach(t=>{ if(!byT[t].some(r=>r.spend>0)) delete byT[t]; });
+    const tags=Object.entries(byT).map(([t,l])=>{
+      const ta=adNodeAgg(l);
+      const items=l.filter(r=>r.spend>0).map(r=>{
+        const ia=adNodeAgg([r]);
+        const h=adHypo(ia);
+        // товар внутри склейки, которая в цели, не «разбираем» — он тянет трафик
+        const soft = ta.drr<=AD_DRR_GOAL && (h.v==="bid"||h.v==="card");
+        return {...r, agg:ia, hypo: soft? {v:"keep",t:"оставить — склейка в цели",
+          w:"Личный ДРР "+(ia.drr===Infinity?"—":ia.drr.toFixed(1)+"%")+", но склейка укладывается в "
+            +ta.drr.toFixed(1)+"%. Это «лошадка»: её заказы приходят соседним карточкам."} : h};
+      }).sort((x,y)=>y.spend-x.spend);
+      const cut=n=>{ n=n||""; return n.length>42? n.slice(0,41)+"…" : n; };
+      const tWorst=items.map(r=>({name:cut(r.name), over:r.agg.spend-r.agg.rev*AD_DRR_GOAL/100, drr:r.agg.drr}))
+        .filter(x=>x.over>0).sort((x,y)=>y.over-x.over).slice(0,3);
+      return {tag:t, agg:ta, hypo:adHypo(ta), items, worst:tWorst};
+    }).sort((x,y)=>y.agg.ordRub-x.agg.ordRub);
+    /* КУДА СМОТРЕТЬ. Вердикт уровня сам по себе не говорит, что чинить: у «Пушкаров»
+       ДРР 10.5%, а внутри и склейки в цели, и склейки на 25%. Поэтому к каждому узлу
+       добавляем главных виновников — детей с наибольшим перерасходом против цели. */
+    const worst=(children,name)=>children
+      .map(c=>({name:name(c), over: c.agg.spend - c.agg.rev*AD_DRR_GOAL/100, drr:c.agg.drr}))
+      .filter(x=>x.over>0).sort((x,y)=>y.over-x.over).slice(0,3);
+    return {group:g, agg:a, hypo:adHypo(a), tags,
+      worst: worst(tags, c=>"«"+c.tag+"»")};
+  }).sort((x,y)=>y.agg.ordRub-x.agg.ordRub);
+}
 /* ---- Действия ---- */
 function recBuild(){
   const R=[], bo=adBuyout();
@@ -6697,47 +6876,47 @@ function recBuild(){
   const money=v=>fmt(Math.round(v));
   // ---- 1. Подсорт со склада ----
   let rs=[]; try{ rs=resupplyRows(); }catch(e){ rs=[]; }
-  const shipO=rs.filter(r=>r.shipO>0).sort((a,b)=>a.oDays-b.oDays);
+  const shipO=recAlive(rs.filter(r=>r.shipO>0)).sort((a,b)=>a.oDays-b.oDays);
   const qO=shipO.reduce((a,r)=>a+r.shipO,0);
   if(qO>0) add({sev: shipO.some(r=>r.oDays<10)?"crit":"warn", key:"shipO",
     title:"Отгрузить на Ozon "+fmt(qO)+" шт со своего склада",
     why:`Считаю по правилу «держать на площадке 30 дней запаса». Срочных (покрытие меньше 10 дней) — <b class="num">${shipO.filter(r=>r.oDays<10).length}</b> из ${shipO.length}. Товар есть на складе, отгрузка не требует ничего, кроме поставки.`,
     items: shipO.slice(0,6).map(r=>({n:fmt(r.shipO)+" шт", x:r.name, w:(r.oDays===Infinity?"∞":Math.round(r.oDays))+" дн на Озоне"})),
-    tab:"turnover", view:"resupply", rank: 3});
+    keys: shipO.map(r=>r.sup), tab:"turnover", view:"resupply", rank: 3});
   // ---- 2. Перемещение Евросиб → Нск-1 ----
-  const mv=rs.filter(r=>r.move>0).sort((a,b)=>a.nsk1Days-b.nsk1Days);
+  const mv=recAlive(rs.filter(r=>r.move>0)).sort((a,b)=>a.nsk1Days-b.nsk1Days);
   const qM=mv.reduce((a,r)=>a+r.move,0);
   if(qM>0) add({sev:"warn", key:"move",
     title:"Перевезти Евросиб → Нск-1: "+fmt(qM)+" шт",
     why:`FBS на Wildberries уходит со склада Нск-1. По <b class="num">${mv.length}</b> кодам там осталось меньше ${NSK1_MIN_DAYS} дней продаж, а на Евросибе товар есть. Пока не перевезёте — эти заказы просто не будут выкупаться.`,
     items: mv.slice(0,6).map(r=>({n:fmt(r.move)+" шт", x:r.name, w:"на Нск-1 "+fmt(r.nsk1Free)+" шт"})),
-    tab:"turnover", view:"resupply", rank: 4});
+    keys: mv.map(r=>r.sup), tab:"turnover", view:"resupply", rank: 4});
   // ---- 3. Нечем закрыть ----
-  const cant=rs.filter(r=>r.needO>0 && r.shipO<r.needO && r.have<=0);
+  const cant=recAlive(rs.filter(r=>r.needO>0 && r.shipO<r.needO && r.have<=0));
   if(cant.length) add({sev:"crit", key:"cant",
     title:"Нечем закрыть: "+cant.length+" позиций",
     why:`Товар кончается на площадке, а на складе его нет. Здесь помогает только производство или закуп — чем раньше поставите в план, тем короче простой.`,
     items: cant.slice(0,6).map(r=>({n:fmt(r.needO-r.shipO)+" шт", x:r.name,
       w:(r.china+r.onOrder>0? "едет "+fmt(r.china+r.onOrder)+" шт" : "ничего не едет")})),
-    tab:"turnover", view:"resupply", rank: 1});
+    keys: cant.map(r=>r.sup), tab:"turnover", view:"resupply", rank: 1});
   /* ---- 4. Реклама на товар без запаса в Москве ----
      ВСЕГДА по всему ассортименту: `adRows()` фильтрует по выбранной на «Рекламе»
      категории, и без этой развязки рекомендации молча сужались до неё — продавец
      выбрал «Светофоры», вернулся сюда и не увидел перерасход по «Пушкарам». */
   let ar=[]; { const g=adGroup; adGroup=null;
     try{ ar=adRows(); }catch(e){ ar=[]; } finally { adGroup=g; } }
-  const risk=ar.filter(r=>r.adSpend>=AD_MIN_SPEND && r.mskDays<AD_MIN_MSK_DAYS).sort((a,b)=>b.adSpend-a.adSpend);
+  const risk=recAlive(ar.filter(r=>r.adSpend>=AD_MIN_SPEND && r.mskDays<AD_MIN_MSK_DAYS)).sort((a,b)=>b.adSpend-a.adSpend);
   const riskSum=risk.reduce((a,r)=>a+r.adSpend,0);
   if(risk.length) add({sev:"crit", key:"adRisk", money:riskSum,
     title:"Выключить рекламу на товар без запаса в Москве",
     why:`<b class="num">${money(riskSum)} ₽</b> за период выгрузки ушло на <b class="num">${risk.length}</b> кампаний, у которых московского FBS-остатка хватает меньше чем на ${AD_MIN_MSK_DAYS} дней. Реклама разгоняет спрос, товар кончается в середине кампании — деньги уходят, карточка проседает в выдаче.`,
     items: risk.slice(0,6).map(r=>({n:money(r.adSpend)+" ₽", x:r.name,
       w:(r.msk>0? "Мск "+fmt(r.msk)+" шт · "+adFmtD(r.mskDays)+" дн" : "в Москве пусто")})),
-    tab:"ads", view:"cand", rank: 2});
+    keys: risk.map(r=>r.sku), tab:"ads", view:"perf", rank: 2});
   // ---- 5. Склейки выше цели по ДРР ----
   let pr=[]; try{ pr=adPerfRows(); }catch(e){ pr=[]; }
   if(pr.length){
-    const byTag={}; pr.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
+    const byTag={}; recAlive(pr).forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
     const over=Object.entries(byTag).map(([t,l])=>{
       const sp=l.reduce((a,x)=>a+x.spend,0), rev=l.reduce((a,x)=>a+x.totRub,0)*bo;
       const drr=rev>0? sp/rev*100 : (sp>0? Infinity:0);
@@ -6750,33 +6929,34 @@ function recBuild(){
       why:`Цель — ДРР не выше ${AD_DRR_GOAL}% в выкупе. Перерасход против цели — <b class="num">${money(overSum)} ₽</b>. Считаю по всей склейке: выручка всех её карточек, включая нерекламируемые, потому что «лошадка» тянет продажи соседям.`,
       items: over.slice(0,6).map(x=>({n:x.drr===Infinity?"нет продаж":x.drr.toFixed(1)+"%", x:"Склейка «"+x.tag+"» · "+x.n+" кампаний",
         w:"перерасход "+money(x.over)+" ₽"})),
+      keys: over.flatMap(x=>(byTag[x.tag]||[]).filter(r=>r.spend>0).map(r=>r.sku)),
       tab:"ads", view:"perf", rank: 5});
   }
   // ---- 6. Кандидаты без рекламы ----
-  const idle=ar.filter(r=>r.ok && !(r.adSpend>=AD_MIN_SPEND)).sort((a,b)=>b.rub-a.rub);
+  const idle=recAlive(ar.filter(r=>r.ok && !(r.adSpend>=AD_MIN_SPEND))).sort((a,b)=>b.rub-a.rub);
   if(idle.length) add({sev:"info", key:"idle",
     title:"Можно запускать: "+idle.length+" кандидатов без рекламы",
     why:`Категория A внутри своей склейки, и московского остатка хватает минимум на ${AD_MIN_MSK_DAYS} дней. Это те позиции, на которых реклама не встанет посреди кампании.`,
     items: idle.slice(0,6).map(r=>({n:money(r.rub)+" ₽", x:r.name,
       w:"Мск "+fmt(r.msk)+" шт · "+adFmtD(r.mskDays)+" дн"})),
-    tab:"ads", view:"cand", rank: 7});
+    keys: idle.map(r=>r.sku), tab:"ads", view:"cand", rank: 7});
   // ---- 7. Цена и темп ----
   let sr=[]; try{ sr=srRows(); }catch(e){ sr=[]; }
-  const shortSr=sr.filter(r=>r.verdict==="short");
-  const upSr=sr.filter(r=>r.verdict==="up").sort((a,b)=>(b.ratio||0)-(a.ratio||0));
+  const shortSr=recAlive(sr.filter(r=>r.verdict==="short"));
+  const upSr=recAlive(sr.filter(r=>r.verdict==="up")).sort((a,b)=>(b.ratio||0)-(a.ratio||0));
   if(shortSr.length) add({sev:"crit", key:"srShort",
     title:"Не хватит даже Озону: "+shortSr.length+" позиций",
     why:`По этим кодам весь запас выбирает Ozon — на Wildberries не остаётся ничего даже при нулевых продажах. Поднимать цену тут помогает лишь частично: цена общая, она притормозит и Ozon.`,
     items: shortSr.slice(0,6).map(r=>({n:fmt(Math.round(r.stock||0))+" шт", x:r.name, w:"до партии "+(r.hz||"?")+" дн"})),
-    tab:"stockrate", rank: 2});
+    keys: shortSr.map(r=>r.sup), tab:"stockrate", rank: 2});
   if(upSr.length) add({sev:"warn", key:"srUp",
     title:"Поднять цену: "+upSr.length+" позиций продаются быстрее, чем нужно",
     why:`Темп выше цели больше чем на ${Math.round(SR_BAND*100)}% — товар кончится раньше, чем придёт партия. Цель в таблице дана в ЗАКАЗАХ в день, её и вводите в репрайсер.`,
     items: upSr.slice(0,6).map(r=>({n:(r.targetOrders!=null? Math.round(r.targetOrders):"—")+" зак/дн", x:r.name,
       w:"сейчас "+Math.round(r.ordWb||0)+" зак/дн"})),
-    tab:"stockrate", rank: 6});
+    keys: upSr.map(r=>r.sup), tab:"stockrate", rank: 6});
   // ---- 8. Дозаказ на фабрику ----
-  const reorder=rs.filter(r=>{ const spd=(r.wSpd||0)+(r.oSpd||0); if(spd<=0) return false;
+  const reorder=recAlive(rs).filter(r=>{ const spd=(r.wSpd||0)+(r.oSpd||0); if(spd<=0) return false;
       const have=(r.wCovAll||0)+(r.oCov||0)+(r.have||0)+(r.china||0)+(r.onOrder||0);
       r._days=have/spd; return r._days<TURN_MIN_DAYS; })
     .sort((a,b)=>a._days-b._days);
@@ -6785,7 +6965,7 @@ function recBuild(){
     why:`Считаю всю трубу — остаток на площадках, свой склад, то что едет из Китая и уже заказано производству. Если этого меньше чем на ${TURN_MIN_DAYS} дней продаж, партию пора ставить в план: до полки товар идёт около 4 месяцев.`,
     items: reorder.slice(0,6).map(r=>({n:Math.round(r._days)+" дн", x:r.name,
       w:"нужно ~"+fmt(Math.ceil(((r.wSpd||0)+(r.oSpd||0))*TURN_COVER_DAYS))+" шт"})),
-    tab:"turnover", view:"buyAvg", rank: 8});
+    keys: reorder.map(r=>r.sup), tab:"turnover", view:"buyAvg", rank: 8});
   // ---- 9. Чего не хватает в данных ----
   const gaps=[];
   const noTag=(RD.catalog||[]).filter(c=>!c.adGroup).length;
@@ -6863,6 +7043,7 @@ function renderRecsTab(){
   if(recFilter==="crit") show=recs.filter(r=>r.sev==="crit");
   if(recFilter==="money") show=recs.filter(r=>r.money).sort((a,b)=>(b.money||0)-(a.money||0));
   if(!show.length){ list.innerHTML=`<div class="rec-empty">Здесь пусто — по этому фильтру задач нет.</div>`; return; }
+  renderRecAdTree();
   list.innerHTML=show.map(r=>`<div class="rec ${r.sev}">`
     +`<div class="rec-hd"><span class="rec-t">${r.title}</span>`
     +(r.money? `<span class="rec-money ${r.sev==="crit"?"crit":""}">${fmt(Math.round(r.money))} ₽</span>`:"")
@@ -6871,12 +7052,59 @@ function renderRecsTab(){
       +r.items.map(i=>`<div class="rec-item"><span class="ri-n">${i.n}</span>`
         +`<span class="ri-x">${esc(i.x)}</span><span class="ri-w">${esc(i.w||"")}</span></div>`).join("")
       +`</div>`:"")
-    +(r.tab? `<button class="rec-go" data-tab="${r.tab}"${r.view?` data-view="${r.view}"`:""}>Открыть →</button>`:"")
+    +(r.tab? `<button class="rec-go" data-tab="${r.tab}"${r.view?` data-view="${r.view}"`:""}`
+        +`${r.keys&&r.keys.length?` data-keys="${esc([...new Set(r.keys.map(String))].join("|"))}" data-label="${esc(r.title)}"`:""}>`
+        +`Открыть${r.keys&&r.keys.length? " "+[...new Set(r.keys.map(String))].length+" поз." : ""} →</button>`:"")
     +`</div>`).join("");
+}
+let _recOpenG=null, _recOpenT=null;      // какой уровень дерева раскрыт
+function renderRecAdTree(){
+  const el=document.getElementById("recAdTree"); if(!el) return;
+  const tree=recAdTree();
+  if(!tree.length){ el.innerHTML=`<div class="rec-empty">Нет данных по рекламе — пришлите выгрузку XWAY.</div>`; return; }
+  const money=v=>fmt(Math.round(v));
+  const vcls=h=>AD_HYPO_CLS[h.v]||"info";
+  const nums=a=>`${money(a.spend)} ₽ · выручка ${money(a.rev)} ₽ · ДРР `
+    +(a.drr===Infinity?"—":a.drr.toFixed(1)+"%");
+  let html=`<div class="htree">`;
+  tree.forEach(g=>{
+    const openG=_recOpenG===g.group;
+    html+=`<div class="htn lvl1" data-g="${esc(g.group)}">`
+      +`<div class="htn-h"><span class="htn-nm">${esc(g.group)}<small>${g.tags.length} склеек · ${g.agg.ads} кампаний</small></span>`
+      +`<span class="htn-n">${nums(g.agg)}</span>`
+      +`<span class="htn-v ${vcls(g.hypo)}">${esc(g.hypo.t)}</span></div>`
+      +`<div class="htn-w">${esc(g.hypo.w)}${g.worst&&g.worst.length? ` <b>Главный вклад:</b> `
+          +g.worst.map(x=>esc(x.name)+" (перерасход "+money(x.over)+" ₽)").join(", ")+"." : ""}</div></div>`;
+    if(!openG) return;
+    g.tags.forEach(t=>{
+      const openT=_recOpenT===g.group+"|"+t.tag;
+      html+=`<div class="htn lvl2" data-g="${esc(g.group)}" data-t="${esc(t.tag)}">`
+        +`<div class="htn-h"><span class="htn-nm">Склейка «${esc(t.tag)}»<small>${t.items.length} кампаний из ${t.agg.n} карточек</small></span>`
+        +`<span class="htn-n">${nums(t.agg)}</span>`
+        +`<span class="htn-v ${vcls(t.hypo)}">${esc(t.hypo.t)}</span></div>`
+        +`<div class="htn-w">${esc(t.hypo.w)}${t.worst&&t.worst.length? ` <b>Главный вклад:</b> `
+            +t.worst.map(x=>esc(x.name)+" ("+(x.drr===Infinity?"нет продаж":x.drr.toFixed(0)+"%")+", перерасход "+money(x.over)+" ₽)").join(", ")+"." : ""}</div>`
+        +`<button class="htn-go" data-keys="${esc(t.items.map(r=>r.sku).join("|"))}" data-label="Склейка «${esc(t.tag)}»">Открыть в «Отдаче» →</button></div>`;
+      if(!openT) return;
+      const big=t.items.filter(r=>r.spend>=AD_MIN_SPEND), small=t.items.length-big.length;
+      big.forEach(r=>{
+        html+=`<div class="htn lvl3">`
+          +`<div class="htn-h"><span class="htn-nm">${esc(r.name)}<small>${skuLink(r.sku)}${r.sup?" · 1С "+esc(r.sup):""}</small></span>`
+          +`<span class="htn-n">${nums(r.agg)}</span>`
+          +`<span class="htn-v ${vcls(r.hypo)}">${esc(r.hypo.t)}</span></div>`
+          +`<div class="htn-w">${esc(r.hypo.w)}</div></div>`;
+      });
+      if(small) html+=`<div class="htn lvl3" style="opacity:.6"><div class="htn-w">`
+        +`Ещё ${small} карточек с расходом меньше ${fmt(AD_MIN_SPEND)} ₽ — это перелив, не судим.</div></div>`;
+    });
+  });
+  el.innerHTML=html+`</div>`;
 }
 const TABS=["recs","home","dynamics","turnover","stockrate","product","finance","ads","analytics"];
 function switchTab(name){
   TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
+  if(recFocus && recFocus.tab!==name) recFocus=null;   // фокус живёт только на своей вкладке
+  renderFocusBar();
   document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
   // площадка: на вкладках без поддержки Озона данные всегда ВБ; переключатель виден только где есть выбор
   const supportsMp = !!MP_TABS[name] && !!OZDATA;
@@ -6897,8 +7125,32 @@ function renderActiveTab(){
   const active=TABS.find(t=>!document.getElementById("tab-"+t).hidden)||"home";
   switchTab(active);
 }
+document.getElementById("recAdTree").addEventListener("click",e=>{
+  const go=e.target.closest(".htn-go");
+  if(go){ e.stopPropagation();
+    const keys=(go.dataset.keys||"").split("|").filter(Boolean);
+    if(keys.length) setFocus({keys:new Set(keys), label:go.dataset.label||"", tab:"ads", view:"perf"});
+    adView="perf"; adColFilters={}; adGroup=null;
+    document.querySelectorAll("#adViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v==="perf"?"true":"false"));
+    switchTab("ads"); window.scrollTo({top:0,behavior:"smooth"}); return; }
+  const n=e.target.closest(".htn"); if(!n) return;
+  if(n.classList.contains("lvl3")) return;
+  if(n.classList.contains("lvl2")){
+    const k=n.dataset.g+"|"+n.dataset.t;
+    _recOpenT = _recOpenT===k? null : k;
+  } else {
+    _recOpenG = _recOpenG===n.dataset.g? null : n.dataset.g; _recOpenT=null;
+  }
+  renderRecAdTree();
+});
+document.getElementById("focusBar").addEventListener("click",e=>{
+  if(e.target.closest("#focusClear")) clearFocus(true);
+});
 document.getElementById("tabs").addEventListener("click",e=>{
-  const b=e.target.closest(".tab-btn"); if(!b) return; switchTab(b.dataset.tab);
+  const b=e.target.closest(".tab-btn"); if(!b) return;
+  // ручной переход по вкладкам снимает фокус: он относился к прошлой рекомендации
+  if(recFocus && recFocus.tab!==b.dataset.tab) clearFocus(false);
+  switchTab(b.dataset.tab);
 });
 // переключатель площадки ВБ / Озон / Всего
 function setMp(mp){
@@ -6990,6 +7242,11 @@ document.getElementById("recFilterSeg").addEventListener("click",e=>{
 document.getElementById("recList").addEventListener("click",e=>{
   const b=e.target.closest(".rec-go"); if(!b) return;
   const tab=b.dataset.tab, view=b.dataset.view;
+  /* Переход ФИЛЬТРУЕТ целевую таблицу под эту рекомендацию: продавец должен увидеть
+     ровно те позиции, о которых речь, а не весь раздел. Ключи лежат в data-keys. */
+  const keys=(b.dataset.keys||"").split("|").filter(Boolean);
+  if(keys.length) setFocus({keys:new Set(keys), label:b.dataset.label||"", tab, view});
+  else clearFocus(false);
   if(view && tab==="turnover"){ turnView=view; turnColFilters={};
     document.querySelectorAll("#turnViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.view===view?"true":"false")); }
   if(view && tab==="ads"){ adView=view; adColFilters={};
