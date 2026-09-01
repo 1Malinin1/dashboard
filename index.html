@@ -240,6 +240,14 @@
   /* ---- Карточка «что изменилось» ---- */
   .chg-card{border-radius:9px;padding:10px 12px;margin-top:6px;background:var(--surface-2);
     border-left:3px solid var(--muted)}
+  .chg-card.lvl1,.chg-card.lvl2{cursor:pointer}
+  .chg-card.lvl1:hover,.chg-card.lvl2:hover{background:var(--surface-3)}
+  .chg-card.lvl2{margin-left:20px;background:var(--surface)}
+  .chg-card.lvl3{margin-left:40px;background:var(--surface);cursor:default}
+  .chg-card .tw{display:inline-block;width:0;height:0;margin-right:7px;vertical-align:middle;
+    border-left:5px solid currentColor;border-top:4px solid transparent;border-bottom:4px solid transparent;
+    opacity:.5;transition:transform .15s}
+  .chg-card .tw.o{transform:rotate(90deg)}
   .chg-card.down{border-left-color:var(--crit-txt)} .chg-card.up{border-left-color:var(--good-txt)}
   .chg-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
   .chg-nm{flex:1 1 240px;font-weight:650;color:var(--text-1);font-size:13px;
@@ -918,7 +926,12 @@
     <div class="kpis4" id="recKpis"></div>
     <div class="card" style="margin-bottom:14px">
       <h3>Что изменилось за неделю и почему</h3>
-      <div class="cap" id="recChangedCap">Сравнение последних 7 дней с предыдущими 7 по заказам. Причина ищется по цене, показам, конверсии, остатку и рекламе.</div>
+      <div class="cap" id="recChangedCap">Сравнение последних 7 дней с предыдущими 7 по заказам.</div>
+      <div class="seg" id="recChgSeg" role="group" aria-label="Что показать" style="margin:10px 0 4px">
+        <button data-f="down" aria-pressed="true">Просело</button>
+        <button data-f="up">Выросло</button>
+        <button data-f="all">Всё</button>
+      </div>
       <div id="recChanged"></div>
     </div>
     <div class="seg" id="recFilterSeg" role="group" aria-label="Что показать" style="margin-bottom:12px">
@@ -6857,6 +6870,7 @@ const REC_PRICE_D=0.08;             // ±8% по цене — уже повод
 const REC_IMP_D=0.25;               // ±25% по показам
 const REC_CR_D=0.20;                // ±20% по конверсии
 let recFilter="all";
+let recChgFilter="down", _recChgCat=null, _recChgTag=null;   // дерево «что изменилось»
 const recPct = (a,b) => b>0? (a/b-1) : (a>0? Infinity : 0);
 const recPctTxt = v => (v>0?"+":"")+Math.round(v*100)+"%";
 
@@ -6991,8 +7005,54 @@ function recChanges(){
     return r;
   }).filter(r=>(r.q1>0||r.q0>0) && !recIsOut(r));
   rows.sort((x,y)=>Math.abs(y.dr)-Math.abs(x.dr));
-  return {rows, w1, w0,
+  return {rows, w1, w0, A, B, ad1, ad0,
     adNote: (ad1&&ad0)? "" : "расход на рекламу за прошлую неделю не загружен — как причину не проверяю"};
+}
+/* ===== ДЕРЕВО «РОСТ И ПАДЕНИЕ»: КАТЕГОРИЯ → СКЛЕЙКА → ТОВАР =====
+   Просьба продавца 01.09.2026: разбор просадки по товару ему понятен, нужен такой же
+   на уровнях выше — «проваливаюсь в склейки, дальше в товары». Логика одна и та же
+   (факторное разложение + проверка на шум + действие), меняется только набор карточек,
+   по которым суммируется воронка. Складывать можно смело: показы, переходы, корзины и
+   заказы — величины аддитивные, а конверсии пересчитываются из сумм, а не усредняются
+   (среднее из процентов дало бы неверный результат при разных объёмах). */
+function recSum(list, W){
+  const z={qty:0,rub:0,imp:0,cv:0,cart:0,ord:0,cancel:0,zeroDays:0};
+  list.forEach(sku=>{ const e=W[sku]; if(!e) return;
+    z.qty+=e.qty||0; z.rub+=e.rub||0; z.imp+=e.imp||0; z.cv+=e.cv||0;
+    z.cart+=e.cart||0; z.ord+=e.ord||0; z.cancel+=e.cancel||0; });
+  return z;
+}
+function recNode(name, skus, ch, extra){
+  const a=recSum(skus,ch.A), b=recSum(skus,ch.B);
+  const p1=a.qty>0? a.rub/a.qty:0, p0=b.qty>0? b.rub/b.qty:0;
+  const r={name, skus, q1:a.qty, q0:b.qty, dq:a.qty-b.qty, r1:a.rub, r0:b.rub, dr:a.rub-b.rub,
+    p1, p0, dPrice: p0>0? p1/p0-1 : 0, z:recZ(a.qty,b.qty), zeroDays:0,
+    cancel1:a.cancel, cancel0:b.cancel, ad1:null, ad0:null,
+    factors:recFactors(a,b), segTag:null, segCat:null, ...(extra||{})};
+  if(ch.ad1&&ch.ad0){ r.ad1=skus.reduce((x,s)=>x+(ch.ad1.bySku[s]||0),0);
+    r.ad0=skus.reduce((x,s)=>x+(ch.ad0.bySku[s]||0),0); }
+  r.diag=recDiag(r);
+  return r;
+}
+function recTree(ch){
+  const byS={}; (RD.catalog||[]).forEach(c=>byS[""+c.sku]=c);
+  const live=ch.rows.map(r=>r.sku);                 // выводимый товар сюда уже не попал
+  const cats={};
+  live.forEach(sku=>{ const c=byS[sku]; if(!c) return;
+    const cat=c.category||"Без категории", tag=c.adTag||"без склейки";
+    const e=cats[cat]||(cats[cat]={skus:[],tags:{}});
+    e.skus.push(sku); (e.tags[tag]||(e.tags[tag]=[])).push(sku); });
+  const rowBySku={}; ch.rows.forEach(r=>rowBySku[r.sku]=r);
+  return Object.entries(cats).map(([cat,e])=>{
+    const node=recNode(cat, e.skus, ch);
+    node.tags=Object.entries(e.tags).map(([tag,skus])=>{
+      const t=recNode("Склейка «"+tag+"»", skus, ch, {tag});
+      t.items=skus.map(s=>rowBySku[s]).filter(Boolean).sort((x,y)=>Math.abs(y.dr)-Math.abs(x.dr));
+      return t;
+    }).sort((x,y)=>Math.abs(y.dr)-Math.abs(x.dr));
+    node.cat=cat;
+    return node;
+  }).sort((x,y)=>Math.abs(y.dr)-Math.abs(x.dr));
 }
 /* Из разложения и контекста собираем текст: что произошло, насколько это надёжно
    и ЧТО ДЕЛАТЬ. Действие выводится из ведущего фактора, а не из общих слов. */
@@ -7379,41 +7439,59 @@ function renderRecsTab(){
        +tr2("Суммарно",fmt(Math.round(drop.reduce((a,r)=>a+r.dr,0)))+" ₽ против +"+fmt(Math.round(up.reduce((a,r)=>a+r.dr,0)))+" ₽")},
   ].map(kpiCard).join("");
   wireKpiTips("recKpis");
-  // ---- что изменилось ----
+  // ---- что изменилось: дерево категория → склейка → товар ----
   const el=document.getElementById("recChanged");
   const cap=document.getElementById("recChangedCap");
   if(cap&&ch.w1) cap.textContent="Последние 7 дней ("+fmtDateLong(ch.w1[0])+" – "+fmtDateLong(ch.w1[6])
-    +") против предыдущих 7. Причина ищется по цене, показам, конверсии, остатку и рекламе."
+    +") против предыдущих 7. Клик по строке разворачивает уровень ниже: категория → склейка → товар."
     +(ch.adNote? " "+ch.adNote.charAt(0).toUpperCase()+ch.adNote.slice(1)+"." : "");
   if(!ch.rows.length){ el.innerHTML=`<div class="rec-empty">Мало истории заказов, чтобы сравнивать недели.</div>`; }
   else {
-    const row=r=>{
-      const st=r.diag.steps||[];
+    const tree=recTree(ch).filter(n=> recChgFilter==="all" ? true : (recChgFilter==="down"? n.dr<0 : n.dr>0));
+    /* Разложение и факты — общий блок для любого уровня: и категория, и склейка, и товар
+       разбираются одинаково, меняется только набор карточек. */
+    const body=r=>{
+      const st=(r.diag&&r.diag.steps)||[];
       const mx=Math.max(1,...st.map(x=>Math.abs(x.eff)));
       const bars=st.length? `<div class="chg-steps"><div class="cs-t">Из чего сложилось изменение заказов</div>`
-        +st.map(x=>`<div class="cs-row">`
-          +`<span class="cs-n">${esc(x.n)}</span>`
+        +st.map(x=>`<div class="cs-row"><span class="cs-n">${esc(x.n)}</span>`
           +`<span class="cs-v">${x.val}<small>${x.d}${x.rel? " "+x.rel:""}</small></span>`
           +`<span class="cs-bar"><i class="${x.eff>=0?"up":"down"}" style="width:${Math.round(Math.abs(x.eff)/mx*100)}%"></i></span>`
           +`<span class="cs-e ${Math.abs(x.eff)<0.5?"nil":(x.eff>=0?"up":"down")}">${
               Math.abs(x.eff)<0.5? "почти не повлияло"
               : `${x.eff>=0?"+":"−"}${Math.abs(x.eff).toFixed(0)} ${plural(Math.round(Math.abs(x.eff)),"заказ","заказа","заказов")}`}</span>`
           +`</div>`).join("")+`</div>` : "";
-      const facts=r.diag.items.filter(x=>x.k!=="factors");
-      return `<div class="chg-card ${r.dr>=0?"up":"down"}">`
-        +`<div class="chg-h"><span class="chg-nm">${esc(r.name)}`
-          +`<small>${esc(r.category)}${r.tag?" · склейка «"+esc(r.tag)+"»":""} · ${skuLink(r.sku)}${r.sup?" · 1С "+esc(r.sup):""}</small></span>`
-        +`<span class="chg-d ${r.dr>=0?"up":"down"}">${r.dr>=0?"+":"−"}${fmt(Math.abs(Math.round(r.dr)))} ₽`
-          +`<small>${r.q0} → ${r.q1} шт${r.diag.noise? ` · <span class="chg-noise">на грани шума</span>`:""}</small></span></div>`
-        +bars
+      const facts=((r.diag&&r.diag.items)||[]).filter(x=>x.k!=="factors");
+      return bars
         +(facts.length? `<div class="chg-why">`+facts.map(x=>`<div class="cw ${x.k}">${x.t}</div>`).join("")+`</div>`:"")
-        +(r.diag.act? `<div class="chg-act">${esc(r.diag.act)}</div>`:"")
-        +`</div>`;
+        +((r.diag&&r.diag.act)? `<div class="chg-act">${esc(r.diag.act)}</div>`:"");
     };
-    el.innerHTML=`<div class="rec-sec" style="margin-top:10px">Просело сильнее всего</div>`
-      +drop.slice(0,6).map(row).join("")
-      +`<div class="rec-sec">Выросло сильнее всего</div>`
-      +up.slice(0,4).map(row).join("");
+    const head=(r,lvl,sub,open)=>`<div class="chg-h">`
+      // sub уже готовый HTML (в строке товара — ссылка на карточку), экранируем на месте вызова
+      +`<span class="chg-nm">${lvl<3? `<i class="tw ${open?"o":""}"></i>`:""}${esc(r.name)}<small>${sub}</small></span>`
+      +`<span class="chg-d ${r.dr>=0?"up":"down"}">${r.dr>=0?"+":"−"}${fmt(Math.abs(Math.round(r.dr)))} ₽`
+        +`<small>${r.q0} → ${r.q1} шт${r.diag&&r.diag.noise? ` · <span class="chg-noise">на грани шума</span>`:""}</small></span></div>`;
+    let html="";
+    tree.forEach(cat=>{
+      const openC=_recChgCat===cat.cat;
+      html+=`<div class="chg-card lvl1 ${cat.dr>=0?"up":"down"}" data-cat="${esc(cat.cat)}">`
+        +head(cat,1,esc(cat.tags.length+" склеек · "+cat.skus.length+" карточек"),openC)
+        +(openC? body(cat):"")+`</div>`;
+      if(!openC) return;
+      cat.tags.forEach(t=>{
+        const key=cat.cat+"|"+t.tag, openT=_recChgTag===key;
+        html+=`<div class="chg-card lvl2 ${t.dr>=0?"up":"down"}" data-cat="${esc(cat.cat)}" data-tag="${esc(t.tag)}">`
+          +head(t,2,esc(t.items.length+" карточек"),openT)
+          +(openT? body(t):"")+`</div>`;
+        if(!openT) return;
+        t.items.forEach(r=>{
+          html+=`<div class="chg-card lvl3 ${r.dr>=0?"up":"down"}">`
+            +head(r,3,`${skuLink(r.sku)}${r.sup?" · 1С "+esc(r.sup):""}`,false)
+            +body(r)+`</div>`;
+        });
+      });
+    });
+    el.innerHTML=html || `<div class="rec-empty">По этому фильтру изменений нет.</div>`;
   }
   // ---- список действий ----
   let show=recs;
@@ -7503,6 +7581,24 @@ function renderActiveTab(){
   const active=TABS.find(t=>!document.getElementById("tab-"+t).hidden)||"home";
   switchTab(active);
 }
+document.getElementById("recChgSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); recChgFilter=b.dataset.f;
+  _recChgCat=null; _recChgTag=null; renderRecsTab();
+});
+document.getElementById("recChanged").addEventListener("click",e=>{
+  if(e.target.closest("a")) return;                     // ссылка на карточку — не разворачиваем
+  const c=e.target.closest(".chg-card"); if(!c) return;
+  if(c.classList.contains("lvl3")) return;
+  if(c.classList.contains("lvl2")){
+    const k=c.dataset.cat+"|"+c.dataset.tag;
+    _recChgTag = _recChgTag===k? null : k;
+  } else {
+    _recChgCat = _recChgCat===c.dataset.cat? null : c.dataset.cat; _recChgTag=null;
+  }
+  renderRecsTab();
+});
 document.getElementById("recAdTree").addEventListener("click",e=>{
   const go=e.target.closest(".htn-go");
   if(go){ e.stopPropagation();
