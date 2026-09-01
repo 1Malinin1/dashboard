@@ -211,6 +211,23 @@
   .truckplan .tp-truck{font-size:11.5px;color:var(--text-2);padding:4px 0;border-top:1px dashed var(--border)}
   .truckplan .tp-items{display:block;color:var(--muted);font-size:10.5px;line-height:1.5;margin-top:2px}
   /* «Как считается» — цепочка расчёта над таблицей оборачиваемости */
+  /* ---- Карточка «что изменилось» ---- */
+  .chg-card{border-radius:9px;padding:10px 12px;margin-top:6px;background:var(--surface-2);
+    border-left:3px solid var(--muted)}
+  .chg-card.down{border-left-color:var(--crit-txt)} .chg-card.up{border-left-color:var(--good-txt)}
+  .chg-h{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .chg-nm{flex:1 1 240px;font-weight:650;color:var(--text-1);font-size:13px;
+    overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .chg-nm small{display:block;font-size:10.5px;color:var(--muted);font-weight:500}
+  .chg-d{font-variant-numeric:tabular-nums;font-weight:700;font-size:13.5px;text-align:right;white-space:nowrap}
+  .chg-d.up{color:var(--good-txt)} .chg-d.down{color:var(--crit-txt)}
+  .chg-d small{display:block;font-size:11px;font-weight:600;opacity:.75}
+  .chg-why{margin-top:6px;font-size:12px;line-height:1.55;color:var(--text-2)}
+  .chg-why div{padding:1px 0}
+  .chg-why .num{font-variant-numeric:tabular-nums;font-weight:650;color:var(--text-1)}
+  .chg-act{margin-top:7px;padding-top:7px;border-top:1px dashed var(--border);
+    font-size:12.5px;line-height:1.5;color:var(--text-1);font-weight:520}
+  .chg-act::before{content:"Что сделать: ";font-weight:700;color:var(--accent)}
   /* ---- Дерево гипотез по рекламе ---- */
   .htree{margin-top:12px}
   .htn{border-radius:9px;padding:9px 11px;margin-top:5px;background:var(--surface-2);cursor:pointer}
@@ -6798,14 +6815,15 @@ function recWindowAgg(dates){
   const S=(RD&&RD.orderSeries)||{}, M=S.money||{}, idx={};
   (S.dates||[]).forEach((d,i)=>idx[d]=i);
   const set=new Set(dates), out={};
-  const get=s=>out[s]||(out[s]={qty:0,rub:0,imp:0,cv:0,ord:0,buy:0,stock:null,zeroDays:0});
+  const get=s=>out[s]||(out[s]={qty:0,rub:0,imp:0,cv:0,cart:0,ord:0,buy:0,cancel:0,stock:null,zeroDays:0});
   dates.forEach(d=>{ const i=idx[d]; if(i==null) return;
     Object.entries(S.bySku||{}).forEach(([sku,arr])=>{ const q=arr[i]||0; if(q) get(sku).qty+=q; });
     const m=M[d]||{}; Object.entries(m).forEach(([sku,v])=>{ get(sku).rub+=(v&&v[0])||0; });
   });
   (typeof FUNNEL_CACHE!=="undefined"? FUNNEL_CACHE:[]).forEach(r=>{ if(!set.has(r.date)) return;
     const e=get(""+r.sku);
-    e.imp+=r.impressions||0; e.cv+=r.cardViews||0; e.ord+=r.ordersQty||0; e.buy+=r.buyoutQty||0;
+    e.imp+=r.impressions||0; e.cv+=r.cardViews||0; e.cart+=r.addCart||0;
+    e.ord+=r.ordersQty||0; e.buy+=r.buyoutQty||0; e.cancel+=r.cancelQty||0;
     if(r.wbStock!=null){ if((r.wbStock||0)<=0) e.zeroDays++; e.stock=r.wbStock; }   // последний день окна
   });
   return out;
@@ -6821,42 +6839,54 @@ function recAdsInWindow(dates){
   const out={}; inside.forEach(p=>Object.entries(p.bySku).forEach(([s,e])=>{ out[s]=(out[s]||0)+(e.spend||0); }));
   return {bySku:out, from:inside[0].from, to:inside[inside.length-1].to, full:inside.length===parts.length};
 }
-/* ПРИЧИНА ИЗМЕНЕНИЯ. Признаки проверяются по убыванию «весомости»: физика (остаток)
-   сильнее цены, цена сильнее видимости, видимость сильнее конверсии. */
-function recReason(a,b,ad1,ad0){
-  const out=[];
-  const p1=a.qty>0? a.rub/a.qty:0, p0=b.qty>0? b.rub/b.qty:0;
-  const cr1=a.cv>0? a.ord/a.cv:0, cr0=b.cv>0? b.ord/b.cv:0;
-  const down=a.qty<b.qty;
-  if(down && a.zeroDays>=2) out.push({k:"stock",t:`остаток на ВБ был нулевым <b class="num">${a.zeroDays}</b> дн из ${REC_WIN}`});
-  else if(!down && b.zeroDays>=2) out.push({k:"stock",t:`неделю назад товара не было <b class="num">${b.zeroDays}</b> дн — сейчас появился`});
-  if(p0>0&&p1>0){ const d=recPct(p1,p0);
-    if(Math.abs(d)>=REC_PRICE_D) out.push({k:"price",dir:d>0?1:-1,
-      t:`цена ${d>0?"выросла":"упала"} на <b class="num">${Math.abs(Math.round(d*100))}%</b> — ${fmt(Math.round(p0))} → ${fmt(Math.round(p1))} ₽`}); }
-  if(b.imp>300){ const d=recPct(a.imp,b.imp);
-    if(Math.abs(d)>=REC_IMP_D) out.push({k:"imp",dir:d>0?1:-1,
-      t:`показов ${d>0?"больше":"меньше"} на <b class="num">${Math.abs(Math.round(d*100))}%</b> (${fmt(b.imp)} → ${fmt(a.imp)})`}); }
-  if(cr0>0&&b.cv>200){ const d=recPct(cr1,cr0);
-    if(Math.abs(d)>=REC_CR_D) out.push({k:"cr",dir:d>0?1:-1,
-      t:`конверсия в заказ ${d>0?"выросла":"упала"} — ${(cr0*100).toFixed(1)}% → ${(cr1*100).toFixed(1)}%`}); }
-  if(ad1!=null&&ad0!=null){ const d=ad0>0? recPct(ad1,ad0) : (ad1>0? Infinity:0);
-    if(ad0>0 && Math.abs(d)>=0.3) out.push({k:"ads",dir:d>0?1:-1,
-      t:`расход на рекламу ${d>0?"вырос":"снизился"} — ${fmt(Math.round(ad0))} → ${fmt(Math.round(ad1))} ₽`});
-    else if(!ad0 && ad1>0) out.push({k:"ads",dir:1,t:`включили рекламу — <b class="num">${fmt(Math.round(ad1))}</b> ₽`});
-    else if(ad0>0 && !ad1) out.push({k:"ads",dir:-1,t:`рекламу выключили (было ${fmt(Math.round(ad0))} ₽)`}); }
-  /* ПРИЧИНА ДОЛЖНА ОБЪЯСНЯТЬ НАПРАВЛЕНИЕ. «Показов больше» не объясняет падение заказов —
-     такие признаки оставляем, только если рядом есть просевшая конверсия: тогда это как раз
-     и есть объяснение («трафика дали больше, а покупать стали хуже»). Иначе убираем, чтобы
-     не выдавать за причину то, что причиной не является. */
-  const hasCr=out.some(x=>x.k==="cr" && x.dir===(down?-1:1));
-  return out.filter(x=>{
-    if(x.k==="stock") return true;
-    const helps = down? x.dir===-1 : x.dir===1;
-    if(x.k==="price") return down? x.dir===1 : x.dir===-1;   // рост цены роняет заказы, падение — поднимает
-    if(helps) return true;
-    return hasCr && (x.k==="imp"||x.k==="ads");
-  });
+/* ================= РАЗБОР ИЗМЕНЕНИЯ =================
+   Переделано 01.09.2026 после разбора с продавцом: раньше причина искалась порогами
+   («цена изменилась больше чем на 8%?»), и когда ни один порог не срабатывал, писалось
+   «причина не видна в данных» — при том что данные её содержали. Пример 49400769:
+   заказы 148 → 121, каждый признак поодиночке под порогом, а вместе они всё объясняют.
+
+   ТЕПЕРЬ ТРИ ШАГА, И ОТВЕТ ЕСТЬ ВСЕГДА:
+
+   1) ФАКТОРНОЕ РАЗЛОЖЕНИЕ. Заказы — это произведение ступеней воронки:
+        заказы = показы × CTR × (переход→корзина) × (корзина→заказ)
+      Значит изменение заказов раскладывается на вклад каждой ступени В ШТУКАХ, и сумма
+      вкладов ТОЧНО равна фактическому изменению. Для 49400769: показы +9.9, CTR −7.6,
+      переход→корзина −11.6, корзина→заказ −17.7 = −27 заказов. Больше не нужно гадать,
+      «что важнее» — видно, что главный вклад дала последняя ступень.
+
+   2) ПРОВЕРКА НА ШУМ. Заказы — счётная величина, разброс ≈ √n. Если |Δ| < 1.96·√(a+b),
+      падение статистически неотличимо от случайного, и дёргаться рано. У 49400769
+      z=1.65 — на грани, и об этом честно пишем.
+
+   3) КОНТЕКСТ СЕГМЕНТА. Товар упал сам или вместе со всеми? Сравниваем с его склейкой
+      и категорией. У 49400769 склейка выросла +16%, категория +41% — значит спрос есть,
+      а карточка теряет долю ВНУТРИ своей склейки. Дальше смотрим, кто в склейке вырос:
+      это оказались три брата-трактора дешевле на 300-600 ₽, пока у этого цена росла
+      4 122 → 4 890 ₽. Вот и ответ: каннибализация ценой внутри склейки.
+
+   Из этого же собирается ДЕЙСТВИЕ — по ведущему фактору, а не «смотрите карточку». */
+const REC_STEPS=[
+  {k:"imp",  n:"показы",           v:a=>a.imp},
+  {k:"ctr",  n:"CTR (показ→переход)", v:a=>a.imp>0? a.cv/a.imp : 0},
+  {k:"cart", n:"переход→корзина",  v:a=>a.cv>0? a.cart/a.cv : 0},
+  {k:"ord",  n:"корзина→заказ",    v:a=>a.cart>0? a.ord/a.cart : 0},
+];
+/* Вклад каждой ступени в изменение заказов, в штуках. Идём последовательно: подменяем
+   ступени одну за другой и смотрим, на сколько сдвинулся результат. Сумма вкладов равна
+   фактическому изменению по построению. */
+function recFactors(a,b){
+  if(!(b.ord>0) || !(b.imp>0) || !(b.cv>0) || !(b.cart>0)) return null;
+  const out=[]; let cur=b.ord;
+  for(const st of REC_STEPS){
+    const v1=st.v(a), v0=st.v(b);
+    if(!(v0>0)) return null;
+    const k=v1/v0, next=cur*k;
+    out.push({k:st.k, n:st.n, ratio:k, eff:next-cur, from:v0, to:v1});
+    cur=next;
+  }
+  return out;
 }
+const recZ=(a,b)=>(a+b)>0? Math.abs(a-b)/Math.sqrt(a+b) : 0;
 function recChanges(){
   const S=(RD&&RD.orderSeries)||null;
   if(!S||!S.dates||S.dates.length<REC_WIN*2) return {rows:[],w1:null,w0:null,adNote:""};
@@ -6865,19 +6895,119 @@ function recChanges(){
   const A=recWindowAgg(w1), B=recWindowAgg(w0);
   const ad1=recAdsInWindow(w1), ad0=recAdsInWindow(w0);
   const byS={}; (RD.catalog||[]).forEach(c=>byS[""+c.sku]=c);
+  // сегменты: как изменилась склейка и категория целиком — упал он один или все
+  const seg={tag:{},cat:{}};
+  const bump=(o,k,a,b)=>{ const e=o[k]||(o[k]={a:0,b:0}); e.a+=a; e.b+=b; };
+  Object.keys({...A,...B}).forEach(sku=>{ const c=byS[sku]; if(!c) return;
+    const a=(A[sku]||{}).ord||0, b=(B[sku]||{}).ord||0;
+    if(c.adTag) bump(seg.tag,c.adTag,a,b);
+    if(c.category) bump(seg.cat,c.category,a,b); });
+  // кто вырос внутри склейки — кандидат на «спрос перетёк к соседу»
+  const inTag={};
+  Object.keys({...A,...B}).forEach(sku=>{ const c=byS[sku]; if(!c||!c.adTag) return;
+    const a=(A[sku]||{}), b=(B[sku]||{});
+    (inTag[c.adTag]||(inTag[c.adTag]=[])).push({sku, name:c.name||sku,
+      d:(a.ord||0)-(b.ord||0), price: a.qty>0? a.rub/a.qty : 0}); });
+
   const rows=Object.keys({...A,...B}).map(sku=>{
-    const a=A[sku]||{qty:0,rub:0,imp:0,cv:0,ord:0,zeroDays:0}, b=B[sku]||{qty:0,rub:0,imp:0,cv:0,ord:0,zeroDays:0};
+    const a=A[sku]||{qty:0,rub:0,imp:0,cv:0,cart:0,ord:0,cancel:0,zeroDays:0};
+    const b=B[sku]||{qty:0,rub:0,imp:0,cv:0,cart:0,ord:0,cancel:0,zeroDays:0};
     const c=byS[sku]||{};
     const s1=ad1? (ad1.bySku[sku]||0):null, s0=ad0? (ad0.bySku[sku]||0):null;
-    return {sku, name:c.name||sku, category:c.category||"", sup:(""+(c.supplierCode||"")).trim(),
+    const p1=a.qty>0? a.rub/a.qty:0, p0=b.qty>0? b.rub/b.qty:0;
+    const r={sku, name:c.name||sku, category:c.category||"", tag:c.adTag||"",
+      sup:(""+(c.supplierCode||"")).trim(),
       q1:a.qty, q0:b.qty, dq:a.qty-b.qty, r1:a.rub, r0:b.rub, dr:a.rub-b.rub,
-      reasons:recReason(a,b,s1,s0)};
-  }).filter(r=>(r.q1>0||r.q0>0) && !recIsOut(r));   // товар на выводе не разбираем
+      p1, p0, dPrice: p0>0? p1/p0-1 : 0,
+      z: recZ(a.qty,b.qty), zeroDays:a.zeroDays, cancel1:a.cancel, cancel0:b.cancel,
+      ad1:s1, ad0:s0, factors:recFactors(a,b)};
+    /* СЕГМЕНТ СЧИТАЕМ БЕЗ САМОГО ТОВАРА. Иначе крупная карточка тянет свою склейку вниз,
+       и про неё же делается вывод «падает весь сегмент — дело не в карточке». */
+    const st=seg.tag[c.adTag], sc=seg.cat[c.category];
+    const ex=(o)=>{ if(!o) return null; const bb=o.b-b.ord, aa=o.a-a.ord;
+      return bb>0? aa/bb-1 : null; };
+    r.segTag = ex(st); r.segCat = ex(sc);
+    // сосед по склейке, который забрал спрос
+    /* «Спрос перетёк к соседу» — только если сосед РЕАЛЬНАЯ ЗАМЕНА: та же ценовая полка
+       (±30%). Иначе выбирался просто самый выросший в склейке — а каталка за 2 700 ₽
+       не конкурент трактору за 4 700 ₽, покупатель у них разный. */
+    if(c.adTag && r.dq<0 && inTag[c.adTag]){
+      const grew=inTag[c.adTag].filter(x=>x.sku!==sku && x.d>0 && x.d>=Math.abs(r.dq)*0.4);
+      const near=r.p1>0? grew.filter(x=>x.price>0 && Math.abs(x.price/r.p1-1)<=0.30) : [];
+      const win=(near.length? near : grew).sort((x,y)=>y.d-x.d)[0];
+      if(win) r.rival=win, r.rivalNear=near.includes(win);
+    }
+    r.diag=recDiag(r);
+    return r;
+  }).filter(r=>(r.q1>0||r.q0>0) && !recIsOut(r));
   rows.sort((x,y)=>Math.abs(y.dr)-Math.abs(x.dr));
   return {rows, w1, w0,
     adNote: (ad1&&ad0)? "" : "расход на рекламу за прошлую неделю не загружен — как причину не проверяю"};
 }
-
+/* Из разложения и контекста собираем текст: что произошло, насколько это надёжно
+   и ЧТО ДЕЛАТЬ. Действие выводится из ведущего фактора, а не из общих слов. */
+function recDiag(r){
+  const down=r.dq<0, out=[];
+  const pcs=v=>(v>0?"+":"−")+Math.abs(Math.round(v*100))+"%";
+  // 1. жёсткие физические причины — они старше любой воронки
+  if(down && r.zeroDays>=2) out.push({k:"stock",t:`товара не было на ВБ <b class="num">${r.zeroDays}</b> дн из ${REC_WIN} — заказы просто некому было отдать`});
+  if(!down && r.zeroDays===0 && r.q0>0 && r.dq>0 && r.q0<r.q1*0.5) {}
+  // 2. факторное разложение
+  let lead=null;
+  if(r.factors){
+    const sorted=[...r.factors].sort((x,y)=>Math.abs(y.eff)-Math.abs(x.eff));
+    lead=sorted.find(x=>(down? x.eff<0 : x.eff>0))||sorted[0];
+    const fmtStep=x=>{
+      const val = x.k==="imp" ? `${fmt(Math.round(x.from))} → ${fmt(Math.round(x.to))}`
+        : `${(x.from*100).toFixed(2)}% → ${(x.to*100).toFixed(2)}%`;
+      return `${x.n} ${pcs(x.ratio-1)} (${val}) → <b class="num">${x.eff>0?"+":""}${x.eff.toFixed(0)}</b> зак.`; };
+    out.push({k:"factors", t:"из чего сложилось: "+sorted.map(fmtStep).join("; ")});
+  }
+  // 3. цена
+  if(Math.abs(r.dPrice)>=0.04 && r.p0>0)
+    out.push({k:"price", t:`цена ${r.dPrice>0?"выросла":"упала"} на <b class="num">${Math.abs(Math.round(r.dPrice*100))}%</b> — ${fmt(Math.round(r.p0))} → ${fmt(Math.round(r.p1))} ₽`});
+  // 4. контекст сегмента
+  if(r.segTag!=null||r.segCat!=null){
+    const seg=[]; if(r.segTag!=null) seg.push(`склейка ${pcs(r.segTag)}`);
+    if(r.segCat!=null) seg.push(`категория ${pcs(r.segCat)}`);
+    const alone = down && ((r.segTag!=null&&r.segTag>0.05)||(r.segCat!=null&&r.segCat>0.05));
+    const withAll = down && ((r.segTag!=null&&r.segTag<-0.05)||(r.segCat!=null&&r.segCat<-0.05));
+    out.push({k:"seg", t:seg.join(", ")+(alone? " — падает он один, спрос в сегменте есть"
+      : (withAll? " — падает весь сегмент, дело не в карточке" : ""))});
+  }
+  // 5. сосед забрал спрос
+  if(r.rival) out.push({k:"rival",
+    t:`внутри склейки вырос ${skuLink(r.rival.sku)} (+<b class="num">${r.rival.d}</b> зак.${
+      r.rival.price>0&&r.p1>0? `, цена ${fmt(Math.round(r.rival.price))} ₽ против ${fmt(Math.round(r.p1))} ₽`:""})`
+      +(r.rivalNear? " — та же ценовая полка, похоже, спрос перетёк к нему"
+                   : " — но полка другая, прямой заменой он не выглядит")});
+  // 6. реклама
+  if(r.ad1!=null&&r.ad0!=null&&(r.ad0>0||r.ad1>0)){
+    const dd=r.ad0>0? r.ad1/r.ad0-1 : 1;
+    if(Math.abs(dd)>=0.3||!r.ad0||!r.ad1)
+      out.push({k:"ads", t:`расход на рекламу ${fmt(Math.round(r.ad0))} → ${fmt(Math.round(r.ad1))} ₽`});
+  }
+  // 7. надёжность
+  const noise = r.z<1.96;
+  // 8. ЧТО ДЕЛАТЬ
+  let act=null;
+  const withAll = down && ((r.segTag!=null&&r.segTag<-0.05)||(r.segCat!=null&&r.segCat<-0.05));
+  if(down && r.zeroDays>=2) act="Вернуть товар в наличие — остальное вторично.";
+  else if(withAll) act="Падает весь сегмент — карточку не трогаем, смотрим спрос и цены по категории целиком.";
+  else if(down && r.rival && r.rivalNear && r.dPrice>0.03)
+    act=`Вернуть цену: подняли на ${Math.round(r.dPrice*100)}%, и покупатель ушёл на соседнюю карточку склейки. Сравните цену с ${r.rival.sku} и решите, кого продвигать.`;
+  else if(down && lead && lead.k==="ord")
+    act=`Главное падение — на шаге «корзина→заказ»: товар кладут в корзину, но не выкупают. Смотрите цену (она ${r.dPrice>0?"выросла на "+Math.round(r.dPrice*100)+"%":"не менялась"}),сроки доставки и цену у соседей по склейке.`;
+  else if(down && lead && lead.k==="cart")
+    act="Проседает «переход→корзина»: карточку открывают, но не кладут. Это контент — фото, характеристики, отзывы, цена на первом экране.";
+  else if(down && lead && lead.k==="ctr")
+    act="Проседает CTR: показы дают, а кликать перестали. Главное фото и первый экран выдачи — либо у соседа появилось предложение выгоднее.";
+  else if(down && lead && lead.k==="imp")
+    act="Проседают показы — это выдача, а не карточка. Проверьте позиции по ключам и дайте рекламный импульс, чтобы вернуть охват.";
+  else if(!down) act="Рост держится на "+(lead? lead.n : "объёме")+" — закрепите: следите за остатком и не трогайте цену.";
+  if(noise && down) act=(act? act+" ":"")+"Важно: падение в пределах статистического шума, решение можно отложить на неделю.";
+  return {items:out, noise, lead, act};
+}
 /* ===== ГИПОТЕЗЫ ПО РЕКЛАМЕ: КАТЕГОРИЯ → СКЛЕЙКА → ТОВАР =====
    Просьба продавца 01.09.2026: «мне нужны рекомендации (или гипотезы) по каждой
    категории — склейке — товару». На каждом уровне одна и та же логика, меняется только
@@ -7197,13 +7327,18 @@ function renderRecsTab(){
     +(ch.adNote? " "+ch.adNote.charAt(0).toUpperCase()+ch.adNote.slice(1)+"." : "");
   if(!ch.rows.length){ el.innerHTML=`<div class="rec-empty">Мало истории заказов, чтобы сравнивать недели.</div>`; }
   else {
-    const row=r=>`<div class="c-row"><div class="c-nm">${esc(r.name)}<span>${esc(r.category)} · ${skuLink(r.sku)}${r.sup?" · 1С "+esc(r.sup):""}</span></div>`
-      +`<div class="c-d ${r.dr>=0?"up":"down"}">${r.dr>=0?"+":"−"}${fmt(Math.abs(Math.round(r.dr)))} ₽<span style="display:block;font-size:11px;font-weight:600;opacity:.75">${r.q0} → ${r.q1} шт</span></div>`
-      +`<div class="c-why">${r.reasons.length? r.reasons.map(x=>x.t).join("<br>") : `<span class="muted">причина не видна в данных</span>`}</div></div>`;
-    el.innerHTML=`<div class="rec-sec" style="margin-top:10px">Просело сильнее всего</div><div class="chg">`
-      +drop.slice(0,6).map(row).join("")+`</div>`
-      +`<div class="rec-sec">Выросло сильнее всего</div><div class="chg">`
-      +up.slice(0,4).map(row).join("")+`</div>`;
+    const row=r=>`<div class="chg-card ${r.dr>=0?"up":"down"}">`
+      +`<div class="chg-h"><span class="chg-nm">${esc(r.name)}`
+        +`<small>${esc(r.category)}${r.tag?" · склейка «"+esc(r.tag)+"»":""} · ${skuLink(r.sku)}${r.sup?" · 1С "+esc(r.sup):""}</small></span>`
+      +`<span class="chg-d ${r.dr>=0?"up":"down"}">${r.dr>=0?"+":"−"}${fmt(Math.abs(Math.round(r.dr)))} ₽`
+        +`<small>${r.q0} → ${r.q1} шт${r.diag.noise? " · на грани шума":""}</small></span></div>`
+      +(r.diag.items.length? `<div class="chg-why">`+r.diag.items.map(x=>`<div>${x.t}</div>`).join("")+`</div>`:"")
+      +(r.diag.act? `<div class="chg-act">${esc(r.diag.act)}</div>`:"")
+      +`</div>`;
+    el.innerHTML=`<div class="rec-sec" style="margin-top:10px">Просело сильнее всего</div>`
+      +drop.slice(0,6).map(row).join("")
+      +`<div class="rec-sec">Выросло сильнее всего</div>`
+      +up.slice(0,4).map(row).join("");
   }
   // ---- список действий ----
   let show=recs;
