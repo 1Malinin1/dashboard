@@ -335,9 +335,35 @@
   .drrlv .lv-bar{height:7px;border-radius:4px;background:var(--surface-3);overflow:hidden}
   .drrlv .lv-bar i{display:block;height:100%;border-radius:4px}
   /* ---- Разбор одного товара («хватит ли партии») ---- */
-  .itm-ctl{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
-  .itm-ctl label{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
-  .itm-ctl input[type=number]{width:132px}
+  /* Панель ввода разбора. ВАЖНО: `display:flex` у класса СИЛЬНЕЕ браузерного `[hidden]`,
+     поэтому строка висела во всех видах «Оборачиваемости», хотя hidden проставлялся.
+     Правило `.itm-ctl[hidden]` обязательно — не удаляй его вместе с чем-нибудь ещё. */
+  .itm-ctl{display:flex;gap:11px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;
+    background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+    padding:13px 15px;box-shadow:var(--shadow-sm)}
+  .itm-ctl[hidden]{display:none}
+  .itm-f{display:flex;flex-direction:column;gap:6px;min-width:0}
+  .itm-f.grow{flex:1 1 300px}
+  .itm-f .lb{font-size:10.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);padding-left:2px}
+  .itm-in{display:flex;align-items:center;gap:9px;background:var(--surface-2);
+    border:1px solid var(--border);border-radius:var(--r-sm);padding:0 12px;
+    transition:border-color .15s,box-shadow .15s,background .15s}
+  .itm-in:hover{background:var(--surface-3)}
+  .itm-in:focus-within{border-color:var(--accent);box-shadow:var(--ring);background:var(--surface-2)}
+  .itm-in svg{flex:none;opacity:.5}
+  .itm-in input{border:0;background:none;color:var(--text-1);font:inherit;font-size:13.5px;
+    padding:10px 0;width:100%;min-width:0}
+  .itm-in input:focus{outline:none}
+  .itm-in input::placeholder{color:var(--muted)}
+  .itm-in .suf{font-size:12px;color:var(--muted);white-space:nowrap;font-weight:600}
+  .itm-in.num{width:158px}
+  .itm-in.num.sm{width:112px}
+  .itm-in.num input{text-align:right;font-variant-numeric:tabular-nums;font-weight:650;font-size:14px}
+  /* стрелки-степперы у number сбивают вид и всё равно не нужны — ввод с клавиатуры */
+  .itm-ctl input[type=number]{-moz-appearance:textfield}
+  .itm-ctl input[type=number]::-webkit-outer-spin-button,
+  .itm-ctl input[type=number]::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
   .itm-hits{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px}
   .itm-hit{font-size:12px;padding:5px 10px;border-radius:20px;cursor:pointer;
     border:1px solid var(--border-2);background:var(--surface);color:var(--text-2)}
@@ -1159,9 +1185,26 @@
     <!-- Разбор одного товара: вводим код 1С (или артикул/название) и количество из проформы —
          дашборд отвечает, на сколько месяцев этого хватит и не будет ли разрыва до партии. -->
     <div class="itm-ctl" id="turnItemCtl" hidden>
-      <input type="search" id="itemQ" placeholder="Код 1С, артикул ВБ или название товара…" style="flex:1 1 300px">
-      <label>Кол-во в проформе <input type="number" id="itemQty" min="0" step="1" placeholder="напр. 4650"></label>
-      <label>Считать на <input type="number" id="itemMonths" min="1" max="24" step="1" value="6"> мес.</label>
+      <div class="itm-f grow">
+        <span class="lb">Товар</span>
+        <div class="itm-in">
+          <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7"
+               stroke-linecap="round"><circle cx="7" cy="7" r="4.6"/><path d="M10.4 10.4 14 14"/></svg>
+          <input type="search" id="itemQ" placeholder="Код 1С из проформы, артикул ВБ или название">
+        </div>
+      </div>
+      <div class="itm-f">
+        <span class="lb">Кол-во в проформе</span>
+        <div class="itm-in num">
+          <input type="number" id="itemQty" min="0" step="1" placeholder="4650"><span class="suf">шт</span>
+        </div>
+      </div>
+      <div class="itm-f">
+        <span class="lb">Считать на</span>
+        <div class="itm-in num sm">
+          <input type="number" id="itemMonths" min="1" max="24" step="1" value="6"><span class="suf">мес.</span>
+        </div>
+      </div>
     </div>
     <div class="howto" id="turnHowTo"></div>
     <div class="truckplan" id="turnTrucks" hidden></div>
@@ -3667,19 +3710,21 @@ function renderTurnoverTab(){
   document.getElementById("turnFreshness").innerHTML = RD
     ? `<span class="dot"></span>Остатки ${oz?"Ozon":"WB"}${stockDate?" обновлены на "+fmtDateLong(stockDate):""} · заказы — по ${fmtDateLong(RLAST)}`
     : "";
-  if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML="";
-    document.getElementById("turnHowTo").innerHTML=""; return; }
   /* «Разбор товара» — вид под ОДИН код 1С сразу по обеим площадкам, поэтому он не зависит
      от переключателя ВБ/Озон и рисуется до всех проверок площадки. Таблицу и её тулбар
-     прячем: здесь другой экран, а не другая сортировка того же списка. */
+     прячем: здесь другой экран, а не другая сортировка того же списка.
+     Показ/скрытие делаем ДО проверки на отсутствие данных — иначе панель ввода осталась бы
+     висеть на экране «данных нет». */
   const itmCtl=document.getElementById("turnItemCtl"), itmBox=document.getElementById("turnItemBox"),
         tblCard=document.getElementById("turnTableCard");
-  const isItem = turnView==="item";
+  const isItem = RD && turnView==="item";
   if(itmCtl) itmCtl.hidden=!isItem;
   if(itmBox) itmBox.hidden=!isItem;
-  if(tblCard) tblCard.hidden=isItem;
+  if(tblCard) tblCard.hidden=!!isItem;
   document.querySelectorAll("#turnSearch, #turnCat, #turnProduct").forEach(x=>{
     const w=x.closest(".uisel")||x; w.style.display=isItem? "none" : ""; });
+  if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML="";
+    document.getElementById("turnHowTo").innerHTML=""; return; }
   // простая модель (ВБ и Озон) считает по фикс. окну 7 дней — прячем селектор «Скорость» и старый CSV-дозаказ
   const winWrap=document.getElementById("turnWindow").closest(".uisel");
   if(winWrap) winWrap.style.display = "none";
