@@ -335,6 +335,17 @@
   .drrlv .lv-bar{height:7px;border-radius:4px;background:var(--surface-3);overflow:hidden}
   .drrlv .lv-bar i{display:block;height:100%;border-radius:4px}
   /* ---- Разбор одного товара («хватит ли партии») ---- */
+  /* Строка «скрыты товары на вывод». Как и у .itm-ctl, правило [hidden] обязательно —
+     display у класса перебивает браузерное [hidden]{display:none}. */
+  .hidnote{display:flex;align-items:center;gap:9px;flex-wrap:wrap;font-size:12.5px;
+    color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);
+    border-radius:var(--r-sm);padding:8px 13px;margin-bottom:12px}
+  .hidnote[hidden]{display:none}
+  .hidnote .hn-n{font-weight:680;color:var(--text-1);font-variant-numeric:tabular-nums}
+  .hidnote button{margin-left:auto;font:inherit;font-size:12px;font-weight:640;cursor:pointer;
+    color:var(--accent);background:none;border:1px solid var(--border-2);border-radius:7px;
+    padding:5px 12px;transition:border-color .15s,background .15s}
+  .hidnote button:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 8%,transparent)}
   /* Панель ввода разбора. ВАЖНО: `display:flex` у класса СИЛЬНЕЕ браузерного `[hidden]`,
      поэтому строка висела во всех видах «Оборачиваемости», хотя hidden проставлялся.
      Правило `.itm-ctl[hidden]` обязательно — не удаляй его вместе с чем-нибудь ещё. */
@@ -1206,6 +1217,7 @@
         </div>
       </div>
     </div>
+    <div class="hidnote" id="turnHidden" hidden></div>
     <div class="howto" id="turnHowTo"></div>
     <div class="truckplan" id="turnTrucks" hidden></div>
     <div id="turnItemBox" hidden></div>
@@ -2240,10 +2252,30 @@ function setFocus(f){
   renderFocusBar();
 }
 function clearFocus(rerender){ recFocus=null; renderFocusBar(); if(rerender) renderActiveTab(); }
+/* ТОВАРЫ «НА ВЫВОД» НА «ОБОРАЧИВАЕМОСТИ» СКРЫТЫ (просьба продавца 02.09.2026: «захожу
+   в дозаказ и мне мешают эти товары»). Это ОТМЕНА прежнего правила «статус справочный,
+   считаем по всем» — но отмена только в ПОКАЗЕ: расчёт, план машин и данные не тронуты,
+   строки просто не выводятся в таблицу. Переключатель `turnShowOut` возвращает их обратно,
+   поэтому спрашивать меня, чтобы «достать» товар, не нужно.
+   На «Разбор товара» фильтр НЕ распространяется: туда продавец приходит с конкретным кодом,
+   и прятать от него именно тот товар, который он ввёл руками, — бессмысленно. */
+let turnShowOut=false;
+let _turnHiddenOut=0;      // сколько строк скрыто в последнем прогоне turnFilteredRows
+// Код 1С строки: у подсорта он лежит прямо в `sup`, у дозаказа/закупа/месяцев — ищется по sku
+// (на Озоне артикул И ЕСТЬ код 1С, поэтому одной карты `catalog1cBySku` хватает на обе площадки).
+function turnOutSup(r){
+  const s=(""+(r.sup||"")).trim(); if(s) return s;
+  return catalog1cBySku[r.sku] || (""+(r.sku||""));
+}
+function turnIsOut(r){ const s=turnOutSup(r); return !!s && recOutSups().has(s); }
 function turnFilteredRows(all, exceptKey){
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
   let rows=all;
+  /* Отсекаем ДО остальных фильтров: иначе в списках колоночных фильтров висели бы значения,
+     которые есть только у скрытых строк, и выбор такого значения давал бы пустую таблицу. */
+  if(!turnShowOut){ const n=rows.length; rows=rows.filter(r=>!turnIsOut(r)); _turnHiddenOut=n-rows.length; }
+  else _turnHiddenOut=0;
   if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q)||(""+(r.sup||"")).includes(q)||(""+(r.skuWb||"")).includes(q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku)||(r.sup&&selProd.includes(r.sup)));
@@ -2677,6 +2709,24 @@ function turnHowTo(view,oz,mp){
       "ВНИМАНИЕ: ваш склад, товар из Китая и заказанное производству — ОБЩИЕ для ВБ и Озона (ключ — код 1С), и здесь они вычтены целиком. Поэтому эту выгрузку ("+(oz?"Ozon":"Wildberries")+") нельзя складывать с выгрузкой другой площадки — получится двойной вычет.",
       "Сумма ₽ = К закупу × текущая себестоимость.",
       "У товаров без заданного размера контейнера округления нет — количество берите как есть."]};
+}
+/* Скрытые «на вывод» не должны исчезать молча: продавец обязан видеть, что таблица неполная,
+   и уметь вернуть строки, не спрашивая меня. Считается по факту последнего фильтра
+   (`_turnHiddenOut`), поэтому число всегда про ТЕКУЩИЙ вид, а не про весь каталог. */
+function renderTurnHiddenNote(){
+  const el=document.getElementById("turnHidden"); if(!el) return;
+  if(turnView==="item" || !RD){ el.hidden=true; return; }
+  if(!turnShowOut && _turnHiddenOut<=0){ el.hidden=true; return; }
+  const n=_turnHiddenOut;
+  el.hidden=false;
+  el.innerHTML = turnShowOut
+    ? `Товары со статусом «На вывод» <span class="hn-n">показаны</span>. Они не влияют на расчёт — статус справочный.`
+      +`<button type="button" data-act="hide">Скрыть их</button>`
+    : `Скрыто <span class="hn-n">${fmt(n)}</span> ${plural(n,"товар","товара","товаров")} со статусом «На вывод». `
+      +(turnView==="resupply"
+          ? `В план машин они по-прежнему входят — то, что лежит на складе, всё равно едет распродаваться.`
+          : `Данные и расчёт по ним сохранены — не показаны только строки.`)
+      +`<button type="button" data-act="show">Показать</button>`;
 }
 function renderTurnHowTo(){
   const el=document.getElementById("turnHowTo"); if(!el) return;
@@ -3148,6 +3198,7 @@ function renderTurnResupply(){
       +`<td>${resupBadge(st)}</td></tr>`;
   });
   html+="</tbody>"; tbl.innerHTML=html;
+  renderTurnHiddenNote();
   // пометку про фильтры показываем только когда фильтр реально включён
   const anyFilter = !!document.getElementById("turnSearch").value.trim()
     || selCats("turnCat").length>0 || selCats("turnProduct").length>0
@@ -3184,9 +3235,9 @@ function renderTurnoverSimple(){
   ].map(kpiCard).join("");
   wireKpiTips("turnKpis");
   // KPI посчитаны — дальше можно уйти в другой вид (у каждого своя таблица и подпись счётчика)
-  if(turnView==="months"){ renderTurnMonths(); return; }
-  if(turnView==="buyPeak"){ renderTurnPurchase("peak"); return; }
-  if(turnView==="buyAvg"){ renderTurnPurchase("avg"); return; }
+  if(turnView==="months"){ renderTurnMonths(); renderTurnHiddenNote(); return; }
+  if(turnView==="buyPeak"){ renderTurnPurchase("peak"); renderTurnHiddenNote(); return; }
+  if(turnView==="buyAvg"){ renderTurnPurchase("avg"); renderTurnHiddenNote(); return; }
   // подпись счётчика обязана называть ТОТ источник выкупа, который реально применён
   let bwTxt;
   const _bi=buyoutInfo(oz?"ozon":"wb");
@@ -3219,6 +3270,7 @@ function renderTurnoverSimple(){
   });
   html+="</tbody>";
   document.getElementById("turnTable").innerHTML=html;
+  renderTurnHiddenNote();
 }
 /* =========================================================================
    ВИД «РАЗБОР ТОВАРА» — хватит ли партии на N месяцев
@@ -3721,6 +3773,7 @@ function renderTurnoverTab(){
   if(itmCtl) itmCtl.hidden=!isItem;
   if(itmBox) itmBox.hidden=!isItem;
   if(tblCard) tblCard.hidden=!!isItem;
+  if(isItem){ const hn=document.getElementById("turnHidden"); if(hn) hn.hidden=true; }
   document.querySelectorAll("#turnSearch, #turnCat, #turnProduct").forEach(x=>{
     const w=x.closest(".uisel")||x; w.style.display=isItem? "none" : ""; });
   if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML="";
@@ -8391,6 +8444,12 @@ document.getElementById("turnCat").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnProduct").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnWindow").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnExportBtn").addEventListener("click",exportTurnoverCSV);
+document.getElementById("turnHidden").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  turnShowOut = b.dataset.act==="show";
+  turnColFilters={};          // наборы значений в воронках меняются вместе с выборкой
+  renderTurnoverTab();
+});
 document.getElementById("turnViewSeg").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
