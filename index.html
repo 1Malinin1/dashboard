@@ -334,6 +334,59 @@
   .drrlv .lv-n{font-variant-numeric:tabular-nums;text-align:right;color:var(--text-2)}
   .drrlv .lv-bar{height:7px;border-radius:4px;background:var(--surface-3);overflow:hidden}
   .drrlv .lv-bar i{display:block;height:100%;border-radius:4px}
+  /* ---- Разбор одного товара («хватит ли партии») ---- */
+  .itm-ctl{display:flex;gap:9px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+  .itm-ctl label{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted)}
+  .itm-ctl input[type=number]{width:132px}
+  .itm-hits{display:flex;flex-wrap:wrap;gap:6px;margin:2px 0 10px}
+  .itm-hit{font-size:12px;padding:5px 10px;border-radius:20px;cursor:pointer;
+    border:1px solid var(--border-2);background:var(--surface);color:var(--text-2)}
+  .itm-hit:hover{border-color:var(--accent);color:var(--text-1)}
+  .itm-hit b{color:var(--text-1);font-weight:650}
+  .itm{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
+    padding:15px 17px 16px;margin-bottom:10px}
+  .itm-hd{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+    padding-bottom:11px;border-bottom:1px solid var(--border)}
+  .itm-hd .nm{font-size:16px;font-weight:700;color:var(--text-1);letter-spacing:-.015em;flex:1 1 260px}
+  .itm-hd .nm small{display:block;font-size:11.5px;color:var(--muted);font-weight:500;margin-top:3px}
+  .itm-sec{margin-top:15px}
+  .itm-sec>h4{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--muted);margin:0 0 7px}
+  .itm-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
+  .itm-tbl th{font-size:10.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;
+    color:var(--muted);text-align:right;padding:0 8px 5px;white-space:nowrap}
+  .itm-tbl th:first-child{text-align:left}
+  .itm-tbl td{padding:5px 8px;text-align:right;font-variant-numeric:tabular-nums;
+    border-top:1px dashed var(--border);color:var(--text-2)}
+  .itm-tbl td:first-child{text-align:left;color:var(--text-1)}
+  .itm-tbl td small{display:block;font-size:10.5px;color:var(--muted)}
+  .itm-tbl tr.pick td{background:color-mix(in srgb,var(--accent) 8%,transparent);font-weight:650;color:var(--text-1)}
+  .itm-pipe{display:flex;flex-direction:column;gap:2px}
+  .itm-pr{display:grid;grid-template-columns:minmax(150px,1.5fr) 96px minmax(90px,1fr);
+    gap:10px;align-items:center;font-size:12.5px;padding:5px 8px;border-radius:7px}
+  .itm-pr+.itm-pr{border-top:1px dashed var(--border)}
+  .itm-pr.sum{background:var(--surface-2);font-weight:680;color:var(--text-1);margin-top:3px;border-top:none}
+  .itm-pr .k{color:var(--text-2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .itm-pr .k small{display:block;font-size:10.5px;color:var(--muted)}
+  .itm-pr .v{text-align:right;font-variant-numeric:tabular-nums;color:var(--text-1);font-weight:600}
+  .itm-pr .b{height:8px;border-radius:5px;background:var(--surface-3);overflow:hidden}
+  .itm-pr .b i{display:block;height:100%;border-radius:5px;background:var(--accent)}
+  .itm-out{border-radius:9px;padding:10px 12px;margin-top:6px;
+    background:color-mix(in srgb,var(--crit-txt) 9%,var(--surface));border-left:3px solid var(--crit-txt)}
+  .itm-out.ok{background:color-mix(in srgb,var(--good-txt) 9%,var(--surface));border-left-color:var(--good-txt)}
+  .itm-out .oh{font-weight:680;font-size:13px;color:var(--text-1);margin-bottom:4px}
+  .itm-out .ow{font-size:12px;line-height:1.55;color:var(--text-2)}
+  .itm-out .num{font-variant-numeric:tabular-nums;font-weight:650;color:var(--text-1)}
+  .itm-verd{margin-top:13px;border-radius:10px;padding:12px 14px;font-size:13px;line-height:1.6;
+    background:var(--surface-2);border-left:3px solid var(--muted);color:var(--text-2)}
+  .itm-verd.crit{border-left-color:var(--crit-txt);background:color-mix(in srgb,var(--crit-txt) 8%,var(--surface))}
+  .itm-verd.warn{border-left-color:var(--warn-txt);background:color-mix(in srgb,var(--warn-txt) 9%,var(--surface))}
+  .itm-verd.good{border-left-color:var(--good-txt);background:color-mix(in srgb,var(--good-txt) 8%,var(--surface))}
+  .itm-verd .vh{font-size:14px;font-weight:700;color:var(--text-1);margin-bottom:5px}
+  .itm-verd .num{font-variant-numeric:tabular-nums;font-weight:680;color:var(--text-1)}
+  .itm-chart{margin-top:8px}
+  .itm-lg{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--muted);margin-top:5px}
+  .itm-lg i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;vertical-align:-1px}
   /* ---- Рекомендации ---- */
   .rec{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
     padding:13px 15px 12px;margin-bottom:10px;position:relative;overflow:hidden}
@@ -1098,13 +1151,22 @@
         <button data-view="buyPeak">Закуп: по пику</button>
         <button data-view="buyAvg">Закуп: по среднему</button>
         <button data-view="resupply">Подсорт со склада</button>
+        <button data-view="item">Разбор товара</button>
       </div>
       <span class="count" id="turnCount"></span>
       <button class="btn" id="turnExportBtn">Скачать Excel</button>
     </div>
+    <!-- Разбор одного товара: вводим код 1С (или артикул/название) и количество из проформы —
+         дашборд отвечает, на сколько месяцев этого хватит и не будет ли разрыва до партии. -->
+    <div class="itm-ctl" id="turnItemCtl" hidden>
+      <input type="search" id="itemQ" placeholder="Код 1С, артикул ВБ или название товара…" style="flex:1 1 300px">
+      <label>Кол-во в проформе <input type="number" id="itemQty" min="0" step="1" placeholder="напр. 4650"></label>
+      <label>Считать на <input type="number" id="itemMonths" min="1" max="24" step="1" value="6"> мес.</label>
+    </div>
     <div class="howto" id="turnHowTo"></div>
     <div class="truckplan" id="turnTrucks" hidden></div>
-    <div class="table-card">
+    <div id="turnItemBox" hidden></div>
+    <div class="table-card" id="turnTableCard">
       <div class="table-scroll"><table class="rnp" id="turnTable"></table></div>
     </div>
   </section>
@@ -2472,6 +2534,21 @@ function turnHowTo(view,oz,mp){
          : "% выкупа 14-дневный из каталога ВБ");
   const P=Math.round(TURN_PEAK_BUYOUT*100);
   const mpSuf = mp==="all"? "" : (oz? " — Ozon" : " — Wildberries");
+  /* «Разбор товара» считается сразу по ДВУМ площадкам (товар физически один, витрины две),
+     поэтому суффикс площадки здесь не ставим — иначе текст обещал бы расчёт только по ВБ. */
+  if(view==="item") return {title:"Как считается разбор товара", steps:[
+      "Заказов/дн = заказы этого кода за последние 7 дней ÷ 7, отдельно по Wildberries и Ozon",
+      "Продаж/дн = заказы ВБ × "+Math.round((buyoutInfo("wb")||{all:0}).all*100)+"% выкупа ВБ + заказы Ozon × % выкупа Ozon",
+      "Есть сейчас = остаток на площадках + то, что едет на них + весь ваш склад",
+      "Хватит до = Есть сейчас ÷ Продаж/дн, отложенное от сегодняшнего дня",
+      "Нужно на N месяцев = Продаж/дн × N × 30"],
+    notes:[
+      "Ключ — код 1С (он же артикул на Ozon): товар физически один, поэтому обе площадки считаются общим запасом, а переключатель ВБ/Ozon на этот вид не влияет.",
+      "ПРОВАЛЫ. Дни, когда заказов ноль, а до них темп был живой, помечаются как провал (обычно это аут по остатку). Средний темп за 14–28 дней такие дни занижают, поэтому рядом показывается темп ДО провала и ПОСЛЕ него: если после возврата темп не вернулся, карточка потеряла позиции в выдаче, и планировать партию надо по доаутному темпу, а не по текущему.",
+      "Показы из воронки рядом с провалом — проверка причины: упали показы, значит товар выпал из выдачи, а не разонравился покупателю.",
+      "«Едет к вам» (Китай, заказ производству, заявки на Ozon) в «хватит до» НЕ входит: до площадки этот товар доедет через месяцы, а вопрос стоит про сегодняшний остаток.",
+      "Разрыв считается до даты, когда партия ВСТАНЕТ В ПРОДАЖУ (etaSale), а не приедет на склад: пока партия лежит непринятой, продажи она не закрывает.",
+      "Расчёт не закладывает рост: у новинки темп ещё разгоняется, и реальная потребность будет выше расчётной."]};
   if(view==="reorder") return {title:"Как считается дозаказ"+mpSuf, steps:[
       "Заказов/дн = заказы за последние 7 дней ÷ 7",
       "Продаж/дн = Заказов/дн × "+buyTxt,
@@ -3035,6 +3112,8 @@ function renderTurnResupply(){
   renderTruckPlan(allRows, anyFilter);
 }
 function renderTurnoverSimple(){
+  // «Разбор товара» — не таблица, а экран одного кода: сюда его пускать нельзя
+  if(turnView==="item"){ renderTurnHowTo(); renderTurnItem(); return; }
   // «Подсорт» — свой рендер (и свои KPI); сюда попадаем в т.ч. из панели фильтра колонки
   if(turnView==="resupply"){ renderTurnHowTo(); renderTurnResupply(); return; }
   const tp=document.getElementById("turnTrucks"); if(tp){ tp.innerHTML=""; tp.hidden=true; }
@@ -3098,6 +3177,463 @@ function renderTurnoverSimple(){
   html+="</tbody>";
   document.getElementById("turnTable").innerHTML=html;
 }
+/* =========================================================================
+   ВИД «РАЗБОР ТОВАРА» — хватит ли партии на N месяцев
+   -------------------------------------------------------------------------
+   Зачем. Продавцу приходит проформа от руководителя («в заказе код 501432, там его
+   4650») и нужно за минуту ответить: хватит этого на полгода или нет. Раньше ответ
+   собирался руками из пяти вкладок; здесь он считается по одному коду 1С сразу по
+   ОБЕИМ площадкам, потому что товар физически один, а продаётся с двух витрин.
+
+   ЧТО ЗДЕСЬ ВАЖНО И ЧЕГО НЕТ В ОСТАЛЬНЫХ ВИДАХ:
+   · ДЕТЕКТ АУТОВ. Средний темп за 14/28 дней врёт, если товар в этот период стоял
+     без остатка: дни аута — нули, они тянут среднее вниз, и партия заказывается
+     заниженная. Поэтому дни без заказов при живом предыдущем темпе выделяются в
+     «провалы», и рядом считается темп ДО провала и ПОСЛЕ него. Разница «до/после» —
+     это цена аута: карточка теряет позиции в выдаче и возвращается не сразу.
+     Реальный случай (код 501432, 19–24.08.2026): показы на ВБ упали с 22 384 до 97,
+     после возврата вышли на 9–11 тыс, заказы 29,7/дн → 16,1/дн, то есть −46%.
+   · РАЗРЫВ ДО ПАРТИИ. Даже правильный объём не спасает, если он выходит в продажу
+     позже, чем кончается текущий остаток. Поэтому «хватит до <дата>» сравнивается
+     с датой выхода партии в продажу (`etaSale`), и разрыв показывается в днях.
+   ========================================================================= */
+let itemQ="", itemQty=null, itemMonths=6;
+const ITEM_OUT_MIN_RATE=2;    // «провалом» считаем ноль заказов при темпе от 2 шт/дн — ниже это обычная пауза
+const ITEM_AFTER_WIN=14;      // сколько дней после провала смотрим на восстановление
+// десятичные — с ЗАПЯТОЙ, как во всём дашборде (toFixed даёт точку и выбивается из общего вида)
+const d1=v=>(+v||0).toLocaleString("ru-RU",{minimumFractionDigits:1,maximumFractionDigits:1});
+// Все коды 1С обеих площадок с именами — для поиска по вводу продавца.
+function itemIndex(){
+  if(!RD) return [];
+  const m={};
+  (RD.catalog||[]).forEach(c=>{
+    const sup=(""+(c.supplierCode||"")).trim(); if(!sup) return;
+    const e=m[sup]||(m[sup]={sup,name:c.name||"",category:c.category||"",wbSkus:[],ozSku:null,
+      factory:c.factoryCode||"",pStatus:c.productionStatus||""});
+    e.wbSkus.push(""+c.sku);
+    if(!e.name) e.name=c.name||"";
+  });
+  ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{
+    const sup=""+c.sku; const e=m[sup]||(m[sup]={sup,name:c.name||"",category:"",wbSkus:[],ozSku:null,factory:"",pStatus:""});
+    e.ozSku=sup; e.ozName=c.name||""; if(!e.name) e.name=c.name||"";
+    if(!e.category) e.category=c.wbCategory||c.category||"";
+  });
+  return Object.values(m);
+}
+/* Поиск по вводу: точный код 1С → точный артикул ВБ → вхождение в код/артикул/название.
+   Продавец вводит то, что у него под рукой (в проформе — код 1С, в кабинете — артикул). */
+function itemFind(q){
+  const s=(""+q).trim().toLowerCase(); if(!s) return [];
+  const idx=itemIndex();
+  const exact=idx.filter(e=>e.sup.toLowerCase()===s || e.wbSkus.some(x=>x.toLowerCase()===s));
+  if(exact.length) return exact;
+  return idx.filter(e=>e.sup.toLowerCase().includes(s)
+      || e.wbSkus.some(x=>x.includes(s))
+      || (e.name||"").toLowerCase().includes(s)
+      || (e.ozName||"").toLowerCase().includes(s))
+    .sort((a,b)=>(a.name||"").localeCompare(b.name||"","ru")).slice(0,14);
+}
+/* Провалы в продажах = подряд идущие дни с НУЛЁМ заказов при живом темпе до них.
+   Открываем эпизод только если предыдущие 7 дней давали от ITEM_OUT_MIN_RATE шт/дн, а вот
+   продлеваем уже без этой проверки: за 4–5 дней нулей скользящее среднее само проседает,
+   и длинный аут разваливался бы на куски. */
+const ITEM_OUT_RECENT=45;     // провал старше — на нынешний темп уже не влияет, в разбор не идёт
+const ITEM_OUT_MIN_LOST=8;    // меньше — не та величина, чтобы двигать средний темп
+/* Дольше этого — это уже НЕ провал, а «товар не продаётся». Разница принципиальная:
+   у провала есть прежний темп, к которому карточка должна вернуться, и потерянные заказы
+   считаются от него. У товара, стоящего с зимы, прежний темп ничего не значит — на нём
+   выходило «потеряно 4 429 заказов» по позиции, которую просто вывели из ассортимента. */
+const ITEM_OUT_MAX_DAYS=30;
+function itemOutEpisodes(byDate,dates){
+  const eps=[]; let cur=null;
+  dates.forEach((d,i)=>{
+    let prev=0,n=0; for(let j=Math.max(0,i-7);j<i;j++){ prev+=byDate[dates[j]]||0; n++; }
+    const base=n? prev/n : 0, q=byDate[d]||0;
+    if(q===0){ if(cur) cur.to=d; else if(base>=ITEM_OUT_MIN_RATE) cur={from:d,to:d,base}; }
+    else if(cur){ eps.push(cur); cur=null; }
+  });
+  if(cur){ cur.ongoing=true; eps.push(cur); }
+  const days=e=>Math.round((new Date(e.to+"T00:00:00Z")-new Date(e.from+"T00:00:00Z"))/864e5)+1;
+  return eps.map(e=>{ e.days=days(e); return e; })
+    // одиночный ноль у медленного товара — обычная пауза, а не аут; у быстрого (10+/дн) — уже аут
+    .filter(e=>e.days>=2 || e.base>=10)
+    .map(e=>{
+      const iF=dates.indexOf(e.from), iT=dates.indexOf(e.to);
+      const avg=(a,b)=>{ let s=0,n=0; for(let i=Math.max(0,a);i<=Math.min(dates.length-1,b);i++){ s+=byDate[dates[i]]||0; n++; } return n? s/n : 0; };
+      e.before=avg(iF-7,iF-1);
+      e.afterDays=Math.min(ITEM_AFTER_WIN,dates.length-1-iT);
+      e.after=e.afterDays>0? avg(iT+1,iT+e.afterDays) : null;
+      e.recovery=(e.before>0 && e.after!=null)? e.after/e.before-1 : null;
+      e.lost=Math.max(0,e.before*e.days);   // сколько заказов не случилось за сами дни простоя
+      e.daysAgo=Math.round((new Date(dates[dates.length-1]+"T00:00:00Z")-new Date(e.to+"T00:00:00Z"))/864e5);
+      /* ЗНАЧИМЫЙ провал — тот, который двигает средний темп, а не любая пауза. Без этого
+         фильтра «провалы» находились у 99 товаров из 120: у медленной позиции два нуля
+         подряд — обычное дело, и блок кричал бы волками на каждом товаре. */
+      e.stopped=e.days>ITEM_OUT_MAX_DAYS;   // это не аут, а прекращение продаж — см. ITEM_OUT_MAX_DAYS
+      e.material=!e.stopped
+        && !!(e.ongoing || (e.daysAgo<=ITEM_OUT_RECENT && e.lost>=ITEM_OUT_MIN_LOST && e.before>=3));
+      return e;
+    });
+}
+// показы воронки по дням — подтверждение аута (карточка выпала из выдачи, а не спрос упал)
+function itemImpressions(rows,keys){
+  const set=new Set(keys.map(String)), by={};
+  (rows||[]).forEach(r=>{ if(set.has(""+r.sku)) by[r.date]=(by[r.date]||0)+(r.impressions||0); });
+  return by;
+}
+function itemAnalysis(sup){
+  if(!RD) return null;
+  const wbCards=(RD.catalog||[]).filter(c=>(""+(c.supplierCode||"")).trim()===sup);
+  const ozCard=((RD.ozon&&RD.ozon.catalog)||[]).find(c=>(""+c.sku)===sup)||null;
+  if(!wbCards.length && !ozCard) return null;
+  const wd=(RD.orderSeries&&RD.orderSeries.dates)||[];
+  const ozd=((RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates))||[];
+  const wbBy={}, ozBy={};
+  wbCards.forEach(c=>{ const s=(RD.orderSeries.bySku||{})[c.sku]||[];
+    wd.forEach((d,i)=>{ wbBy[d]=(wbBy[d]||0)+(s[i]||0); }); });
+  const os=((RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.byArt)||{})[sup]||[];
+  ozd.forEach((d,i)=>{ ozBy[d]=(ozBy[d]||0)+(os[i]||0); });
+  const dates=[...new Set([...wd,...ozd])].sort();
+
+  /* % выкупа: у ВБ — свой у каждой карточки, сводим ПО ЗАКАЗАМ за 28 дней (у одного кода 1С
+     бывает несколько артикулов ВБ с разным выкупом). Источник тот же, что во всём дашборде. */
+  const bwAvg=(()=>{ const v=(RD.catalog||[]).map(c=>c.buyoutPct14d).filter(x=>x>0);
+    return v.length? v.reduce((a,b)=>a+b,0)/v.length/100 : 1; })();
+  let boNum=0,boDen=0;
+  wbCards.forEach(c=>{
+    const s=(RD.orderSeries.bySku||{})[c.sku]||[]; let q=0;
+    for(let i=Math.max(0,wd.length-28);i<wd.length;i++) q+=s[i]||0;
+    const b=buyoutOf("wb",c.sku,c.buyoutPct14d>0? c.buyoutPct14d/100 : bwAvg);
+    boNum+=b*(q||0.001); boDen+=(q||0.001);
+  });
+  const boW=boDen? boNum/boDen : bwAvg;
+  const ozAvg=(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutAll)||1;
+  const boO=ozCard? buyoutOf("ozon",sup,ozCard.ozBuyout!=null? ozCard.ozBuyout : ozAvg) : ozAvg;
+
+  const win=n=>{
+    const dw=wd.slice(-n), doo=ozd.slice(-n);
+    let w=0,o=0; dw.forEach(d=>w+=wbBy[d]||0); doo.forEach(d=>o+=ozBy[d]||0);
+    const ow=dw.length? w/dw.length : 0, oo=doo.length? o/doo.length : 0;
+    return {n, ordWb:ow, ordOz:oo, ord:ow+oo, sell:ow*boW+oo*boO,
+      fromWb:dw[0]||null, fromOz:doo[0]||null};
+  };
+  // «весь период с первого заказа» — честная база для новинки, у которой истории меньше окна
+  const firstSale=dates.find(d=>(wbBy[d]||0)+(ozBy[d]||0)>0)||null;
+  /* Последний заказ вообще. Если он был давно — это не аут, а вывод товара из продажи,
+     и говорить про него надо прямо, а не показывать «провал на 213 дней». */
+  const lastSale=[...dates].reverse().find(d=>(wbBy[d]||0)+(ozBy[d]||0)>0)||null;
+  const silentDays=lastSale? Math.round((new Date(dates[dates.length-1]+"T00:00:00Z")-new Date(lastSale+"T00:00:00Z"))/864e5) : null;
+  const lifeWin=(()=>{
+    if(!firstSale) return null;
+    const dw=wd.filter(d=>d>=firstSale), doo=ozd.filter(d=>d>=firstSale);
+    let w=0,o=0; dw.forEach(d=>w+=wbBy[d]||0); doo.forEach(d=>o+=ozBy[d]||0);
+    const ow=dw.length? w/dw.length : 0, oo=doo.length? o/doo.length : 0;
+    return {n:Math.max(dw.length,doo.length), ordWb:ow, ordOz:oo, ord:ow+oo, sell:ow*boW+oo*boO, life:true};
+  })();
+  const wins=[win(7),win(14),win(28)]; if(lifeWin && lifeWin.n>28) wins.push(lifeWin);
+
+  // провалы по каждой площадке отдельно — витрины гаснут независимо друг от друга
+  const outW=itemOutEpisodes(wbBy,wd), outO=itemOutEpisodes(ozBy,ozd);
+  const impW=itemImpressions(typeof FUNNEL_CACHE!=="undefined"? FUNNEL_CACHE:[], wbCards.map(c=>c.sku));
+  const impO=itemImpressions(typeof OZ_FUNNEL!=="undefined"? OZ_FUNNEL:[], [sup]);
+
+  // где лежит товар
+  const wbStock=wbCards.reduce((a,c)=>a+(c.wbStock||0),0);
+  const wbPending=wbCards.reduce((a,c)=>a+((c.pending&&c.pending.qty)||0),0);
+  let openShip=0; (RD.shipments||[]).forEach(s=>{ if(s.mp==="wb"&&s.left>0&&(""+s.sup)===sup) openShip+=s.left; });
+  const ozStock=ozCard? (ozCard.ozStock||0):0, ozTransit=ozCard? (ozCard.ozTransit||0):0;
+  const ozIncoming=ozCard? (ozCard.ozIncoming||0):0;
+  const whRow=((RD.warehouse&&RD.warehouse.bySup)||{})[sup]||{qty:0,wh:{}};
+  const whBy={msk:0,nsk1:0,nsk2:0,other:0};
+  Object.entries(whRow.wh||{}).forEach(([n,q])=>{ whBy[whKey(n)]+=q; });
+  const whQty=whRow.qty||0;
+  const inb=RD.inbound||{};
+  const china=((inb.china&&inb.china.bySup)||{})[sup]||0;
+  const ordered=((inb.order&&inb.order.bySup)||{})[sup]||0;
+  const batchEta=k=>{ const b=inb[k]; if(!b) return null;
+    return {toSale:((b.etaSaleBySup||{})[sup])||b.etaSale||null, toWh:((b.etaBySup||{})[sup])||b.eta||null}; };
+  const etaChina=batchEta("china"), etaOrder=batchEta("order");
+
+  const onSite=wbStock+wbPending+openShip+ozStock+ozTransit;   // уже на площадках или официально едет туда
+  const atSeller=whQty;                                        // свой склад: FBS на ВБ и источник поставок на Озон
+  const coming=ozIncoming+china+ordered;                       // едет к продавцу, на площадке ещё не будет долго
+  const have=onSite+atSeller;
+
+  const now=win(7);
+  /* Темп ДО провала. Планировать партию по текущему темпу нельзя, если карточка после аута
+     не вернулась: тогда 7-дневное окно меряет не спрос, а последствия простоя. Берём такой
+     темп только по СВЕЖЕМУ значимому провалу (до 30 дней) — по старому это уже гадание. */
+  const fresh=e=>e.material && e.daysAgo<=30 && e.recovery!=null && e.recovery<-0.1;
+  const wOut=[...outW].reverse().find(fresh)||null, oOut=[...outO].reverse().find(fresh)||null;
+  const notRecovered=!!(wOut||oOut);
+  const preRate=notRecovered
+    ? (()=>{ const ow=wOut? wOut.before : now.ordWb, oo=oOut? oOut.before : now.ordOz;
+        return {ordWb:ow, ordOz:oo, ord:ow+oo, sell:ow*boW+oo*boO}; })()
+    : null;
+
+  const days=now.sell>0? have/now.sell : (have>0? Infinity : 0);
+  const today=new Date().toISOString().slice(0,10);
+  const runOut=(days!==Infinity && days>0)? addDays(today,Math.round(days)) : null;
+  // дата, к которой партия реально встанет в продажу: сначала своя по коду, иначе общая по заказу
+  const saleEta=(etaOrder&&etaOrder.toSale)||(etaChina&&etaChina.toSale)
+    ||(etaOrder&&etaOrder.toWh)||(etaChina&&etaChina.toWh)||null;
+  const gapDays=(runOut&&saleEta)? Math.round((new Date(saleEta+"T00:00:00Z")-new Date(runOut+"T00:00:00Z"))/864e5) : null;
+
+  // цена и себестоимость — чтобы сразу видеть, каких денег стоит партия
+  const money=RD.orderSeries.money||{}, ozMoney=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.money)||{};
+  let rubW=0,qtyW=0,rubO=0,qtyO=0;
+  wd.slice(-30).forEach(d=>{ wbCards.forEach(c=>{ const e=money[d]&&money[d][c.sku]; if(e) rubW+=e[0]||0; });
+    qtyW+=wbBy[d]||0; });
+  ozd.slice(-30).forEach(d=>{ const e=ozMoney[d]&&ozMoney[d][sup]; if(e) rubO+=e[0]||0; qtyO+=ozBy[d]||0; });
+  const price=(qtyW+qtyO)>0? (rubW+rubO)/(qtyW+qtyO) : 0;
+  const cost=wbCards.length? costOf(wbCards[0].sku) : null;
+
+  const idx=itemIndex().find(e=>e.sup===sup)||{};
+  return {sup, name:idx.name||(ozCard&&ozCard.name)||sup, category:idx.category||"",
+    ozName:(ozCard&&ozCard.name)||"", wbCards, ozCard, wbSkus:wbCards.map(c=>""+c.sku),
+    pStatus:(wbCards[0]&&wbCards[0].productionStatus)||"", factory:(wbCards[0]&&wbCards[0].factoryCode)||"",
+    container:(wbCards[0]&&wbCards[0].containerQty)||0,
+    dates, wbBy, ozBy, wdLast:wd[wd.length-1]||null, ozLast:ozd[ozd.length-1]||null,
+    firstSale, lastSale, silentDays,
+    boW, boO, wins, now, preRate, notRecovered, outW, outO, impW, impO,
+    wbStock, wbPending, openShip, ozStock, ozTransit, ozIncoming, whQty, whBy,
+    china, ordered, etaChina, etaOrder, onSite, atSeller, coming, have,
+    days, runOut, saleEta, gapDays, price, cost};
+}
+/* График заказов по дням: ВБ и Озон стопкой, дни провалов залиты красным.
+   Продавец должен УВИДЕТЬ дыру, а не прочитать про неё — по картинке сразу понятно,
+   был аут или спрос действительно упал. */
+function itemDayChart(mount,a){
+  const dates=a.dates.slice(-70);
+  if(!dates.length){ mount.innerHTML=""; return; }
+  const W=1000,H=210,m={t:14,r:12,b:30,l:52};
+  const iw=W-m.l-m.r, ih=H-m.t-m.b, n=dates.length;
+  const tot=dates.map(d=>(a.wbBy[d]||0)+(a.ozBy[d]||0));
+  const sc=niceScale(0,Math.max(...tot,1),4), max=sc.max||1;
+  const Y=v=>m.t+ih-(v/max)*ih, band=iw/n, bw=Math.max(1.5,Math.min(16,band-Math.max(1,band*0.2)));
+  const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
+  const outSet=new Set();
+  [...a.outW,...a.outO].forEach(e=>{ for(let d=e.from; d<=e.to; d=addDays(d,1)) outSet.add(d); });
+  for(let v=0;v<=max+1e-6;v+=sc.step){ const y=Y(v);
+    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":1}));
+    const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")}); tx.textContent=fmtAxis(v); svg.appendChild(tx); }
+  const cW=cssv("--accent"), cO=cssv("--s2")||cssv("--good-txt");
+  dates.forEach((d,i)=>{
+    const cx=m.l+band*i+band/2, w=a.wbBy[d]||0, o=a.ozBy[d]||0;
+    if(outSet.has(d)) svg.appendChild(el("rect",{x:cx-band/2,y:m.t,width:band,height:ih,
+      fill:cssv("--crit-txt"),opacity:.13}));
+    const yO=Y(o), hO=Y(0)-yO, yW=Y(o+w), hW=Y(o)-yW;
+    if(hO>0.4) svg.appendChild(el("rect",{x:cx-bw/2,y:yO,width:bw,height:Math.max(1,hO),fill:cO}));
+    if(hW>0.4) svg.appendChild(el("rect",{x:cx-bw/2,y:yW,width:bw,height:Math.max(1,hW),fill:cW}));
+    const hit=el("rect",{x:cx-band/2,y:m.t,width:band,height:ih,fill:"transparent"});
+    hit.style.cursor="pointer";
+    hit.addEventListener("pointermove",ev=>showTip(
+      `<div class="t-hd">${fmtDateLong(d)}${outSet.has(d)?" · провал":""}</div>`
+      +`<div class="t-row"><span class="k"><i style="background:${cW}"></i>Wildberries</span><span class="v">${fmt(w)}</span></div>`
+      +`<div class="t-row"><span class="k"><i style="background:${cO}"></i>Ozon</span><span class="v">${fmt(o)}</span></div>`
+      +`<div class="t-row"><span class="k">Всего</span><span class="v">${fmt(w+o)}</span></div>`
+      +(a.impW[d]!=null? `<div class="t-row"><span class="k">Показы ВБ</span><span class="v">${fmt(a.impW[d])}</span></div>`:"")
+      +(a.impO[d]!=null? `<div class="t-row"><span class="k">Показы Ozon</span><span class="v">${fmt(a.impO[d])}</span></div>`:""),
+      ev.clientX,ev.clientY));
+    hit.addEventListener("pointerleave",hideTip);
+    svg.appendChild(hit);
+    const stride=Math.max(1,Math.round(n/9));
+    if((i%stride===0 && (n-1-i)>=stride) || i===n-1){
+      const tx=el("text",{x:cx,y:H-10,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
+      tx.textContent=fmtDate(d); svg.appendChild(tx); }
+  });
+  mount.innerHTML=""; mount.appendChild(svg);
+}
+function itemOutBlock(e,mp,imp){
+  const dr=e.days+" "+plural(e.days,"день","дня","дней");
+  const impBefore=(()=>{ let s=0,n=0; for(let i=1;i<=7;i++){ const d=addDays(e.from,-i); if(imp[d]!=null){ s+=imp[d]; n++; } } return n? s/n:null; })();
+  const impIn=(()=>{ let s=0,n=0; for(let d=e.from; d<=e.to; d=addDays(d,1)){ if(imp[d]!=null){ s+=imp[d]; n++; } } return n? s/n:null; })();
+  const impAfter=(()=>{ let s=0,n=0; for(let i=1;i<=7;i++){ const d=addDays(e.to,i); if(imp[d]!=null){ s+=imp[d]; n++; } } return n? s/n:null; })();
+  const rec=e.recovery;
+  const ok=rec!=null && rec>=-0.1;
+  let w=`Было <span class="num">${d1(e.before)}</span> ${plural(Math.round(e.before),"заказ","заказа","заказов")} в день, `
+    +`${dr} подряд — ноль. Не случилось примерно <span class="num">${fmt(e.lost)}</span> ${plural(Math.round(e.lost),"заказ","заказа","заказов")}.`;
+  if(e.ongoing) w+=` <b>Провал продолжается прямо сейчас.</b>`;
+  else if(rec==null) w+=` Данных после провала пока нет — как восстановилось, будет видно в следующей выгрузке.`;
+  else w+=` После возврата — <span class="num">${d1(e.after)}</span> в день за ${e.afterDays} ${plural(e.afterDays,"день","дня","дней")}, `
+    // «−41%» и «59% от прежнего» — одно и то же, но читаются по-разному; пишем обе величины,
+    // иначе «это −41% от прежнего» понимается как «осталось 41%», а осталось 59%
+    +(ok? `темп вернулся.` : `это <span class="num">${Math.round((1+rec)*100)}%</span> от прежнего `
+        +`(−${Math.round(-rec*100)}%) — карточка потеряла позиции и сама не вернулась.`);
+  if(impBefore!=null && impIn!=null)
+    w+=`<br>Показы: <span class="num">${fmt(impBefore)}</span> в день до провала → <span class="num">${fmt(impIn)}</span> во время`
+      +(impAfter!=null? ` → <span class="num">${fmt(impAfter)}</span> после` : "")
+      +`. Это подтверждает, что товар выпал из выдачи, а не перестал нравиться.`;
+  return `<div class="itm-out${ok?" ok":""}"><div class="oh">${mp} · ${fmtDate(e.from)}–${fmtDate(e.to)} — ${dr} без заказов</div>`
+    +`<div class="ow">${w}</div></div>`;
+}
+function renderTurnItem(){
+  const box=document.getElementById("turnItemBox"); if(!box) return;
+  document.getElementById("turnCount").textContent="";
+  _itemLast=null;                       // товар ещё не выбран — кнопке выгрузки нечего отдавать
+  const hits=itemFind(itemQ);
+  if(!itemQ.trim()){
+    box.innerHTML=`<div class="itm"><div class="empty-hint" style="padding:18px 4px;line-height:1.7">`
+      +`Введите <b>код 1С</b> из проформы (он же артикул на Ozon), артикул Wildberries или название товара —`
+      +` и дашборд посчитает темп продаж по обеим площадкам, найдёт провалы из-за аутов, покажет всё, что уже есть в трубе,`
+      +` и ответит, на сколько месяцев хватит указанного количества.</div></div>`;
+    return;
+  }
+  if(!hits.length){
+    box.innerHTML=`<div class="itm"><div class="empty-hint" style="padding:18px 4px">Ничего не нашлось по «${esc(itemQ)}». `
+      +`Проверьте код — в проформе это «код поставщика» (он же артикул Ozon).</div></div>`;
+    return;
+  }
+  if(hits.length>1){
+    box.innerHTML=`<div class="itm-hits">`+hits.map(h=>`<button class="itm-hit" data-sup="${esc(h.sup)}">`
+      +`<b>${esc(h.sup)}</b> · ${esc(h.name||"")}</button>`).join("")+`</div>`;
+    box.querySelectorAll(".itm-hit").forEach(b=>b.addEventListener("click",()=>{
+      itemQ=b.dataset.sup; document.getElementById("itemQ").value=itemQ; renderTurnItem(); }));
+    return;
+  }
+  const a=itemAnalysis(hits[0].sup);
+  if(!a){ box.innerHTML=`<div class="itm"><div class="empty-hint" style="padding:18px 4px">Нет данных по этому коду.</div></div>`; return; }
+  const M=Math.max(1,Math.min(24,itemMonths||6)), horizon=M*30;
+  const Q=itemQty>0? itemQty : null;
+  const inf=v=>v===Infinity? "∞" : fmt(v);
+
+  // ---- шапка
+  const links=[];
+  a.wbCards.forEach(c=>links.push(`<a href="https://www.wildberries.ru/catalog/${encodeURIComponent(c.sku)}/detail.aspx" target="_blank" rel="noopener" class="sku-link">ВБ ${esc(c.sku)}</a>`));
+  if(a.ozCard) links.push(`<a href="${a.ozCard.ozonSku? "https://www.ozon.ru/product/"+encodeURIComponent(a.ozCard.ozonSku)+"/" : "https://www.ozon.ru/search/?text="+encodeURIComponent(a.sup)}" target="_blank" rel="noopener" class="sku-link">Ozon ${esc(a.sup)}</a>`);
+  let h=`<div class="itm"><div class="itm-hd"><div class="nm">${esc(a.name)}`
+    +`<small>${esc(a.category||"—")} · код 1С ${esc(a.sup)}${a.factory?" · ф. "+esc(a.factory):""}`
+    +`${a.pStatus?" · "+esc(a.pStatus):""}${a.container?" · паллета "+fmt(a.container)+" шт":" · вместимость паллеты не задана"}</small></div>`
+    +`<div style="font-size:12px;display:flex;gap:10px;flex-wrap:wrap">${links.join("")}</div></div>`;
+
+  // ---- KPI
+  const needNow=Math.ceil(a.now.sell*horizon);
+  h+=`<div class="kpis4" style="margin-top:13px">`+[
+    {lbl:"Продаж в день (обе площадки)",val:d1(a.now.sell),
+     tip:"Заказы за последние 7 дней × % выкупа.\nWildberries: "+d1(a.now.ordWb)+" заказов/дн × "+Math.round(a.boW*100)+"%\nOzon: "+d1(a.now.ordOz)+" заказов/дн × "+Math.round(a.boO*100)+"%"},
+    {lbl:"Есть сейчас, шт",val:fmt(a.have),
+     tip:"На площадках: "+fmt(a.onSite)+" шт\nНа вашем складе: "+fmt(a.atSeller)+" шт\nЕдет к вам (в расчёт «хватит» не входит): "+fmt(a.coming)+" шт"},
+    {lbl:"Хватит до",val:a.runOut? fmtDate(a.runOut) : (a.have>0?"—":"уже нет"),
+     valColor:(a.days!==Infinity&&a.days<45)?"var(--crit-txt)":(a.days!==Infinity&&a.days<90?"var(--warn-txt)":"var(--text-1)"),
+     tip:"При текущем темпе "+d1(a.now.sell)+" шт/день это "+inf(a.days)+" дней."},
+    {lbl:"Нужно на "+M+" мес., шт",val:fmt(needNow),
+     tip:"Продаж в день × "+horizon+" дней. Это план на "+M+" "+plural(M,"месяц","месяца","месяцев")+" вперёд без учёта роста."},
+  ].map(kpiCard).join("")+`</div>`;
+
+  // ---- вердикт по введённому количеству
+  if(Q){
+    const lasts=a.now.sell>0? Q/a.now.sell : Infinity;
+    const mo=lasts===Infinity? Infinity : lasts/30;
+    const diff=needNow-Q;
+    const cls=mo===Infinity? "good" : (mo>=M? "good" : (mo>=M*0.8? "warn":"crit"));
+    let txt=`<div class="vh">${fmt(Q)} шт — это ${mo===Infinity?"бессрочно (продаж нет)":`<span class="num">${d1(mo)}</span> ${plural(Math.round(mo),"месяц","месяца","месяцев")}`} при нынешнем темпе</div>`;
+    if(mo!==Infinity){
+      txt+= diff>0
+        ? `На ${M} ${plural(M,"месяц","месяца","месяцев")} нужно <span class="num">${fmt(needNow)}</span> шт — <b>не хватает ${fmt(diff)} шт</b>.`
+        : `На ${M} ${plural(M,"месяц","месяца","месяцев")} нужно <span class="num">${fmt(needNow)}</span> шт — <b>хватает, запас ${fmt(-diff)} шт</b>.`;
+      if(a.preRate){
+        const needPre=Math.ceil(a.preRate.sell*horizon), moPre=Q/a.preRate.sell/30;
+        txt+=`<br>Но темп сейчас занижен аутом (см. ниже). Если карточка вернётся к прежнему уровню — `
+          +`<span class="num">${d1(a.preRate.sell)}</span> шт/день, на ${M} ${plural(M,"месяц","месяца","месяцев")} понадобится `
+          +`<span class="num">${fmt(needPre)}</span> шт, а ${fmt(Q)} хватит только на <span class="num">${d1(moPre)}</span> ${plural(Math.round(moPre),"месяц","месяца","месяцев")}.`;
+      }
+      if(a.cost) txt+=`<br>Себестоимость партии: <span class="num">${rub(Q*a.cost)}</span> (${rub(a.cost)} за штуку).`;
+    }
+    h+=`<div class="itm-verd ${cls}">${txt}</div>`;
+  }
+
+  // ---- разрыв до партии
+  if(a.runOut){
+    const g=a.gapDays;
+    if(a.saleEta && g!=null && g>0)
+      h+=`<div class="itm-verd crit"><div class="vh">Разрыв: ${g} ${plural(g,"день","дня","дней")} без товара</div>`
+        +`Того, что есть, хватит до <span class="num">${fmtDateLong(a.runOut)}</span>, а ближайшая партия встаёт в продажу `
+        +`<span class="num">${fmtDateLong(a.saleEta)}</span>. Объём партии этот провал не закрывает — нужно либо везти раньше, либо притормозить продажи ценой.</div>`;
+    else if(a.saleEta && g!=null)
+      h+=`<div class="itm-verd good"><div class="vh">Разрыва нет</div>Хватит до ${fmtDateLong(a.runOut)}, партия в продаже с ${fmtDateLong(a.saleEta)} — на ${-g} ${plural(-g,"день","дня","дней")} раньше.</div>`;
+    else if(!a.saleEta)
+      h+=`<div class="itm-verd warn"><div class="vh">Дата партии не задана</div>Хватит до <span class="num">${fmtDateLong(a.runOut)}</span>. `
+        +`Когда партия выйдет в продажу — в снимке не записано, поэтому разрыв посчитать нельзя (ставится через <code>scripts/set-eta.cjs</code>).</div>`;
+  }
+
+  // ---- товар вообще не продаётся: считать по нему партию бессмысленно, и надо сказать это прямо
+  if(a.silentDays!=null && a.silentDays>ITEM_OUT_MAX_DAYS)
+    h+=`<div class="itm-verd warn"><div class="vh">Продаж нет уже ${a.silentDays} ${plural(a.silentDays,"день","дня","дней")}</div>`
+      +`Последний заказ был <span class="num">${fmtDateLong(a.lastSale)}</span>. Пока товар не продаётся, темп считать не от чего — `
+      +`расчёт партии по нему смысла не имеет. Сначала надо понять, почему он стоит: нет остатка, снят с витрины или выведен из ассортимента.</div>`;
+  else if(a.silentDays==null)
+    h+=`<div class="itm-verd warn"><div class="vh">Заказов не было ни разу</div>`
+      +`За всю историю по этому коду нет ни одного заказа — ни на Wildberries, ни на Ozon. Считать партию не от чего.</div>`;
+
+  // ---- провалы
+  const outs=[...a.outW.map(e=>({e,mp:"Wildberries",imp:a.impW})),...a.outO.map(e=>({e,mp:"Ozon",imp:a.impO}))]
+    .filter(o=>o.e.material)                       // мелкие паузы не показываем — см. e.material
+    .sort((x,y)=>x.e.from<y.e.from?1:-1).slice(0,4);
+  if(outs.length){
+    h+=`<div class="itm-sec"><h4>Провалы в продажах — из-за них средний темп занижен</h4>`
+      +outs.map(o=>itemOutBlock(o.e,o.mp,o.imp)).join("")+`</div>`;
+  }
+
+  // ---- темп по окнам
+  h+=`<div class="itm-sec"><h4>Темп продаж</h4><table class="itm-tbl"><thead><tr>`
+    +`<th>Окно</th><th>ВБ, зак/дн</th><th>Ozon, зак/дн</th><th>Заказов/дн</th><th>Продаж/дн</th><th>Нужно на ${M} мес.</th>`
+    +`</tr></thead><tbody>`;
+  const rowsW=a.wins.map(w=>({w,lbl:w.life? "весь период продаж ("+w.n+" дн)" : "последние "+w.n+" "+plural(w.n,"день","дня","дней")}));
+  if(a.preRate) rowsW.push({w:a.preRate,lbl:"как было до провала",pre:true});
+  rowsW.forEach(({w,lbl,pre})=>{
+    h+=`<tr class="${w===a.now?"pick":""}"><td>${esc(lbl)}${pre?'<small>если карточка восстановится</small>':""}</td>`
+      +`<td>${d1(w.ordWb)}</td><td>${d1(w.ordOz)}</td><td>${d1(w.ord)}</td>`
+      +`<td><b>${d1(w.sell)}</b></td><td>${fmt(Math.ceil(w.sell*horizon))}</td></tr>`;
+  });
+  h+=`</tbody></table>`
+    +`<div class="itm-lg">% выкупа: Wildberries ${Math.round(a.boW*100)}% · Ozon ${Math.round(a.boO*100)}%`
+    +(a.price? ` · средний чек ${rub(a.price)}`:"")+(a.cost? ` · себестоимость ${rub(a.cost)}`:" · себестоимость не задана")+`</div></div>`;
+
+  // ---- график
+  h+=`<div class="itm-sec"><h4>Заказы по дням</h4><div class="itm-chart" id="itemChart"></div>`
+    +`<div class="itm-lg"><span><i style="background:var(--accent)"></i>Wildberries</span>`
+    +`<span><i style="background:var(--s2)"></i>Ozon</span>`
+    +`<span><i style="background:color-mix(in srgb,var(--crit-txt) 30%,transparent)"></i>дни без заказов (провал)</span></div></div>`;
+
+  // ---- где лежит товар
+  /* Остатки САМИХ ПЛОЩАДОК показываем всегда, даже нулевые: «на ВБ ноль» — это и есть
+     главная новость по товару, и прятать её как пустую строку нельзя. Склады и «в пути»
+     при нуле убираем, чтобы не разводить пустоту. */
+  const pipe=[
+    {k:"Склады Wildberries (FBO)",v:a.wbStock,always:true},
+    {k:"Едет на Wildberries",v:a.wbPending+a.openShip},
+    {k:"Ozon, доступно к продаже",v:a.ozStock,always:!!a.ozCard},
+    {k:"Ozon, заявки и поставки в пути",v:a.ozTransit},
+    {k:"Ваш склад · Москва",v:a.whBy.msk},
+    {k:"Ваш склад · Нск-1 (FBS)",v:a.whBy.nsk1},
+    {k:"Ваш склад · Евросиб",v:a.whBy.nsk2},
+    {k:"Ваш склад · прочее",v:a.whBy.other},
+  ].filter(x=>x.v>0||x.always);
+  const later=[
+    {k:"Едет к вам под Ozon (заявки «на оптовых»)",v:a.ozIncoming},
+    {k:"Едет из Китая",v:a.china,eta:a.etaChina},
+    {k:"Заказано производству",v:a.ordered,eta:a.etaOrder},
+  ].filter(x=>x.v>0);
+  const mx=Math.max(1,...pipe.map(x=>x.v),...later.map(x=>x.v));
+  const prow=(k,v,sub)=>`<div class="itm-pr"><span class="k">${esc(k)}${sub?`<small>${esc(sub)}</small>`:""}</span>`
+    +`<span class="v">${fmt(v)} шт</span><span class="b"><i style="width:${Math.max(2,v/mx*100)}%"></i></span></div>`;
+  h+=`<div class="itm-sec"><h4>Где лежит товар</h4><div class="itm-pipe">`
+    +(pipe.length? pipe.map(x=>prow(x.k,x.v)).join("") : `<div class="empty-hint" style="padding:8px 2px">Ни на площадках, ни на складе остатка нет.</div>`)
+    +`<div class="itm-pr sum"><span class="k">Считается в «хватит до»</span><span class="v">${fmt(a.have)} шт</span><span class="b"></span></div>`
+    +(later.length? `<div style="margin-top:9px">`+later.map(x=>prow(x.k,x.v,
+        x.eta? ((x.eta.toWh? "на склад "+fmtDate(x.eta.toWh):"")+(x.eta.toSale? " · в продажу "+fmtDate(x.eta.toSale):"")) : "")).join("")+`</div>`
+      : "")
+    +`</div>`
+    +(later.length? `<div class="itm-lg">Нижний блок — то, что ещё едет к вам: в «хватит до» он не входит, потому что до площадки этот товар доедет не скоро.</div>`:"")
+    +`</div>`;
+
+  h+=`</div>`;
+  box.innerHTML=h;
+  const ch=document.getElementById("itemChart"); if(ch) itemDayChart(ch,a);
+  wireKpiTips("turnItemBox");
+  _itemLast=a;
+}
+let _itemLast=null;
 function renderTurnoverTab(){
   const oz = _appliedMp==="ozon";
   const stockDate = oz ? (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate) : (RD&&RD.meta&&RD.meta.stockSnapshotDate);
@@ -3106,9 +3642,28 @@ function renderTurnoverTab(){
     : "";
   if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML="";
     document.getElementById("turnHowTo").innerHTML=""; return; }
+  /* «Разбор товара» — вид под ОДИН код 1С сразу по обеим площадкам, поэтому он не зависит
+     от переключателя ВБ/Озон и рисуется до всех проверок площадки. Таблицу и её тулбар
+     прячем: здесь другой экран, а не другая сортировка того же списка. */
+  const itmCtl=document.getElementById("turnItemCtl"), itmBox=document.getElementById("turnItemBox"),
+        tblCard=document.getElementById("turnTableCard");
+  const isItem = turnView==="item";
+  if(itmCtl) itmCtl.hidden=!isItem;
+  if(itmBox) itmBox.hidden=!isItem;
+  if(tblCard) tblCard.hidden=isItem;
+  document.querySelectorAll("#turnSearch, #turnCat, #turnProduct").forEach(x=>{
+    const w=x.closest(".uisel")||x; w.style.display=isItem? "none" : ""; });
   // простая модель (ВБ и Озон) считает по фикс. окну 7 дней — прячем селектор «Скорость» и старый CSV-дозаказ
   const winWrap=document.getElementById("turnWindow").closest(".uisel");
   if(winWrap) winWrap.style.display = "none";
+  if(isItem){
+    document.getElementById("turnKpis").innerHTML="";
+    const tp=document.getElementById("turnTrucks"); if(tp){ tp.innerHTML=""; tp.hidden=true; }
+    renderTurnHowTo(); renderTurnItem();
+    const eb=document.getElementById("turnExportBtn");
+    if(eb) eb.style.display = _itemLast? "" : "none";     // качать нечего, пока товар не выбран
+    return;
+  }
   const expBtn=document.getElementById("turnExportBtn");
   if(expBtn) expBtn.style.display = (_appliedMp==="all" && turnView!=="resupply")? "none" : "";
   // фильтры «категории»/«товары» нужны во ВСЕХ видах — заполняем до любых ранних выходов
@@ -3132,8 +3687,87 @@ function renderTurnoverTab(){
   if(!catSel.options.length) fillCategorySelect(catSel);
   renderTurnoverSimple();   // единая простая модель для ВБ и Озона
 }
+/* Выгрузка разбора товара: лист «Как считается» + лист с цифрами + лист «Заказы по дням».
+   Файл уходит руководителю вместе с проформой, поэтому объяснение обязано ехать с цифрами. */
+function exportItemXLSX(){
+  const a=_itemLast;
+  if(!a){ alert("Сначала выберите товар — введите код 1С, артикул или название."); return; }
+  const M=Math.max(1,Math.min(24,itemMonths||6)), horizon=M*30, Q=itemQty>0? itemQty : null;
+  const h=turnHowTo("item",false,"all");
+  const how={name:"Как считается",widths:[36,86],headerRows:1,rows:[
+    ["Показатель","Как получен"],
+    ...h.steps.map(s=>{ const i=s.indexOf("="); return i>0? [s.slice(0,i).trim(),s.slice(i+1).trim()] : ["",s]; }),
+    ["",""],
+    ...h.notes.map(n=>["Важно",n]),
+    ["",""],
+    ["Данные заказов ВБ по",a.wdLast? fmtDate(a.wdLast):"—"],
+    ["Данные заказов Ozon по",a.ozLast? fmtDate(a.ozLast):"—"],
+    ["Остатки склада на",(RD&&RD.warehouse&&RD.warehouse.date)? fmtDate(RD.warehouse.date):"—"],
+    ["Файл сформирован",fmtDate(new Date().toISOString().slice(0,10))]]};
+  const num=[];
+  const add=(k,v,c)=>num.push([k,v,c||""]);
+  add("Товар",a.name); add("Код 1С (артикул Ozon)",a.sup); add("Категория",a.category||"");
+  add("Артикулы Wildberries",a.wbSkus.join(", ")); add("Производственный статус",a.pStatus||"");
+  add("Себестоимость, ₽",a.cost||"", a.cost?"":"не задана");
+  add("Средний чек за 30 дн, ₽",a.price? Math.round(a.price):"");
+  add("","");
+  add("% выкупа Wildberries",+(a.boW*100).toFixed(1));
+  add("% выкупа Ozon",+(a.boO*100).toFixed(1));
+  a.wins.forEach(w=>{
+    const lbl=w.life? "весь период продаж ("+w.n+" дн)" : "последние "+w.n+" дн";
+    add("Заказов/дн — "+lbl,+w.ord.toFixed(2),"ВБ "+w.ordWb.toFixed(1)+" + Ozon "+w.ordOz.toFixed(1));
+    add("Продаж/дн — "+lbl,+w.sell.toFixed(2));
+  });
+  if(a.preRate){ add("Заказов/дн — как было до провала",+a.preRate.ord.toFixed(2));
+    add("Продаж/дн — как было до провала",+a.preRate.sell.toFixed(2),"если карточка восстановится"); }
+  add("","");
+  add("Остаток на складах WB (FBO), шт",a.wbStock);
+  add("Едет на Wildberries, шт",a.wbPending+a.openShip);
+  add("Ozon, доступно к продаже, шт",a.ozStock);
+  add("Ozon, в пути на площадку, шт",a.ozTransit);
+  add("Ваш склад — Москва, шт",a.whBy.msk);
+  add("Ваш склад — Нск-1 (FBS), шт",a.whBy.nsk1);
+  add("Ваш склад — Евросиб, шт",a.whBy.nsk2);
+  add("ЕСТЬ СЕЙЧАС (в расчёте «хватит»), шт",a.have);
+  add("Едет к вам под Ozon, шт",a.ozIncoming,"в «хватит» не входит");
+  add("Едет из Китая, шт",a.china,"в «хватит» не входит");
+  add("Заказано производству, шт",a.ordered,"в «хватит» не входит");
+  add("","");
+  add("Хватит дней",a.days===Infinity? "∞" : Math.round(a.days));
+  add("Хватит до",a.runOut? fmtDate(a.runOut):"");
+  add("Партия встаёт в продажу",a.saleEta? fmtDate(a.saleEta):"дата не задана");
+  add("Разрыв без товара, дней",a.gapDays!=null? a.gapDays:"", a.gapDays>0? "товара не будет":"");
+  add("","");
+  add("Горизонт расчёта, мес",M);
+  add("НУЖНО на "+M+" мес, шт",Math.ceil(a.now.sell*horizon),"по текущему темпу");
+  if(a.preRate) add("НУЖНО на "+M+" мес по доаутному темпу, шт",Math.ceil(a.preRate.sell*horizon));
+  if(Q){
+    add("Количество в проформе, шт",Q);
+    add("Хватит на, мес",+(Q/a.now.sell/30).toFixed(1),"по текущему темпу");
+    if(a.preRate) add("Хватит на, мес (доаутный темп)",+(Q/a.preRate.sell/30).toFixed(1));
+    add("Не хватает до "+M+" мес, шт",Math.max(0,Math.ceil(a.now.sell*horizon)-Q));
+    if(a.cost) add("Себестоимость партии, ₽",Math.round(Q*a.cost));
+  }
+  const outs=[...a.outW.map(e=>({e,mp:"Wildberries"})),...a.outO.map(e=>({e,mp:"Ozon"}))]
+    .filter(o=>o.e.material).sort((x,y)=>x.e.from<y.e.from?1:-1);
+  if(outs.length){
+    add("","");
+    outs.forEach(({e,mp})=>add("Провал "+mp+" "+fmtDate(e.from)+"–"+fmtDate(e.to),
+      e.days+" дн без заказов",
+      "было "+d1(e.before)+"/дн, потеряно ~"+Math.round(e.lost)+" заказов"
+        +(e.recovery!=null? ", после — "+d1(e.after)+"/дн, это "+Math.round((1+e.recovery)*100)+"% от прежнего":", ещё продолжается")));
+  }
+  const sheet={name:"Разбор",widths:[42,20,44],headerRows:1,
+    rows:[["Показатель","Значение","Комментарий"],...num]};
+  const dd=a.dates.slice(-90);
+  const days={name:"Заказы по дням",widths:[13,14,14,13,14],headerRows:1,
+    rows:[["Дата","Wildberries","Ozon","Всего","Показы ВБ"],
+      ...dd.map(d=>[fmtDate(d),a.wbBy[d]||0,a.ozBy[d]||0,(a.wbBy[d]||0)+(a.ozBy[d]||0),a.impW[d]!=null?a.impW[d]:""])]};
+  xlsxDownload("Разбор товара "+a.sup+".xlsx",[how,sheet,days]);
+}
 // Экспорт таблицы оборачиваемости — СТРОГО по текущим фильтрам и сортировке (что видишь, то и качаешь).
 function exportTurnoverCSV(){
+  if(turnView==="item"){ exportItemXLSX(); return; }
   if(turnView==="resupply"){ exportResupplyXLSX(); return; }
   if(turnView==="months"){ exportTurnMonthsCSV(); return; }
   if(turnView==="buyPeak"){ exportPurchaseCSV("peak"); return; }
@@ -7701,6 +8335,13 @@ document.getElementById("turnViewSeg").addEventListener("click",e=>{
   renderTurnoverTab();
 });
 wireSortable("turnTable",turnSortState,renderTurnoverTab);
+// ---- «Разбор товара»: ввод кода, количества из проформы и горизонта ----
+document.getElementById("itemQ").addEventListener("input",e=>{ itemQ=e.target.value; renderTurnItem();
+  const eb=document.getElementById("turnExportBtn"); if(eb) eb.style.display=_itemLast? "" : "none"; });
+document.getElementById("itemQty").addEventListener("input",e=>{
+  const v=parseFloat(e.target.value); itemQty=(isNaN(v)||v<=0)? null : Math.round(v); renderTurnItem(); });
+document.getElementById("itemMonths").addEventListener("input",e=>{
+  const v=parseFloat(e.target.value); itemMonths=(isNaN(v)||v<1)? 6 : Math.min(24,Math.round(v)); renderTurnItem(); });
 // ---- «Запас и темп» ----
 document.getElementById("srSearch").addEventListener("input",renderStockRateTab);
 document.getElementById("srCat").addEventListener("change",renderStockRateTab);
