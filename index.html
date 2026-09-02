@@ -3392,7 +3392,15 @@ function itemAnalysis(sup){
   return {sup, name:idx.name||(ozCard&&ozCard.name)||sup, category:idx.category||"",
     ozName:(ozCard&&ozCard.name)||"", wbCards, ozCard, wbSkus:wbCards.map(c=>""+c.sku),
     pStatus:(wbCards[0]&&wbCards[0].productionStatus)||"", factory:(wbCards[0]&&wbCards[0].factoryCode)||"",
+    /* ДВА РАЗНЫХ ЧИСЛА, И ИХ ЛЕГКО ПЕРЕПУТАТЬ (перепутал 02.09.2026):
+       `pallet` — сколько штук влезает на ПАЛЛЕТУ (у ВБ и Озона по-своему: 16 и 20 у 501432),
+                  живёт в `pallets.bySup`, нужен для отгрузки и плана машин;
+       `container` — размер КОНТЕЙНЕРА, кратность заказа на фабрику (980–2 900 шт),
+                  живёт в `catalog[].containerQty`, нужен для округления дозаказа.
+       В шапке блока «паллетой» подписывался containerQty, и продавец резонно решил, что
+       вместимость паллеты в снимке потеряна, хотя она стояла верная. */
     container:(wbCards[0]&&wbCards[0].containerQty)||0,
+    pallet:((RD.pallets&&RD.pallets.bySup)||{})[sup]||null,
     dates, wbBy, ozBy, wdLast:wd[wd.length-1]||null, ozLast:ozd[ozd.length-1]||null,
     firstSale, lastSale, silentDays,
     boW, boO, wins, now, preRate, notRecovered, outW, outO, impW, impO,
@@ -3503,7 +3511,12 @@ function renderTurnItem(){
   if(a.ozCard) links.push(`<a href="${a.ozCard.ozonSku? "https://www.ozon.ru/product/"+encodeURIComponent(a.ozCard.ozonSku)+"/" : "https://www.ozon.ru/search/?text="+encodeURIComponent(a.sup)}" target="_blank" rel="noopener" class="sku-link">Ozon ${esc(a.sup)}</a>`);
   let h=`<div class="itm"><div class="itm-hd"><div class="nm">${esc(a.name)}`
     +`<small>${esc(a.category||"—")} · код 1С ${esc(a.sup)}${a.factory?" · ф. "+esc(a.factory):""}`
-    +`${a.pStatus?" · "+esc(a.pStatus):""}${a.container?" · паллета "+fmt(a.container)+" шт":" · вместимость паллеты не задана"}</small></div>`
+    +`${a.pStatus?" · "+esc(a.pStatus):""}`
+    +(a.pallet&&(a.pallet.wb>0||a.pallet.oz>0)
+        ? ` · паллета: ВБ ${a.pallet.wb>0?fmt(a.pallet.wb)+" шт":"—"} / Ozon ${a.pallet.oz>0?fmt(a.pallet.oz)+" шт":"—"}`
+        : ` · вместимость паллеты не задана`)
+    +(a.container? ` · контейнер ${fmt(a.container)} шт` : ` · размер контейнера не задан`)
+    +`</small></div>`
     +`<div style="font-size:12px;display:flex;gap:10px;flex-wrap:wrap">${links.join("")}</div></div>`;
 
   // ---- KPI
@@ -3538,6 +3551,20 @@ function renderTurnItem(){
           +`<span class="num">${fmt(needPre)}</span> шт, а ${fmt(Q)} хватит только на <span class="num">${d1(moPre)}</span> ${plural(Math.round(moPre),"месяц","месяца","месяцев")}.`;
       }
       if(a.cost) txt+=`<br>Себестоимость партии: <span class="num">${rub(Q*a.cost)}</span> (${rub(a.cost)} за штуку).`;
+      /* Габарит партии в паллетах и машинах: для проформы это не мелочь — 4 650 шт крупной
+         каталки по 16–20 шт на паллету это 7–9 фур, и вопрос «куда это ставить» встаёт
+         раньше, чем товар доедет. Считаем по обеим вместимостям, они у площадок разные. */
+      if(a.pallet&&(a.pallet.wb>0||a.pallet.oz>0)){
+        const per=[a.pallet.wb,a.pallet.oz].filter(x=>x>0);
+        const lo=Math.ceil(Q/Math.max(...per)), hi=Math.ceil(Q/Math.min(...per));
+        const pTxt=lo===hi? `${fmt(lo)} ${plural(lo,"паллета","паллеты","паллет")}`
+          : `${fmt(lo)}–${fmt(hi)} паллет (на Ozon по ${fmt(a.pallet.oz)} шт, на ВБ по ${fmt(a.pallet.wb)} шт)`;
+        const tLo=Math.ceil(lo/PALLETS_PER_TRUCK), tHi=Math.ceil(hi/PALLETS_PER_TRUCK);
+        txt+=`<br>Объём партии: <span class="num">${pTxt}</span> — это `
+          +(tLo===tHi? `<span class="num">${tLo}</span> ${plural(tLo,"машина","машины","машин")}`
+                     : `<span class="num">${tLo}–${tHi}</span> машин`)
+          +` по ${PALLETS_PER_TRUCK} ${plural(PALLETS_PER_TRUCK,"паллете","паллеты","паллет")}.`;
+      }
     }
     h+=`<div class="itm-verd ${cls}">${txt}</div>`;
   }
