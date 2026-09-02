@@ -342,6 +342,17 @@
     border-radius:var(--r-sm);padding:8px 13px;margin-bottom:12px}
   .hidnote[hidden]{display:none}
   .hidnote .hn-n{font-weight:680;color:var(--text-1);font-variant-numeric:tabular-nums}
+  /* Разложение итога, когда выводимый товар спрятан: он не исчезает из денег, а выносится строкой */
+  .outsplit{display:flex;align-items:center;gap:0;flex-wrap:wrap;margin:-6px 0 16px;
+    background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r-sm);
+    padding:9px 13px;font-size:12.5px;color:var(--text-2)}
+  .outsplit[hidden]{display:none}
+  .outsplit .os-t{font-weight:640;color:var(--text-1);margin-right:12px}
+  .outsplit .os-i{display:flex;align-items:baseline;gap:7px;padding:0 14px;border-left:1px solid var(--border)}
+  .outsplit .os-i:first-of-type{border-left:0;padding-left:0}
+  .outsplit .os-k{color:var(--muted)}
+  .outsplit .os-v{font-weight:680;font-variant-numeric:tabular-nums;color:var(--text-1)}
+  .outsplit .os-v.neg{color:var(--crit-txt)} .outsplit .os-v.pos{color:var(--good-txt)}
   .hidnote button{margin-left:auto;font:inherit;font-size:12px;font-weight:640;cursor:pointer;
     color:var(--accent);background:none;border:1px solid var(--border-2);border-radius:7px;
     padding:5px 12px;transition:border-color .15s,background .15s}
@@ -992,6 +1003,7 @@
   </header>
 
   <div class="focus-bar" id="focusBar" hidden></div>
+  <div class="hidnote" id="outBar" hidden></div>
   <nav class="tabs" id="tabs" role="tablist">
     <button class="tab-btn" data-tab="recs" role="tab" aria-selected="true">Рекомендации</button>
     <button class="tab-btn" data-tab="home" role="tab" aria-selected="false">Главная</button>
@@ -1062,6 +1074,7 @@
 
   <div id="homeContent" hidden>
     <div class="kpis4" id="homeKpis"></div>
+    <div class="outsplit" id="homeOutSplit" hidden></div>
     <div class="callout-warn" id="homeCostWarning" hidden></div>
 
     <div class="table-card" id="homeWeeksCard" style="margin:0 0 14px">
@@ -1217,7 +1230,6 @@
         </div>
       </div>
     </div>
-    <div class="hidnote" id="turnHidden" hidden></div>
     <div class="howto" id="turnHowTo"></div>
     <div class="truckplan" id="turnTrucks" hidden></div>
     <div id="turnItemBox" hidden></div>
@@ -1375,6 +1387,7 @@
       </div>
     </div>
     <div class="kpis4" id="finKpis"></div>
+    <div class="outsplit" id="finOutSplit" hidden></div>
     <div class="grid2">
       <div class="card">
         <h3>Выручка и «Итого к оплате» по дням</h3>
@@ -1796,11 +1809,12 @@ function fmtDateLong(d){ if(!d) return "—"; const [y,m,day]=d.split("-"); retu
 function seriesFor(sku){ return RSERIES[sku] || null; }
 function sumRange(sku,fromIdx,toIdx){ const s=seriesFor(sku); if(!s) return 0;
   let sum=0; for(let i=fromIdx;i<=toIdx;i++) sum+=s[i]||0; return sum; }
-function categories(){ return [...new Set(RCAT.map(c=>c.category))].sort((a,b)=>a.localeCompare(b,"ru")); }
+function categories(){ return [...new Set(RCAT.filter(c=>showOut||!isOutSku(c.sku)).map(c=>c.category))]
+  .sort((a,b)=>a.localeCompare(b,"ru")); }
 function fillCategorySelect(sel){ sel.innerHTML=(sel.multiple?"":'<option value="">Все категории</option>')+
   categories().map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(""); }
 // мультивыбор конкретных товаров (по активному каталогу RCAT); value = sku
-function fillProductSelect(sel){ sel.innerHTML=RCAT.slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"","ru"))
+function fillProductSelect(sel){ sel.innerHTML=RCAT.filter(c=>showOut||!isOutSku(c.sku)).slice().sort((a,b)=>(a.name||"").localeCompare(b.name||"","ru"))
   .map(c=>`<option value="${esc(c.sku)}">${esc(c.name||c.sku)} · ${esc(c.sku)}</option>`).join(""); }
 // множественный выбор категорий: набор выбранных из мультиселекта ([] = все)
 function selCats(id){ const s=document.getElementById(id); return s? [...s.selectedOptions].map(o=>o.value).filter(Boolean) : []; }
@@ -2252,30 +2266,58 @@ function setFocus(f){
   renderFocusBar();
 }
 function clearFocus(rerender){ recFocus=null; renderFocusBar(); if(rerender) renderActiveTab(); }
-/* ТОВАРЫ «НА ВЫВОД» НА «ОБОРАЧИВАЕМОСТИ» СКРЫТЫ (просьба продавца 02.09.2026: «захожу
-   в дозаказ и мне мешают эти товары»). Это ОТМЕНА прежнего правила «статус справочный,
-   считаем по всем» — но отмена только в ПОКАЗЕ: расчёт, план машин и данные не тронуты,
-   строки просто не выводятся в таблицу. Переключатель `turnShowOut` возвращает их обратно,
-   поэтому спрашивать меня, чтобы «достать» товар, не нужно.
-   На «Разбор товара» фильтр НЕ распространяется: туда продавец приходит с конкретным кодом,
-   и прятать от него именно тот товар, который он ввёл руками, — бессмысленно. */
-let turnShowOut=false;
-let _turnHiddenOut=0;      // сколько строк скрыто в последнем прогоне turnFilteredRows
-// Код 1С строки: у подсорта он лежит прямо в `sup`, у дозаказа/закупа/месяцев — ищется по sku
-// (на Озоне артикул И ЕСТЬ код 1С, поэтому одной карты `catalog1cBySku` хватает на обе площадки).
-function turnOutSup(r){
-  const s=(""+(r.sup||"")).trim(); if(s) return s;
-  return catalog1cBySku[r.sku] || (""+(r.sku||""));
+/* =========================================================================
+   ТОВАРЫ «НА ВЫВОД» СКРЫТЫ ВО ВС�ём ДАШБОРДЕ
+   -------------------------------------------------------------------------
+   Просьба продавца 02.09.2026: «убери вообще из всех расчётов эти товары … я очень слабо
+   верю, что из этих товаров мы что-то будем продавать, чтобы не сбиваться убери их из общих
+   перечней товаров». Это ОТМЕНА прежнего правила «статус справочный, считаем по всем» —
+   отменил её сам продавец, поэтому не «чини» обратно, увидев старый абзац в CLAUDE.md.
+
+   ОДИН ФЛАГ НА ВЕСЬ ДАШБОРД (`showOut`) и одно определение «на выводе»: считаем по ВСЕМ
+   карточкам кода 1С, и если хоть одна НЕ «На вывод» — товар живой (у одного кода бывает
+   несколько карточек ВБ). Фильтр вклинивается в точки, через которые проходят ВСЕ строки
+   своей вкладки, — новых правил в каждом рендере заводить не надо.
+
+   ДЕНЬГИ — ОСОБЫЙ СЛУЧАЙ. «Главная» и «Финансы» — это сверка с ВБ: там реальные пришедшие
+   и потраченные деньги, и просто выкинуть часть выручки нельзя, иначе итог перестанет
+   сходиться с кабинетом. Поэтому `finAggregate` считает скрытую часть ОТДЕЛЬНО и кладёт её
+   в `agg.out`, а под KPI печатается разложение «живой ассортимент · на выводе · всего»
+   (выбор продавца из трёх вариантов). Ничего не теряется — просто не мешается.
+
+   ИСКЛЮЧЕНИЯ, СДЕЛАННЫЕ СОЗНАТЕЛЬНО:
+   · «Разбор товара» — туда приходят с конкретным кодом в руках, прятать введённый руками
+     товар бессмысленно;
+   · план машин в подсорте — `renderTruckPlan` получает весь подсорт целиком, поэтому
+     выводимый товар со склада по-прежнему едет распродаваться.
+   ========================================================================= */
+let showOut=false;
+let _turnHiddenOut=0;      // сколько строк скрыл последний прогон turnFilteredRows
+let _outSkuCache=null;
+// Все артикулы обеих площадок, чей код 1С на выводе. Своя карта, а НЕ catalog1cBySku:
+// та перестраивается под активную площадку, а фильтр обязан работать одинаково везде.
+function outSkuSet(){
+  if(_outSkuCache) return _outSkuCache;
+  const out=recOutSups(), s=new Set();
+  ((RD&&RD.catalog)||[]).forEach(c=>{ if(out.has((""+(c.supplierCode||"")).trim())) s.add(""+c.sku); });
+  ((RD&&RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ if(out.has(""+c.sku)) s.add(""+c.sku); });
+  return (_outSkuCache=s);
 }
-function turnIsOut(r){ const s=turnOutSup(r); return !!s && recOutSups().has(s); }
+function isOutSku(sku){ return outSkuSet().has(""+sku); }
+// Строка таблицы: у подсорта код 1С лежит прямо в `sup`, у остальных видов — это артикул.
+function isOutRow(r){
+  const s=(""+(r.sup||"")).trim();
+  return s? recOutSups().has(s) : isOutSku(r.sku);
+}
+function dropOut(rows){ return showOut? rows : rows.filter(r=>!isOutRow(r)); }
+function outCount(){ return recOutSups().size; }
 function turnFilteredRows(all, exceptKey){
   const q=document.getElementById("turnSearch").value.trim().toLowerCase();
   const cp=catPred(selCats("turnCat")), selProd=selCats("turnProduct");
   let rows=all;
   /* Отсекаем ДО остальных фильтров: иначе в списках колоночных фильтров висели бы значения,
      которые есть только у скрытых строк, и выбор такого значения давал бы пустую таблицу. */
-  if(!turnShowOut){ const n=rows.length; rows=rows.filter(r=>!turnIsOut(r)); _turnHiddenOut=n-rows.length; }
-  else _turnHiddenOut=0;
+  { const n=rows.length; rows=dropOut(rows); _turnHiddenOut=n-rows.length; }
   if(q) rows=rows.filter(r=>matchQ(r.sku,r.name,q)||(""+(r.sup||"")).includes(q)||(""+(r.skuWb||"")).includes(q));
   if(cp) rows=rows.filter(r=>cp(r.category));
   if(selProd.length) rows=rows.filter(r=>selProd.includes(r.sku)||(r.sup&&selProd.includes(r.sup)));
@@ -2710,22 +2752,37 @@ function turnHowTo(view,oz,mp){
       "Сумма ₽ = К закупу × текущая себестоимость.",
       "У товаров без заданного размера контейнера округления нет — количество берите как есть."]};
 }
-/* Скрытые «на вывод» не должны исчезать молча: продавец обязан видеть, что таблица неполная,
-   и уметь вернуть строки, не спрашивая меня. Считается по факту последнего фильтра
-   (`_turnHiddenOut`), поэтому число всегда про ТЕКУЩИЙ вид, а не про весь каталог. */
-function renderTurnHiddenNote(){
-  const el=document.getElementById("turnHidden"); if(!el) return;
-  if(turnView==="item" || !RD){ el.hidden=true; return; }
-  if(!turnShowOut && _turnHiddenOut<=0){ el.hidden=true; return; }
-  const n=_turnHiddenOut;
+/* Скрытые «на вывод» не должны исчезать молча: продавец обязан видеть, что выборка неполная,
+   и уметь вернуть товары одним кликом, не спрашивая меня. Плашка общая на весь дашборд —
+   флаг тоже один, и разные вкладки не должны показывать разное состояние. */
+/* Строка разложения на денежных вкладках. Скрытый товар «На вывод» из ЦИФР не выкидывается
+   молча: KPI считаются по живому ассортименту, а здесь печатается, сколько приходится на
+   скрытую часть и сколько выходит всего. Так сверка с кабинетом ВБ по-прежнему сходится. */
+function renderOutSplit(id,agg,adOut,kind){
+  const el=document.getElementById(id); if(!el) return;
+  const o=agg&&agg.out;
+  if(showOut || !o){ el.hidden=true; el.innerHTML=""; return; }
+  const live = kind==="profit" ? (agg.net-agg.cogs-(agg._ad||0)) : agg.net;
+  const out  = kind==="profit" ? (o.net-o.cogs-(adOut||0))       : o.net;
+  const lbl  = kind==="profit" ? "Прибыль" : "Итого к оплате";
+  const cell=(k,v)=>`<span class="os-i"><span class="os-k">${k}</span>`
+    +`<span class="os-v ${v<0?"neg":(v>0?"pos":"")}">${rub(v)}</span></span>`;
   el.hidden=false;
-  el.innerHTML = turnShowOut
-    ? `Товары со статусом «На вывод» <span class="hn-n">показаны</span>. Они не влияют на расчёт — статус справочный.`
+  el.innerHTML=`<span class="os-t">${lbl} за период:</span>`
+    +cell("живой ассортимент",live)+cell("товар на выводе",out)+cell("всего",live+out)
+    +`<span class="os-i"><span class="os-k">выручка на выводе</span>`
+    +`<span class="os-v">${rub(o.revenue)}</span></span>`;
+}
+function renderOutBar(){
+  const el=document.getElementById("outBar"); if(!el) return;
+  const n=outCount();
+  if(!RD || !n){ el.hidden=true; el.innerHTML=""; return; }
+  el.hidden=false;
+  el.innerHTML = showOut
+    ? `Товары со статусом «На вывод» <span class="hn-n">показаны</span> — они снова участвуют в расчётах и перечнях.`
       +`<button type="button" data-act="hide">Скрыть их</button>`
-    : `Скрыто <span class="hn-n">${fmt(n)}</span> ${plural(n,"товар","товара","товаров")} со статусом «На вывод». `
-      +(turnView==="resupply"
-          ? `В план машин они по-прежнему входят — то, что лежит на складе, всё равно едет распродаваться.`
-          : `Данные и расчёт по ним сохранены — не показаны только строки.`)
+    : `Товары со статусом «На вывод» скрыты: <span class="hn-n">${fmt(n)}</span> `
+      +`${plural(n,"код","кода","кодов")} 1С. Данные и история по ним сохранены — просто не показываются и не считаются.`
       +`<button type="button" data-act="show">Показать</button>`;
 }
 function renderTurnHowTo(){
@@ -3198,7 +3255,6 @@ function renderTurnResupply(){
       +`<td>${resupBadge(st)}</td></tr>`;
   });
   html+="</tbody>"; tbl.innerHTML=html;
-  renderTurnHiddenNote();
   // пометку про фильтры показываем только когда фильтр реально включён
   const anyFilter = !!document.getElementById("turnSearch").value.trim()
     || selCats("turnCat").length>0 || selCats("turnProduct").length>0
@@ -3235,9 +3291,9 @@ function renderTurnoverSimple(){
   ].map(kpiCard).join("");
   wireKpiTips("turnKpis");
   // KPI посчитаны — дальше можно уйти в другой вид (у каждого своя таблица и подпись счётчика)
-  if(turnView==="months"){ renderTurnMonths(); renderTurnHiddenNote(); return; }
-  if(turnView==="buyPeak"){ renderTurnPurchase("peak"); renderTurnHiddenNote(); return; }
-  if(turnView==="buyAvg"){ renderTurnPurchase("avg"); renderTurnHiddenNote(); return; }
+  if(turnView==="months"){ renderTurnMonths(); return; }
+  if(turnView==="buyPeak"){ renderTurnPurchase("peak"); return; }
+  if(turnView==="buyAvg"){ renderTurnPurchase("avg"); return; }
   // подпись счётчика обязана называть ТОТ источник выкупа, который реально применён
   let bwTxt;
   const _bi=buyoutInfo(oz?"ozon":"wb");
@@ -3270,7 +3326,6 @@ function renderTurnoverSimple(){
   });
   html+="</tbody>";
   document.getElementById("turnTable").innerHTML=html;
-  renderTurnHiddenNote();
 }
 /* =========================================================================
    ВИД «РАЗБОР ТОВАРА» — хватит ли партии на N месяцев
@@ -3773,7 +3828,6 @@ function renderTurnoverTab(){
   if(itmCtl) itmCtl.hidden=!isItem;
   if(itmBox) itmBox.hidden=!isItem;
   if(tblCard) tblCard.hidden=!!isItem;
-  if(isItem){ const hn=document.getElementById("turnHidden"); if(hn) hn.hidden=true; }
   document.querySelectorAll("#turnSearch, #turnCat, #turnProduct").forEach(x=>{
     const w=x.closest(".uisel")||x; w.style.display=isItem? "none" : ""; });
   if(!RD){ renderNoData("turnTable"); document.getElementById("turnKpis").innerHTML="";
@@ -4674,7 +4728,7 @@ async function fdbRefreshCache(){
   funnelHasBaked=(bakedKept.length>0);
   FUNNEL_CACHE=bakedKept.concat(raw).sort((a,b)=>a.date<b.date?-1:1);
   _buyoutWin={};   // % выкупа ВБ считается по этой воронке — пересобрать окно
-  _recOutCache=null;  // список выведенных из ассортимента кодов — тоже производная каталога
+  _recOutCache=null; _outSkuCache=null;  // список выведенных из ассортимента кодов — тоже производная каталога
   _wbFbsCache=null; // покрытие ВБ включает FBS-запас — пересобрать раскладку складов
 }
 
@@ -4801,7 +4855,9 @@ async function fdbRefreshAdsCache(){
 function adSpendBySku(dates){
   if(!ADS_CACHE.length||!dates.length) return {};
   const set=new Set(dates), maxD=dates[dates.length-1], m={};
-  ADS_CACHE.forEach(r=>{ const d=r.date||maxD; if(!set.has(d)) return; m[r.sku]=(m[r.sku]||0)+(r.spend||0); });
+  ADS_CACHE.forEach(r=>{ const d=r.date||maxD; if(!set.has(d)) return;
+    if(!showOut && isOutSku(r.sku)) return;
+    m[r.sku]=(m[r.sku]||0)+(r.spend||0); });
   return m;
 }
 
@@ -4844,16 +4900,18 @@ function skuMeta(r){
 }
 // расход рекламы за период с учётом фильтра категория/поиск: {bySku, total, series[по дням]}
 function adAggregate(dates,cat,q){
-  const bySku={}, series=new Array(dates.length).fill(0); let total=0; const cp=catPred(cat);
+  const bySku={}, series=new Array(dates.length).fill(0); let total=0, outTotal=0; const cp=catPred(cat);
   if(ADS_CACHE.length && dates.length){
     const set=new Set(dates), maxD=dates[dates.length-1], idx={}; dates.forEach((d,i)=>idx[d]=i);
     ADS_CACHE.forEach(r=>{ const d=r.date||maxD; if(!set.has(d)) return;
       if(cp && !cp(catalogCatBySku[r.sku])) return;
       if(!matchQ(r.sku,catalogNameBySku[r.sku],q)) return;
+      // расход выводимого товара не пропадает, а копится отдельно — для строки разложения
+      if(!showOut && isOutSku(r.sku)){ outTotal+=r.spend||0; return; }
       bySku[r.sku]=(bySku[r.sku]||0)+(r.spend||0); total+=r.spend||0;
       const i=idx[d]; if(i!=null) series[i]+=r.spend||0; });
   }
-  return {bySku,total,series};
+  return {bySku,total,series,outTotal};
 }
 
 /* =========================================================================
@@ -5250,15 +5308,27 @@ function dateRangeFromCache(cache,periodN){
 }
 function finRange(){ return dateRangeFromCache(FINANCE_CACHE,finPeriodN); }
 const FIN_MONEY=["revenue","payout","logistics","penalty","storage","reimb","deduction","priyomka","loyalty","loyaltyPts"];
-function finAggregate(dates,catFilter,q){
-  const set=new Set(dates), cp=catPred(catFilter);
-  const rows=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!cp||cp(r.category))&&matchQ(r.sku,r.name,q));
+/* Свод за период. ДЕНЬГИ ВЫВОДИМОГО ТОВАРА НЕ ПРОПАДАЮТ, А ВЫНОСЯТСЯ ОТДЕЛЬНО: «Главная»
+   и «Финансы» — сверка с ВБ, и молча выкинуть часть выручки нельзя, иначе итог перестанет
+   сходиться с кабинетом. Поэтому скрытая часть считается вторым таким же сводом и кладётся
+   в `agg.out`, а вкладка печатает разложение «живой ассортимент · на выводе · всего». */
+function finAggOf(rows){
   const sum=k=>rows.reduce((a,r)=>a+(r[k]||0),0);
   // себестоимость берём НА ДАТУ строки — новая поставка не должна пересчитывать прошлые недели
   const cogs=rows.reduce((a,r)=>{ const cp=costAt(r.sku,r.date); return a+(cp!=null?(r.qty-r.returnsQty)*cp:0); },0);
   const agg={qty:sum("qty"),returnsQty:sum("returnsQty"),cogs,rows};
   FIN_MONEY.forEach(k=>agg[k]=sum(k));
   agg.holdings=finHoldings(agg); agg.net=finNet(agg); agg.profit=agg.net-cogs;
+  return agg;
+}
+function finAggregate(dates,catFilter,q){
+  const set=new Set(dates), cp=catPred(catFilter);
+  const all=FINANCE_CACHE.filter(r=>set.has(r.date)&&(!cp||cp(r.category))&&matchQ(r.sku,r.name,q));
+  if(showOut) return finAggOf(all);
+  const live=[], out=[];
+  all.forEach(r=>(isOutSku(r.sku)? out : live).push(r));
+  const agg=finAggOf(live);
+  agg.out = out.length? finAggOf(out) : null;
   return agg;
 }
 // свод по одному артикулу за период (все денежные поля) — для таблиц Главной и Финансов
@@ -5277,6 +5347,7 @@ function finSeriesByDate(dates,catFilter,q){
   const idx={}; dates.forEach((d,i)=>idx[d]=i); const catP=catPred(catFilter);
   const revenue=new Array(dates.length).fill(0), net=new Array(dates.length).fill(0), cogs=new Array(dates.length).fill(0);
   FINANCE_CACHE.forEach(r=>{ const i=idx[r.date]; if(i==null) return;
+    if(!showOut && isOutSku(r.sku)) return;           // см. showOut
     if(catP&&!catP(r.category)) return;
     if(!matchQ(r.sku,r.name,q)) return;
     revenue[i]+=r.revenue||0; net[i]+=finNet(r);
@@ -5615,6 +5686,7 @@ function srFilteredRows(all,exceptKey){
       if(hay.indexOf(q)<0) return false; }
     return true;
   });
+  rows=dropOut(rows);                       // товары «На вывод» — см. блок про showOut
   srColDefs().forEach(def=>{ if(def.key===exceptKey) return;
     const set=srColFilters[def.key]; if(set&&set.size) rows=rows.filter(r=>set.has(def.val(r))); });
   return focusApply(rows);
@@ -5862,7 +5934,7 @@ function adRows(){
       : (r.msk<=0 ? "в Москве нет остатка"
       : (r.mskDays<AD_MIN_MSK_DAYS ? "в Москве хватит на "+Math.round(r.mskDays)+" дн" : ""));
   });
-  return rows;
+  return dropOut(rows);                     // товары «На вывод» — см. showOut
 }
 /* ---- Колоночные фильтры на «Рекламе» (та же механика, что на «Оборачиваемости») ----
    Набор колонок РАЗНЫЙ у видов «Кандидаты/По склейкам» и «Отдача», поэтому `adColDefs()`
@@ -5921,7 +5993,7 @@ function adColDefs(){
 function adBaseRows(){
   if(adView!=="perf") return adRows();
   // в таблицу и в фильтры идут только карточки С кампанией; нулевые нужны лишь в знаменателе
-  const rows=adPerfRows().filter(r=>r.spend>0);
+  const rows=dropOut(adPerfRows()).filter(r=>r.spend>0);
   const gSel = (recFocus && recFocus.tab==="ads")? null : adGroup;
   return gSel? rows.filter(r=>r.group===gSel) : rows;
 }
@@ -6798,6 +6870,8 @@ function renderHomeTab(){
   else document.getElementById("ch-home-unit").innerHTML=`<div class="empty-hint">Нет продаж за период</div>`;
 
   // строки таблицы (единый свод P&L по товарам; только активные — как в Аналитике)
+  now._ad=ad.total;                        // для строки разложения (см. renderOutSplit)
+  renderOutSplit("homeOutSplit",now,ad.outTotal,"profit");
   const allPnL=productPnL(dates,cat,q);
   let rows=allPnL.filter(hasActivity);
   // Служебные строки без продаж (обычно «возмещение издержек» по непроданному артикулу)
@@ -7047,6 +7121,7 @@ function renderFinanceTab(){
   const prev=prevDates.length? finAggregate(prevDates,cat,q) : null;
   const netQty=now.qty-now.returnsQty;
   const series=finSeriesByDate(dates,cat,q);
+  renderOutSplit("finOutSplit",now,0,"net");
   renderFinLogByCat(now);
 
   // Финансы = сверка с WB: «сколько придёт на счёт и за что удержано».
@@ -8352,7 +8427,7 @@ const TABS=["recs","home","dynamics","turnover","stockrate","product","finance",
 function switchTab(name){
   TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
   if(recFocus && recFocus.tab!==name) recFocus=null;   // фокус живёт только на своей вкладке
-  renderFocusBar();
+  renderFocusBar(); renderOutBar();
   document.querySelectorAll(".tab-btn").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===name?"true":"false"));
   // площадка: на вкладках без поддержки Озона данные всегда ВБ; переключатель виден только где есть выбор
   const supportsMp = !!MP_TABS[name] && !!OZDATA;
@@ -8444,11 +8519,16 @@ document.getElementById("turnCat").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnProduct").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnWindow").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnExportBtn").addEventListener("click",exportTurnoverCSV);
-document.getElementById("turnHidden").addEventListener("click",e=>{
+document.getElementById("outBar").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
-  turnShowOut = b.dataset.act==="show";
-  turnColFilters={};          // наборы значений в воронках меняются вместе с выборкой
-  renderTurnoverTab();
+  showOut = b.dataset.act==="show";
+  // наборы значений в воронках колонок меняются вместе с выборкой — старые выборы стали бы пустыми
+  turnColFilters={}; srColFilters={}; adColFilters={};
+  /* Перечни товаров/категорий заполняются ОДИН раз (`if(!sel.options.length)`), поэтому при
+     смене флага их надо очистить — иначе в списке остаётся прежний состав. */
+  ["turnCat","turnProduct","srCat","finCat","homeCat","dynCat","anCat","prodCat"].forEach(id=>{
+    const sel=document.getElementById(id); if(sel) sel.innerHTML=""; });
+  renderOutBar(); renderActiveTab();
 });
 document.getElementById("turnViewSeg").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
@@ -8685,6 +8765,7 @@ function hydrateData(){
   RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
   _buyoutWin={};                 // окно % выкупа считается от воронки — пересобрать
   _wbFbsCache=null;              // раскладка своих складов под покрытие ВБ
+  _recOutCache=null; _outSkuCache=null;   // списки товаров «На вывод» — производные каталога
   OZ_FUNNEL = (RD && RD.ozon && RD.ozon.funnel) ? RD.ozon.funnel : [];
   buildMpDatasets();
   _appliedMp=null; applyMpData("wb");
