@@ -179,15 +179,28 @@ if(!keepOrders && prevSeries && (prevSeries.dates||[]).length){
   }
 }
 const series = keepOrders && prevSeries ? prevSeries : {dates:finalDates,byArt:finalByArt,money:finalMoney};
+/* ЭТОТ БЛОК ПЕРЕПИСЫВАЕТ RD.ozon ЦЕЛИКОМ — значит всё, что живёт рядом и собирается ДРУГИМИ
+   скриптами, обязано переноситься здесь явно. Иначе обычная заливка заказов молча стирает
+   чужую работу (та же ловушка, что с MODELED_FINANCE в wb-reports.js).
+   Сейчас переносим:
+     · `stockHistory` — история остатков по дням (scripts/ozon-stock-history.cjs). Восстановить
+       её нельзя ничем: отчёт Озона это снимок на момент выгрузки, за прошлые дни его не достать.
+     · `meta.adRate` — доля расхода на рекламу Озона (продавец 03.09.2026: «9%, это уже в выкупе,
+       у меня подключена фиксированная плата за рекламу»). Задаётся человеком, из данных
+       не выводится, поэтому потерять её = молча обнулить рекламу Озона. */
+const prevStockHist = (RD.ozon && RD.ozon.stockHistory) || {};
 RD.ozon={
   catalog:ozCat,
   funnel:prevFunnel,
   orderSeries:series,
+  stockHistory:prevStockHist,
   ordersMeta: keepOrders && RD.ozon && RD.ozon.ordersMeta ? RD.ozon.ordersMeta
     : {period:finalDates[0]+'…'+finalDates[finalDates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
   meta:{ stockDate: stockFile? stockDate : prevMeta.stockDate||null,
     buyoutAll: keepOrders? (prevMeta.buyoutAll!=null? prevMeta.buyoutAll : +buyoutAll.toFixed(4)) : +buyoutAll.toFixed(4),
-    buyoutWindow: keepOrders? (prevMeta.buyoutWindow||null) : buyoutWindow }
+    buyoutWindow: keepOrders? (prevMeta.buyoutWindow||null) : buyoutWindow,
+    adRate: prevMeta.adRate!=null? prevMeta.adRate : null,
+    adRateBasis: prevMeta.adRateBasis || null }
 };
 
 // 5) переписать wb-data.js
@@ -206,6 +219,11 @@ if(!keepOrders) console.log('    из них из свежих отчётов: '
   +' · перенесено из снимка: '+backfilled.length+' дн'+(backfilled.length? ' ('+backfilled[0]+'…'+backfilled[backfilled.length-1]+')':''));
 console.log('  остатки:',stockFile?('строк '+stockRows+' · сумма «Доступно» '+stockSum+' шт · дата '+stockDate):'(файл не передан)');
 if(stockFile) console.log('  в пути на Озон:',(sumZayav+sumPath),'шт = заявки на поставку '+sumZayav+' + физически в пути '+sumPath);
+{ const sh=Object.keys(RD.ozon.stockHistory||{}).sort();
+  console.log('  история остатков: '+(sh.length? sh.length+' дн. ('+sh[0]+'…'+sh[sh.length-1]+') — перенесена' : 'пуста'));
+  console.log('  реклама Озона: '+(RD.ozon.meta.adRate!=null
+    ? (RD.ozon.meta.adRate*100).toFixed(1)+'% от выручки '+(RD.ozon.meta.adRateBasis==='buyout'?'в выкупе':'в заказах')
+    : 'ставка не задана')); }
 console.log('  товаров с остатком >0:',ozCat.filter(c=>c.ozStock>0).length);
 console.log('  % выкупа: окно '+(RD.ozon.meta.buyoutWindow||'—')+' · общий '+Math.round(RD.ozon.meta.buyoutAll*100)+'%'+(keepOrders?' (из снимка)':''));
 console.log('  воронка Озона: перенесена без изменений —',prevFunnel.length,'строк'
