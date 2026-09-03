@@ -80,7 +80,13 @@ function readDay(f){
     imp:ix('Показы'),cv:ix('Переходы в карточку'),ac:ix('Положили в корзину'),af:ix('Добавили в отложенные'),
     oq:ix('Заказали товаров, шт'),bq:ix('Выкупили, шт'),cq:ix('Отменили, шт'),
     os:ix('Заказали на сумму, ₽'),bs:ix('Выкупили на сумму, ₽'),cs:ix('Отменили на сумму, ₽'),
-    wbs:ix('Остатки «Склад WB», шт'),ows:ix('Остатки «Свой склад», шт')};
+    wbs:ix('Остатки «Склад WB», шт'),ows:ix('Остатки «Свой склад», шт'),
+    /* ЦЕНА ПО ДНЯМ. Отчёт отдаёт «Средняя цена, ₽» по каждому артикулу за день, и без неё
+       нельзя отличить «подняли цену» от «кончился товар»: обе причины бьют по одной и той же
+       ступени воронки «корзина → заказ». Колонка была в файле с самого начала, но не читалась
+       (просьба продавца 03.09.2026). Поле необязательное: в старых выгрузках его может не быть,
+       тогда price=0 и разбор просто не станет ссылаться на цену. */
+    pr:ix('Средняя цена, ₽')};
   if(c.sku<0||c.imp<0||c.oq<0) throw new Error('не нашёл ключевые колонки воронки в '+f+' (Артикул WB/Показы/Заказали)');
   const recs=[]; let matched=0;
   const tot={imp:0,cv:0,ac:0,oq:0,bq:0,cq:0,os:0,bs:0,cs:0};
@@ -90,7 +96,8 @@ function readDay(f){
       impressions:num(r[c.imp]),cardViews:num(r[c.cv]),addCart:num(r[c.ac]),addFav:c.af>=0?num(r[c.af]):0,
       ordersQty:num(r[c.oq]),buyoutQty:num(r[c.bq]),cancelQty:c.cq>=0?num(r[c.cq]):0,
       ordersSum:c.os>=0?num(r[c.os]):0,buyoutSum:c.bs>=0?num(r[c.bs]):0,cancelSum:c.cs>=0?num(r[c.cs]):0,
-      wbStock:c.wbs>=0?num(r[c.wbs]):0,ownStock:c.ows>=0?num(r[c.ows]):0};
+      wbStock:c.wbs>=0?num(r[c.wbs]):0,ownStock:c.ows>=0?num(r[c.ows]):0,
+      price:c.pr>=0?num(r[c.pr]):0};
     recs.push(rec);
     tot.imp+=rec.impressions;tot.cv+=rec.cardViews;tot.ac+=rec.addCart;tot.oq+=rec.ordersQty;tot.bq+=rec.buyoutQty;tot.cq+=rec.cancelQty;tot.os+=rec.ordersSum;tot.bs+=rec.buyoutSum;tot.cs+=rec.cancelSum;
   }
