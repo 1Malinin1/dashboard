@@ -1079,10 +1079,10 @@
 
     <div class="table-card" id="homeWeeksCard" style="margin:0 0 14px">
       <div class="table-head">
-        <h3>Каждая неделя отдельно</h3>
+        <h3 id="homeWeeksTitle">Каждая неделя отдельно</h3>
         <span class="muted" id="homeWeeksNote"></span>
       </div>
-      <div class="cap" style="padding:0 18px 10px">Сколько принесла КАЖДАЯ загруженная неделя сама по себе — не накопительным итогом. Не зависит от выбранного периода сверху; фильтры по товару и категории применяются.</div>
+      <div class="cap" style="padding:0 18px 10px" id="homeWeeksCap">Сколько принесла КАЖДАЯ загруженная неделя сама по себе — не накопительным итогом. Не зависит от выбранного периода сверху; фильтры по товару и категории применяются.</div>
       <div class="table-scroll"><table class="rnp" id="homeWeeksTable"></table></div>
     </div>
 
@@ -5587,6 +5587,10 @@ function toggleHomeMonth(key){ homeWeeksOpen[key]=!homeWeeksOpen[key];
   renderHomeWeeks(selCats("homeCat"),document.getElementById("homeSearch").value.trim().toLowerCase()); }
 function renderHomeWeeks(cat,q){
   const card=document.getElementById("homeWeeksCard"); if(!card) return;
+  // заголовок общий на две площадки — на Озоне он меняется, значит здесь его надо вернуть
+  document.getElementById("homeWeeksTitle").textContent="Каждая неделя отдельно";
+  document.getElementById("homeWeeksCap").textContent=
+    "Сколько принесла КАЖДАЯ загруженная неделя сама по себе — не накопительным итогом. Не зависит от выбранного периода сверху; фильтры по товару и категории применяются.";
   const w=weeklyBreakdown(cat,q);
   if(w.length<2){ card.hidden=true; return; }        // одна неделя — разбивать нечего
   card.hidden=false;
@@ -7006,36 +7010,45 @@ function renderOutSplitOz(id,agg){
     +cell("живой ассортимент",agg.profit)+cell("товар на выводе",o.profit)+cell("всего",agg.profit+o.profit)
     +`<span class="os-i"><span class="os-k">выручка на выводе</span><span class="os-v">${rub(o.revenue)}</span></span>`;
 }
-// недели Озона в том же блоке, что и у ВБ, но БЕЗ группировки в «месяц по-вб»
+/* У ОЗОНА В ЭТОМ БЛОКЕ — МЕСЯЦЫ, А НЕ НЕДЕЛИ (просьба продавца 04.09.2026: «собери периоды
+   так, чтобы видно было по Озону месяца, а не недели»). Он считает юнитку Озона календарными
+   месяцами, и недельная нарезка ему там мешает.
+   Это заодно убрало баг первой версии: неделя на стыке месяцев попадала в ОБА месяца
+   (31.08–03.09 висела и в сентябре, и в августе; 27.07–02.08 — и в августе, и в июле),
+   потому что фильтр сравнивал месяц начала ИЛИ конца недели. Теперь недель тут нет вовсе,
+   и задвоиться нечему. Функция ozWeekly оставлена — она нужна ежедневному отчёту. */
 function renderHomeWeeksOz(cat,q){
   const card=document.getElementById("homeWeeksCard"); if(!card) return;
-  const w=ozWeekly(cat,q);
-  if(w.length<2){ card.hidden=true; return; }
-  card.hidden=false;
   const mo=ozMonthly(cat,q);
+  if(mo.length<2){ card.hidden=true; return; }
+  card.hidden=false;
+  document.getElementById("homeWeeksTitle").textContent="Каждый месяц отдельно";
+  document.getElementById("homeWeeksCap").textContent=
+    "Сколько принёс КАЖДЫЙ месяц сам по себе — не накопительным итогом. Не зависит от выбранного периода сверху; фильтры по товару и категории применяются.";
   document.getElementById("homeWeeksNote").textContent=
-    "Ozon · "+w.length+" "+plural(w.length,"неделя","недели","недель")
-    +" · месяц у Ozon КАЛЕНДАРНЫЙ (у ВБ — по неделям), поэтому недели здесь в месяцы не сворачиваются";
-  const best=w.reduce((a,b)=>b.profit>a.profit?b:a), worst=w.reduce((a,b)=>b.profit<a.profit?b:a);
+    "Ozon · "+mo.length+" "+plural(mo.length,"месяц","месяца","месяцев")
+    +" · месяц КАЛЕНДАРНЫЙ (у ВБ — по неделям ВБ)";
+  const full=mo.filter(m=>m.days>=28);
+  const best=full.length? full.reduce((a,b)=>b.margin>a.margin?b:a) : null;
+  const worst=full.length>1? full.reduce((a,b)=>b.margin<a.margin?b:a) : null;
   const dRub=(cur,pr)=>{ if(!pr) return ""; const d=cur.profit-pr.profit; if(!Math.round(d)) return "";
     return `<span class="sub2 ${d>=0?"delta-up":"delta-down"}">${d>=0?"+":"−"}${rub(Math.abs(d))} к пред.</span>`; };
-  let html=`<thead><tr><th class="metric">Период</th><th>Продано</th><th>Выручка, ₽</th>`
+  const RU=["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+  const nm=k=>RU[+k.slice(5,7)]+" "+k.slice(0,4);
+  let html=`<thead><tr><th class="metric">Месяц</th><th>Продано</th><th>Выручка, ₽</th>`
     +`<th>Забирает Ozon</th><th>Себест., ₽</th><th>Реклама</th><th>Прибыль, ₽</th><th>Маржа</th></tr></thead><tbody>`;
-  mo.forEach(m=>{
-    html+=`<tr class="row-group"><td class="metric">${m.key} · календарный месяц<span class="sub2 mut">${fmtDate(m.from)} – ${fmtDate(m.to)} · ${m.days} дн.</span></td>`
+  mo.forEach((m,i)=>{
+    const pr=mo[i+1];
+    const mark = m===best? ' <span class="badge good"><span class="d"></span>лучший</span>'
+      : (m===worst? ' <span class="badge critical"><span class="d"></span>худший</span>' : '');
+    // неполный месяц помечаем прямо: сравнивать 3 дня с 31 днём нельзя
+    const part = m.days<28? ' <span class="badge nodata"><span class="d"></span>неполный</span>' : '';
+    html+=`<tr><td class="metric">${nm(m.key)}${mark}${part}`
+      +`<span class="sub2 mut">${fmtDate(m.from)} – ${fmtDate(m.to)} · ${m.days} ${plural(m.days,"день","дня","дней")}</span></td>`
       +`<td>${fmt(m.qty)}</td><td>${rub(m.revenue)}</td><td>${rub(m.mpFee)}</td><td>${rub(m.cogs)}</td>`
-      +`<td>${rub(m.ad)}</td><td style="font-weight:700;color:${m.profit>=0?"var(--good-txt)":"var(--crit-txt)"}">${rub(m.profit)}</td>`
-      +`<td>${pct(m.margin)}</td></tr>`;
-    w.filter(x=>x.from.slice(0,7)===m.key||x.to.slice(0,7)===m.key).forEach((r,i,arr)=>{
-      const pr=arr[i+1];
-      const mark=r===best?' <span class="badge good"><span class="d"></span>лучшая</span>'
-        :(r===worst?' <span class="badge critical"><span class="d"></span>худшая</span>':'');
-      html+=`<tr class="in-grp"><td class="metric">${fmtDate(r.from)} – ${fmtDate(r.to)}${mark}`
-        +`<span class="sub2 mut">${r.days} дн.</span></td>`
-        +`<td>${fmt(r.qty)}</td><td>${rub(r.revenue)}</td><td>${rub(r.mpFee)}</td><td>${rub(r.cogs)}</td>`
-        +`<td>${rub(r.ad)}</td><td style="font-weight:700;color:${r.profit>=0?"var(--good-txt)":"var(--crit-txt)"}">${rub(r.profit)}${dRub(r,pr)}</td>`
-        +`<td>${pct(r.margin)}</td></tr>`;
-    });
+      +`<td>${rub(m.ad)}</td>`
+      +`<td style="font-weight:700;color:${m.profit>=0?"var(--good-txt)":"var(--crit-txt)"}">${rub(m.profit)}${dRub(m,pr)}</td>`
+      +`<td class="${m.margin<0?"delta-down":""}">${pct(m.margin)}</td></tr>`;
   });
   document.getElementById("homeWeeksTable").innerHTML=html+"</tbody>";
 }
