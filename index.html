@@ -5298,28 +5298,85 @@ let finSortState={key:"revenue",dir:-1};
    только через «2 мес» — что читается абсурдно: двух месяцев в снимке нет. Теперь кнопки
    рисуются от реальной истории: недели, пока они помещаются, затем месяцы, и всегда
    «Весь период». Кнопок, которым не хватает данных, просто нет — сбиться не на чем. */
-function periodOptions(daysAvail){
+function periodOptions(daysAvail,hasMonths){
   const out=[];
   const weeks=Math.min(8,Math.floor(daysAvail/7));
   for(let w=1;w<=weeks;w++) out.push({n:w*7,lbl:w+" нед"});
-  [[60,"2 мес"],[90,"3 мес"],[120,"4 мес"],[150,"5 мес"],[180,"6 мес"]].forEach(([n,l])=>{
+  /* Относительные «2 мес / 3 мес» показываем ТОЛЬКО когда нет именованных месяцев.
+     Просьба продавца 04.09.2026: «сделай помесячно там, где месяца уже закончились, чтобы
+     было понятно, какой это месяц». «3 мес» — скользящее окно в 90 дней, оно не совпадает
+     ни с одним закрытым месяцем, и рядом с кнопкой «авг 2026» читалось бы как её синоним. */
+  if(!hasMonths) [[60,"2 мес"],[90,"3 мес"],[120,"4 мес"],[150,"5 мес"],[180,"6 мес"]].forEach(([n,l])=>{
     if(n<daysAvail) out.push({n,lbl:l});                 // строго меньше: «весь период» ниже
   });
-  out.push({n:0,lbl:"Весь период"});
   return out;
 }
-// перерисовывает сегмент периода под реальную историю; возвращает актуальное значение
-function renderPeriodSeg(segId,curN,daysAvail){
+const RU_MON_FULL=["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+const monLabel=k=>RU_MON_FULL[+k.slice(5,7)]+" "+k.slice(2,4);
+/* Перерисовывает сегмент периода под реальную историю.
+   `months` — уже ЗАКРЫТЫЕ месяцы (массив {key,lbl,title}); ставятся между неделями и
+   «Весь период». Возвращает актуальное n (месяц caller проверяет сам — так не ломается
+   сигнатура для «Финансов» и «Аналитики», которые месяцы не передают). */
+function renderPeriodSeg(segId,curN,daysAvail,months,curMonth){
   const seg=document.getElementById(segId); if(!seg) return curN;
-  const opts=periodOptions(daysAvail);
+  const ms=months||[];
+  const opts=periodOptions(daysAvail,ms.length>0);
+  const validMonth = curMonth && ms.some(m=>m.key===curMonth) ? curMonth : null;
   // если выбранного варианта больше нет (данных стало меньше) — берём «Весь период»
   let n = opts.some(o=>o.n===curN)? curN : 0;
-  const sig=opts.map(o=>o.n).join(",")+"|"+n;
+  const sig=opts.map(o=>o.n).join(",")+"|"+ms.map(m=>m.key).join(",")+"|"+n+"|"+(validMonth||"");
   if(seg.dataset.sig!==sig){
     seg.dataset.sig=sig;
-    seg.innerHTML=opts.map(o=>`<button data-n="${o.n}"${o.n===n?' aria-pressed="true"':''}>${o.lbl}</button>`).join("");
+    seg.innerHTML=
+      opts.map(o=>`<button data-n="${o.n}"${(!validMonth&&o.n===n)?' aria-pressed="true"':''}>${o.lbl}</button>`).join("")
+      +ms.map(m=>`<button data-m="${m.key}" title="${esc(m.title||"")}"${validMonth===m.key?' aria-pressed="true"':''}>${m.lbl}</button>`).join("")
+      +`<button data-n="0"${(!validMonth&&n===0)?' aria-pressed="true"':''}>Весь период</button>`;
   }
   return n;
+}
+/* ЗАКРЫТЫЕ МЕСЯЦЫ ДЛЯ КНОПОК ПЕРИОДА. «Закрытый» — это месяц, который в данных ЕСТЬ ЦЕЛИКОМ:
+   у Озона календарный (все дни месяца), у ВБ — все недели, которые в него попадают по правилу
+   четверга. Незакрытый месяц кнопкой не показываем: продавец нажал бы «сен 2026» и получил
+   три дня, приняв их за месяц. */
+let homeMonth=null;
+function wbMonthDatesOf(key){
+  return [...new Set(FINANCE_CACHE.map(r=>r.date))].sort()
+    .filter(d=>wbMonthOfWeek(mondayOf(d)).key===key);
+}
+function ozMonthDatesOf(key){
+  return [...new Set(ozFinRows().map(r=>r.date))].sort().filter(d=>d.slice(0,7)===key);
+}
+function wbClosedMonths(){
+  const all=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
+  if(!all.length) return [];
+  const by={}; all.forEach(d=>{ const k=wbMonthOfWeek(mondayOf(d)).key;
+    (by[k]||(by[k]=new Set())).add(mondayOf(d)); });
+  return Object.keys(by).sort().reverse()
+    .filter(k=>by[k].size===wbWeeksInMonth(k))
+    .map(k=>{ const ds=wbMonthDatesOf(k);
+      return {key:k, lbl:monLabel(k),
+        title:"Wildberries, месяц целыми неделями: "+fmtDate(ds[0])+" – "+fmtDate(ds[ds.length-1])+" · "+ds.length+" дн."}; });
+}
+function ozClosedMonths(){
+  const all=[...new Set(ozFinRows().map(r=>r.date))].sort();
+  if(!all.length) return [];
+  const by={}; all.forEach(d=>(by[d.slice(0,7)]||(by[d.slice(0,7)]=[])).push(d));
+  return Object.keys(by).sort().reverse()
+    .filter(k=>{ const [y,m]=k.split("-").map(Number);
+      return by[k].length===new Date(Date.UTC(y,m,0)).getUTCDate(); })
+    .map(k=>({key:k, lbl:monLabel(k),
+      title:"Ozon, календарный месяц: "+fmtDate(by[k][0])+" – "+fmtDate(by[k][by[k].length-1])+" · "+by[k].length+" дн."}));
+}
+// на «Всего» месяц показываем, только если он закрыт НА ОБЕИХ площадках — иначе половина
+// строки была бы про полный месяц, а половина про огрызок
+function allClosedMonths(){
+  const w=new Set(wbClosedMonths().map(m=>m.key)), o=ozClosedMonths();
+  return o.filter(m=>w.has(m.key)).map(m=>{
+    const wd=wbMonthDatesOf(m.key), od=ozMonthDatesOf(m.key);
+    return {key:m.key, lbl:monLabel(m.key),
+      title:"ВБ "+fmtDate(wd[0])+" – "+fmtDate(wd[wd.length-1])+" (целыми неделями) · "
+        +"Ozon "+fmtDate(od[0])+" – "+fmtDate(od[od.length-1])+" (календарный)"};
+  });
 }
 function dateRangeFromCache(cache,periodN){
   const dates=[...new Set(cache.map(r=>r.date))].sort();
@@ -6921,8 +6978,14 @@ function renderHomeOzon(){
   const catSel=document.getElementById("homeCat");
   if(catSel && !catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
-  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,allDates.length);
-  const {dates,prevDates}=dateRangeFromCache(rows,homePeriodN);
+  const ozMs=ozClosedMonths();
+  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,allDates.length,ozMs,homeMonth);
+  let dates, prevDates;
+  if(homeMonth && ozMs.some(m=>m.key===homeMonth)){
+    dates=ozMonthDatesOf(homeMonth);
+    const i=ozMs.findIndex(m=>m.key===homeMonth);
+    prevDates=ozMs[i+1]? ozMonthDatesOf(ozMs[i+1].key) : [];
+  } else ({dates,prevDates}=dateRangeFromCache(rows,homePeriodN));
   const now=ozFinAggregate(dates,cat,q);
   const prev=prevDates.length? ozFinAggregate(prevDates,cat,q) : null;
 
@@ -7135,11 +7198,18 @@ function renderHomeAll(){
   const catSel=document.getElementById("homeCat");
   if(catSel && !catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
-  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,all.length);
-  const {dates}=dateRangeFromCache(all.map(d=>({date:d})),homePeriodN);
-  const set=new Set(dates);
-  const w=finAggregate(wbDates.filter(d=>set.has(d)),cat,q), wa=adAggregate(wbDates.filter(d=>set.has(d)),cat,q);
-  const o=ozFinAggregate(ozDates.filter(d=>set.has(d)),cat,q);
+  const allMs=allClosedMonths();
+  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,all.length,allMs,homeMonth);
+  /* На «Всего» месяц — это ДВА разных набора дат (у ВБ по неделям, у Озона календарный),
+     поэтому общий `set` тут не годится: каждая площадка берёт свои дни. */
+  const useMonth = homeMonth && allMs.some(m=>m.key===homeMonth);
+  let wSel, oSel;
+  if(useMonth){ wSel=wbMonthDatesOf(homeMonth); oSel=ozMonthDatesOf(homeMonth); }
+  else { const {dates}=dateRangeFromCache(all.map(d=>({date:d})),homePeriodN);
+    const set=new Set(dates);
+    wSel=wbDates.filter(d=>set.has(d)); oSel=ozDates.filter(d=>set.has(d)); }
+  const w=finAggregate(wSel,cat,q), wa=adAggregate(wSel,cat,q);
+  const o=ozFinAggregate(oSel,cat,q);
   const wProfit=w.net-w.cogs-wa.total;
   const revenue=w.revenue+o.revenue, profit=wProfit+o.profit;
   const hold=(w.revenue-w.net)+o.mpFee, cogs=w.cogs+o.cogs, ads=wa.total+o.ad;
@@ -7252,8 +7322,14 @@ function renderHomeTab(){
   const catSel=document.getElementById("homeCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
-  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,allDates.length);
-  const {dates,prevDates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN);
+  const wbMs=wbClosedMonths();
+  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,allDates.length,wbMs,homeMonth);
+  let dates, prevDates;
+  if(homeMonth && wbMs.some(m=>m.key===homeMonth)){
+    dates=wbMonthDatesOf(homeMonth);
+    const i=wbMs.findIndex(m=>m.key===homeMonth);           // «к пред.» — предыдущий ЗАКРЫТЫЙ месяц
+    prevDates=wbMs[i+1]? wbMonthDatesOf(wbMs[i+1].key) : [];
+  } else ({dates,prevDates}=dateRangeFromCache(FINANCE_CACHE,homePeriodN));
   const now=finAggregate(dates,cat,q);
   const prev=prevDates.length? finAggregate(prevDates,cat,q) : null;
   const netQty=now.qty-now.returnsQty;
@@ -9154,7 +9230,11 @@ document.getElementById("finCat").addEventListener("change",renderFinanceTab);
 document.getElementById("homePeriodSeg").addEventListener("click",e=>{
   const b=e.target.closest("button"); if(!b) return;
   [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
-  b.setAttribute("aria-pressed","true"); homePeriodN=+b.dataset.n; renderHomeTab();
+  b.setAttribute("aria-pressed","true");
+  // кнопка месяца несёт data-m, кнопки окон — data-n; выбор одного снимает другой
+  if(b.dataset.m){ homeMonth=b.dataset.m; }
+  else { homeMonth=null; homePeriodN=+b.dataset.n; }
+  renderHomeTab();
 });
 document.getElementById("homeSearch").addEventListener("input",renderHomeTab);
 document.getElementById("homeCat").addEventListener("change",renderHomeTab);
