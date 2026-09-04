@@ -1743,7 +1743,24 @@ const catalogCostBySku = {}; // заполняется в hydrateData из RCAT
 // ручные/загруженные правки себестоимости (перекрывают каталог), хранятся в браузере
 const COST_OV_KEY="wb_cost_overrides_v1";
 let costOverrides={}; try{ costOverrides=JSON.parse(localStorage.getItem(COST_OV_KEY)||"{}"); }catch(e){ costOverrides={}; }
-function costOf(sku){ const o=costOverrides[sku]; if(o!=null) return o; const c=catalogCostBySku[sku]; return c!=null? c : null; }
+/* ФОЛБЭК НА КАТАЛОГ ВБ ПО SKU. Карты `catalogCostBySku`/`catalogCostHistBySku` строятся под
+   АКТИВНУЮ площадку: на «Всего» они ключуются кодом 1С, и себестоимость строки финансов ВБ
+   (её ключ — артикул ВБ) в них не находится. Из-за этого на «Всего» себестоимость ВБ падала
+   в НОЛЬ, а прибыль на неё же завышалась: август показывал 10 385 777 ₽ вместо 3 078 374 ₽
+   и маржу 59,8% вместо 17,7% (поймано 04.09.2026 при сведении месяцев двух площадок).
+   Поэтому если в картах пусто — берём цену прямо из каталога ВБ по артикулу. */
+let _wbCostBySku=null;
+function wbCostBySku(){
+  if(_wbCostBySku) return _wbCostBySku;
+  const now={}, hist={};
+  ((RD&&RD.catalog)||[]).forEach(c=>{ const k=""+c.sku;
+    if(c.costPrice!=null) now[k]=c.costPrice;
+    if(c.costHistory&&c.costHistory.length) hist[k]=c.costHistory; });
+  return (_wbCostBySku={now,hist});
+}
+function costOf(sku){ const o=costOverrides[sku]; if(o!=null) return o;
+  const c=catalogCostBySku[sku]; if(c!=null) return c;
+  const w=wbCostBySku().now[""+sku]; return w!=null? w : null; }
 // История себестоимости: costHistory=[{from:null|iso, cost}] по возрастанию даты.
 // Первая запись всегда с from:null (цена «с начала времён») — её гарантирует
 // update-cost.cjs, поэтому фолбэк на текущую цену срабатывает только у товаров
@@ -1756,7 +1773,13 @@ function costAt(sku,date){
   if(h&&h.length){ let v=null;
     for(const e of h){ if(!e.from || e.from<=date) v=e.cost; else break; }
     if(v!=null) return v; }
-  const c=catalogCostBySku[sku]; return c!=null? c : null;
+  const c=catalogCostBySku[sku]; if(c!=null) return c;
+  // карты активной площадки не знают этот артикул — см. wbCostBySku()
+  const W=wbCostBySku(), wh=W.hist[""+sku];
+  if(wh&&wh.length){ let v=null;
+    for(const e of wh){ if(!e.from || e.from<=date) v=e.cost; else break; }
+    if(v!=null) return v; }
+  const wn=W.now[""+sku]; return wn!=null? wn : null;
 }
 function hasCostHistory(sku){ const h=catalogCostHistBySku[sku]; return !!(h&&h.length>1); }
 // Ссылка на карточку товара: ВБ → wildberries.ru; Озон → ozon.ru (по числовому SKU Озона,
@@ -6949,6 +6972,7 @@ function renderHomeOzon(){
   ].map(kpiCard).join("");
   wireKpiTips("homeKpis");
   document.getElementById("homeCostWarning").hidden=true;
+  homeCards(true);
   renderOutSplitOz("homeOutSplit",now);
 
   // ---- графики: выручка по дням и прибыль по дням
@@ -7052,22 +7076,148 @@ function renderHomeWeeksOz(cat,q){
   });
   document.getElementById("homeWeeksTable").innerHTML=html+"</tbody>";
 }
+/* «ВСЕГО» НА «ГЛАВНОЙ»: МЕСЯЦЫ ДВУХ ПЛОЩАДОК РЯДОМ (просьба продавца 04.09.2026).
+   У площадок РАЗНЫЕ границы месяца, и это не ошибка, а его учёт:
+     · Ozon — календарный месяц (август = 01.08–31.08);
+     · ВБ   — целые недели, неделя относится к месяцу своего ЧЕТВЕРГА
+              (июль = 29.06–02.08, август = 03.08–30.08, сентябрь = 31.08–27.09).
+   Границы сверены с тем, что назвал продавец: совпали все три.
+   Поэтому строка «август» — это НЕ один диапазон дат, а сумма двух разных отрезков.
+   Периоды печатаются у каждой площадки прямо в строке, чтобы это было видно, а не
+   додумывалось. Складывать их корректно: пересечения нет, площадки независимы. */
+function combinedMonths(cat,q){
+  const wbM={};
+  weeklyBreakdown(cat,q).forEach(w=>{
+    const k=wbMonthOfWeek(w.from).key;
+    const e=wbM[k]||(wbM[k]={key:k,from:w.from,to:w.to,days:0,weeks:0,qty:0,revenue:0,
+      hold:0,cogs:0,ad:0,profit:0,est:false});
+    if(w.from<e.from) e.from=w.from;
+    if(w.to>e.to) e.to=w.to;
+    e.days+=w.days; e.weeks++; e.qty+=w.qty; e.revenue+=w.revenue; e.hold+=w.wbHold;
+    e.cogs+=w.cogs; e.ad+=w.ad; e.profit+=w.profit; e.est=e.est||!!w.est;
+  });
+  Object.values(wbM).forEach(e=>{ e.margin=e.revenue? e.profit/e.revenue : 0;
+    e.full = e.weeks===wbWeeksInMonth(e.key); });
+  const ozM={}; ozMonthly(cat,q).forEach(m=>{ ozM[m.key]=m; m.full=m.days>=28; });
+  const keys=[...new Set([...Object.keys(wbM),...Object.keys(ozM)])].sort().reverse();
+  return keys.map(k=>{
+    const wb=wbM[k]||null, oz=ozM[k]||null;
+    const revenue=(wb?wb.revenue:0)+(oz?oz.revenue:0);
+    const profit=(wb?wb.profit:0)+(oz?oz.profit:0);
+    return {key:k, wb, oz, qty:(wb?wb.qty:0)+(oz?oz.qty:0), revenue, profit,
+      hold:(wb?wb.hold:0)+(oz?oz.mpFee:0), cogs:(wb?wb.cogs:0)+(oz?oz.cogs:0),
+      ad:(wb?wb.ad:0)+(oz?oz.ad:0), margin: revenue? profit/revenue : 0,
+      full: (!wb||wb.full) && (!oz||oz.full) && !!(wb&&oz)};
+  });
+}
+/* Карточки, которые на «Всего» прячутся (разрезы по товарам и графики: у площадок разные
+   артикулы и разные категории). Прятать мало — надо и возвращать, иначе после «Всего»
+   они останутся скрытыми на ВБ и Озоне. */
+function homeCards(on){
+  ["homeDriversCard","homeCatCard"].forEach(id=>{ const e=document.getElementById(id); if(e) e.hidden=!on; });
+  ["ch-home-money","ch-home-profit","ch-home-unit"].forEach(id=>{
+    const e=document.getElementById(id); const c=e&&e.closest(".card"); if(c) c.hidden=!on; });
+}
+function renderHomeAll(){
+  const fresh=document.getElementById("homeFreshness");
+  const wbDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
+  const ozRows=ozFinRows(), ozDates=[...new Set(ozRows.map(r=>r.date))].sort();
+  if(!wbDates.length && !ozDates.length){
+    document.getElementById("homeEmpty").hidden=false;
+    document.getElementById("homeContent").hidden=true; return; }
+  document.getElementById("homeEmpty").hidden=true;
+  document.getElementById("homeContent").hidden=false;
+  const all=[...new Set([...wbDates,...ozDates])].sort();
+  fresh.innerHTML=`<span class="dot"></span>Обе площадки · ${fmtDateLong(all[0])} – ${fmtDateLong(all[all.length-1])}`
+    +` · <b>месяц у каждой площадки свой</b>: у Ozon календарный, у ВБ целыми неделями`
+    +` (неделя относится к месяцу своего четверга). ВБ после 2 авг — оценка, Ozon — оценка по тарифу ИУ.`;
+
+  const catSel=document.getElementById("homeCat");
+  if(catSel && !catSel.options.length) fillCategorySelect(catSel);
+  const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
+  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,all.length);
+  const {dates}=dateRangeFromCache(all.map(d=>({date:d})),homePeriodN);
+  const set=new Set(dates);
+  const w=finAggregate(wbDates.filter(d=>set.has(d)),cat,q), wa=adAggregate(wbDates.filter(d=>set.has(d)),cat,q);
+  const o=ozFinAggregate(ozDates.filter(d=>set.has(d)),cat,q);
+  const wProfit=w.net-w.cogs-wa.total;
+  const revenue=w.revenue+o.revenue, profit=wProfit+o.profit;
+  const hold=(w.revenue-w.net)+o.mpFee, cogs=w.cogs+o.cogs, ads=wa.total+o.ad;
+  const qty=(w.qty-w.returnsQty)+o.qty;
+  const tr=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  const sep=`border-top:1px solid var(--grid);margin-top:5px;padding-top:6px`;
+  document.getElementById("homeKpis").innerHTML=[
+    {lbl:"Прибыль за период",val:rub(profit),hero:true,
+     valColor:profit>=0?"var(--good-txt)":"var(--crit-txt)",
+     tip:`<div class="t-hd">Прибыль — обе площадки</div>`
+       +tr("Wildberries",rub(wProfit))+tr("Ozon",rub(o.profit))
+       +`<div class="t-row" style="${sep}"><span class="k">= Всего</span><span class="v">${rub(profit)}</span></div>`},
+    {lbl:"Выручка, ₽",val:rub(revenue),
+     tip:`<div class="t-hd">Выручка — обе площадки</div>`
+       +tr("Wildberries",rub(w.revenue))+tr("Ozon",rub(o.revenue))
+       +`<div class="t-row" style="${sep}"><span class="k">= Всего</span><span class="v">${rub(revenue)}</span></div>`},
+    {lbl:"Забирают площадки, ₽",val:rub(hold),
+     tip:`<div class="t-hd">Сколько забирают площадки</div>`
+       +tr("Удержания Wildberries",rub(w.revenue-w.net))
+       +tr("Забирает Ozon (тариф ИУ)",rub(o.mpFee))
+       +`<div class="t-row" style="${sep}"><span class="k">= Всего</span><span class="v">${rub(hold)}</span></div>`},
+    {lbl:"Реклама, ₽",val:rub(ads),
+     tip:`<div class="t-hd">Реклама</div>`+tr("Wildberries (факт из выгрузок)",rub(wa.total))
+       +tr("Ozon (внутри тарифа ИУ)",rub(o.ad))
+       +`<div class="t-row" style="${sep};opacity:.75"><span class="k">Реклама Ozon уже входит в «Забирают площадки»</span></div>`},
+    {lbl:"Маржинальность",val:revenue?pct(profit/revenue):"—",
+     valColor:profit>=0?"var(--good-txt)":"var(--crit-txt)",
+     tip:`<div class="t-hd">Маржинальность</div>`+tr("Прибыль ÷ Выручка")
+       +tr("Wildberries",w.revenue?pct(wProfit/w.revenue):"—")+tr("Ozon",o.revenue?pct(o.margin):"—")},
+    {lbl:"Продано, шт",val:fmt(qty),
+     tip:`<div class="t-hd">Продано</div>`+tr("Wildberries (нетто)",fmt(w.qty-w.returnsQty)+" шт")
+       +tr("Ozon (оценка)",fmt(o.qty)+" шт")},
+  ].map(kpiCard).join("");
+  wireKpiTips("homeKpis");
+  document.getElementById("homeCostWarning").hidden=true;
+  document.getElementById("homeOutSplit").hidden=true;
+
+  homeCards(false);   // разрезы по товарам и графики — только на конкретной площадке
+
+  // ---- месяцы: у каждой площадки свой отрезок, плюс итог
+  const card=document.getElementById("homeWeeksCard");
+  const mo=combinedMonths(cat,q);
+  card.hidden=!mo.length;
+  document.getElementById("homeWeeksTitle").textContent="Каждый месяц отдельно";
+  document.getElementById("homeWeeksCap").textContent=
+    "Месяц у площадок считается по-разному: у Ozon календарный, у ВБ целыми неделями (неделя относится к месяцу своего четверга). Поэтому строка месяца — это сумма двух РАЗНЫХ отрезков, и период каждой площадки написан рядом.";
+  document.getElementById("homeWeeksNote").textContent=
+    mo.length+" "+plural(mo.length,"месяц","месяца","месяцев")+" · ВБ + Ozon";
+  const RU=["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
+  const nm=k=>RU[+k.slice(5,7)]+" "+k.slice(0,4);
+  const per=x=>x? fmtDate(x.from)+" – "+fmtDate(x.to)+" · "+x.days+" дн." : "нет данных";
+  let html=`<thead><tr><th class="metric">Месяц / площадка</th><th>Продано</th><th>Выручка, ₽</th>`
+    +`<th>Забирает МП</th><th>Себест., ₽</th><th>Реклама</th><th>Прибыль, ₽</th><th>Маржа</th></tr></thead><tbody>`;
+  const line=(name,sub,r,cls)=>`<tr class="${cls}"><td class="metric">${name}<span class="sub2 mut">${sub}</span></td>`
+    +`<td>${fmt(r.qty)}</td><td>${rub(r.revenue)}</td><td>${rub(r.hold)}</td><td>${rub(r.cogs)}</td>`
+    +`<td>${r.ad?rub(r.ad):"—"}</td>`
+    +`<td style="font-weight:700;color:${r.profit>=0?"var(--good-txt)":"var(--crit-txt)"}">${rub(r.profit)}</td>`
+    +`<td class="${r.margin<0?"delta-down":""}">${pct(r.margin)}</td></tr>`;
+  mo.forEach(m=>{
+    const part=m.full? "" : ' <span class="badge nodata"><span class="d"></span>неполный</span>';
+    html+=line(nm(m.key)+part,"обе площадки",m,"row-group");
+    if(m.wb) html+=line("Wildberries","целыми неделями · "+per(m.wb)+(m.est?" · оценка":""),
+      {qty:m.wb.qty,revenue:m.wb.revenue,hold:m.wb.hold,cogs:m.wb.cogs,ad:m.wb.ad,
+       profit:m.wb.profit,margin:m.wb.margin},"in-grp");
+    if(m.oz) html+=line("Ozon","календарный · "+per(m.oz),
+      {qty:m.oz.qty,revenue:m.oz.revenue,hold:m.oz.mpFee,cogs:m.oz.cogs,ad:m.oz.ad,
+       profit:m.oz.profit,margin:m.oz.margin},"in-grp");
+  });
+  document.getElementById("homeWeeksTable").innerHTML=html+"</tbody>";
+  document.getElementById("homeCount").textContent="";
+  document.getElementById("homeTblNote").textContent="";
+  document.getElementById("homeTable").innerHTML=
+    `<tbody><tr><td class="empty-hint">Разбор по товарам смотрите на конкретной площадке — у ВБ и Ozon разные артикулы и разные категории.</td></tr></tbody>`;
+}
 function renderHomeTab(){
   // Озон считается по своему тарифу и своему календарю — отдельный рендер
   if(_appliedMp==="ozon"){ renderHomeOzon(); return; }
-  /* «Всего» пока НЕ сводим. Молча показать здесь цифры ВБ было бы враньём: продавец
-     прочитал бы их как общие по бизнесу. Сложение двух площадок — отдельная работа
-     (у них разные артикулы, разные категории и разный календарь месяцев). */
-  if(_appliedMp==="all"){
-    document.getElementById("homeEmpty").hidden=true;
-    document.getElementById("homeContent").hidden=true;
-    document.getElementById("homeFreshness").innerHTML=
-      '<span class="dot" style="background:var(--warn-txt)"></span>'
-      +'Свод по обеим площадкам на «Главной» пока не сделан — выберите <b>Wildberries</b> или <b>Ozon</b>. '
-      +'Цифры площадок считаются по-разному (у ВБ отчёт о реализации, у Ozon оценка по тарифу ИУ), '
-      +'и показать здесь только ВБ под видом общего итога было бы неверно.';
-    return;
-  }
+  if(_appliedMp==="all"){ renderHomeAll(); return; }
   const fresh=document.getElementById("homeFreshness");
   if(!FINANCE_CACHE.length){
     /* Пустой свод при ЖИВОМ снимке — это сбой, а не «данных ещё не присылали».
@@ -7085,6 +7235,7 @@ function renderHomeTab(){
   }
   document.getElementById("homeEmpty").hidden=true;
   document.getElementById("homeContent").hidden=false;
+  homeCards(true);
   const allDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   // сколько всего загружено — иначе непонятно, почему «5 нед» есть, а «6 нед» нет
   const wkTxt=n=>{const w=Math.floor(n/7),d=n%7;
@@ -9097,6 +9248,7 @@ function hydrateData(){
   _wbFbsCache=null;              // раскладка своих складов под покрытие ВБ
   _recOutCache=null; _outSkuCache=null;   // списки товаров «На вывод» — производные каталога
   _ozCostCache=null; _ozFinCache=null;    // финансы Озона считаются из каталога и тарифа
+  _wbCostBySku=null;                      // фолбэк себестоимости ВБ по артикулу
   OZ_FUNNEL = (RD && RD.ozon && RD.ozon.funnel) ? RD.ozon.funnel : [];
   buildMpDatasets();
   _appliedMp=null; applyMpData("wb");
