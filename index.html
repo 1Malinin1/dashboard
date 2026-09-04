@@ -5346,6 +5346,29 @@ function wbMonthDatesOf(key){
 function ozMonthDatesOf(key){
   return [...new Set(ozFinRows().map(r=>r.date))].sort().filter(d=>d.slice(0,7)===key);
 }
+/* Сколько недель ПОКАЗЫВАТЬ кнопками. Кнопки недель — это скользящие окна «последние N дней»,
+   и когда рядом стоят закрытые месяцы, восемь таких окон бессмысленны: они залезают в уже
+   закрытые месяцы и мешают (продавец 04.09.2026: «зачем ты оставил 8 недель, если у тебя
+   только первая неделя сентября идёт»). Поэтому недели считаем ТОЛЬКО по открытому хвосту —
+   дням после последнего закрытого месяца. Если закрытых месяцев нет, ведём себя как раньше. */
+function openTailDays(dates,closed,keyOf){
+  if(!closed.length) return dates.length;
+  const last=closed[0].key;                       // closed отсортированы от свежего к старому
+  const tail=dates.filter(d=>keyOf(d)>last);
+  return tail.length? tail.length : dates.length;
+}
+/* ТЕКУЩИЙ МЕСЯЦ ТОЖЕ НУЖЕН КНОПКОЙ. Если оставить только закрытые, посмотреть «что идёт
+   сейчас» становится нечем: недельные окна при хвосте в 3–4 дня не строятся вовсе.
+   Поэтому впереди списка стоит идущий месяц с пометкой «идёт» и числом дней — спутать
+   его с закрытым нельзя. */
+function openMonthEntry(dates,closed,keyOf,what){
+  if(!dates.length) return null;
+  const k=keyOf(dates[dates.length-1]);
+  if(closed.some(m=>m.key===k)) return null;          // месяц уже закрыт — отдельной кнопки не надо
+  const ds=dates.filter(d=>keyOf(d)===k);
+  return {key:k, open:true, lbl:monLabel(k)+" · идёт",
+    title:what+": месяц ещё не закончился — "+fmtDate(ds[0])+" – "+fmtDate(ds[ds.length-1])+" · "+ds.length+" дн."};
+}
 function wbClosedMonths(){
   const all=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   if(!all.length) return [];
@@ -6978,8 +7001,11 @@ function renderHomeOzon(){
   const catSel=document.getElementById("homeCat");
   if(catSel && !catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
-  const ozMs=ozClosedMonths();
-  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,allDates.length,ozMs,homeMonth);
+  const ozClosed=ozClosedMonths();
+  const ozOpen=openMonthEntry(allDates,ozClosed,d=>d.slice(0,7),"Ozon, календарный");
+  const ozMs=(ozOpen? [ozOpen] : []).concat(ozClosed);
+  const ozTail=openTailDays(allDates,ozClosed,d=>d.slice(0,7));
+  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,ozTail,ozMs,homeMonth);
   let dates, prevDates;
   if(homeMonth && ozMs.some(m=>m.key===homeMonth)){
     dates=ozMonthDatesOf(homeMonth);
@@ -7198,8 +7224,24 @@ function renderHomeAll(){
   const catSel=document.getElementById("homeCat");
   if(catSel && !catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
-  const allMs=allClosedMonths();
-  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,all.length,allMs,homeMonth);
+  const allClosed=allClosedMonths();
+  const allOpen=openMonthEntry(all,allClosed,d=>wbMonthOfWeek(mondayOf(d)).key,"обе площадки");
+  /* У «Всего» подсказка обязана показывать ОБА отрезка: у ВБ и Озона месяц кончается в разные
+     дни, и один диапазон читался бы как общий. Базовый openMonthEntry считает по ВБ-правилу,
+     поэтому заголовок здесь пересобираем. */
+  if(allOpen){
+    const wd=wbMonthDatesOf(allOpen.key), od=ozMonthDatesOf(allOpen.key);
+    allOpen.title="месяц ещё не закончился · "
+      +(wd.length? "ВБ "+fmtDate(wd[0])+" – "+fmtDate(wd[wd.length-1])+" ("+wd.length+" дн., целыми неделями)" : "ВБ нет данных")
+      +" · "
+      +(od.length? "Ozon "+fmtDate(od[0])+" – "+fmtDate(od[od.length-1])+" ("+od.length+" дн., календарный)" : "Ozon нет данных");
+  }
+  const allMs=(allOpen? [allOpen] : []).concat(allClosed);
+  /* Хвост на «Всего»: дни, которые не попали ни в один общий закрытый месяц. Считаем по
+     ВБ-правилу — его месяц кончается позже календарного (август у ВБ до 30.08, у Озона
+     до 31.08), поэтому по нему хвост получается не длиннее реального. */
+  const allTail=openTailDays(all,allClosed,d=>wbMonthOfWeek(mondayOf(d)).key);
+  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,allTail,allMs,homeMonth);
   /* На «Всего» месяц — это ДВА разных набора дат (у ВБ по неделям, у Озона календарный),
      поэтому общий `set` тут не годится: каждая площадка берёт свои дни. */
   const useMonth = homeMonth && allMs.some(m=>m.key===homeMonth);
@@ -7322,8 +7364,11 @@ function renderHomeTab(){
   const catSel=document.getElementById("homeCat");
   if(!catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
-  const wbMs=wbClosedMonths();
-  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,allDates.length,wbMs,homeMonth);
+  const wbClosed=wbClosedMonths();
+  const wbOpen=openMonthEntry(allDates,wbClosed,d=>wbMonthOfWeek(mondayOf(d)).key,"Wildberries, целыми неделями");
+  const wbMs=(wbOpen? [wbOpen] : []).concat(wbClosed);
+  const wbTail=openTailDays(allDates,wbClosed,d=>wbMonthOfWeek(mondayOf(d)).key);
+  homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,wbTail,wbMs,homeMonth);
   let dates, prevDates;
   if(homeMonth && wbMs.some(m=>m.key===homeMonth)){
     dates=wbMonthDatesOf(homeMonth);
