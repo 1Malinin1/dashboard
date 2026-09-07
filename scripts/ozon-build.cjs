@@ -187,7 +187,12 @@ const series = keepOrders && prevSeries ? prevSeries : {dates:finalDates,byArt:f
        её нельзя ничем: отчёт Озона это снимок на момент выгрузки, за прошлые дни его не достать.
      · `meta.adRate` — доля расхода на рекламу Озона (продавец 03.09.2026: «9%, это уже в выкупе,
        у меня подключена фиксированная плата за рекламу»). Задаётся человеком, из данных
-       не выводится, поэтому потерять её = молча обнулить рекламу Озона. */
+       не выводится, поэтому потерять её = молча обнулить рекламу Озона.
+     · `meta.terms` — тариф ИУ 2026 (scripts/ozon-finance.cjs): сколько площадка забирает
+       себе, 42,7% от выручки в выкупе. Тоже задаётся человеком по его индивидуальным условиям.
+       Пропажу видно НЕ СРАЗУ и не по ошибке: `ozTerms()` в index.html вернёт null, и вся
+       прибыль Озона на «Главной» просто исчезнет. Ровно это и случилось 07.09.2026 — заливка
+       одних остатков стёрла тариф, залитый 04.09. */
 const prevStockHist = (RD.ozon && RD.ozon.stockHistory) || {};
 RD.ozon={
   catalog:ozCat,
@@ -200,8 +205,11 @@ RD.ozon={
     buyoutAll: keepOrders? (prevMeta.buyoutAll!=null? prevMeta.buyoutAll : +buyoutAll.toFixed(4)) : +buyoutAll.toFixed(4),
     buyoutWindow: keepOrders? (prevMeta.buyoutWindow||null) : buyoutWindow,
     adRate: prevMeta.adRate!=null? prevMeta.adRate : null,
-    adRateBasis: prevMeta.adRateBasis || null }
+    adRateBasis: prevMeta.adRateBasis || null,
+    terms: prevMeta.terms || null }
 };
+if(!RD.ozon.meta.terms) console.log('  ВНИМАНИЕ: тарифа ИУ нет в снимке — прибыль Озона считаться не будет.'
+  +' Запустите: node scripts/ozon-finance.cjs');
 
 // 5) переписать wb-data.js
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
