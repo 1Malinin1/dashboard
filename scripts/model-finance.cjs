@@ -76,6 +76,38 @@ const MB=parseFloat(arg('--buyout',
   (BW&&BW.moneyAll)? String(BW.moneyAll) : (BW&&BW.all? String(BW.all) : '0.75')));
 if(FROM>TO){ console.error('нечего моделировать: from '+FROM+' > to '+TO); process.exit(1); }
 
+/* ПРОЦЕНТ ВЫКУПА ДЕЙСТВУЕТ С ДАТЫ ЗАМЕРА И ВПЕРЁД — ПРОШЛОЕ НЕ ТРОГАЕМ.
+   Правило продавца дословно (07.09.2026): «сегодня я тебе скинул файл и мы обновили процент
+   выкупа, и до следующего такого файла ты просто берёшь этот процент и всё; как только я
+   скидываю новый и мы его обновляем, старые расчёты ты не трогаешь, а просто конвертируешь
+   заказы в выкуп все последующие, пока мы опять не пересчитаем».
+   ЗАЧЕМ. Раньше здесь стояло одно число `MB` из последнего окна, и оно применялось ко ВСЕМ
+   дням: каждый еженедельный отчёт задним числом переписывал уже посчитанные недели. Механика,
+   которую объяснил продавец: выкупы доезжают и заносятся ВБ тем днём, когда был ЗАКАЗ, поэтому
+   один и тот же период, измеренный позже, показывает процент выше — подставлять свежий процент
+   в старые дни значит завышать прошлое, тем более что фин. отчёты приходят раз в неделю.
+   КЛЮЧ — ДАТА ЗАМЕРА (`builtAt`), А НЕ ДАТЫ ОКНА ВНУТРИ ОТЧЁТА. Окно 17–30.08, замеренное
+   07.09, начинает действовать с 07.09, а не задним числом с 17.08. Первая версия правила
+   резала историю по датам окна — продавец поправил, и это его учёт, а не деталь реализации.
+   Дни раньше самого первого замера считаются по нему же: другого источника для них нет.
+   Ручной `--buyout` перекрывает всё и применяется ко всем дням — для разовых прикидок. */
+const HIST=(BW&&Array.isArray(BW.history)&&BW.history.length)
+  ? BW.history.slice().sort((a,b)=>(a.builtAt||'')<(b.builtAt||'')?-1:1) : null;
+const manualMB=argv.indexOf('--buyout')>=0;
+const byDate=[]; // для отчёта: какой процент реально применился к каждому дню
+const measDay=h=>(h.builtAt||'').slice(0,10);
+function winFor(d){
+  if(!HIST) return null;
+  let pick=null;
+  HIST.forEach(h=>{ if(measDay(h)<=d) pick=h; });   // последний замер, сделанный НЕ ПОЗЖЕ дня
+  return pick || HIST[0];                          // день раньше первого замера — по первому
+}
+function mbFor(d){ if(manualMB||!HIST) return MB;
+  const w=winFor(d); return (w&&w.moneyAll)? w.moneyAll : MB; }
+function boFor(d,sku){ if(manualMB||!HIST) return (BW&&BW.bySku&&BW.bySku[sku]>0)? BW.bySku[sku] : (BW&&BW.all? BW.all : MB);
+  const w=winFor(d); if(!w) return MB;
+  return (w.bySku&&w.bySku[sku]>0)? w.bySku[sku] : (w.all||MB); }
+
 const catBySku={}; RD.catalog.forEach(x=>catBySku[''+x.sku]=x);
 function costAt(sku,d){ const x=catBySku[sku]; if(!x) return 0;
   const h=x.costHistory; if(!h||!h.length) return x.costPrice||0;
@@ -95,10 +127,14 @@ for(let d=FROM; d<=TO; d=addD(d,1)){
   if(i==null && !money) continue;
   // выручка дня по артикулам — из заказанных ₽; если денег нет, оцениваем через средний чек
   const bySku={};
-  if(money){ Object.entries(money).forEach(([sku,v])=>{ bySku[sku]={rev:(v[0]||0)*MB}; }); }
+  const mbD=mbFor(d);
+  const wD=manualMB? null : winFor(d);
+  byDate.push({d, mb:mbD, win:wD? ('замер '+measDay(wD)+' по окну '+wD.from+'…'+wD.to) : 'ручной',
+    covered:!!(wD && measDay(wD)<=d)});
+  if(money){ Object.entries(money).forEach(([sku,v])=>{ bySku[sku]={rev:(v[0]||0)*mbD}; }); }
   if(i!=null) Object.entries(S.bySku).forEach(([sku,arr])=>{
     const q=arr[i]||0; if(!q) return;
-    const bo=(BW&&BW.bySku&&BW.bySku[sku]>0)? BW.bySku[sku] : (BW&&BW.all? BW.all : MB);
+    const bo=boFor(d,sku);
     const e=bySku[sku]||(bySku[sku]={});
     e.qty=q*bo;
     if(e.rev==null) e.rev=e.qty*(MODEL.avgTicket||0);      // денег за день нет — через средний чек
@@ -129,7 +165,18 @@ const R=n=>Math.round(n).toLocaleString('ru-RU')+' ₽';
 const net=revTot*payRate, profit=net-cogsTot-ADS;
 console.log('ОЦЕНКА ФИНАНСОВ за '+FROM+' … '+TO+'  ('+rows.length+' строк, факт заканчивается '+lastFact+')');
 console.log('─'.repeat(64));
-console.log('  денежный выкуп применён:  '+(MB*100).toFixed(1)+'%'+(BW? ' (окно '+BW.from+'…'+BW.to+')':''));
+if(manualMB||!HIST){
+  console.log('  денежный выкуп применён:  '+(MB*100).toFixed(1)+'%'+(BW? ' (окно '+BW.from+'…'+BW.to+')':'')
+    +(manualMB? '  ← задан вручную, ко всем дням':''));
+} else {
+  // группируем подряд идущие дни с одним окном — так видно, что прошлое не переписано
+  const seg=[]; byDate.forEach(x=>{ const last=seg[seg.length-1];
+    if(last && last.win===x.win && last.covered===x.covered){ last.to=x.d; }
+    else seg.push({from:x.d,to:x.d,win:x.win,mb:x.mb,covered:x.covered}); });
+  console.log('  денежный выкуп — ДЕЙСТВУЕТ С ДАТЫ ЗАМЕРА И ВПЕРЁД (прошлое не трогаем):');
+  seg.forEach(s=>console.log('     '+s.from+' … '+s.to+'  '+(s.mb*100).toFixed(1)+'%'
+    +'  ('+s.win+')'+(s.covered? '':'   ← дни раньше первого замера, другого источника нет')));
+}
 console.log('  выручка (оценка):         '+R(revTot));
 console.log('  итого к оплате ('+(payRate*100).toFixed(1)+'%):  '+R(net));
 console.log('  себестоимость проданного: '+R(cogsTot)+'  ('+Math.round(qtyTot).toLocaleString('ru-RU')+' шт)');

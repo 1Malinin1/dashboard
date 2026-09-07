@@ -149,6 +149,29 @@ const prevBy=(prevWin&&prevWin.bySku)||{};
 const kept=Object.keys(prevBy).filter(k=>bySkuPct[k]==null).length;
 const mergedBy={...prevBy, ...bySkuPct};
 
+/* ИСТОРИЯ ОКОН — ДЕНЬ, ОДИН РАЗ ИЗМЕРЕННЫЙ, БОЛЬШЕ НЕ ПЕРЕСЧИТЫВАЕТСЯ (правило продавца
+   07.09.2026: «обновляй процент выкупа только будущий, но не предыдущий»).
+   ЗАЧЕМ. Раньше в снимке жило ТОЛЬКО последнее окно, и `model-finance.cjs` применял его
+   ко ВСЕМУ периоду оценки. Каждый новый отчёт задним числом переписывал уже посчитанные
+   недели: замер 17–30.08 (79.5% денежных) поднял бы август, измеренный окном 10–23.08
+   (75.3%), хотя те дни к новому окну отношения не имеют. Продавец объяснил механику:
+   выкупы доезжают и заносятся ВБ тем днём, когда был заказ, поэтому один и тот же период,
+   измеренный позже, показывает процент выше — и подставлять свежий процент в старые дни
+   значит завышать прошлое.
+   Теперь каждое окно ложится отдельной записью, а `model-finance.cjs` берёт процент
+   ПО ДАТЕ ДНЯ. Повторный замер того же окна НЕ перезаписывает запись — первая остаётся
+   (иначе прошлое опять поехало бы). Потери точности от этого почти нет: и штучный, и
+   денежный выкуп считаются «от закрытых заказов» (выкуп ÷ (выкуп + отмена)), а такая база
+   к дозреванию устойчива — «в пути» не сидит в знаменателе.
+   bySku кладём внутрь записи: у товара свой процент тоже относится к своему окну. */
+const hist=(prevWin&&Array.isArray(prevWin.history))? prevWin.history.slice() : [];
+const wkey=per.from+'…'+per.to;
+const already=hist.find(h=>h.from+'…'+h.to===wkey);
+if(!already) hist.push({from:per.from, to:per.to, all:win.all, moneyAll:win.moneyAll,
+  openPct:win.openPct, ordered:win.ordered, bought:win.bought, cancelled:win.cancelled,
+  bySku:{...bySkuPct}, builtAt:new Date().toISOString()});
+hist.sort((a,b)=>a.from<b.from?-1:a.from>b.from?1:0);
+
 RD.meta=RD.meta||{};
 RD.meta.buyoutWin={
   from:per.from, to:per.to, all:win.all, bySku:mergedBy,
@@ -158,6 +181,7 @@ RD.meta.buyoutWin={
   ordered:win.ordered, bought:win.bought, cancelled:win.cancelled, closed:win.closed,
   ofAllOrders:win.ofAllOrders, ofNotCancelled:win.ofNotCancelled,
   basis:'closed-orders',        // выкуплено ÷ (выкуплено + отменено), как в кабинете ВБ
+  history:hist,                 // все измеренные окна; день берёт процент своего окна
   open:win.open, openPct:win.openPct, minOrd:MIN_ORD, picked:pick,
   source:'wb-analytics-period', builtAt:new Date().toISOString(),
   alt: (pick==='current'&&prev)? {from:(pPrev||{}).from,to:(pPrev||{}).to,all:prev.all,openPct:prev.openPct}
@@ -190,4 +214,12 @@ console.log('   свой % у '+Object.keys(bySkuPct).length+' товаров (1
 const old=RD.catalog.map(x=>x.buyoutPct14d).filter(x=>x>0);
 console.log('   для сравнения buyoutPct14d из каталога: '+(old.reduce((a,b)=>a+b,0)/old.length).toFixed(1)+'%'
   +' — это «от неотменённых», для продаж/день не подходит');
-console.log('\nДальше: node scripts/encrypt.cjs <код>');
+console.log('\nИСТОРИЯ ОКОН (день берёт процент СВОЕГО окна, задним числом не меняется):');
+hist.forEach(h=>console.log('   '+h.from+' … '+h.to+'  выкуп '+pc(h.all)+' · денежный '+pc(h.moneyAll)
+  +'  (замер '+h.builtAt.slice(0,10)+')'+(h.from+'…'+h.to===wkey&&!already? '   ← добавлено сейчас':'')));
+if(already) console.log('   окно '+wkey+' уже измерялось — прежняя запись СОХРАНЕНА,'
+  +' чтобы не пересчитывать прошлые дни (правило продавца 07.09.2026)');
+const lastH=hist[hist.length-1];
+if(lastH) console.log('   дни после '+lastH.to+' считаются по последнему окну ('+pc(lastH.moneyAll)
+  +') — это временно, до отчёта, который их накроет');
+console.log('\nДальше: node scripts/model-finance.cjs && node scripts/encrypt.cjs <код>');
