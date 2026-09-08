@@ -81,8 +81,12 @@ const from=arg('from')||dates[0], to=arg('to')||dates[dates.length-1];
    Прошлые дни считаются по-старому, по «Предельной цене» — решение продавца 08.09.2026:
    «не нужно пересчитывать всю историю, считай только с 31.08 по новому». Коэффициент
    ведёт scripts/ozon-revbase.cjs, история записей — в ozon.meta.revBase.history.
-   Дубль этой функции — ozRevK() в index.html, держи синхронно. */
-const RB=(O.meta.revBase&&Array.isArray(O.meta.revBase.history))? O.meta.revBase.history : [];
+   Дубль этой функции — ozRevK() в index.html, держи синхронно.
+   ПРАВИЛО ПРИМЕНЯЕТСЯ ТОЛЬКО ПРИ applied===true (сейчас выключено — замер оставлен как факт,
+   расчёт идёт по «Предельной цене»; почему — в шапке scripts/ozon-revbase.cjs). */
+const RBon=!!(O.meta.revBase && O.meta.revBase.applied===true);
+const RBall=(O.meta.revBase&&Array.isArray(O.meta.revBase.history))? O.meta.revBase.history : [];
+const RB=RBon? RBall : [];
 function revK(d){ let k=1; RB.forEach(h=>{ if(h.from<=d) k=h.k; }); return k; }
 
 function calc(ds){
@@ -116,8 +120,9 @@ console.log('   (соинвест '+T.coinvest+'% не вычитается — 
 console.log('   % выкупа Озона: '+(bo*100).toFixed(1)+'%   себестоимость: общая с ВБ, по дате строки');
 if(RB.length) RB.forEach(h=>console.log('   база выручки: с '+h.from+' — '+(h.k*100).toFixed(2)
   +'% от «Предельной цены» (новая методика Ozon); до этой даты — 100%'));
-else console.log('   база выручки: «Предельная цена» на всей истории (правило не задано,'
-  +' см. scripts/ozon-revbase.cjs)');
+else console.log('   база выручки: «Предельная цена» на всей истории'
+  +(RBall.length? '   (замер '+(RBall[RBall.length-1].k*100).toFixed(2)+'% есть, но НЕ применяется —'
+    +' ждём финотчёт Ozon; включить: node scripts/ozon-revbase.cjs on)' : ''));
 
 const A=calc(inRange);
 console.log('\nOZON · '+from+' … '+to+' ('+inRange.length+' дн.)');
