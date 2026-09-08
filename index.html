@@ -4294,6 +4294,32 @@ function mpMoneySplit(fromIso,toIso){
       for(const c in m[d]){ acc[k][0]+=m[d][c][0]||0; acc[k][1]+=m[d][c][1]||0; } } });
   return acc;
 }
+/* ---------------------------------------------------------------------------
+   «ВЫКУПЛЕНО НА СУММУ» — ТОЛЬКО ОЦЕНКА. СЫРУЮ ЦИФРУ ПОКАЗЫВАТЬ НЕЛЬЗЯ.
+   Элемент money[дата][sku][1] («выкуплено ₽») ЗАМОРАЖИВАЕТСЯ на момент выгрузки и задним
+   числом НЕ обновляется — ни у ВБ, ни у Озона. У ВБ это столбец «Выкупили на сумму» из
+   подённой аналитики, у Озона — заказы со статусом «Доставлен», а дедуп по «отправление+SKU»
+   не даёт обновить статус при повторной заливке. Продавец выгружает день в тот же день,
+   когда почти ничего ещё не доехало, поэтому цифра остаётся мёртвой навсегда.
+   Замер 08.09.2026: ВБ — июль 26,8%, август 20,9%, сентябрь 1,8%; Озон — май 78,8%
+   (старая заливка успела дозреть), июль 37,8%, сентябрь 4,2%. По дням скачет 0% → 21% → 0%.
+   Продавец справедливо заметил: «заказано не бьётся с выкуплено».
+   Поэтому KPI считается так же, как выручка на «Главной»: заказано × % выкупа, и подписан
+   ОЦЕНКОЙ. Проценты берутся из тех же датированных замеров (у ВБ денежный, у Озона штучный).
+   --------------------------------------------------------------------------- */
+function wbMoneyBuyoutFor(d){
+  const W=(RD&&RD.meta&&RD.meta.buyoutWin)||null; if(!W) return null;
+  const H=Array.isArray(W.history)? W.history : null;
+  if(H&&H.length){ let pick=null;
+    H.forEach(h=>{ if((h.builtAt||"").slice(0,10)<=d) pick=h; });
+    const p=pick||H[0]; if(p.moneyAll) return p.moneyAll; }
+  return W.moneyAll||null;
+}
+function mpBuyoutRate(dateIso){
+  if(_appliedMp==="ozon") return ozBuyoutFor(dateIso);
+  if(_appliedMp==="wb")   return wbMoneyBuyoutFor(dateIso);
+  return null;                       // «Всего» — по площадкам считается отдельно
+}
 function moneySumsForSkus(skus,fromDate,toDate){
   const set=new Set(skus.map(c=>c.sku)), m=mpMoney(); let ordersSum=0,buyoutSum=0;
   for(const d in m){ if(d<fromDate||d>toDate) continue; for(const s in m[d]){ if(!set.has(s)) continue; ordersSum+=m[d][s][0]||0; buyoutSum+=m[d][s][1]||0; } }
@@ -4440,12 +4466,17 @@ function renderDynamicsTab(){
       +trS("Ozon",rub(mSplit.oz[0])+shr(mSplit.oz[0],ordTot))
       +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${rub(ordTot)}</span></div>`
       +(periodTotal? `<div class="t-row" style="opacity:.75"><span class="k">Средний чек заказа</span><span class="v">${rub(ordTot/periodTotal)}</span></div>`:"") : "";
-  const buyTip = mSplit? `<div class="t-hd">Выкуплено на сумму — по площадкам</div>`
-      +trS("Wildberries",rub(mSplit.wb[1])+shr(mSplit.wb[1],buyTot))
-      +trS("Ozon",rub(mSplit.oz[1])+shr(mSplit.oz[1],buyTot))
-      +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${rub(buyTot)}</span></div>`
-      +(ordTot? `<div class="t-row" style="opacity:.75"><span class="k">Выкуплено от заказанного</span><span class="v">${Math.round(buyTot/ordTot*100)}%</span></div>`:"")
-      +`<div class="t-row" style="opacity:.75"><span class="k">Выкуп «дозревает» — свежие дни ниже реальных</span></div>` : "";
+  // выкуп — ОЦЕНКА: заказано × % выкупа (сырое «выкуплено ₽» заморожено на момент выгрузки)
+  const lastIso=isoDates.length? isoDates[isoDates.length-1] : "";
+  const rWb=lastIso? wbMoneyBuyoutFor(lastIso) : null, rOz=lastIso? ozBuyoutFor(lastIso) : null;
+  const buyWbE=mSplit&&rWb? mSplit.wb[0]*rWb : 0, buyOzE=mSplit&&rOz? mSplit.oz[0]*rOz : 0;
+  const buyTotE=buyWbE+buyOzE;
+  const buyTip = mSplit? `<div class="t-hd">Выкуплено на сумму — оценка по площадкам</div>`
+      +trS("Wildberries",rub(buyWbE)+(rWb?" · выкуп "+(rWb*100).toFixed(1)+"%":""))
+      +trS("Ozon",rub(buyOzE)+(rOz?" · выкуп "+(rOz*100).toFixed(1)+"%":""))
+      +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${rub(buyTotE)}</span></div>`
+      +(ordTot? `<div class="t-row" style="opacity:.75"><span class="k">Доля от заказанного</span><span class="v">${Math.round(buyTotE/ordTot*100)}%</span></div>`:"")
+      +`<div class="t-row" style="opacity:.75"><span class="k">Это ОЦЕНКА: заказано × % выкупа. Факт из выгрузки не годится — он заморожен на момент выгрузки и не дозревает.</span></div>` : "";
   // ---- подсказки к остальным плиткам: не просто число, а из чего оно сложилось ----
   const days=Math.max(1,to-from+1);
   let bestI=-1,worstI=-1;
@@ -4495,16 +4526,20 @@ function renderDynamicsTab(){
       +trS("Заказов за период",fmt(periodTotal)+" шт")
       +(periodTotal? trS("Средний чек заказа",rub(moneyNow.ordersSum/periodTotal)):"")
       +`<div class="t-row" style="${sepS}"><span class="k">Заказано</span><span class="v">${rub(moneyNow.ordersSum)}</span></div>`);
-  const buyTip1 = isAll? buyTip : (`<div class="t-hd">Выкуплено на сумму — ${mpName1}</div>`
+  // одна площадка: та же оценка, свой процент выкупа
+  const rate1 = lastIso? mpBuyoutRate(lastIso) : null;
+  const buyNow  = isAll? buyTotE : (rate1? moneyNow.ordersSum*rate1 : 0);
+  const buyPrev = isAll? null : (moneyPrev&&rate1? moneyPrev.ordersSum*rate1 : null);
+  const buyTip1 = isAll? buyTip : (`<div class="t-hd">Выкуплено на сумму — ${mpName1}, ОЦЕНКА</div>`
       +trS("Заказано",rub(moneyNow.ordersSum))
-      +trS("Выкуплено",rub(moneyNow.buyoutSum)
-        +(moneyNow.ordersSum? " · "+Math.round(moneyNow.buyoutSum/moneyNow.ordersSum*100)+"%":""))
-      +`<div class="t-row" style="opacity:.75"><span class="k">${_appliedMp==="ozon"?"Доставка":"Выкуп"} «дозревает» — свежие дни ниже реальных</span></div>`);
+      +trS("% выкупа",rate1? (rate1*100).toFixed(1)+"%" : "не задан")
+      +`<div class="t-row" style="${sepS}"><span class="k">= выкуплено (оценка)</span><span class="v">${rub(buyNow)}</span></div>`
+      +`<div class="t-row" style="opacity:.75"><span class="k">Факт из выгрузки не используем: он заморожен на момент выгрузки и задним числом не дозревает — по свежим дням даёт 0–5%.</span></div>`);
   dynKpiCards.push(
     {lbl:"Заказано на сумму, ₽",val:rub(moneyNow.ordersSum),tip:ordTip1||undefined,
       delta:moneyPrev?delta(moneyNow.ordersSum,moneyPrev.ordersSum,true):""},
-    {lbl:"Выкуплено на сумму, ₽",val:rub(moneyNow.buyoutSum),tip:buyTip1||undefined,
-      delta:moneyPrev?delta(moneyNow.buyoutSum,moneyPrev.buyoutSum,true):""});
+    {lbl:"Выкуплено на сумму (оценка), ₽",val:rub(buyNow),tip:buyTip1||undefined,
+      delta:buyPrev?delta(buyNow,buyPrev,true):""});
   document.getElementById("dynKpis").innerHTML=dynKpiCards.map(kpiCard).join("");
   wireKpiTips("dynKpis");
 
@@ -4514,16 +4549,22 @@ function renderDynamicsTab(){
   dailyBars(document.getElementById("ch-dyn"),isoDates,totals);
 
   legend(document.getElementById("dynMoneyLegend"),[
-    {name:"Заказано, ₽",color:cssv("--s1")},{name:"Выкуплено, ₽",color:cssv("--s2")}]);
+    {name:"Заказано, ₽",color:cssv("--s1")},{name:"Выкуплено, ₽ (оценка)",color:cssv("--s2")}]);
   const _mm=mpMoney();
   const hasMoneyData = isoDates.some(d=>_mm[d]);
   if(hasMoneyData){
     const money=moneySeriesForSkus(skus,isoDates);
+    // выкуп по дням — ОЦЕНКА (заказано × % выкупа на эту дату). Сырой ряд из выгрузки
+    // заморожен на момент заливки и по свежим дням даёт 0 — график выглядел бы обвалом.
+    const buyEst = isoDates.map((d,i)=>{
+      if(isAll){ const s=mpMoneySplit(d,d);
+        return s.wb[0]*(wbMoneyBuyoutFor(d)||0) + s.oz[0]*(ozBuyoutFor(d)||0); }
+      const r=mpBuyoutRate(d); return r? money.ordersSum[i]*r : 0; });
     dailyGroupedBars(document.getElementById("ch-dyn-money"),isoDates,[
       {name:"Заказано, ₽",color:cssv("--s1"),data:money.ordersSum},
-      {name:"Выкуплено, ₽",color:cssv("--s2"),data:money.buyoutSum}]);
+      {name:"Выкуплено, ₽ (оценка)",color:cssv("--s2"),data:buyEst}]);
     document.getElementById("dynMoneyCap").textContent="₽ в день · заказано и выкуплено"
-      +(isAll? " · ВБ + Ozon вместе":"")+" (выкуп «дозревает», свежие дни ниже)";
+      +(isAll? " · ВБ + Ozon вместе":"")+" · выкуп — оценка (заказано × % выкупа)";
   } else {
     document.getElementById("ch-dyn-money").innerHTML=`<div class="empty-hint">За выбранный период нет данных по суммам заказов.</div>`;
   }
@@ -4534,13 +4575,17 @@ function renderDynamicsTab(){
   const sumMp=(m,code)=>{ let o=0,b=0; if(!m) return [0,0];
     for(const d in m){ if(d<isoDates[0]||d>isoDates[isoDates.length-1]) continue;
       const v=m[d][code]; if(v){ o+=v[0]||0; b+=v[1]||0; } } return [o,b]; };
+  // выкуп по товару — ОЦЕНКА (заказано × % выкупа): сырое «выкуплено ₽» заморожено
+  // на момент выгрузки, см. комментарий у wbMoneyBuyoutFor
   let rows=skus.map(c=>{ const m=moneyMap[c.sku]||{ordersSum:0,buyoutSum:0};
     const r={sku:c.sku,name:c.name,category:c.category,qty:sumRange(c.sku,from,to),
-      ordersSum:m.ordersSum,buyoutSum:m.buyoutSum};
+      ordersSum:m.ordersSum,buyoutSum:(rate1? m.ordersSum*rate1 : (isAll?0:0))};
     if(isAll){ const q=(qSplit&&qSplit[""+c.sku])||{wb:0,oz:0};
       r.qtyWb=q.wb; r.qtyOz=q.oz;
       const mw=sumMp(cmAll.wb,""+c.sku), mo=sumMp(cmAll.oz,""+c.sku);
-      r.ordWb=mw[0]; r.ordOz=mo[0]; r.buyWb=mw[1]; r.buyOz=mo[1];
+      r.ordWb=mw[0]; r.ordOz=mo[0];
+      r.buyWb=mw[0]*(rWb||0); r.buyOz=mo[0]*(rOz||0);
+      r.buyoutSum=r.buyWb+r.buyOz;
       r.ozShare = r.qty? r.qtyOz/r.qty : 0; }
     return r; });
   rows=rows.filter(r=>r.qty>0);
@@ -4581,7 +4626,7 @@ function renderDynamicsTab(){
     return;
   }
   let html=`<thead><tr>${thSort("Товар","name",dynSortState,"metric")}${thSort("Категория","category",dynSortState)}
-    ${thSort("Заказы, шт","qty",dynSortState)}${thSort("Доля","share",dynSortState)}${thSort("Заказано, ₽","ordersSum",dynSortState)}${thSort("Выкуплено, ₽","buyoutSum",dynSortState)}</tr></thead><tbody>`;
+    ${thSort("Заказы, шт","qty",dynSortState)}${thSort("Доля","share",dynSortState)}${thSort("Заказано, ₽","ordersSum",dynSortState)}${thSort("Выкуплено, ₽ (оценка)","buyoutSum",dynSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
     const share=periodTotal? (r.qty/periodTotal*100):0;
     html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${share.toFixed(1)}%</td><td>${r.ordersSum?rub(r.ordersSum):"—"}</td><td>${r.buyoutSum?rub(r.buyoutSum):"—"}</td></tr>`;
@@ -4607,7 +4652,7 @@ function renderDynPivot(rows,skus,isoDates,from,hasMoneyData){
   let html=`<thead><tr>${thSort("Товар","name",dynSortState,"metric")}`;
   for(let i=0;i<n;i++) html+=`<th class="d-col${isMon(isoDates[i])&&i?" wk":""}" title="${esc(fmtDateLong(isoDates[i]))}">${dLabel(isoDates[i])}</th>`;
   html+=`${thSort("Итого","qty",dynSortState,"tot-col")}`;
-  if(money) html+=`${thSort("Заказано, ₽","ordersSum",dynSortState)}${thSort("Выкуплено, ₽","buyoutSum",dynSortState)}`;
+  if(money) html+=`${thSort("Заказано, ₽","ordersSum",dynSortState)}${thSort("Выкуплено, ₽ (оценка)","buyoutSum",dynSortState)}`;
   html+=`</tr></thead><tbody>`;
   // строка «Всего по дням»
   html+=`<tr class="pivot-total"><td class="metric">Всего по дням</td>`;
