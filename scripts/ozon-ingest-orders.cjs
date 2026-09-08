@@ -48,14 +48,24 @@ const newDates=new Set();
 let ours=0;
 for(const f of files){
   const wb=load(f);const rows=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:false,defval:''});
-  const H=rows[0];const iOtpr=H.indexOf('Номер отправления'),iAcc=H.indexOf('Принят в обработку'),iStatus=H.indexOf('Статус'),iArt=H.indexOf('Артикул'),iSku=H.indexOf('SKU'),iQty=H.indexOf('Количество'),iPrice=H.indexOf('Ваша цена');
+  const H=rows[0];const iOtpr=H.indexOf('Номер отправления'),iAcc=H.indexOf('Принят в обработку'),iStatus=H.indexOf('Статус'),iArt=H.indexOf('Артикул'),iSku=H.indexOf('SKU'),iQty=H.indexOf('Количество');
+  /* ЦЕНА ЗАКАЗА — ОЗОН ПЕРЕИМЕНОВАЛ КОЛОНКУ (08.09.2026). Была «Ваша цена», стала
+     «Предельная цена»; значения совпадают (сверено построчно с «Суммой отправления»).
+     Ищем по списку имён: молча взять первую попавшуюся нельзя — если ни одна не найдётся,
+     деньги залились бы нулями, а штуки нет, и день выглядел бы как «продажи без выручки».
+     Именно так и случилось 08.09: 339 шт при 0 ₽. Поэтому ниже стоит явная ошибка. */
+  const PRICE_COLS=['Ваша цена','Предельная цена'];
+  let iPrice=-1, priceCol=null;
+  for(const n of PRICE_COLS){ const i=H.indexOf(n); if(i>=0){ iPrice=i; priceCol=n; break; } }
+  if(iPrice<0) throw new Error('не нашёл колонку цены в '+path.basename(f)
+    +' — искал: '+PRICE_COLS.join(' / ')+'. Колонки файла: '+H.filter(Boolean).join(' | '));
   // берём УНИКАЛЬНЫЕ строки дат по всему файлу — так формат определяется надёжно
   const dset=new Set();for(let i=1;i<rows.length;i++){const s=(''+(rows[i][iAcc]||'')).trim().split(' ')[0];if(s)dset.add(s);}
   const fmt=detectFmt([...dset]);
   for(let i=1;i<rows.length;i++){const r=rows[i];const a=(''+(r[iArt]||'')).trim();if(!wbSup.has(a))continue;
     const key=(''+(r[iOtpr]||''))+'|'+(''+(r[iSku]||''));if(rowsByKey.has(key))continue;
     const o=parts(r[iAcc],fmt);if(!o)continue;const d=iso(o);newDates.add(d);
-    const q=num(r[iQty])||1, st=(''+(r[iStatus]||'')).trim(), rub=num(r[iPrice]);  // «Ваша цена» = стоимость заказа
+    const q=num(r[iQty])||1, st=(''+(r[iStatus]||'')).trim(), rub=num(r[iPrice]);  // цена заказа (см. PRICE_COLS)
     rowsByKey.set(key,{d,a,q,st,rub}); ours++;
   }
   process.stderr.write('.'+f.split('/').pop().slice(0,8)+'('+fmt+')');
