@@ -73,7 +73,20 @@ function costAt(sup,date){
   return costNow[sup]!=null? costNow[sup] : null;
 }
 
-const bo=O.meta.buyoutAll!=null? O.meta.buyoutAll : 1;
+/* % ВЫКУПА — КАК НА ВБ: история замеров, каждый действует С ДАТЫ ЗАМЕРА И ВПЕРЁД.
+   Формула замера — «доставлено ÷ (доставлено + отменено)» (ozon-buyout-window.cjs).
+   Дни раньше первого замера считаются по нему же — другого источника для них нет.
+   Пока замеров нет, работает старое meta.buyoutAll («не отменён ÷ все заказы»).
+   Дубль — ozBuyoutFor() в index.html, держи синхронно. */
+const BOH=(O.meta.buyoutWin&&Array.isArray(O.meta.buyoutWin.history)&&O.meta.buyoutWin.history.length)
+  ? O.meta.buyoutWin.history.slice().sort((a,b)=>(a.builtAt||'')<(b.builtAt||'')?-1:1) : null;
+const boFallback=O.meta.buyoutAll!=null? O.meta.buyoutAll : 1;
+function boFor(d){
+  if(!BOH) return boFallback;
+  let pick=null; BOH.forEach(h=>{ if((h.builtAt||'').slice(0,10)<=d) pick=h; });
+  return (pick||BOH[0]).all;
+}
+const bo=boFallback;   // справочно: для шапки и для мест, где дата не важна
 const S=O.orderSeries, dates=S.dates||[], byArt=S.byArt||{}, money=S.money||{};
 const from=arg('from')||dates[0], to=arg('to')||dates[dates.length-1];
 
@@ -90,19 +103,18 @@ const RB=RBon? RBall : [];
 function revK(d){ let k=1; RB.forEach(h=>{ if(h.from<=d) k=h.k; }); return k; }
 
 function calc(ds){
-  let ordRub=0, ordQty=0, cogs=0, noCost=0;
+  let ordRub=0, ordQty=0, rev=0, sold=0, cogs=0, noCost=0;
   ds.forEach(d=>{
     const i=dates.indexOf(d); if(i<0) return;
-    const m=money[d]||{}, k=revK(d);
-    Object.entries(m).forEach(([a,v])=>ordRub+=(v[0]||0)*k);
+    const m=money[d]||{}, k=revK(d), b=boFor(d);   // выкуп берётся ПО ДАТЕ ДНЯ
+    Object.entries(m).forEach(([a,v])=>{ const r=(v[0]||0)*k; ordRub+=r; rev+=r*b; });
     Object.entries(byArt).forEach(([a,s])=>{
       const q=s[i]||0; if(!q) return;
-      ordQty+=q;
+      ordQty+=q; sold+=q*b;
       const c=costAt(a,d);
-      if(c!=null) cogs+=q*bo*c; else noCost+=q;
+      if(c!=null) cogs+=q*b*c; else noCost+=q;
     });
   });
-  const rev=ordRub*bo, sold=ordQty*bo;
   const mp=rev*T.total/100, ads=rev*T.ads/100;
   return {ordRub,ordQty,rev,sold,cogs,mp,ads,noCost,
     profit:rev-mp-cogs, margin: rev? (rev-mp-cogs)/rev : 0};
@@ -117,7 +129,13 @@ console.log('ТАРИФ OZON (ИУ 2026), % от выручки в выкупе:
  .forEach(([k,v])=>console.log('   '+k.padEnd(28)+String(v).padStart(6)+'%'));
 console.log('   '+'ИТОГО забирает Озон'.padEnd(28)+String(T.total).padStart(6)+'%');
 console.log('   (соинвест '+T.coinvest+'% не вычитается — см. комментарий в скрипте)');
-console.log('   % выкупа Озона: '+(bo*100).toFixed(1)+'%   себестоимость: общая с ВБ, по дате строки');
+if(BOH){ console.log('   % выкупа Озона — «доставлено ÷ (доставлено+отменено)», по истории замеров:');
+  BOH.forEach(h=>console.log('      замер '+(h.builtAt||'').slice(0,10)+' (окно '+h.from+'…'+h.to+') → '
+    +(h.all*100).toFixed(1)+'%  действует с этого дня и вперёд'));
+  console.log('      дни раньше первого замера считаются по нему же'); }
+else console.log('   % выкупа Озона: '+(bo*100).toFixed(1)+'%  (старая формула «не отменён ÷ все заказы»;'
+  +' замеров нет — сделайте node scripts/ozon-buyout-window.cjs <отчёт за период.xlsx>)');
+console.log('   себестоимость: общая с ВБ, по дате строки');
 if(RB.length) RB.forEach(h=>console.log('   база выручки: с '+h.from+' — '+(h.k*100).toFixed(2)
   +'% от «Предельной цены» (новая методика Ozon); до этой даты — 100%'));
 else console.log('   база выручки: «Предельная цена» на всей истории'

@@ -217,7 +217,9 @@ RD.ozon={
     adRateBasis: prevMeta.adRateBasis || null,
     terms: prevMeta.terms || null,
     // база выручки (k с даты) — её кладёт ozon-revbase.cjs, здесь только переносим
-    revBase: prevMeta.revBase || null }
+    revBase: prevMeta.revBase || null,
+    // история замеров % выкупа «от закрытых» — её кладёт ozon-buyout-window.cjs
+    buyoutWin: prevMeta.buyoutWin || null }
 };
 if(!RD.ozon.meta.terms) console.log('  ВНИМАНИЕ: тарифа ИУ нет в снимке — прибыль Озона считаться не будет.'
   +' Запустите: node scripts/ozon-finance.cjs');

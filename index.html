@@ -5542,6 +5542,22 @@ function ozRevK(d){
   let k=1; B.history.forEach(h=>{ if(h.from<=d) k=h.k; }); return k;
 }
 function ozRevBaseFrom(){ const B=ozRevBase(); return B? B.history[0].from : null; }
+/* % ВЫКУПА ОЗОНА — КАК НА ВБ: история замеров, каждый действует С ДАТЫ ЗАМЕРА И ВПЕРЁД
+   (правило продавца 07.09.2026, распространено на Озон 08.09.2026). Формула замера —
+   «доставлено ÷ (доставлено + отменено)», ведёт scripts/ozon-buyout-window.cjs. Прежняя
+   meta.buyoutAll («не отменён ÷ все заказы») остаётся фолбэком, пока замеров нет: она
+   завышена, потому что засчитывает едущий товар как проданный. Дни раньше первого замера
+   считаются по нему же. Дубль — boFor() в scripts/ozon-finance.cjs, держи синхронно. */
+function ozBuyoutHist(){
+  const H=(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutWin&&RD.ozon.meta.buyoutWin.history)||null;
+  return (H&&H.length)? H.slice().sort((a,b)=>(a.builtAt||"")<(b.builtAt||"")?-1:1) : null;
+}
+function ozBuyoutFor(d){
+  const H=ozBuyoutHist();
+  if(!H) return (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutAll!=null)? RD.ozon.meta.buyoutAll : 1;
+  let pick=null; H.forEach(h=>{ if((h.builtAt||"").slice(0,10)<=d) pick=h; });
+  return (pick||H[0]).all;
+}
 function applyOzRevBase(){
   const O=RD&&RD.ozon, S=O&&O.orderSeries;
   if(!S||!S.money||S.moneyRebased) return;
@@ -5569,7 +5585,6 @@ function ozFinRows(){
   if(_ozFinCache) return _ozFinCache;
   const T=ozTerms(), O=RD&&RD.ozon;
   if(!T || !O || !O.orderSeries) return (_ozFinCache=[]);
-  const bo=O.meta&&O.meta.buyoutAll!=null? O.meta.buyoutAll : 1;
   const S=O.orderSeries, dates=S.dates||[], byArt=S.byArt||{}, money=S.money||{};
   const meta={}; (O.catalog||[]).forEach(c=>meta[""+c.sku]={name:c.name||"",cat:c.category||"",wbCat:c.wbCategory||""});
   const rows=[];
@@ -5578,6 +5593,7 @@ function ozFinRows(){
     // артикулы этого дня: у кого есть штуки ИЛИ деньги
     const arts=new Set(Object.keys(m));
     Object.entries(byArt).forEach(([a,s])=>{ if(s[i]) arts.add(a); });
+    const bo=ozBuyoutFor(d);          // выкуп берётся ПО ДАТЕ ДНЯ (история замеров, как на ВБ)
     arts.forEach(a=>{
       const ordRub=(m[a]&&m[a][0])||0, ordQty=(byArt[a]&&byArt[a][i])||0;
       if(!ordRub && !ordQty) return;
@@ -7031,10 +7047,12 @@ function renderHomeOzon(){
   document.getElementById("homeEmpty").hidden=true;
   document.getElementById("homeContent").hidden=false;
   const allDates=[...new Set(rows.map(r=>r.date))].sort();
-  const bo=(RD.ozon.meta&&RD.ozon.meta.buyoutAll)||1;
+  const bo=ozBuyoutFor(allDates[allDates.length-1]);   // тот процент, что реально применён к свежим дням
+  const boH=ozBuyoutHist();
   const rbFrom=ozRevBaseFrom(), rbK=rbFrom? ozRevK(rbFrom) : 1;
   fresh.innerHTML=`<span class="dot"></span>Ozon · заказы по ${fmtDateLong(allDates[allDates.length-1])}`
-    +` · история с ${fmtDateLong(allDates[0])} · <b>ОЦЕНКА</b>: выручка = заказано × ${(bo*100).toFixed(1)}% выкупа,`
+    +` · история с ${fmtDateLong(allDates[0])} · <b>ОЦЕНКА</b>: выручка = заказано × ${(bo*100).toFixed(1)}% выкупа`
+    +(boH? ` (замер ${fmtDateLong(boH[boH.length-1].from)} – ${fmtDateLong(boH[boH.length-1].to)}, от закрытых заказов)` : "")+`,`
     +` площадка забирает ${T.total}% по вашим ИУ (в т.ч. реклама ${T.ads}%)`
     // база выручки сменилась с даты — молча этого показывать нельзя, цифры до и после несопоставимы
     +(rbFrom? ` · с ${fmtDateLong(rbFrom)} выручка считается по <b>новой методике Ozon</b>`
