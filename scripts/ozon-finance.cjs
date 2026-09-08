@@ -77,12 +77,20 @@ const bo=O.meta.buyoutAll!=null? O.meta.buyoutAll : 1;
 const S=O.orderSeries, dates=S.dates||[], byArt=S.byArt||{}, money=S.money||{};
 const from=arg('from')||dates[0], to=arg('to')||dates[dates.length-1];
 
+/* БАЗА ВЫРУЧКИ МЕНЯЕТСЯ С ДАТЫ (31.08.2026 Ozon перешёл на «цену реализации»).
+   Прошлые дни считаются по-старому, по «Предельной цене» — решение продавца 08.09.2026:
+   «не нужно пересчитывать всю историю, считай только с 31.08 по новому». Коэффициент
+   ведёт scripts/ozon-revbase.cjs, история записей — в ozon.meta.revBase.history.
+   Дубль этой функции — ozRevK() в index.html, держи синхронно. */
+const RB=(O.meta.revBase&&Array.isArray(O.meta.revBase.history))? O.meta.revBase.history : [];
+function revK(d){ let k=1; RB.forEach(h=>{ if(h.from<=d) k=h.k; }); return k; }
+
 function calc(ds){
   let ordRub=0, ordQty=0, cogs=0, noCost=0;
   ds.forEach(d=>{
     const i=dates.indexOf(d); if(i<0) return;
-    const m=money[d]||{};
-    Object.entries(m).forEach(([a,v])=>ordRub+=v[0]||0);
+    const m=money[d]||{}, k=revK(d);
+    Object.entries(m).forEach(([a,v])=>ordRub+=(v[0]||0)*k);
     Object.entries(byArt).forEach(([a,s])=>{
       const q=s[i]||0; if(!q) return;
       ordQty+=q;
@@ -106,6 +114,10 @@ console.log('ТАРИФ OZON (ИУ 2026), % от выручки в выкупе:
 console.log('   '+'ИТОГО забирает Озон'.padEnd(28)+String(T.total).padStart(6)+'%');
 console.log('   (соинвест '+T.coinvest+'% не вычитается — см. комментарий в скрипте)');
 console.log('   % выкупа Озона: '+(bo*100).toFixed(1)+'%   себестоимость: общая с ВБ, по дате строки');
+if(RB.length) RB.forEach(h=>console.log('   база выручки: с '+h.from+' — '+(h.k*100).toFixed(2)
+  +'% от «Предельной цены» (новая методика Ozon); до этой даты — 100%'));
+else console.log('   база выручки: «Предельная цена» на всей истории (правило не задано,'
+  +' см. scripts/ozon-revbase.cjs)');
 
 const A=calc(inRange);
 console.log('\nOZON · '+from+' … '+to+' ('+inRange.length+' дн.)');

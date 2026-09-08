@@ -215,10 +215,14 @@ RD.ozon={
     buyoutWindow: keepOrders? (prevMeta.buyoutWindow||null) : buyoutWindow,
     adRate: prevMeta.adRate!=null? prevMeta.adRate : null,
     adRateBasis: prevMeta.adRateBasis || null,
-    terms: prevMeta.terms || null }
+    terms: prevMeta.terms || null,
+    // база выручки (k с даты) — её кладёт ozon-revbase.cjs, здесь только переносим
+    revBase: prevMeta.revBase || null }
 };
 if(!RD.ozon.meta.terms) console.log('  ВНИМАНИЕ: тарифа ИУ нет в снимке — прибыль Озона считаться не будет.'
   +' Запустите: node scripts/ozon-finance.cjs');
+if(!RD.ozon.meta.revBase) console.log('  ВНИМАНИЕ: правила базы выручки нет в снимке — вся история Озона'
+  +' будет считаться по «Предельной цене». Запустите: node scripts/ozon-revbase.cjs measure');
 
 // 5) переписать wb-data.js
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
