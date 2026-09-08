@@ -29,11 +29,24 @@
 // выручки быть не может (см. CLAUDE.md, раздел про ценовую логику Ozon).
 //
 // Использование:
-//   node scripts/ozon-revbase.cjs list                    — показать историю
+// ПРАВИЛО ЗАМЕРЕНО, НО НЕ ПРИМЕНЯЕТСЯ (решение 08.09.2026 — см. флаг `applied`). Продавец
+// возразил: комиссия не росла, цену он не снижал, в экономике не изменилось НИЧЕГО, а расчёт
+// по новой базе выводил его в ноль. Проверка подтвердила его правоту: скидка покупателю
+// существовала и ДО перелома (24.08 — 71,0%, 28.08 — 68,7%, 30.08 — 71,0% от его цены),
+// а воронка Ozon в те же дни считала выручку по ПОЛНОЙ цене (01–30.08 — 98,7%, июль — 99,8%).
+// То есть покупатель платил ~72%, а Ozon засчитывал продавцу 100% — ровно механика соинвеста
+// («Озон даёт соинвест за свой счёт», 04.09.2026). 31.08 изменилась только витрина аналитики.
+// Если бы продавец реально получал 72%, июль был бы −1,0 млн ₽, а вся история −2,2 млн ₽ —
+// это не прошло бы мимо расчётного счёта. Поэтому k записан как ЗАМЕР, а расчёт остаётся
+// на «Предельной цене» до финотчёта Ozon. Включить обратно: `on`.
+//
+// Использование:
+//   node scripts/ozon-revbase.cjs list                    — показать историю и статус
 //   node scripts/ozon-revbase.cjs measure                 — замерить и добавить запись
 //   node scripts/ozon-revbase.cjs measure --from 2026-08-31         — с какой даты действует
 //   node scripts/ozon-revbase.cjs measure --win 2026-08-31 2026-09-06 — окно замера
 //   node scripts/ozon-revbase.cjs set 0.73 --from 2026-09-15         — задать вручную
+//   node scripts/ozon-revbase.cjs off / on                — применять правило или нет
 'use strict';
 const fs=require('fs'), vm=require('vm'), path=require('path');
 const OUT=path.join(__dirname,'..','decrypted');
@@ -49,21 +62,43 @@ const RD=ctx.__RD, O=RD.ozon;
 if(!O) throw new Error('в снимке нет блока Озона');
 O.meta=O.meta||{};
 const hist=(O.meta.revBase&&Array.isArray(O.meta.revBase.history))? O.meta.revBase.history.slice() : [];
+let applied=(O.meta.revBase && O.meta.revBase.applied===true);   // по умолчанию НЕ применяется
 
 const pc=n=>(n*100).toFixed(2)+'%';
 const f=n=>Math.round(n).toLocaleString('ru-RU');
 const today=new Date().toISOString().slice(0,10);
 
 function showHistory(){
-  if(!hist.length){ console.log('История базы выручки пуста — вся история Озона считается по «Предельной цене».'); return; }
-  console.log('ИСТОРИЯ БАЗЫ ВЫРУЧКИ ОЗОНА (день берёт коэффициент своей записи, прошлое не трогается):');
+  if(!hist.length){ console.log('Замеров базы выручки нет — вся история Озона считается по «Предельной цене».'); return; }
+  console.log('ЗАМЕРЫ БАЗЫ ВЫРУЧКИ ОЗОНА:');
   hist.forEach(h=>console.log('   с '+h.from+'  k = '+pc(h.k)
     +'   (замер '+(h.measuredFrom||'?')+' … '+(h.measuredTo||'?')+', '+(h.days||0)+' дн., '
     +(h.builtAt||'').slice(0,10)+')'));
-  console.log('   дни ДО '+hist[0].from+' считаются по «Предельной цене» (k = 100%)');
+  console.log(applied
+    ? '   СТАТУС: ПРИМЕНЯЕТСЯ. Дни ДО '+hist[0].from+' считаются по «Предельной цене» (k = 100%).'
+    : '   СТАТУС: НЕ ПРИМЕНЯЕТСЯ — расчёт идёт по «Предельной цене» на всей истории.\n'
+      +'   Это замер, а не правило: ждём финотчёт Ozon. Включить: node scripts/ozon-revbase.cjs on');
+}
+
+function save(){
+  O.meta.revBase={history:hist, applied,
+    note:'k = во сколько раз выручка по новой методике Ozon меньше суммы по «Предельной цене». '
+      +'Применяется, только если applied===true; действует с даты записи и вперёд, прошлое не пересчитывается.'};
+  fs.writeFileSync(path.join(OUT,'wb-data.js'),
+    '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
+    +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
 }
 
 if(cmd==='list'){ showHistory(); process.exit(0); }
+if(cmd==='off'||cmd==='on'){
+  applied=(cmd==='on'); save();
+  console.log(applied? 'Правило ВКЛЮЧЕНО: выручка Озона считается по замеренной базе с даты записи.'
+    : 'Правило ВЫКЛЮЧЕНО: выручка Озона считается по «Предельной цене» на всей истории.');
+  console.log('');
+  showHistory();
+  console.log('\nДальше: node scripts/ozon-finance.cjs  (проверить цифры) && node scripts/encrypt.cjs <код>');
+  process.exit(0);
+}
 
 // ---- замер k по воронке Озона против нашего ряда заказов
 function measure(wFrom,wTo){
@@ -124,12 +159,9 @@ if(dup){
   console.log('Чтобы применить новый коэффициент, укажите другую дату начала: --from '+today);
 }else{
   hist.push(entry); hist.sort((a,b)=>a.from<b.from?-1:1);
-  O.meta.revBase={history:hist, note:'k = во сколько раз выручка по новой методике Ozon '
-    +'меньше суммы по «Предельной цене». Действует с даты записи и вперёд; прошлые дни не пересчитываются.'};
-  fs.writeFileSync(path.join(OUT,'wb-data.js'),
-    '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
-    +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
-  console.log('\nДобавлена запись: с '+entry.from+'  k = '+pc(entry.k));
+  save();
+  console.log('\nДобавлена запись: с '+entry.from+'  k = '+pc(entry.k)
+    +(applied? '' : '   (правило ВЫКЛЮЧЕНО — это только замер; включить: on)'));
 }
 console.log('');
 showHistory();

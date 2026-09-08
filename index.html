@@ -5530,20 +5530,23 @@ function ozTerms(){ return (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.terms)||null
    (ozon.meta.revBase.history, ведёт scripts/ozon-revbase.cjs). Дубль revK() —
    в scripts/ozon-finance.cjs, держи синхронно.
    --------------------------------------------------------------------------- */
+function ozRevBase(){
+  const B=(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.revBase)||null;
+  // ПРАВИЛО ПРИМЕНЯЕТСЯ ТОЛЬКО ПРИ applied===true. Сейчас ВЫКЛЮЧЕНО: замер 73,06% остался
+  // как факт, но расчёт идёт по «Предельной цене» — см. комментарий в scripts/ozon-revbase.cjs
+  // (скидка покупателю была и до 31.08, а Ozon в те же дни считал выручку по полной цене).
+  return (B && B.applied===true && Array.isArray(B.history) && B.history.length)? B : null;
+}
 function ozRevK(d){
-  const H=(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.revBase&&RD.ozon.meta.revBase.history)||[];
-  let k=1; H.forEach(h=>{ if(h.from<=d) k=h.k; }); return k;
+  const B=ozRevBase(); if(!B) return 1;
+  let k=1; B.history.forEach(h=>{ if(h.from<=d) k=h.k; }); return k;
 }
-function ozRevBaseFrom(){
-  const H=(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.revBase&&RD.ozon.meta.revBase.history)||[];
-  return H.length? H[0].from : null;
-}
+function ozRevBaseFrom(){ const B=ozRevBase(); return B? B.history[0].from : null; }
 function applyOzRevBase(){
   const O=RD&&RD.ozon, S=O&&O.orderSeries;
   if(!S||!S.money||S.moneyRebased) return;
   S.moneyRebased=true;                       // идемпотентность: hydrateData зовётся не один раз
-  const H=(O.meta&&O.meta.revBase&&O.meta.revBase.history)||[];
-  if(!H.length) return;
+  if(!ozRevBase()) return;
   Object.keys(S.money).forEach(d=>{ const k=ozRevK(d); if(k===1) return;
     Object.values(S.money[d]).forEach(v=>{ v[0]=Math.round((v[0]||0)*k); v[1]=Math.round((v[1]||0)*k); });
   });
