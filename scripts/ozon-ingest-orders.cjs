@@ -59,6 +59,13 @@ for(const f of files){
   for(const n of PRICE_COLS){ const i=H.indexOf(n); if(i>=0){ iPrice=i; priceCol=n; break; } }
   if(iPrice<0) throw new Error('не нашёл колонку цены в '+path.basename(f)
     +' — искал: '+PRICE_COLS.join(' / ')+'. Колонки файла: '+H.filter(Boolean).join(' | '));
+  /* ВТОРАЯ ЦЕНА — «Оплачено покупателем». С 31.08.2026 Ozon перестроил ценовую логику:
+     «Предельная цена» (ex «Ваша цена») — это ПОТОЛОК, а не цена продажи. Фактически
+     покупатель платит меньше: замер 08.09 по 21 301 строке — 75,1% от потолка, и ни одна
+     строка не совпала. Воронка с 31.08 считает выручку на новой базе (73% от потолка),
+     а наш ряд заказов — по-прежнему по потолку; до 30.08 обе базы совпадали (96–104%).
+     Пока не подтверждено финотчётом, ЧТО из этого получает продавец, копим ОБЕ цены. */
+  const iPaid=H.indexOf('Оплачено покупателем');
   // берём УНИКАЛЬНЫЕ строки дат по всему файлу — так формат определяется надёжно
   const dset=new Set();for(let i=1;i<rows.length;i++){const s=(''+(rows[i][iAcc]||'')).trim().split(' ')[0];if(s)dset.add(s);}
   const fmt=detectFmt([...dset]);
@@ -66,7 +73,8 @@ for(const f of files){
     const key=(''+(r[iOtpr]||''))+'|'+(''+(r[iSku]||''));if(rowsByKey.has(key))continue;
     const o=parts(r[iAcc],fmt);if(!o)continue;const d=iso(o);newDates.add(d);
     const q=num(r[iQty])||1, st=(''+(r[iStatus]||'')).trim(), rub=num(r[iPrice]);  // цена заказа (см. PRICE_COLS)
-    rowsByKey.set(key,{d,a,q,st,rub}); ours++;
+    const paid=iPaid>=0? num(r[iPaid]) : 0;                                       // фактически оплачено
+    rowsByKey.set(key,{d,a,q,st,rub,paid}); ours++;
   }
   process.stderr.write('.'+f.split('/').pop().slice(0,8)+'('+fmt+')');
 }
@@ -81,7 +89,7 @@ const outPath=path.join(OUT,'ozon-orders.json');
 let ex={}; try{ if(!RESET && fs.existsSync(outPath)) ex=JSON.parse(fs.readFileSync(outPath,'utf8')); }catch(e){ ex={}; }
 const M={
   byDateArt:Object.assign({},ex.byDateArt||{}), byDateArtNet:Object.assign({},ex.byDateArtNet||{}),
-  byDateArtRub:Object.assign({},ex.byDateArtRub||{}), byDateArtBuyRub:Object.assign({},ex.byDateArtBuyRub||{}),
+  byDateArtRub:Object.assign({},ex.byDateArtRub||{}), byDateArtPaid:Object.assign({},ex.byDateArtPaid||{}), byDateArtBuyRub:Object.assign({},ex.byDateArtBuyRub||{}),
   byDate:Object.assign({},ex.byDate||{}), byDateNet:Object.assign({},ex.byDateNet||{}),
   statuses:Object.assign({},ex.statuses||{}),
 };
@@ -90,9 +98,10 @@ let skipped=0;
 for(const [key,rec] of rowsByKey){
   if(known.has(key)){ skipped++; continue; }
   known.add(key);
-  const {d,a,q,st,rub}=rec;
+  const {d,a,q,st,rub,paid}=rec;
   M.byDate[d]=(M.byDate[d]||0)+q; M.byDateArt[d+'_'+a]=(M.byDateArt[d+'_'+a]||0)+q;
   M.byDateArtRub[d+'_'+a]=(M.byDateArtRub[d+'_'+a]||0)+rub;
+  M.byDateArtPaid[d+'_'+a]=(M.byDateArtPaid[d+'_'+a]||0)+(paid||0);
   if(st==='Доставлен') M.byDateArtBuyRub[d+'_'+a]=(M.byDateArtBuyRub[d+'_'+a]||0)+rub;
   if(st!=='Отменён'){ M.byDateNet[d]=(M.byDateNet[d]||0)+q; M.byDateArtNet[d+'_'+a]=(M.byDateArtNet[d+'_'+a]||0)+q; }
   M.statuses[st]=(M.statuses[st]||0)+q;

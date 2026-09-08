@@ -60,7 +60,7 @@ const ordFile=path.join(OUT,'ozon-orders.json');
 const keepOrders = reuse && !fs.existsSync(ordFile);
 if(keepOrders) console.log('  накопителя заказов нет — заказы берём из снимка как есть (обновляем только остатки)');
 const ord = keepOrders
-  ? {byDateArt:{},byDateArtRub:{},byDateArtBuyRub:{},perArt:{},perArtNet:{},byDateArtNet:{}}
+  ? {byDateArt:{},byDateArtRub:{},byDateArtPaid:{},byDateArtBuyRub:{},perArt:{},perArtNet:{},byDateArtNet:{}}
   : JSON.parse(fs.readFileSync(ordFile,'utf8'));
 const dates=[...new Set(Object.keys(ord.byDateArt).map(k=>k.split('_')[0]))].sort();
 const dIdx={};dates.forEach((d,i)=>dIdx[d]=i);
@@ -70,6 +70,15 @@ Object.entries(ord.byDateArt).forEach(([k,q])=>{ const d=k.slice(0,10),a=k.slice
 // ₽ по дням: money = {дата:{арт:[заказано₽,выкуплено₽]}} (выкуплено = статус «Доставлен»)
 const ozMoney={};
 Object.entries(ord.byDateArtRub||{}).forEach(([k,v])=>{ const d=k.slice(0,10),a=k.slice(11); (ozMoney[d]||(ozMoney[d]={}))[a]=[Math.round(v),0]; });
+/* ТРЕТЬЕ ЧИСЛО В КАРТЕ — «ОПЛАЧЕНО ПОКУПАТЕЛЕМ». С 31.08.2026 Ozon перестроил ценовую логику:
+   «Предельная цена» (ex «Ваша цена») — это ПОТОЛОК, а не цена продажи. Замер 08.09: оплачено
+   покупателем = 72,6% от потолка, и это совпало с «Заказано на сумму» из воронки (73%) —
+   два независимых источника. До 30.08 обе базы совпадали (96–104%), перелом ровно 31.08.
+   ЧТО ИЗ ЭТОГО ПОЛУЧАЕТ ПРОДАВЕЦ — не подтверждено: нужен финотчёт Ozon («Начисления»).
+   Поэтому копим ОБА числа: money[d][a] = [предельная, выкуплено, оплачено покупателем].
+   Прибыль пока считается по первому — переключение будет правкой одной строки в ozFinRows. */
+Object.entries(ord.byDateArtPaid||{}).forEach(([k,v])=>{ const d=k.slice(0,10),a=k.slice(11);
+  const e=(ozMoney[d]||(ozMoney[d]={}))[a]||(ozMoney[d][a]=[0,0]); e[2]=Math.round(v); });
 Object.entries(ord.byDateArtBuyRub||{}).forEach(([k,v])=>{ const d=k.slice(0,10),a=k.slice(11); const m=(ozMoney[d]||(ozMoney[d]={})); if(!m[a])m[a]=[0,0]; m[a][1]=Math.round(v); });
 
 // 4) Остатки (лист «Товары»): 0 Артикул · 9 Доступно к продаже
