@@ -68,12 +68,23 @@ for(let i=0;i<Math.min(8,rows.length);i++){
 if(hr<0){ console.error('не нашёл шапку с «Артикул WB» и «Расход»'); process.exit(1); }
 const H=rows[hr].map(S);
 const col=re=>H.findIndex(x=>re.test(x));
-const iSku=H.indexOf('Артикул WB'), iSpend=col(/^Расход/i), iOrd=col(/^Заказы, шт/i),
-  iRub=col(/^Заказы, руб/i), iImp=col(/^Показы$/i), iClk=col(/^Клики$/i), iCart=col(/^Корзины$/i),
-  iOthQ=col(/^Заказы др\. артикулов, шт/i), iOthR=col(/^Заказы др\. артикулов, руб/i),
+/* ВАЛЮТА В ИМЕНИ КОЛОНКИ МЕНЯЕТСЯ: 08.09.2026 XWAY заменил «руб.» на «₽» и перетасовал
+   порядок колонок («Заказы, руб.» → «Заказы, ₽», «Заказы др. артикулов, руб.» → «…, ₽»).
+   Поэтому денежные колонки ищем по ОБОИМ вариантам, а индексы не используем вовсе —
+   порядок в выгрузке не стабилен. Если колонка не нашлась, скрипт ПАДАЕТ и печатает
+   шапку файла: молчаливый ноль опаснее падения (день зальётся «рекламой за 0 ₽»). */
+const RUB='(руб\\.?|₽)';
+const iSku=H.indexOf('Артикул WB'), iSpend=col(/^Расход/i), iOrd=col(/^Заказы,\s*шт/i),
+  iRub=col(new RegExp('^Заказы,\\s*'+RUB,'i')), iImp=col(/^Показы$/i), iClk=col(/^Клики$/i), iCart=col(/^Корзины$/i),
+  iOthQ=col(/^Заказы др\. артикулов,\s*шт/i), iOthR=col(new RegExp('^Заказы др\\. артикулов,\\s*'+RUB,'i')),
   iRk=col(/^Активных РК/i),
   iTotQ=col(/^Общее количество заказов/i), iTotR=col(/^Общая сумма заказов/i);
-if(iSpend<0||iRub<0){ console.error('нет колонок «Расход» / «Заказы, руб.»'); process.exit(1); }
+if(iSpend<0||iRub<0){
+  console.error('не нашёл денежные колонки: «Расход» ('+(iSpend<0?'НЕТ':'есть')
+    +') / «Заказы, руб.|₽» ('+(iRub<0?'НЕТ':'есть')+').');
+  console.error('Колонки файла: '+H.filter(Boolean).join(' | '));
+  console.error('Если XWAY снова переименовал — добавьте вариант в regexp, не заменяя старый.');
+  process.exit(1); }
 
 const bySkuPerf={}; let n=0, noAd=0, miss=0, tSpend=0, tRub=0, tOth=0, tOrd=0, tTotRub=0, tTotOrd=0;
 for(let i=hr+1;i<rows.length;i++){
