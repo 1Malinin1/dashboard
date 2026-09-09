@@ -127,14 +127,22 @@ parts = parts.filter(p=>(p.to<FROM || p.from>TO));
 parts.push({from:FROM,to:TO,loadedAt:today,bySku:bySkuPerf});
 parts.sort((a,b)=>a.from<b.from?-1:1);
 const SUMK=['spend','imp','clicks','carts','ord','rub','othOrd','othRub','totOrd','totRub'];
+/* ЧАСТИ С `spendOnly` В СВОДКУ НЕ ИДУТ (правило продавца 09.09.2026, `scripts/ad-part.cjs`).
+   Так помечен период, когда реклама не крутилась: расход в нём есть и обязан уменьшать
+   прибыль (это делает `adRowsFromPerf` по `parts[]`), но его выручка в знаменателе ДРР
+   роняет цифру вдвое и врёт про текущие кампании. Флаг ставится один раз и обязан
+   ПЕРЕЖИВАТЬ ежедневную заливку — поэтому фильтр стоит здесь, а не только в ad-part.cjs. */
+const drrParts=parts.filter(p=>!p.spendOnly);
 const merged={};
-parts.forEach(p=>Object.entries(p.bySku).forEach(([sku,e])=>{
+drrParts.forEach(p=>Object.entries(p.bySku).forEach(([sku,e])=>{
   const m=merged[sku]||(merged[sku]={spend:0,rk:0,imp:0,clicks:0,carts:0,ord:0,rub:0,othOrd:0,othRub:0,totOrd:0,totRub:0});
   SUMK.forEach(k=>m[k]+=e[k]||0);
   m.rk=Math.max(m.rk,e.rk||0);                       // «активных РК» не складываем
 }));
-RD.adPerf={from:parts[0].from, to:parts[parts.length-1].to, loadedAt:today,
-  bySku:merged, parts};
+const bnd=drrParts.length? drrParts : parts;
+RD.adPerf={from:bnd[0].from, to:bnd[bnd.length-1].to, loadedAt:today,
+  bySku:merged, parts,
+  spendOnlyNote:'Части с spendOnly:true дают расход в прибыль, но НЕ входят в знаменатель ДРР.'};
 
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
@@ -151,6 +159,7 @@ parts.forEach(p=>{ const sp=Object.values(p.bySku).reduce((a,e)=>a+(e.spend||0),
   const rb=Object.values(p.bySku).reduce((a,e)=>a+(e.totRub||0),0);
   console.log('   '+p.from+' … '+p.to+'  расход '+F(sp).padStart(9)+' ₽ · выручка '+F(rb).padStart(11)
     +' ₽ · ДРР в заказах '+(rb? (sp/rb*100).toFixed(1):'—')+'%'
+    +(p.spendOnly? '   ← только расход, в ДРР не идёт':'')
     +(p.from===FROM&&p.to===TO? '   ← этот файл':'')); });
 for(let i=1;i<parts.length;i++){
   const prevEnd=new Date(parts[i-1].to), curStart=new Date(parts[i].from);
