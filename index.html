@@ -461,6 +461,25 @@
   .rec-sec{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
     color:var(--muted);margin:16px 0 8px}
   .rec-empty{padding:22px;text-align:center;color:var(--muted);font-size:13px}
+  /* ---- План по чистой прибыли (карточка на «Рекомендациях») ---- */
+  .pl-tbl{width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:13px}
+  .pl-tbl th,.pl-tbl td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line)}
+  .pl-tbl th{font-size:11px;color:var(--muted);font-weight:600;text-align:center;white-space:nowrap}
+  .pl-tbl th.l,.pl-tbl td.l{text-align:left}
+  .pl-tbl td.good{color:var(--good-txt)} .pl-tbl td.crit{color:var(--crit-txt)}
+  .pl-tbl tr.tot td{background:var(--panel-2);font-weight:700;border-bottom:none}
+  .pl-tbl .sub2{display:block;font-size:10.5px;font-weight:400;margin-top:1px}
+  /* Полоса хода: бледная — прогноз на конец месяца, яркая — уже сделано.
+     Прогноз рисуем ПОД фактом, чтобы обе доли читались одной полосой. */
+  .pl-bar{position:relative;height:8px;border-radius:4px;background:var(--panel-2);overflow:hidden}
+  .pl-bar i{position:absolute;left:0;top:0;height:100%;border-radius:4px}
+  .pl-bar .pl-fc{background:color-mix(in srgb,var(--accent) 30%,transparent)}
+  .pl-bar .pl-fact{background:var(--accent)}
+  .pl-note{margin-top:8px;padding:9px 12px;border-radius:8px;font-size:12.5px;line-height:1.5}
+  .pl-note.warn{background:color-mix(in srgb,var(--warn-txt) 12%,transparent);
+    border-left:3px solid var(--warn-txt)}
+  .pl-note.good{background:color-mix(in srgb,var(--good-txt) 12%,transparent);
+    border-left:3px solid var(--good-txt)}
   .chg{display:grid;grid-template-columns:1fr auto auto;gap:2px 14px;align-items:center;
     font-size:12.5px;margin-top:8px}
   .chg .c-nm{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--text-1);padding:5px 0}
@@ -1026,6 +1045,11 @@
   <section id="tab-recs" class="tab-panel">
     <div class="freshness" id="recFreshness"></div>
     <div class="kpis4" id="recKpis"></div>
+    <div class="card" id="recPlanCard" hidden style="margin-bottom:14px">
+      <h3 id="recPlanH">План по чистой прибыли</h3>
+      <div class="cap" id="recPlanCap"></div>
+      <div id="recPlan"></div>
+    </div>
     <div class="card" style="margin-bottom:14px">
       <h3>Что изменилось за неделю и почему</h3>
       <div class="cap" id="recChangedCap">Сравнение последних 7 дней с предыдущими 7 по заказам.</div>
@@ -6062,6 +6086,10 @@ const AD_DRR_GOAL=7, AD_DRR_GREAT=6;
    «перелива», и без порога такие строки висели бы с вердиктом «разобрать» и нулевыми
    продажами, забивая список. На итог они не влияют — в суммы входят как есть. */
 const AD_MIN_SPEND=500;
+/* Порог «кампания крутится СЕЙЧАС», ₽ в день. AD_MIN_SPEND=500 — порог за ПЕРИОД
+   выгрузки, для одного дня он слишком высокий: дневной расход по карточке 200–300 ₽
+   это живая кампания, а не перелив. Используется только в рекомендациях. */
+const AD_NOW_MIN_DAY=100;
 let adGroup=null, adView="cand";
 /* ПЕРИОД ОТБОРА — КАЛЕНДАРЬ, а не пресеты «14/28/56 дней» (просьба продавца 31.08.2026):
    он сравнивает рекламу с конкретными датами загруженной выгрузки, и фиксированные окна
@@ -6111,6 +6139,50 @@ const adTagOf   = c => c.adTag || c.adGroup || AD_NOTAG;
 // группы, у которых склейки заданы по-настоящему (для пометки в списке)
 function adRealGroups(){ const s=new Set(); (RD&&RD.catalog||[]).forEach(c=>{ if(c.adGroup) s.add(c.adGroup); }); return s; }
 // строки по рекламе: статистика кампаний + склейка из каталога
+/* «СЕЙЧАС» ПРОТИВ «БЫЛО» — расход по ПОСЛЕДНЕЙ выгрузке рекламы и по предыдущей.
+   ЗАЧЕМ (продавец 10.09.2026: «я уже давно отключил рекламу на товар которого в мск
+   нету, а в дашборде информация не обновилась»). `adPerf.bySku` — это СУММА всех
+   загруженных выгрузок (сейчас с 26.08), и выключенная неделю назад кампания честно
+   продолжает в ней числиться со своим историческим расходом. Для ДРР это правильно
+   и менять там нечего, а вот РЕКОМЕНДАЦИЯ обязана говорить про текущее состояние:
+   тратим мы на это деньги прямо сейчас или уже нет.
+   Части со `spendOnly` пропускаем — там расход есть, но кампаний не было. */
+function adPerfNow(){
+  const P=(RD&&RD.adPerf)||null; if(!P||!Array.isArray(P.parts)||!P.parts.length) return null;
+  const act=P.parts.filter(p=>!p.spendOnly);
+  if(!act.length) return null;
+  const mk=p=>{ if(!p) return null;
+    const days=Math.max(1, Math.round((Date.parse(p.to)-Date.parse(p.from))/864e5)+1);
+    return {bySku:p.bySku, from:p.from, to:p.to, days}; };
+  return {now:mk(act[act.length-1]), prev:mk(act.length>1? act[act.length-2] : null)};
+}
+const adNowSpend = (N,sku) => (N&&N.now&&N.now.bySku[sku]&&N.now.bySku[sku].spend)||0;
+// подпись периода последней выгрузки: «09.09» или «26–30.08»
+function recPerTxt(w){ if(!w) return "последнюю выгрузку";
+  return w.from===w.to? fmtDateLong(w.from) : fmtDateLong(w.from)+" – "+fmtDateLong(w.to); }
+/* «Было → стало» по одной карточке. Сравниваем В ДЕНЬ: выгрузки приходят кусками
+   разной длины (26–30.08 это 5 дней, дальше по одному), и сравнивать их итоги в лоб
+   значит показывать пятикратный «рост» на ровном месте.
+   ПРОЦЕНТ ОТ ПОЧТИ НУЛЯ — НЕ ПРОЦЕНТ. Если вчера по карточке списалось 6 копеек
+   перелива, а сегодня она включена на 1 210 ₽, формула даёт «+2 016 667%» — цифра
+   верная арифметически и бесполезная по смыслу. Ниже порога «кампания крутится»
+   пишем словами: включена / выключена / раньше не крутилась. */
+function recWasTxt(r){
+  const dn=r.adNowDays||1, dp=r.adPrevDays||0;
+  if(!(dp>0)) return "прошлой выгрузки нет";
+  const a=r.adSpendPrev/dp, b=r.adSpendNow/dn;
+  const on=x=>x>=AD_NOW_MIN_DAY;
+  if(!on(a)&&on(b)) return "включена в эту выгрузку";
+  if(!on(a)) return "раньше не крутилась";
+  if(!on(b)) return "сейчас выключена";
+  const k=b/a;
+  if(Math.abs(k-1)<0.1) return "как в прошлой выгрузке";
+  if(k>=2)   return "в "+num1(k)+" раза больше, чем в прошлой";
+  if(k<=0.5) return "в "+num1(1/k)+" раза меньше, чем в прошлой";
+  return (k>1? "+" : "−")+Math.round(Math.abs(k-1)*100)+"% к прошлой выгрузке";
+}
+const num1 = v => v.toFixed(1).replace(".",",");
+
 function adPerfRows(){
   const P=(RD&&RD.adPerf)||null; if(!P||!P.bySku) return [];
   const bo=adBuyout();
@@ -6235,6 +6307,7 @@ function adRows(){
      Расход берётся за период ЗАГРУЖЕННОЙ ВЫГРУЗКИ, а не за календарное окно отбора:
      другого источника нет, и это честно подписано в шапке колонки и в подсказке. */
   const perf={}; adPerfRows().forEach(p=>{ perf[p.sku]=p; });
+  const NOW=adPerfNow();                       // расход по последней выгрузке — «крутится ли сейчас»
   const out=adOutGroups();
   // при активном фокусе выбранная категория не сужает список — фокус и есть выборка
   const gSel = (recFocus && recFocus.tab==="ads")? null : adGroup;
@@ -6253,6 +6326,12 @@ function adRows(){
       category:c.category||"", factory:(""+(c.factoryCode||"")).trim(),
       qty, rub, spd, msk:m, mskDays, fbo:c.wbStock||0,
       adSpend: p? p.spend : 0, adDrr: p? p.drrA : null, adCpo: p? p.cpo : null,
+      /* расход за ПОСЛЕДНЮЮ выгрузку (и за предыдущую) — на нём строятся рекомендации,
+         чтобы выключенная кампания уходила из списка сразу, а не когда «размоется» */
+      adSpendNow: adNowSpend(NOW,sku),
+      adSpendPrev: (NOW&&NOW.prev&&NOW.prev.bySku[sku]&&NOW.prev.bySku[sku].spend)||0,
+      adNowDays: (NOW&&NOW.now&&NOW.now.days)||1,
+      adPrevDays: (NOW&&NOW.prev&&NOW.prev.days)||0,
       imp:f.imp, ctr:f.imp? f.cv/f.imp*100:0, cr:f.cv? f.ord/f.cv*100:0,
       price:qty? rub/qty:0};
   });
@@ -8860,6 +8939,104 @@ function recAdTree(){
   }).sort((x,y)=>y.agg.ordRub-x.agg.ordRub);
 }
 /* ---- Действия ---- */
+/* ================= ПЛАН ПО ЧИСТОЙ ПРИБЫЛИ (решение продавца 10.09.2026) =================
+   «Давай поставим план по чистой прибыли для каждого мп и будем идти к этой сумме,
+   выполняя рекомендации.» План лежит В СНИМКЕ (`meta.plan`, ставится `scripts/set-plan.cjs`),
+   потому что это решение человека, а не расчёт, и меняется каждый месяц.
+
+   МЕСЯЦ ЗДЕСЬ КАЛЕНДАРНЫЙ НА ОБЕИХ ПЛОЩАДКАХ. У ВБ «свой» месяц идёт целыми неделями
+   (сентябрь 31.08–27.09) — для сверки с закрывающими документами есть блок недель на
+   «Главной». План — управленческая цель, её проще держать по календарю, и иначе Озон
+   с ВБ не складывается: у площадок разные границы месяца.
+
+   ФАКТ БЕРЁТСЯ ДО ПОСЛЕДНЕГО ДНЯ ДАННЫХ КАЖДОЙ ПЛОЩАДКИ ОТДЕЛЬНО — они приходят
+   в разные дни, и общий «последний день» занижал бы ту, что свежее. */
+function planMonthKey(){
+  const w=(RD&&RD.orderSeries&&RD.orderSeries.dates||[]).slice(-1)[0]||"";
+  const o=(RD&&RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates||[]).slice(-1)[0]||"";
+  const last=(w>o? w:o); return last? last.slice(0,7) : null;
+}
+function planDaysOfMonth(key){
+  const [y,m]=key.split("-").map(Number);
+  const n=new Date(Date.UTC(y,m,0)).getUTCDate(), out=[];
+  for(let d=1;d<=n;d++) out.push(key+"-"+String(d).padStart(2,"0"));
+  return out;
+}
+function recPlanCalc(){
+  const P=(RD&&RD.meta&&RD.meta.plan)||null; if(!P) return null;
+  const key=planMonthKey(); if(!key||!P[key]) return null;
+  const plan=P[key], all=planDaysOfMonth(key);
+  const wbLast=(RD.orderSeries&&RD.orderSeries.dates||[]).slice(-1)[0]||"";
+  const ozLast=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates||[]).slice(-1)[0]||"";
+  function leg(target,last,calc){
+    const done=all.filter(d=>d<=last);
+    if(!done.length||!(target>0)) return null;
+    const fact=calc(done), left=all.length-done.length;
+    const rate=fact/done.length, fcast=fact+rate*left;
+    return {target, fact, days:done.length, left, rate, fcast,
+      gap:fcast-target, need: left>0? (target-fact)/left : 0,
+      pct: fact/target, last};
+  }
+  const wb=leg(plan.wb, wbLast, ds=>{ const a=finAggregate(ds), ad=adAggregate(ds);
+    return a.net-a.cogs-ad.total; });
+  const oz=leg(plan.oz, ozLast, ds=>{ try{ return ozFinAggregate(ds).profit; }catch(e){ return 0; } });
+  const both=(wb&&oz)? {target:wb.target+oz.target, fact:wb.fact+oz.fact,
+    fcast:wb.fcast+oz.fcast, gap:(wb.fcast+oz.fcast)-(wb.target+oz.target),
+    pct:(wb.fact+oz.fact)/(wb.target+oz.target)} : null;
+  return {key, all, wb, oz, both};
+}
+function renderRecPlan(){
+  const card=document.getElementById("recPlanCard"); if(!card) return;
+  const p=recPlanCalc();
+  if(!p||(!p.wb&&!p.oz)){ card.hidden=true; return; }
+  card.hidden=false;
+  const [y,m]=p.key.split("-");
+  const MON=["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+  document.getElementById("recPlanH").textContent="План по чистой прибыли — "+MON[+m-1]+" "+y;
+  const cap=document.getElementById("recPlanCap");
+  const days=(p.wb||p.oz).days, left=(p.wb||p.oz).left;
+  cap.innerHTML="Календарный месяц, "+p.all.length+" "+plural(p.all.length,"день","дня","дней")
+    +". Прошло "+days+", осталось "+left+". Прогноз — линейный, по фактическому темпу с начала месяца."
+    +" <span class=\"mut\">Прибыль ВБ с 03.08 — оценка по заказам, не отчёт. Прибыль Ozon считается по «Предельной цене».</span>";
+  const bar=(pctFact,pctFc)=>{
+    const a=Math.max(0,Math.min(100,pctFact*100)), b=Math.max(0,Math.min(100,pctFc*100));
+    return `<div class="pl-bar"><i class="pl-fc" style="width:${b.toFixed(1)}%"></i>`
+      +`<i class="pl-fact" style="width:${a.toFixed(1)}%"></i></div>`;
+  };
+  const row=(name,color,x)=>{ if(!x) return "";
+    const ok=x.gap>=0;
+    return `<tr>
+      <td class="l"><b style="color:${color}">${name}</b><span class="sub2 mut">данные по ${fmtDateLong(x.last)}</span></td>
+      <td>${fmt(Math.round(x.target))}</td>
+      <td><b>${fmt(Math.round(x.fact))}</b><span class="sub2 mut">${(x.pct*100).toFixed(0)}% плана</span></td>
+      <td>${fmt(Math.round(x.rate))}<span class="sub2 mut">нужно ${fmt(Math.round(x.need))}</span></td>
+      <td><b>${fmt(Math.round(x.fcast))}</b></td>
+      <td class="${ok?"good":"crit"}"><b>${ok?"+":"−"}${fmt(Math.abs(Math.round(x.gap)))}</b>
+        <span class="sub2 mut">${ok?"с опережением":"не хватает"}</span></td>
+      <td style="min-width:120px">${bar(x.pct,x.fcast/x.target)}</td></tr>`; };
+  let html=`<table class="pl-tbl"><thead><tr><th class="l">Площадка</th><th>План, ₽</th>
+    <th>Факт, ₽</th><th>₽/день</th><th>Прогноз, ₽</th><th>Разрыв, ₽</th><th>Ход</th></tr></thead><tbody>
+    ${row("Wildberries","#a78bfa",p.wb)}${row("Ozon","#f59e0b",p.oz)}`;
+  if(p.both){ const ok=p.both.gap>=0;
+    html+=`<tr class="tot"><td class="l">ВМЕСТЕ</td><td>${fmt(Math.round(p.both.target))}</td>
+      <td>${fmt(Math.round(p.both.fact))}<span class="sub2 mut">${(p.both.pct*100).toFixed(0)}% плана</span></td>
+      <td></td><td>${fmt(Math.round(p.both.fcast))}</td>
+      <td class="${ok?"good":"crit"}">${ok?"+":"−"}${fmt(Math.abs(Math.round(p.both.gap)))}</td>
+      <td>${bar(p.both.pct,p.both.fcast/p.both.target)}</td></tr>`; }
+  html+=`</tbody></table>`;
+  /* Что делать с разрывом — короткая строка под таблицей. Не «мотивация», а перевод
+     разрыва в ежедневную цифру: с ней рекомендации ниже становятся измеримыми. */
+  const miss=[p.wb,p.oz].filter(x=>x&&x.gap<0);
+  if(miss.length){
+    html+=`<div class="pl-note warn">Чтобы выйти на план, надо поднять темп: `
+      +miss.map((x,i)=>`<b>${x===p.wb?"Wildberries":"Ozon"}</b> с ${fmt(Math.round(x.rate))} до ${fmt(Math.round(x.need))} ₽/день`
+        +` (×${(x.need/x.rate).toFixed(2)})`).join(", ")
+      +`. Это и есть цена невыполненных рекомендаций ниже.</div>`;
+  } else {
+    html+=`<div class="pl-note good">Текущего темпа хватает на обе площадки. Задача — не потерять его: рекомендации ниже про то, что может его сбить.</div>`;
+  }
+  document.getElementById("recPlan").innerHTML=html;
+}
 function recBuild(){
   const R=[], bo=adBuyout();
   const add=o=>{ if(o) R.push(o); };
@@ -8895,14 +9072,33 @@ function recBuild(){
      выбрал «Светофоры», вернулся сюда и не увидел перерасход по «Пушкарам». */
   let ar=[]; { const g=adGroup; adGroup=null;
     try{ ar=adRows(); }catch(e){ ar=[]; } finally { adGroup=g; } }
-  const risk=recAlive(ar.filter(r=>r.adSpend>=AD_MIN_SPEND && r.mskDays<AD_MIN_MSK_DAYS)).sort((a,b)=>b.adSpend-a.adSpend);
-  const riskSum=risk.reduce((a,r)=>a+r.adSpend,0);
-  if(risk.length) add({sev:"crit", key:"adRisk", money:riskSum,
+  /* ТОЛЬКО ТО, ЧТО КРУТИТСЯ СЕЙЧАС. Раньше здесь стоял `adSpend` — сумма всего
+     накопителя, и кампания, выключенная неделю назад, продолжала висеть в списке со
+     своим историческим расходом (продавец поймал это 10.09.2026). Берём расход по
+     ПОСЛЕДНЕЙ выгрузке, нормируем на день и сравниваем с предыдущей выгрузкой. */
+  const NOW=adPerfNow();
+  const nowDays=(NOW&&NOW.now&&NOW.now.days)||1;
+  const risk=recAlive(ar.filter(r=>r.adSpendNow/(r.adNowDays||1)>=AD_NOW_MIN_DAY && r.mskDays<AD_MIN_MSK_DAYS))
+    .sort((a,b)=>b.adSpendNow-a.adSpendNow);
+  const riskSum=risk.reduce((a,r)=>a+r.adSpendNow,0);
+  const riskMonth=riskSum/nowDays*30;
+  const stopped=recAlive(ar.filter(r=>r.mskDays<AD_MIN_MSK_DAYS
+    && r.adSpendPrev/(r.adPrevDays||1)>=AD_NOW_MIN_DAY && r.adSpendNow/(r.adNowDays||1)<AD_NOW_MIN_DAY));
+  if(risk.length) add({sev:"crit", key:"adRisk", money:riskMonth,
     title:"Выключить рекламу на товар без запаса в Москве",
-    why:`<b class="num">${money(riskSum)} ₽</b> за период выгрузки ушло на <b class="num">${risk.length}</b> кампаний, у которых московского FBS-остатка хватает меньше чем на ${AD_MIN_MSK_DAYS} дней. Реклама разгоняет спрос, товар кончается в середине кампании — деньги уходят, карточка проседает в выдаче.`,
-    items: risk.slice(0,6).map(r=>({n:money(r.adSpend)+" ₽", x:r.name,
-      w:(r.msk>0? "Мск "+fmt(r.msk)+" шт · "+adFmtD(r.mskDays)+" дн" : "в Москве пусто")})),
+    why:`За ${recPerTxt(NOW&&NOW.now)} на такие кампании ушло <b class="num">${money(riskSum)} ₽</b> — это <b class="num">${money(riskMonth)} ₽</b> в пересчёте на месяц. Кампаний <b class="num">${risk.length}</b>, московского FBS-остатка по ним хватает меньше чем на ${AD_MIN_MSK_DAYS} дней. Реклама разгоняет спрос, товар кончается в середине кампании — деньги уходят, карточка проседает в выдаче.`
+      +`<br><span class="mut">Считаю по ПОСЛЕДНЕЙ выгрузке рекламы, а не по всему накопленному периоду: выключенная кампания уходит отсюда сразу.</span>`
+      +(stopped.length? `<br><b class="num">${stopped.length}</b> ${plural(stopped.length,"кампания","кампании","кампаний")} из этого списка вы уже выключили — их здесь больше нет.` : ""),
+    items: risk.slice(0,6).map(r=>({n:money(r.adSpendNow)+" ₽", x:r.name,
+      w:(r.msk>0? "Мск "+fmt(r.msk)+" шт · "+adFmtD(r.mskDays)+" дн" : "в Москве пусто")
+        +" · "+recWasTxt(r)})),
     keys: risk.map(r=>r.sku), n: risk.length, tab:"ads", view:"perf", rank: 2});
+  else if(stopped.length) add({sev:"info", key:"adRiskOk",
+    title:"Реклама без запаса в Москве выключена",
+    why:`Кампаний, которые крутятся на товар с московским остатком меньше ${AD_MIN_MSK_DAYS} дней, сейчас нет. В прошлую выгрузку их было <b class="num">${stopped.length}</b> на <b class="num">${money(stopped.reduce((a,r)=>a+r.adSpendPrev,0))} ₽</b>.`,
+    items: stopped.slice(0,4).map(r=>({n:"выключена", x:r.name,
+      w:"было "+money(r.adSpendPrev)+" ₽"})),
+    keys: stopped.map(r=>r.sku), n: stopped.length, tab:"ads", view:"perf", rank: 9});
   // ---- 5. Склейки выше цели по ДРР ----
   let pr=[]; try{ pr=adPerfRows(); }catch(e){ pr=[]; }
   if(pr.length){
@@ -8924,7 +9120,9 @@ function recBuild(){
       tab:"ads", view:"perf", rank: 5});
   }
   // ---- 6. Кандидаты без рекламы ----
-  const idle=recAlive(ar.filter(r=>r.ok && !(r.adSpend>=AD_MIN_SPEND))).sort((a,b)=>b.rub-a.rub);
+  // «без рекламы» — тоже по ТЕКУЩЕЙ выгрузке: товар, у которого кампания была месяц
+  // назад и уже выключена, сейчас именно что без рекламы
+  const idle=recAlive(ar.filter(r=>r.ok && r.adSpendNow/(r.adNowDays||1)<AD_NOW_MIN_DAY)).sort((a,b)=>b.rub-a.rub);
   if(idle.length) add({sev:"info", key:"idle",
     title:"Можно запускать: "+idle.length+" кандидатов без рекламы",
     why:`Категория A внутри своей склейки, и московского остатка хватает минимум на ${AD_MIN_MSK_DAYS} дней. Это те позиции, на которых реклама не встанет посреди кампании.`,
@@ -9013,6 +9211,7 @@ function renderRecsTab(){
        +tr2("Суммарно",fmt(Math.round(drop.reduce((a,r)=>a+r.dr,0)))+" ₽ против +"+fmt(Math.round(up.reduce((a,r)=>a+r.dr,0)))+" ₽")},
   ].map(kpiCard).join("");
   wireKpiTips("recKpis");
+  renderRecPlan();
   // ---- что изменилось: дерево категория → склейка → товар ----
   const el=document.getElementById("recChanged");
   const cap=document.getElementById("recChangedCap");
