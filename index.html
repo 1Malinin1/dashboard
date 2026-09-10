@@ -1202,6 +1202,7 @@
           <button data-view="sum">Свод</button>
         </div>
         <span class="count" id="dynCount"></span>
+        <button class="btn" id="dynExport" type="button" style="margin-left:auto">Скачать Excel</button>
       </div>
       <div class="table-scroll"><table class="rnp" id="dynTable"></table></div>
     </div>
@@ -4439,6 +4440,7 @@ function profitDayChart(mount,isoDates,daily){
   mount.innerHTML="";mount.appendChild(svg);
 }
 
+let _dynLast=null;                 // что показано в таблице «Товары за период» — для выгрузки
 function renderDynamicsTab(){
   let freshTxt = RD ? `<span class="dot"></span>Заказы обновлены по ${fmtDateLong(RLAST)} · история с ${fmtDateLong(RDATES[0])}` : "";
   if(RD && _appliedMp==="all" && WBDATA && OZDATA){
@@ -4621,6 +4623,11 @@ function renderDynamicsTab(){
   });
   document.getElementById("dynCount").textContent=rows.length+" товаров с заказами";
   document.getElementById("dynTblNote").textContent=`период: ${isoDates.length} дн.`;
+  /* СНИМОК ТОГО, ЧТО СЕЙЧАС НА ЭКРАНЕ — для выгрузки в Excel. Держим здесь, а не
+     пересчитываем в экспортёре: правило «что видишь, то и качаешь» иначе разъедется
+     с фильтрами, сортировкой и выбранным периодом при первой же правке рендера. */
+  _dynLast={rows,skus,isoDates,from,to,hasMoneyData,isAll,periodTotal,
+    rate1,rWb,rOz,mp:_appliedMp};
   if(!rows.length){ document.getElementById("dynTable").innerHTML=`<tbody><tr><td class="empty-hint">За этот период заказов не найдено</td></tr></tbody>`; return; }
   if(dynView==="days"){ renderDynPivot(rows,skus,isoDates,from,hasMoneyData); return; }
   document.getElementById("dynTable").className="rnp"+(isAll?" wide":"");
@@ -4696,6 +4703,95 @@ function renderDynPivot(rows,skus,isoDates,from,hasMoneyData){
   });
   html+="</tbody>";
   tbl.innerHTML=html;
+}
+/* ВЫГРУЗКА «ДИНАМИКИ ЗАКАЗОВ» В EXCEL (просьба продавца 10.09.2026: «чтобы была
+   возможность поработать с файлом»). Правило то же, что на «Оборачиваемости»:
+   ЧТО ВИДИШЬ — ТО И КАЧАЕШЬ. Берём `_dynLast` — ровно те строки, тот период и ту
+   сортировку, что сейчас на экране, включая вид «По дням» / «Свод» и площадку.
+   Первый лист — «Как считается»: файл уходит руководству без дашборда, и цифры
+   без объяснения там читаются неправильно. */
+function exportDynamicsXLSX(){
+  const L=_dynLast;
+  if(!L||!L.rows.length){ alert("Под текущие фильтры не попал ни один товар с заказами."); return; }
+  const mpName={wb:"Wildberries",ozon:"Ozon",all:"Всего (ВБ + Ozon)"}[L.mp]||L.mp;
+  const per=L.isoDates.length? fmtDateLong(L.isoDates[0])+" – "+fmtDateLong(L.isoDates[L.isoDates.length-1]) : "—";
+  const q=document.getElementById("dynSearch").value.trim();
+  const cats=selCats("dynCat");
+  const dLabel=d=>{ const p=d.split("-"); return p[2]+"."+p[1]; };
+  // на Озоне артикул И ЕСТЬ код 1С — второй раз его не печатаем (как в skuMeta)
+  const c1c=sku=>{ const c=code1c(sku)||""; return c===String(sku)? "" : c; };
+  let data, widths, sheetName;
+
+  if(dynView==="days"){
+    sheetName="Заказы по дням";
+    const ser={}; L.skus.forEach(c=>{ const x=seriesFor(c.sku); if(x) ser[c.sku]=x; });
+    const cell=(sku,i)=>{ const x=ser[sku]; return x? (x[L.from+i]||0) : 0; };
+    const head=["Товар","Категория","Артикул","Код 1С",...L.isoDates.map(dLabel),"ИТОГО, шт"];
+    if(L.hasMoneyData) head.push("Заказано, ₽","Выкуплено, ₽ (оценка)");
+    data=[head];
+    // закреплённая строка «Всего по дням» — она же есть на экране
+    const tot=["ВСЕГО ПО ДНЯМ","","",""];
+    for(let i=0;i<L.isoDates.length;i++) tot.push(L.rows.reduce((a,r)=>a+cell(r.sku,i),0));
+    tot.push(L.rows.reduce((a,r)=>a+r.qty,0));
+    if(L.hasMoneyData){ tot.push(Math.round(L.rows.reduce((a,r)=>a+r.ordersSum,0)),
+                                 Math.round(L.rows.reduce((a,r)=>a+r.buyoutSum,0))); }
+    data.push(tot);
+    L.rows.forEach(r=>{ const row=[r.name||"",r.category||"",""+r.sku,c1c(r.sku)];
+      for(let i=0;i<L.isoDates.length;i++) row.push(cell(r.sku,i));
+      row.push(r.qty);
+      if(L.hasMoneyData) row.push(Math.round(r.ordersSum||0),Math.round(r.buyoutSum||0));
+      data.push(row); });
+    widths=[42,18,14,12,...L.isoDates.map(()=>7),11];
+    if(L.hasMoneyData) widths.push(15,22);
+  } else {
+    sheetName="Свод по товарам";
+    if(L.isAll){
+      const head=["Товар","Категория","Код 1С","ВБ, шт","Ozon, шт","Всего, шт","Доля Ozon, %","Доля всех заказов, %","ВБ, ₽","Ozon, ₽","Всего, ₽"];
+      data=[head];
+      L.rows.forEach(r=>data.push([r.name||"",r.category||"",""+r.sku,
+        r.qtyWb||0,r.qtyOz||0,r.qty,+((r.ozShare||0)*100).toFixed(1),
+        L.periodTotal? +(r.qty/L.periodTotal*100).toFixed(2):0,
+        Math.round(r.ordWb||0),Math.round(r.ordOz||0),Math.round(r.ordersSum||0)]));
+      widths=[42,18,12,10,11,11,13,20,13,13,13];
+    } else {
+      const head=["Товар","Категория","Артикул","Код 1С","Заказов, шт","Доля всех заказов, %"];
+      if(L.hasMoneyData) head.push("Заказано, ₽","Выкуплено, ₽ (оценка)");
+      data=[head];
+      L.rows.forEach(r=>{ const row=[r.name||"",r.category||"",""+r.sku,c1c(r.sku),r.qty,
+          L.periodTotal? +(r.qty/L.periodTotal*100).toFixed(2):0];
+        if(L.hasMoneyData) row.push(Math.round(r.ordersSum||0),Math.round(r.buyoutSum||0));
+        data.push(row); });
+      widths=[42,18,14,12,13,20]; if(L.hasMoneyData) widths.push(15,22);
+    }
+  }
+
+  const boTxt = L.rate1!=null? Math.round(L.rate1*100)+"%" : "—";
+  const how={name:"Как считается",widths:[32,84],headerRows:1,rows:[
+    ["Параметр","Значение"],
+    ["Площадка",mpName],
+    ["Период",per+" ("+L.isoDates.length+" дн.)"],
+    ["Вид таблицы", dynView==="days"? "По дням — колонка на каждый день периода" : "Свод — итог за период по каждому товару"],
+    ["Фильтр: поиск", q||"не задан"],
+    ["Фильтр: категории", (cats&&cats.length)? cats.join(", ") : "все"],
+    ["Товаров в файле", L.rows.length+" (только те, у кого за период были заказы)"],
+    ["Сортировка","та же, что на экране: "+(dynSortState.key||"—")+(dynSortState.dir<0?" по убыванию":" по возрастанию")],
+    ["",""],
+    ["Показатель","Как получен"],
+    ["Заказов, шт","ЗАКАЗАНО за день по данным площадки, а не выкуплено. Отмены здесь не вычтены."],
+    ["Заказано, ₽","сумма заказов за день из выгрузки площадки"],
+    ["Выкуплено, ₽ (оценка)","заказано × % выкупа площадки ("+boTxt+"). ЭТО ОЦЕНКА, а не факт: "
+      +"сырая цифра «выкуплено» в выгрузках заморожена на день выгрузки и задним числом не обновляется, "
+      +"поэтому у свежих дней она почти нулевая и показывать её нельзя."],
+    ...(L.isAll? [["Доля Ozon, %","какая часть заказов этого кода пришлась на Ozon, остальное — Wildberries"],
+                  ["Ключ строки","код 1С: на «Всего» товары двух площадок сводятся по нему"]]
+              : [["Артикул","артикул площадки; рядом код 1С для связки с учётом"]]),
+    ["Доля всех заказов, %","доля товара в заказах за период по выбранной площадке"],
+    ["",""],
+    ["Данные по дату", RLAST? fmtDateLong(RLAST):"—"],
+    ["Файл сформирован", fmtDateLong(new Date().toISOString().slice(0,10))]]};
+  const fn="динамика-заказов-"+({wb:"вб",ozon:"озон",all:"всего"}[L.mp]||L.mp)
+    +"-"+(dynView==="days"?"по-дням":"свод")+".xlsx";
+  xlsxDownload(fn,[how,{name:sheetName,rows:data,widths,headerRows:1}]);
 }
 function moneyBySkuMap(fromDate,toDate){
   const m=mpMoney(), map={};
@@ -9420,6 +9516,7 @@ document.getElementById("dynFrom").addEventListener("change",applyDynCustom);
 document.getElementById("dynTo").addEventListener("change",applyDynCustom);
 document.getElementById("dynSearch").addEventListener("input",renderDynamicsTab);
 document.getElementById("dynCat").addEventListener("change",renderDynamicsTab);
+document.getElementById("dynExport").addEventListener("click",exportDynamicsXLSX);
 document.getElementById("turnSearch").addEventListener("input",renderTurnoverTab);
 document.getElementById("turnCat").addEventListener("change",renderTurnoverTab);
 document.getElementById("turnProduct").addEventListener("change",renderTurnoverTab);
