@@ -51,9 +51,16 @@ function isoFrom8(t){
   const m=t.match(/^(\d{2})(\d{2})(20\d{2})$/);
   if(m && +m[2]>=1 && +m[2]<=12) return m[3]+'-'+m[2]+'-'+m[1];
   return null; }
+/* ТРЕТИЙ ФОРМАТ ИМЕНИ — «2026-09-11» С ДЕФИСАМИ (появился 14.09.2026). XWAY переименовал
+   выгрузки: было «XWAY_…_20260910__20260910.xlsx», стало «XWAY …- 2026-09-11 - 2026-09-11.xlsx».
+   Восьмизначных чисел в таком имени нет вовсе, поэтому период не определялся и скрипт падал
+   с «не понял период». Ищем оба вида: сначала дефисные даты, потом цифровые пачки.
+   Новый вид ДОБАВЛЕН, старые не тронуты — приходят и те, и другие. */
 function periodFromName(f){ const b=path.basename(f);
-  const all=[...b.matchAll(/\d{8}/g)].map(m=>isoFrom8(m[0])).filter(Boolean);
-  const u=[...new Set(all)].sort();
+  const dash=[...b.matchAll(/\b(20\d{2})-(\d{2})-(\d{2})\b/g)]
+    .filter(m=>+m[2]>=1&&+m[2]<=12&&+m[3]>=1&&+m[3]<=31).map(m=>m[1]+'-'+m[2]+'-'+m[3]);
+  const packed=[...b.matchAll(/\d{8}/g)].map(m=>isoFrom8(m[0])).filter(Boolean);
+  const u=[...new Set(dash.length? dash : packed)].sort();
   return u.length>=2? {from:u[0],to:u[u.length-1]} : (u.length===1? {from:u[0],to:u[0]} : null); }
 const p=periodFromName(file)||{};
 const FROM=process.argv[3]||p.from, TO=process.argv[4]||p.to;
