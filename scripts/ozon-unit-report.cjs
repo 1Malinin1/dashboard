@@ -44,7 +44,7 @@
 //   node scripts/ozon-unit-report.cjs drop <от> <до>
 'use strict';
 const fs=require('fs'), vm=require('vm'), path=require('path');
-const XLSX=require('./node_modules/xlsx');
+const {openWorkbook}=require('./xlsx-xml-reader.cjs');
 const OUT=path.join(__dirname,'..','decrypted');
 const F=v=>Math.round(v).toLocaleString('ru-RU');
 const P=v=>v.toFixed(2).replace('.',',');
@@ -61,7 +61,8 @@ function show(){
   list.forEach(r=>{
     console.log('  '+r.from+'…'+r.to+'  засчитано '+F(r.gross).padStart(12)+' ₽ ('+F(r.gross/r.del)+' ₽/шт, '+F(r.del)+' шт)'
       +' · комиссия '+P(r.commissionRate)+'% · эквайринг '+P(r.acquiringRate)+'%'
-      +' · РЕКЛАМА '+P(r.adsRate)+'%'+(r.builtAt? '   (залит '+r.builtAt.slice(0,10)+')':''));
+      +' · РЕКЛАМА '+P(r.adsRate)+'%'+(r.builtAt? '   (залит '+r.builtAt.slice(0,10)+')':'')
+      +(r.mature===false? '   ← НЕЗРЕЛЫЙ, в расчёт не идёт':''));
   });
   const t=RD.ozon.meta.terms;
   if(t){
@@ -82,8 +83,9 @@ if(argv[0]==='drop'){
 }
 
 const file=argv[0];
-let FROM=null, TO=null;
+let FROM=null, TO=null, FROMSRC='name';
 for(let i=1;i<argv.length;i++){ if(argv[i]==='--from') FROM=argv[++i]; else if(argv[i]==='--to') TO=argv[++i]; }
+if(FROM&&TO) FROMSRC='arg';
 
 /* ПЕРИОД ИЗ ИМЕНИ ФАЙЛА: «…01.08.2026-31.08.2026.xlsx». Имя продавец не переименовывает,
    а внутри листа периода нет ни строкой — только цифры. Без периода отчёт бесполезен:
@@ -93,13 +95,39 @@ if(!FROM||!TO){
   const u=[...new Set(m)].sort();
   if(u.length>=2){ FROM=FROM||u[0]; TO=TO||u[u.length-1]; }
 }
-if(!FROM||!TO){ console.error('не понял период отчёта — укажите: --from ГГГГ-ММ-ДД --to ГГГГ-ММ-ДД'); process.exit(1); }
 
-const wb=XLSX.read(fs.readFileSync(file),{type:'buffer',cellStyles:false,cellFormula:false});
-const shName=wb.SheetNames.find(n=>/юнит/i.test(n))||wb.SheetNames[0];
-const a=XLSX.utils.sheet_to_json(wb.Sheets[shName],{header:1,raw:true});
-if(!a.length){ console.error('лист «'+shName+'» пуст'); process.exit(1); }
-const H=a[0].map(x=>String(x||'').replace(/\s+/g,' ').trim());
+/* ЧИТАЕМ СВОИМ XML-ЧИТАТЕЛЕМ, А НЕ SheetJS (17.09.2026). Отчёт за 01–16.09 пришёл в форме,
+   на которой SheetJS ломается: вся кириллица записана числовыми сущностями (&#x410;…) в ячейках
+   <c t="str"><v>…</v></c>, и SheetJS теряет старший байт — «Артикул» превращается в мусор,
+   колонки не находятся. xlsx-xml-reader.cjs разбирает XML напрямую и отдаёт текст верно
+   (в нём для этого добавлены: разворот числовых сущностей, ячейки без атрибута r=,
+   разбор rels независимо от порядка атрибутов). Августовский файл читается им же. */
+const wbx=openWorkbook(file);
+const shName=wbx.sheetNames.find(n=>/юнит/i.test(n))||wbx.sheetNames[0];
+const a=wbx.readSheet(shName);
+if(!a||!a.length){ console.error('лист «'+shName+'» пуст или не прочитался'); process.exit(1); }
+
+/* ШАПКА НЕ ОБЯЗАТЕЛЬНО В ПЕРВОЙ СТРОКЕ: в августовском файле она строка 1, в сентябрьском —
+   строка 4 (перед ней «Период: …», «Расходы на единицу», группирующая строка). Ищем строку,
+   где одновременно есть «SKU» и «Артикул». */
+let HR=-1;
+for(let i=0;i<Math.min(15,a.length);i++){
+  const row=(a[i]||[]).map(x=>String(x||'').replace(/\s+/g,' ').trim());
+  if(row.includes('SKU') && row.includes('Артикул')){ HR=i; break; }
+}
+if(HR<0){ console.error('не нашёл шапку (строку с «SKU» и «Артикул») в первых 15 строках листа «'+shName+'»'); process.exit(1); }
+const H=(a[HR]||[]).map(x=>String(x||'').replace(/\s+/g,' ').trim());
+/* ПЕРИОД ЛУЧШЕ БРАТЬ ИЗ САМОГО ФАЙЛА: сентябрьская форма пишет первой строкой
+   «Период: 01.09.2026-16.09.2026». Имя файла остаётся запасным вариантом — августовская
+   форма периода внутри не содержит вовсе. Явные --from/--to перекрывают оба. */
+{
+  const head=a.slice(0,HR).map(r=>(r||[]).join(' ')).join(' ');
+  const m=[...head.matchAll(/(\d{2})\.(\d{2})\.(20\d{2})/g)].map(x=>x[3]+'-'+x[2]+'-'+x[1]);
+  const u=[...new Set(m)].sort();
+  if(u.length>=2 && (FROMSRC!=='arg')){ FROM=u[0]; TO=u[u.length-1]; FROMSRC='file'; }
+}
+if(!FROM||!TO){ console.error('не понял период отчёта — ни в файле, ни в имени. Укажите: --from ГГГГ-ММ-ДД --to ГГГГ-ММ-ДД'); process.exit(1); }
+
 const ci=n=>{ const i=H.indexOf(n); if(i<0){ console.error('в отчёте нет колонки «'+n+'». Колонки: '+H.join(' · ')); process.exit(1); } return i; };
 const I={art:ci('Артикул'), del:ci('Доставлено товаров, шт'), ord:ci('Заказано товаров, шт'),
   ret:ci('Возвращено товаров, шт'), rev:ci('Выручка'), pts:ci('Баллы за скидки'),
@@ -118,7 +146,7 @@ if(!sup.size){ console.error('в снимке нет каталога ВБ — �
 
 const T={rows:0,ord:0,del:0,ret:0,rev:0,pts:0,prt:0,voz:0,acq:0,ads:0,oth:0,prof:0};
 let foreign=0;
-for(let i=1;i<a.length;i++){
+for(let i=HR+1;i<a.length;i++){
   const r=a[i]; if(!r) continue;
   const art=String(r[I.art]==null?'':r[I.art]).trim(); if(!art) continue;
   if(!sup.has(art)){ foreign++; continue; }
@@ -142,6 +170,20 @@ const rec={ from:FROM, to:TO, builtAt:new Date().toISOString(),
   adsRate:+(-T.ads/gross*100).toFixed(4),
   perUnit:+(gross/T.del).toFixed(2),
   src:path.basename(file) };
+
+/* ЗРЕЛОСТЬ ОТЧЁТА — ОБЯЗАТЕЛЬНАЯ ПРОВЕРКА (17.09.2026, поймано на первом же файле).
+   Отчёт за НЕЗАКРЫТЫЙ период приходит с выручкой, но БЕЗ удержаний: Ozon начисляет
+   комиссию и эквайринг позже. Замер 01–16.09: комиссия 0,72% вместо 30%, эквайринг 0,04%
+   вместо 1,3%, реклама 0,15% вместо 4,23% в августе, доставлено/заказано 57,2% против 79,8%.
+   Пустить такую ставку рекламы в расчёт — значит сказать, что площадка почти ничего
+   не забирает, и раздуть прибыль. Признак надёжный: у зрелого отчёта комиссия совпадает
+   с тарифом ИУ (август дал 30,02% при 30%), у незрелого она близка к нулю.
+   Такие записи ХРАНИМ (это факт на момент выгрузки), но из выбора ставки ИСКЛЮЧАЕМ —
+   см. `mature` в ozAdRateFor()/adRateFor(). */
+const COMM=(RD.ozon.meta.terms&&RD.ozon.meta.terms.commission)||30;
+rec.mature = rec.commissionRate >= COMM*0.8;
+if(!rec.mature) rec.immatureNote='удержания Ozon за период ещё не начислены (комиссия '
+  +P(rec.commissionRate)+'% против '+P(COMM)+'% по тарифу) — ставка рекламы из него НЕ берётся';
 
 const at=list.findIndex(r=>r.from===FROM&&r.to===TO);
 if(at>=0){ list[at]=rec; console.log('Отчёт '+FROM+'…'+TO+' ПЕРЕЗАПИСАН (был залит раньше).'); }
@@ -184,6 +226,14 @@ if(oq){
   console.log('     → '+(k>=90
     ? 'продавцу засчитывают ПОТОЛОК: база «Предельная цена» верна, revBase оставляем выключенным'
     : 'ВНИМАНИЕ: засчитано заметно ниже потолка — база выручки под вопросом, разберитесь до пересчёта'));
+}
+if(rec.mature===false){
+  console.log('');
+  console.log('  ⚠ ОТЧЁТ НЕЗРЕЛЫЙ — В РАСЧЁТ СТАВКИ РЕКЛАМЫ НЕ ПОЙДЁТ.');
+  console.log('    '+rec.immatureNote);
+  console.log('    Период ещё не закрыт: Ozon начисляет комиссию и эквайринг позже, чем показывает выручку.');
+  console.log('    Запись сохранена как факт на момент выгрузки. Перезалейте этот же период,');
+  console.log('    когда он закроется, — запись заменится сама.');
 }
 console.log('');
 show();

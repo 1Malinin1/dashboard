@@ -5687,7 +5687,10 @@ function ozTerms(){ return (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.terms)||null
    его к своему же месяцу — не «переписывание прошлого».
    ДУБЛЬ — `adRateFor()` в scripts/ozon-finance.cjs, ДЕРЖИ СИНХРОННО. */
 function ozUnitReports(){ const L=(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.unitReports)||[];
-  return L.slice().sort((a,b)=>a.from<b.from?-1:1); }
+  /* НЕЗРЕЛЫЕ отчёты отбрасываем: у отчёта за незакрытый период Ozon ещё не начислил
+     комиссию и эквайринг, и его ставка рекламы (0,15% против 4,23% в августе) раздула бы
+     прибыль. Признак ставит scripts/ozon-unit-report.cjs по совпадению комиссии с тарифом. */
+  return L.filter(r=>r.mature!==false).slice().sort((a,b)=>a.from<b.from?-1:1); }
 function ozAdRateFor(date){
   const T=ozTerms(), L=ozUnitReports();
   if(!L.length) return T? (T.ads||0) : 0;

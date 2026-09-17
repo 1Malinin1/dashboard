@@ -22,8 +22,17 @@ const path = require('path');
 const os = require('os');
 const { execFileSync } = require('child_process');
 
+/* ЧИСЛОВЫЕ СУЩНОСТИ (&#x41D; / &#1053;) — ОБЯЗАТЕЛЬНО (17.09.2026). Отчёт Ozon
+   «Юнит-экономика» за 01–16.09 пишет ВСЮ кириллицу такими сущностями в ячейках
+   типа <c t="str"><v>…</v></c>. Без разворота имена листов и колонок приходят
+   как «&#x42E;&#x43D;…», а SheetJS на этом же файле теряет старший байт и отдаёт
+   мусор («Артикул» → «@B8:C;»), поэтому здесь это единственный рабочий путь.
+   Разворачиваем ДО остальных замен — иначе «&amp;#x41D;» разъехалось бы. */
 function unescapeXml(s) {
-  return s.replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
+  return s
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(parseInt(d, 10)))
+    .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&#39;/g, "'");
 }
 function colToIndex(ref) {
   const m = ref.match(/^([A-Z]+)/); let n = 0;
@@ -38,12 +47,22 @@ function openWorkbook(xlsxPath) {
 
   const wbxml = fs.readFileSync(path.join(tmp, 'xl', 'workbook.xml'), 'utf8');
   const nameToRid = {};
-  for (const m of wbxml.matchAll(/<sheet[^>]*name="([^"]*)"[^>]*r:id="([^"]*)"/g)) nameToRid[m[1]] = m[2];
-  for (const m of wbxml.matchAll(/<sheet[^>]*r:id="([^"]*)"[^>]*name="([^"]*)"/g)) nameToRid[m[2]] = m[1];
+  // имя листа тоже приходит сущностями (&#x42E;…) — разворачиваем, иначе по нему не найти лист
+  for (const m of wbxml.matchAll(/<sheet[^>]*name="([^"]*)"[^>]*r:id="([^"]*)"/g)) nameToRid[unescapeXml(m[1])] = m[2];
+  for (const m of wbxml.matchAll(/<sheet[^>]*r:id="([^"]*)"[^>]*name="([^"]*)"/g)) nameToRid[unescapeXml(m[2])] = m[1];
 
   const rels = fs.readFileSync(path.join(tmp, 'xl', '_rels', 'workbook.xml.rels'), 'utf8');
+  /* ПОРЯДОК АТРИБУТОВ В rels НЕ ГАРАНТИРОВАН (17.09.2026). Отчёт Ozon пишет
+     <Relationship Type="…" Target="…" Id="…"/> — Target ПЕРЕД Id, и прежний regex,
+     требовавший Id первым, не находил лист вовсе (readSheet возвращал null).
+     Разбираем атрибуты по отдельности, порядок не важен. */
   const ridToFile = {};
-  for (const m of rels.matchAll(/<Relationship[^>]*Id="([^"]*)"[^>]*Target="([^"]*)"/g)) ridToFile[m[1]] = m[2];
+  for (const m of rels.matchAll(/<Relationship\b([^>]*)\/?>/g)) {
+    const at = m[1];
+    const id = (at.match(/\bId="([^"]*)"/) || [])[1];
+    const tg = (at.match(/\bTarget="([^"]*)"/) || [])[1];
+    if (id && tg) ridToFile[id] = tg;
+  }
 
   let sharedStrings = [];
   const ssPath = path.join(tmp, 'xl', 'sharedStrings.xml');
@@ -63,13 +82,21 @@ function openWorkbook(xlsxPath) {
     const rows = []; let ri = 0;
     for (const rm of xml.matchAll(/<row[^>]*>([\s\S]*?)<\/row>/g)) {
       const cells = [];
-      for (const cm of rm[1].matchAll(/<c r="([A-Z]+\d+)"([^>]*)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
-        const ci = colToIndex(cm[1]);
-        const isStr = /t="s"/.test(cm[2]);
-        const body = cm[3] || '';
+      /* АТРИБУТ r= У ЯЧЕЙКИ НЕОБЯЗАТЕЛЕН (17.09.2026). Отчёт Ozon «Юнит-экономика»
+         пишет ячейки без адреса — <c t="str" s="5"><v>…</v></c>. Прежний regex требовал
+         r="A1", не находил ни одной ячейки и отдавал пустые строки. Теперь адрес
+         используется, если он есть, иначе колонка считается по порядку. */
+      let auto = 0;
+      for (const cm of rm[1].matchAll(/<c\b([^>]*)(?:\/>|>([\s\S]*?)<\/c>)/g)) {
+        const attrs = cm[1] || '';
+        const rm2 = attrs.match(/\br="([A-Z]+)\d+"/);
+        const ci = rm2 ? colToIndex(rm2[1] + '1') : auto;
+        auto = ci + 1;
+        const isStr = /t="s"/.test(attrs);
+        const body = cm[2] || '';
         const vMatch = body.match(/<v>([\s\S]*?)<\/v>/);
         let val = '';
-        if (vMatch) val = isStr ? (sharedStrings[+vMatch[1]] || '') : vMatch[1];
+        if (vMatch) val = isStr ? (sharedStrings[+vMatch[1]] || '') : unescapeXml(vMatch[1]);
         else { const tMatch = body.match(/<t[^>]*>([\s\S]*?)<\/t>/); if (tMatch) val = unescapeXml(tMatch[1]); }
         cells[ci] = val;
       }
