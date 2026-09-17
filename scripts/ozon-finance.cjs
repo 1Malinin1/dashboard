@@ -82,7 +82,8 @@ O.meta.terms=T;
    не выделяется и остаётся в фиксированной части всегда («вот ее нужно считать по умолчанию»).
    Правило выбора то же, что у % выкупа; ручной `--ads` перекрывает всё.
    ДУБЛЬ — `ozAdRateFor()` в index.html, ДЕРЖИ СИНХРОННО. */
-const UR=((O.meta.unitReports)||[]).slice().sort((a,b)=>a.from<b.from?-1:1);
+// НЕЗРЕЛЫЕ ОТЧЁТЫ (mature===false) в выбор ставки НЕ идут — у них удержания ещё не начислены
+const UR=((O.meta.unitReports)||[]).filter(r=>r.mature!==false).slice().sort((a,b)=>a.from<b.from?-1:1);
 const adForced = arg('ads')!=null;
 const FIXED=+(T.total-T.ads).toFixed(4);
 function adRateFor(d){
