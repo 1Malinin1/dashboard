@@ -5703,6 +5703,39 @@ function ozAdRateFor(date){
    всегда: в отчёте Ozon её нет ни строкой, и продавец подтвердил — «считать по умолчанию». */
 function ozFixedRate(){ const T=ozTerms(); if(!T) return 0;
   return +( (T.total||0) - (T.ads||0) ).toFixed(4); }
+/* ФАКТ РАСХОДА НА РЕКЛАМУ ПЕРЕКРЫВАЕТ СТАВКУ — НО ТОЛЬКО У СВОИХ ТОВАРОВ И ДАТ
+   (решение продавца 17.09.2026: «по умолчанию затраты на продвижение по всем товарам
+   ты берёшь согласно нашей проверки юнитки за август, но … если в отчёте с xway будет
+   другая цифра — ты и берёшь её»; в тот же день уточнил: «изменения будет только у
+   <8 SKU> … а у всех других будет фикса как и идёт по августу»).
+   Поэтому правило ПОТОВАРНОЕ: товар есть в части → его реклама = факт, товара нет →
+   ставка из отчёта юнит-экономики. Общий процент по площадке сюда не годится — он
+   размазал бы расход по всем 143 товарам.
+   Расход внутри части разносится по дням ПРОПОРЦИОНАЛЬНО ВЫРУЧКЕ ДНЯ (выгрузка даёт
+   итог за период). Ведёт scripts/ozon-ads-spend.cjs; дубль — в scripts/ozon-finance.cjs,
+   ДЕРЖИ СИНХРОННО. */
+function ozAdSpendParts(){
+  const A=(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.adSpend)||null;
+  return (A&&Array.isArray(A.parts)&&A.parts.length)? A.parts.slice().sort((a,b)=>a.from<b.from?-1:1) : [];
+}
+function ozAdSpendPartIdx(d){ const P=ozAdSpendParts(); for(let i=0;i<P.length;i++) if(P[i].from<=d&&d<=P[i].to) return i; return -1; }
+// подпись для строки свежести: у скольких товаров реклама идёт по факту, а не по ставке
+function ozAdFactNote(){
+  const P=ozAdSpendParts();
+  const A=(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.adSpend)||null;
+  const W=(A&&A.watch&&A.watch.sups)||[];
+  let out="";
+  const skus=new Set(); let sum=0;
+  P.forEach(p=>Object.entries(p.bySup||{}).forEach(([s,v])=>{ skus.add(s); sum+=v; }));
+  if(skus.size) out+=` · по ${skus.size} ${plural(skus.size,"товару","товарам","товарам")} реклама взята <b>по факту XWAY</b>`
+    +` (${fmtDateLong(P[0].from)} – ${fmtDateLong(P[P.length-1].to)}, ${fmt(sum)} ₽), у остальных — ставка`;
+  /* Реклама запущена, а выгрузки по ней ещё нет — значит эти кампании считаются по августовской
+     ставке и их реальный расход в прибыли НЕ учтён. Молчать об этом нельзя. */
+  const wait=W.filter(s=>!skus.has(s));
+  if(wait.length) out+=` · по ${wait.length} ${plural(wait.length,"товару","товарам","товарам")} реклама запущена,`
+    +` но выгрузки XWAY ещё нет — пока считаются по ставке`;
+  return out;
+}
 /* ---------------------------------------------------------------------------
    БАЗА ВЫРУЧКИ ОЗОНА МЕНЯЕТСЯ С ДАТЫ (31.08.2026 Ozon перешёл на «цену реализации»).
    Воронка «Заказано на сумму» с этого дня даёт 70,7–75,2% от суммы по «Предельной цене»
@@ -5798,7 +5831,41 @@ function ozFinRows(){
         profit:rev-mpFee-cogs});
     });
   });
+  ozApplyAdFact(rows,dates,meta);
   return (_ozFinCache=rows);
+}
+/* ПОДМЕНА СТАВКИ ФАКТОМ — ВТОРЫМ ПРОХОДОМ ПО ГОТОВЫМ СТРОКАМ. Так и должно быть: доля дня
+   считается от выручки товара ЗА ВСЮ ЧАСТЬ, а она известна только когда все дни собраны.
+   Товар с расходом, но без продаж в периоде, НЕ ТЕРЯЕТСЯ — ему заводится строка с нулевой
+   выручкой на последний день части, иначе расход молча выпал бы из прибыли. */
+function ozApplyAdFact(rows,dates,meta){
+  const P=ozAdSpendParts(); if(!P.length) return;
+  const fixed=ozFixedRate();
+  const idx=new Map();                                   // "часть|артикул" → строки
+  rows.forEach(r=>{ const pi=ozAdSpendPartIdx(r.date); if(pi<0) return;
+    if(((P[pi].bySup)||{})[r.sku]==null) return;
+    const k=pi+"|"+r.sku; let a=idx.get(k); if(!a) idx.set(k,a=[]); a.push(r); });
+  P.forEach((p,pi)=>{
+    const days=dates.filter(d=>d>=p.from&&d<=p.to);
+    const last=days[days.length-1]||p.to;
+    Object.entries(p.bySup||{}).forEach(([sku,spend])=>{
+      const arr=idx.get(pi+"|"+sku);
+      if(!arr||!arr.length){                             // расход есть, продаж нет — строка-остаток
+        const e=meta[sku]||{};
+        rows.push({date:last, sku, sup:sku, name:e.name||sku, category:e.cat||"", wbCategory:e.wbCat||"",
+          ordRub:0, ordQty:0, revenue:0, qty:0, cogs:0, hasCost:false,
+          mpFee:spend, ad:spend, adFact:true, profit:-spend});
+        return; }
+      const tot=arr.reduce((a,r)=>a+r.revenue,0);
+      arr.forEach((r,i)=>{
+        const share = tot>0? r.revenue/tot : (i===arr.length-1? 1 : 0);
+        const ad=spend*share;
+        r.ad=ad; r.adFact=true;
+        r.mpFee=r.revenue*fixed/100+ad;
+        r.profit=r.revenue-r.mpFee-r.cogs;
+      });
+    });
+  });
 }
 // свод Озона за набор дат (тот же интерфейс, что finAggregate у ВБ)
 function ozFinAggregate(dates,catFilter,q){
@@ -7324,7 +7391,11 @@ function renderHomeOzon(){
   fresh.innerHTML=`<span class="dot"></span>Ozon · заказы по ${fmtDateLong(allDates[allDates.length-1])}`
     +` · история с ${fmtDateLong(allDates[0])} · <b>ОЦЕНКА</b>: выручка = заказано × ${(bo*100).toFixed(1)}% выкупа`
     +(boH? ` (замер ${fmtDateLong(boH[boH.length-1].from)} – ${fmtDateLong(boH[boH.length-1].to)}, от закрытых заказов)` : "")+`,`
-    +` площадка забирает ${T.total}% по вашим ИУ (в т.ч. реклама ${T.ads}%)`
+    // ставка рекламы — ПРИМЕНЁННАЯ (из отчёта юнит-экономики), а не запасная T.ads из тарифа
+    +` площадка забирает ${(ozFixedRate()+ozAdRateFor(allDates[allDates.length-1])).toFixed(1)}% по вашим ИУ`
+    +` (${ozFixedRate().toFixed(1)}% тариф + реклама ${ozAdRateFor(allDates[allDates.length-1]).toFixed(2).replace(".",",")}% по отчёту юнит-экономики)`
+    // по части товаров реклама идёт ПО ФАКТУ выгрузки XWAY — молчать об этом нельзя, у них другая экономика
+    +(ozAdFactNote()||"")
     // база выручки сменилась с даты — молча этого показывать нельзя, цифры до и после несопоставимы
     +(rbFrom? ` · с ${fmtDateLong(rbFrom)} выручка считается по <b>новой методике Ozon</b>`
         +` (${(rbK*100).toFixed(1)}% от «Предельной цены»), дни раньше — по-старому` : "");

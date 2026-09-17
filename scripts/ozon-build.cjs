@@ -223,7 +223,11 @@ RD.ozon={
     // отчёты «Юнит-экономика» — их кладёт ozon-unit-report.cjs; из них берётся СТАВКА РЕКЛАМЫ
     // по дате дня. Потерять их — значит молча вернуть фиксированные 10% и занизить прибыль
     // (на августе это было 1,53 млн ₽). Тот же капкан, что с terms/revBase/buyoutWin.
-    unitReports: prevMeta.unitReports || [] }
+    unitReports: prevMeta.unitReports || [],
+    // ФАКТ расхода на рекламу по товарам — его кладёт ozon-ads-spend.cjs. Перекрывает ставку
+    // у своих товаров; потерять — значит вернуть им общую ставку и разойтись с выгрузкой XWAY.
+    // Тот же капкан, что с terms/revBase/buyoutWin/unitReports.
+    adSpend: prevMeta.adSpend || null }
 };
 if(!RD.ozon.meta.terms) console.log('  ВНИМАНИЕ: тарифа ИУ нет в снимке — прибыль Озона считаться не будет.'
   +' Запустите: node scripts/ozon-finance.cjs');

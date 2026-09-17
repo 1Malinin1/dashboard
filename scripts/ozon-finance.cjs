@@ -93,6 +93,14 @@ function adRateFor(d){
   let last=UR[0]; for(const r of UR) if(r.to < d) last=r;
   return last.adsRate;
 }
+/* ФАКТ РАСХОДА ПЕРЕКРЫВАЕТ СТАВКУ — ПОТОВАРНО (решение продавца 17.09.2026: «если в отчёте
+   с xway будет другая цифра — ты и берёшь её»; «изменения будет только у <8 SKU>, а у всех
+   других будет фикса как и идёт по августу»). Товар есть в части → его реклама = факт,
+   нет → ставка. Внутри части расход разносится пропорционально выручке дня.
+   Ведёт scripts/ozon-ads-spend.cjs. ДУБЛЬ — ozApplyAdFact() в index.html, ДЕРЖИ СИНХРОННО. */
+const AP=(!adForced && O.meta.adSpend && Array.isArray(O.meta.adSpend.parts))
+  ? O.meta.adSpend.parts.slice().sort((a,b)=>a.from<b.from?-1:1) : [];
+function apIdx(d){ for(let i=0;i<AP.length;i++) if(AP[i].from<=d&&d<=AP[i].to) return i; return -1; }
 
 // ---- себестоимость по коду 1С (общая с ВБ; на Озоне артикул = код 1С)
 const costHist={}, costNow={};
@@ -134,6 +142,21 @@ const RBall=(O.meta.revBase&&Array.isArray(O.meta.revBase.history))? O.meta.revB
 const RB=RBon? RBall : [];
 function revK(d){ let k=1; RB.forEach(h=>{ if(h.from<=d) k=h.k; }); return k; }
 
+/* выручка каждого товара ВНУТРИ каждой части — нужна, чтобы разнести итоговый расход
+   по дням пропорционально; и последний день части, куда падает расход без продаж */
+const partRev=AP.map(()=>({})), partLast=AP.map(p=>{
+  const ds=dates.filter(d=>d>=p.from&&d<=p.to); return ds.length? ds[ds.length-1] : null; });
+if(AP.length) dates.forEach(d=>{ const pi=apIdx(d); if(pi<0) return;
+  const m=money[d]||{}, k=revK(d), b=boFor(d);
+  Object.entries(m).forEach(([a,v])=>{ if((AP[pi].bySup||{})[a]==null) return;
+    partRev[pi][a]=(partRev[pi][a]||0)+(v[0]||0)*k*b; }); });
+function adFact(d,a,rv){                            // абсолютный расход товара в этот день, либо null
+  const pi=apIdx(d); if(pi<0) return null;
+  const sp=(AP[pi].bySup||{})[a]; if(sp==null) return null;
+  const tot=partRev[pi][a]||0;
+  return tot>0? sp*rv/tot : (d===partLast[pi]? sp : 0);
+}
+
 function calc(ds){
   let ordRub=0, ordQty=0, rev=0, sold=0, cogs=0, noCost=0, mp=0, ads=0;
   ds.forEach(d=>{
@@ -141,7 +164,9 @@ function calc(ds){
     const m=money[d]||{}, k=revK(d), b=boFor(d);   // выкуп берётся ПО ДАТЕ ДНЯ
     const ar=adRateFor(d);                         // и ставка рекламы — тоже по дате дня
     Object.entries(m).forEach(([a,v])=>{ const r=(v[0]||0)*k, rv=r*b; ordRub+=r; rev+=rv;
-      mp+=rv*(FIXED+ar)/100; ads+=rv*ar/100; });
+      const af=adFact(d,a,rv);                     // факт XWAY перекрывает ставку — только у своих товаров
+      if(af!=null){ mp+=rv*FIXED/100+af; ads+=af; }
+      else { mp+=rv*(FIXED+ar)/100; ads+=rv*ar/100; } });
     Object.entries(byArt).forEach(([a,s])=>{
       const q=s[i]||0; if(!q) return;
       ordQty+=q; sold+=q*b;
@@ -149,6 +174,13 @@ function calc(ds){
       if(c!=null) cogs+=q*b*c; else noCost+=q;
     });
   });
+  /* РАСХОД НА ТОВАР БЕЗ ПРОДАЖ В ПЕРИОДЕ НЕ ТЕРЯЕТСЯ: цикл выше ходит по товарам с деньгами,
+     и реклама по товару, который ничего не продал, туда не попадает вовсе. Кладём её на
+     последний день части — так же, как index.html заводит строку с нулевой выручкой. */
+  const dset=new Set(ds);
+  AP.forEach((p,pi)=>{ if(!partLast[pi]||!dset.has(partLast[pi])) return;
+    Object.entries(p.bySup||{}).forEach(([a,sp])=>{ if((partRev[pi][a]||0)>0) return;
+      mp+=sp; ads+=sp; }); });
   return {ordRub,ordQty,rev,sold,cogs,mp,ads,noCost,
     takePct: rev? mp/rev*100 : 0,
     profit:rev-mp-cogs, margin: rev? (rev-mp-cogs)/rev : 0};
@@ -168,6 +200,16 @@ if(UR.length && !adForced){
   console.log('      дни после последнего отчёта считаются по нему же; дни раньше первого — по первому');
 }else{
   console.log('   '+'реклама (нет отчётов)'.padEnd(28)+String(T.ads).padStart(6)+'%'+(adForced?'   ← задана вручную --ads':''));
+}
+if(AP.length){
+  console.log('   реклама ПО ФАКТУ (выгрузки XWAY) — перекрывает ставку только у этих товаров и дат:');
+  AP.forEach(p=>{ const sk=Object.keys(p.bySup||{}).length;
+    const sp=Object.values(p.bySup||{}).reduce((a,b)=>a+b,0);
+    console.log('      '+p.from+'…'+p.to+' → товаров '+String(sk).padStart(3)+' · расход '
+      +Math.round(sp).toLocaleString('ru-RU').padStart(10)+' ₽'+(p.src? '   ('+p.src+')':'')); });
+  console.log('      остальные товары в эти дни считаются по ставке из отчёта юнит-экономики');
+}else if(O.meta.adSpend){
+  console.log('   (фактических выгрузок рекламы нет — вся площадка по ставке)');
 }
 console.log('   (соинвест '+T.coinvest+'% не вычитается — см. комментарий в скрипте)');
 if(BOH){ console.log('   % выкупа Озона — «доставлено ÷ (доставлено+отменено)», по истории замеров:');
