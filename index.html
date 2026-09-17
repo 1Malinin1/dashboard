@@ -5678,6 +5678,28 @@ function productPnL(dates,cat,q){
    ========================================================================= */
 let _ozCostCache=null, _ozFinCache=null;
 function ozTerms(){ return (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.terms)||null; }
+/* СТАВКА РЕКЛАМЫ ОЗОНА — ИЗ ОТЧЁТА «ЮНИТ-ЭКОНОМИКА», А НЕ ФИКСИРОВАННЫЕ 10%
+   (решение продавца 17.09.2026: «то что шло и будет идти в отчетах то и считаешь»).
+   Отчёт за август дал 4,23% против 10% в модели — вместе с Premium это занижало прибыль
+   августа на 1 528 870 ₽. День внутри периода отчёта → его ставка; после последнего отчёта →
+   ставка последнего (несём вперёд); раньше первого → ставка первого (другого источника нет,
+   то же правило, что у % выкупа). Отчёт закрытого месяца НЕ дозревает, поэтому применять
+   его к своему же месяцу — не «переписывание прошлого».
+   ДУБЛЬ — `adRateFor()` в scripts/ozon-finance.cjs, ДЕРЖИ СИНХРОННО. */
+function ozUnitReports(){ const L=(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.unitReports)||[];
+  return L.slice().sort((a,b)=>a.from<b.from?-1:1); }
+function ozAdRateFor(date){
+  const T=ozTerms(), L=ozUnitReports();
+  if(!L.length) return T? (T.ads||0) : 0;
+  for(const r of L) if(r.from<=date && date<=r.to) return r.adsRate;
+  if(date < L[0].from) return L[0].adsRate;
+  let last=L[0]; for(const r of L) if(r.to < date) last=r;
+  return last.adsRate;
+}
+/* Фиксированная часть тарифа = всё, КРОМЕ рекламы. Premium и прочее (1,4%) сюда входит
+   всегда: в отчёте Ozon её нет ни строкой, и продавец подтвердил — «считать по умолчанию». */
+function ozFixedRate(){ const T=ozTerms(); if(!T) return 0;
+  return +( (T.total||0) - (T.ads||0) ).toFixed(4); }
 /* ---------------------------------------------------------------------------
    БАЗА ВЫРУЧКИ ОЗОНА МЕНЯЕТСЯ С ДАТЫ (31.08.2026 Ozon перешёл на «цену реализации»).
    Воронка «Заказано на сумму» с этого дня даёт 70,7–75,2% от суммы по «Предельной цене»
@@ -5759,12 +5781,14 @@ function ozFinRows(){
     const arts=new Set(Object.keys(m));
     Object.entries(byArt).forEach(([a,s])=>{ if(s[i]) arts.add(a); });
     const bo=ozBuyoutFor(d);          // выкуп берётся ПО ДАТЕ ДНЯ (история замеров, как на ВБ)
+    const adRate=ozAdRateFor(d);      // ставка рекламы — тоже по дате дня, из отчёта юнит-экономики
+    const fixed=ozFixedRate();        // всё остальное по тарифу ИУ, включая Premium 1,4%
     arts.forEach(a=>{
       const ordRub=(m[a]&&m[a][0])||0, ordQty=(byArt[a]&&byArt[a][i])||0;
       if(!ordRub && !ordQty) return;
       const rev=ordRub*bo, qty=ordQty*bo;
       const cp=ozCostAt(a,d), cogs=cp!=null? qty*cp : 0;
-      const mpFee=rev*T.total/100, ads=rev*T.ads/100;
+      const mpFee=rev*(fixed+adRate)/100, ads=rev*adRate/100;
       const e=meta[a]||{};
       rows.push({date:d, sku:a, sup:a, name:e.name||a, category:e.cat||"", wbCategory:e.wbCat||"",
         ordRub, ordQty, revenue:rev, qty, cogs, hasCost:cp!=null, mpFee, ad:ads,

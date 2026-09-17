@@ -219,7 +219,11 @@ RD.ozon={
     // база выручки (k с даты) — её кладёт ozon-revbase.cjs, здесь только переносим
     revBase: prevMeta.revBase || null,
     // история замеров % выкупа «от закрытых» — её кладёт ozon-buyout-window.cjs
-    buyoutWin: prevMeta.buyoutWin || null }
+    buyoutWin: prevMeta.buyoutWin || null,
+    // отчёты «Юнит-экономика» — их кладёт ozon-unit-report.cjs; из них берётся СТАВКА РЕКЛАМЫ
+    // по дате дня. Потерять их — значит молча вернуть фиксированные 10% и занизить прибыль
+    // (на августе это было 1,53 млн ₽). Тот же капкан, что с terms/revBase/buyoutWin.
+    unitReports: prevMeta.unitReports || [] }
 };
 if(!RD.ozon.meta.terms) console.log('  ВНИМАНИЕ: тарифа ИУ нет в снимке — прибыль Озона считаться не будет.'
   +' Запустите: node scripts/ozon-finance.cjs');

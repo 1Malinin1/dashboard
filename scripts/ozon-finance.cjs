@@ -9,12 +9,24 @@
 // Вторая колонка той же таблицы («Базовая оферта») К ПРОДАВЦУ НЕ ОТНОСИТСЯ — он работает по ИУ.
 // Не считай по ней и не приводи её в ответах, даже для сравнения.
 //
-// ТАРИФ (ИУ 2026), % от выручки:
+// ТАРИФ (ИУ 2026), % от выручки — ФИКСИРОВАННАЯ ЧАСТЬ 32,7%:
 //   эквайринг 1,3 · комиссия категории 30 · логистика 0 · возвраты 0 · кроссдокинг 0 ·
-//   платное размещение 0 · подписка Premium и прочее 1,4 · реклама 10
-//   ИТОГО 42,7%
-// Реклама в самой таблице стоит 8%, но продавец попросил считать 10% (03–04.09.2026,
-// сначала называл 9%). Поэтому ставка лежит отдельным полем и меняется одной командой.
+//   платное размещение 0 · подписка Premium и прочее 1,4
+// ПЛЮС РЕКЛАМА — НЕ ФИКСИРОВАННАЯ, А ИЗ ОТЧЁТА «ЮНИТ-ЭКОНОМИКА» (17.09.2026).
+// Раньше стояли жёсткие 10% (в таблице ИУ было 8%, продавец просил 10%), итого 42,7%.
+// Первый же финотчёт Ozon показал, что это завышено: август дал 4,23%, и вместе с Premium
+// модель занижала прибыль августа на 1 528 870 ₽ (25,6%). Решение продавца 17.09.2026:
+// «то что шло и будет идти в отчетах то и считаешь» — ставка берётся из отчёта за период
+// (scripts/ozon-unit-report.cjs → ozon.meta.unitReports[]), см. adRateFor() ниже.
+// Premium 1,4% в отчёте не выделяется ни строкой; продавец: «вот ее нужно считать
+// по умолчанию, там ее не будет» — поэтому она в фиксированной части ВСЕГДА.
+//
+// ТОТ ЖЕ ОТЧЁТ ЗАКРЫЛ СПОР О БАЗЕ ВЫРУЧКИ (август, наши товары): засчитано продавцу
+// 3 208 ₽/шт против нашего потолка 3 300 ₽/шт = 97,2%, а «Выручка» (что заплатил
+// покупатель) — 2 384 ₽/шт = 72,3%. Соинвест приходит продавцу ОТДЕЛЬНОЙ СТРОКОЙ
+// «Баллы за скидки» (+7 251 808 ₽). Значит база «Предельная цена» верна и revBase
+// остаётся выключенным. Комиссия в отчёте 30,02% при 30% в ИУ, эквайринг 1,30% при 1,3% —
+// тариф подтверждён построчно.
 //
 // СОИНВЕСТ 22% НЕ ВЫЧИТАЕТСЯ — И ЭТО ОКОНЧАТЕЛЬНО (продавец 04.09.2026). В таблице есть строка
 // «Соинвест 22%» и «Net тариф … New ИУ 18,7%» (= 40,7 − 22), но это НЕ скидка продавцу:
@@ -35,7 +47,8 @@
 //
 // Использование:
 //   node scripts/ozon-finance.cjs                       — посчитать и показать
-//   node scripts/ozon-finance.cjs --ads 10              — сменить ставку рекламы, %
+//   node scripts/ozon-finance.cjs --ads 10              — задать ставку рекламы вручную, %
+//                                                         (перекрывает отчёты — только для прикидок)
 //   node scripts/ozon-finance.cjs --from 2026-08-01 --to 2026-08-31
 'use strict';
 const fs=require('fs'), vm=require('vm'), path=require('path');
@@ -56,11 +69,29 @@ const adPct = arg('ads')!=null ? parseFloat(arg('ads'))
 const T={ acquiring:1.3, commission:30, logistics:0, returns:0, crossdock:0,
   placement:0, other:1.4, ads:adPct,
   source:'Ozon, ИУ 2026 («Сравнение условий», колонка «Новое ИУ 2026»)',
-  adsNote:'в таблице 8%, продавец попросил считать '+adPct+'% (04.09.2026)',
+  adsNote:'ставка рекламы берётся ИЗ ОТЧЁТА юнит-экономики за период (решение продавца 17.09.2026); '
+    +'это значение — запасное, для дат без отчёта',
   coinvest:22, coinvestApplied:false,
   coinvestNote:'строка «Net тариф … New ИУ 18,7%» = 40,7 − 22; продавец указал на 40,7% как на свои траты, соинвест не подтверждал — не вычитаем' };
 T.total=+(T.acquiring+T.commission+T.logistics+T.returns+T.crossdock+T.placement+T.other+T.ads).toFixed(2);
 O.meta.terms=T;
+
+/* СТАВКА РЕКЛАМЫ — ПО ДАТЕ ДНЯ, ИЗ ОТЧЁТА «ЮНИТ-ЭКОНОМИКА» (scripts/ozon-unit-report.cjs).
+   Решение продавца 17.09.2026: «то что шло и будет идти в отчетах то и считаешь». Фиксированные
+   10% занижали прибыль августа на 1 528 870 ₽ — факт отчёта 4,23%. Premium 1,4% в отчёте
+   не выделяется и остаётся в фиксированной части всегда («вот ее нужно считать по умолчанию»).
+   Правило выбора то же, что у % выкупа; ручной `--ads` перекрывает всё.
+   ДУБЛЬ — `ozAdRateFor()` в index.html, ДЕРЖИ СИНХРОННО. */
+const UR=((O.meta.unitReports)||[]).slice().sort((a,b)=>a.from<b.from?-1:1);
+const adForced = arg('ads')!=null;
+const FIXED=+(T.total-T.ads).toFixed(4);
+function adRateFor(d){
+  if(adForced || !UR.length) return T.ads;
+  for(const r of UR) if(r.from<=d && d<=r.to) return r.adsRate;
+  if(d < UR[0].from) return UR[0].adsRate;
+  let last=UR[0]; for(const r of UR) if(r.to < d) last=r;
+  return last.adsRate;
+}
 
 // ---- себестоимость по коду 1С (общая с ВБ; на Озоне артикул = код 1С)
 const costHist={}, costNow={};
@@ -103,11 +134,13 @@ const RB=RBon? RBall : [];
 function revK(d){ let k=1; RB.forEach(h=>{ if(h.from<=d) k=h.k; }); return k; }
 
 function calc(ds){
-  let ordRub=0, ordQty=0, rev=0, sold=0, cogs=0, noCost=0;
+  let ordRub=0, ordQty=0, rev=0, sold=0, cogs=0, noCost=0, mp=0, ads=0;
   ds.forEach(d=>{
     const i=dates.indexOf(d); if(i<0) return;
     const m=money[d]||{}, k=revK(d), b=boFor(d);   // выкуп берётся ПО ДАТЕ ДНЯ
-    Object.entries(m).forEach(([a,v])=>{ const r=(v[0]||0)*k; ordRub+=r; rev+=r*b; });
+    const ar=adRateFor(d);                         // и ставка рекламы — тоже по дате дня
+    Object.entries(m).forEach(([a,v])=>{ const r=(v[0]||0)*k, rv=r*b; ordRub+=r; rev+=rv;
+      mp+=rv*(FIXED+ar)/100; ads+=rv*ar/100; });
     Object.entries(byArt).forEach(([a,s])=>{
       const q=s[i]||0; if(!q) return;
       ordQty+=q; sold+=q*b;
@@ -115,8 +148,8 @@ function calc(ds){
       if(c!=null) cogs+=q*b*c; else noCost+=q;
     });
   });
-  const mp=rev*T.total/100, ads=rev*T.ads/100;
   return {ordRub,ordQty,rev,sold,cogs,mp,ads,noCost,
+    takePct: rev? mp/rev*100 : 0,
     profit:rev-mp-cogs, margin: rev? (rev-mp-cogs)/rev : 0};
 }
 const f=n=>Math.round(n).toLocaleString('ru-RU');
@@ -127,7 +160,14 @@ console.log('ТАРИФ OZON (ИУ 2026), % от выручки в выкупе:
  ['возвраты',T.returns],['кроссдокинг',T.crossdock],['платное размещение',T.placement],
  ['подписка Premium и прочее',T.other],['реклама',T.ads]]
  .forEach(([k,v])=>console.log('   '+k.padEnd(28)+String(v).padStart(6)+'%'));
-console.log('   '+'ИТОГО забирает Озон'.padEnd(28)+String(T.total).padStart(6)+'%');
+console.log('   '+'фиксированная часть'.padEnd(28)+String(FIXED).padStart(6)+'%   (в т.ч. Premium и прочее '+T.other+'% — в отчёте Ozon её нет, считаем всегда)');
+if(UR.length && !adForced){
+  console.log('   реклама — ИЗ ОТЧЁТА юнит-экономики, по дате дня:');
+  UR.forEach(r=>console.log('      '+r.from+'…'+r.to+' → '+r.adsRate.toFixed(2).replace('.',',')+'%   (засчитано '+Math.round(r.gross).toLocaleString('ru-RU')+' ₽, реклама '+Math.round(r.ads).toLocaleString('ru-RU')+' ₽)'));
+  console.log('      дни после последнего отчёта считаются по нему же; дни раньше первого — по первому');
+}else{
+  console.log('   '+'реклама (нет отчётов)'.padEnd(28)+String(T.ads).padStart(6)+'%'+(adForced?'   ← задана вручную --ads':''));
+}
 console.log('   (соинвест '+T.coinvest+'% не вычитается — см. комментарий в скрипте)');
 if(BOH){ console.log('   % выкупа Озона — «доставлено ÷ (доставлено+отменено)», по истории замеров:');
   BOH.forEach(h=>console.log('      замер '+(h.builtAt||'').slice(0,10)+' (окно '+h.from+'…'+h.to+') → '
@@ -146,7 +186,7 @@ const A=calc(inRange);
 console.log('\nOZON · '+from+' … '+to+' ('+inRange.length+' дн.)');
 console.log('  заказано:            '+f(A.ordRub).padStart(14)+' ₽ · '+f(A.ordQty)+' шт');
 console.log('  выручка (в выкупе):  '+f(A.rev).padStart(14)+' ₽ · '+f(A.sold)+' шт');
-console.log('  − забирает Озон '+T.total+'%: '+f(A.mp).padStart(14)+' ₽   (в т.ч. реклама '+f(A.ads)+' ₽)');
+console.log('  − забирает Озон '+A.takePct.toFixed(1)+'%: '+f(A.mp).padStart(14)+' ₽   (в т.ч. реклама '+f(A.ads)+' ₽)');
 console.log('  − себестоимость:     '+f(A.cogs).padStart(14)+' ₽');
 console.log('  ──────────────────────────────────────');
 console.log('  ПРИБЫЛЬ:             '+f(A.profit).padStart(14)+' ₽   маржа '+(A.margin*100).toFixed(1)+'%');
