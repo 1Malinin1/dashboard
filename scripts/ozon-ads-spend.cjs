@@ -152,7 +152,10 @@ if(cmd==='set'){
     if(m && +m[2]>=1 && +m[2]<=12) return m[3]+'-'+m[2]+'-'+m[1];
     return null; }
   const b=path.basename(file);
-  const dash=[...b.matchAll(/\b(20\d{2})-(\d{2})-(\d{2})\b/g)]
+  /* ГРАНИЦУ `\b` БРАТЬ НЕЛЬЗЯ (18.09.2026): при загрузке пробелы в имени заменяются на «_»
+     («XWAY_RICHFAMILY_2026-09-17_2026-09-17.xlsx»), а между «_» и «2» границы слова НЕТ —
+     дата не находилась. Смотрим на соседние цифры. Тот же фикс в update-ads-perf.cjs. */
+  const dash=[...b.matchAll(/(?<![0-9])(20\d{2})-(\d{2})-(\d{2})(?![0-9])/g)]
     .filter(m=>+m[2]>=1&&+m[2]<=12&&+m[3]>=1&&+m[3]<=31).map(m=>m[1]+'-'+m[2]+'-'+m[3]);
   const packed=[...b.matchAll(/\d{8}/g)].map(m=>isoFrom8(m[0])).filter(Boolean);
   const u=[...new Set(dash.length? dash : packed)].sort();
@@ -188,14 +191,22 @@ if(cmd==='set'){
   const keyCols=H.map((x,i)=>({x,i})).filter(o=>KEY.test(o.x)).map(o=>o.i);
   if(iSpend<0||!keyCols.length){ console.error('шапка найдена, но колонок не хватает: '+H.filter(Boolean).join(' | ')); process.exit(1); }
 
-  let miss=0, missKeys=new Set();
+  let miss=0, missKeys=new Set(), zero=[];
   for(let i=hr+1;i<rows.length;i++){
     const R=rows[i]||[]; let key=null;
     for(const c of keyCols){ const k=resolveKey(R[c]); if(k){ key=k; break; } }
     const spend=num(R[iSpend]);
     if(!key){ if(keyCols.some(c=>S(R[c])) && spend) { miss++; keyCols.forEach(c=>{ if(S(R[c])) missKeys.add(S(R[c])); }); } continue; }
+    /* СТРОКА С НУЛЕВЫМ РАСХОДОМ — ЭТО «КАМПАНИИ НЕ БЫЛО», А НЕ «РЕКЛАМА СТОИЛА 0».
+       В выгрузку попадают все карточки рекламного кабинета, в том числе те, по которым
+       ставка не крутилась. Записать им ноль — значит сказать, что площадка не взяла
+       за продвижение ничего, хотя средняя ставка из юнит-экономики (её платят все)
+       никуда не делась. Такие товары остаются на СТАВКЕ. */
+    if(spend<=0){ zero.push(key); continue; }
     bySup[key]=(bySup[key]||0)+spend;
   }
+  if(zero.length) console.log('  строк с нулевым расходом (кампания не крутилась, остаются на ставке): '
+    +zero.length+'  ('+zero.join(', ')+')');
   if(!Object.keys(bySup).length){
     console.error('в файле не нашлось ни одного нашего товара Озона. Шапка: '+H.filter(Boolean).join(' | ')); process.exit(1); }
   if(miss) console.log('  строк с расходом, но чужим/неизвестным артикулом: '+miss
