@@ -1318,7 +1318,7 @@
     </div>
     <div class="card" id="adDrrTree" hidden style="margin-bottom:14px">
       <h3>ДРР по уровням — в выкупе</h3>
-      <div class="cap">Весь ассортимент → категория → склейка → товар. Цель ≤7%, хорошо 6%, ниже 6% — идеально. Клик по строке проваливается на уровень ниже.</div>
+      <div class="cap" id="adDrrCap">Весь ассортимент → категория → склейка → товар. Цель ≤7%, хорошо 6%, ниже 6% — идеально. Клик по строке проваливается на уровень ниже.</div>
       <div id="adDrrLevels"></div>
     </div>
     <div class="howto" id="adHowTo"></div>
@@ -6458,6 +6458,15 @@ const adDrrCls = v => v===Infinity? "crit" : (v<=AD_DRR_GREAT? "good" : (v<=AD_D
 const adDrrTxt = v => v===Infinity? "нет продаж" : v.toFixed(1)+"%";
 function adDrrBadge(v){ const c=adDrrCls(v);
   return `<span class="badge ${c==="good"?"good":(c==="warning"?"warning":"critical")}"><span class="d"></span>${adDrrTxt(v)}</span>`; }
+/* У ОЗОНА СВОЯ ЦЕЛЬ ПО ДРР — 10%, А НЕ 7% КАК НА ВБ (правило продавца 18.09.2026:
+   «на озоне у нас с тобой другая цель, там необходимо держать ДРР 10%»). Причина
+   структурная: тариф Озона забирает 32,7% против ~38% удержаний ВБ, а комиссия
+   и логистика считаются иначе — поэтому и порог рекламы другой. Не подставляй сюда
+   `AD_DRR_GOAL`: на ВБ цель остаётся 7%, вкладки судят по разным линейкам. */
+const OZ_DRR_GOAL=10, OZ_DRR_GREAT=8;
+const ozDrrCls = v => v===Infinity? "crit" : (v<=OZ_DRR_GREAT? "good" : (v<=OZ_DRR_GOAL? "warning" : "crit"));
+function ozDrrBadge(v){ const c=ozDrrCls(v);
+  return `<span class="badge ${c==="good"?"good":(c==="warning"?"warning":"critical")}"><span class="d"></span>${adDrrTxt(v)}</span>`; }
 // московский FBS-остаток по коду 1С: оба московских склада, Нск-1 сюда НЕ входит
 function adMskBySup(){
   const wh=(RD&&RD.warehouse&&RD.warehouse.bySup)||{}, out={};
@@ -6893,6 +6902,7 @@ function renderAdDrrLevels(){
   if(!card||!el) return;
   if(adView!=="perf" || !(RD&&RD.adPerf)){ card.hidden=true; return; }
   card.hidden=false;
+  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Весь ассортимент → категория → склейка → товар. Цель ≤"+AD_DRR_GOAL+"%, хорошо "+AD_DRR_GREAT+"%, ниже — идеально. Клик по строке проваливается на уровень ниже."; }
   const L=adLevels(), P=RD.adPerf;
   const maxSp=Math.max(L.all.sp,1);
   /* Расход меньше порога — ДРР не показываем: «0.0%» при расходе 5 ₽ читается как
@@ -7060,9 +7070,9 @@ function renderAdsOzon(){
        +tr2("% выкупа",(ozBuyoutFor(W.to)*100).toFixed(1)+"%")
        +tr2("Дни","те же, что у расхода")},
     {lbl:"ДРР кабинета Ozon", val:L.all.sp>0? adDrrTxt(L.all.drr):"нет рекламы",
-     valColor:L.all.sp>0? (L.all.drr<=AD_DRR_GOAL?"var(--ok-txt)":"var(--bad-txt)"):"var(--text-1)",
+     valColor:L.all.sp>0? (L.all.drr<=OZ_DRR_GOAL?"var(--ok-txt)":"var(--bad-txt)"):"var(--text-1)",
      tip:`<div class="t-hd">ДРР по всему кабинету</div>`+tr2("В выкупе",adDrrTxt(L.all.drr))
-       +tr2("В заказах",drrOrd.toFixed(1)+"%")+tr2("Цель","≤"+AD_DRR_GOAL+"%")},
+       +tr2("В заказах",drrOrd.toFixed(1)+"%")+tr2("Цель","≤"+OZ_DRR_GOAL+"%")},
     {lbl:"Склеек с кампанией XWAY", val:String(L.tags.filter(t=>t.spF>0).length)+" из "+L.tags.length,
      tip:`<div class="t-hd">Склейки</div>`+tr2("Всего склеек",L.tags.length)
        +tr2("С отдельной кампанией",L.tags.filter(t=>t.spF>0).length)
@@ -7072,10 +7082,11 @@ function renderAdsOzon(){
   wireKpiTips("adKpis");
   // ---- пирамида
   tree.hidden=false;
+  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Кабинет Ozon → категория → склейка → товар. Цель ≤"+OZ_DRR_GOAL+"% (на Ozon она выше, чем на ВБ), хорошо "+OZ_DRR_GREAT+"%. Клик по склейке фильтрует таблицу."; }
   const maxSp=Math.max(L.all.sp,1);
   const badge=(v,sp)=> sp<AD_MIN_SPEND
     ? `<span class="badge nodata"><span class="d"></span>${sp>0? "мелкий расход":"нет рекламы"}</span>`
-    : adDrrBadge(v);
+    : ozDrrBadge(v);
   const bar=sp=>`<div class="lv-bar"><i style="width:${Math.max(2,Math.round(sp/maxSp*100))}%;background:${
     sp/maxSp>0.5?"var(--accent)":"var(--border-2)"}"></i></div>`;
   const line=(o,cls,sub,click)=>`<div class="lv ${cls}"${click?` data-k="${esc(click.k)}" data-v="${esc(click.v)}"`:""}>`
@@ -7119,8 +7130,8 @@ function renderAdsOzon(){
     +`<th>Расход, ₽</th><th>ДРР товара</th><th>ДРР склейки</th><th>Остаток Ozon</th><th>Хватит, дн</th></tr></thead><tbody>`
     +(list.length? list.map(r=>{
       const T=tagAgg[r.tag]||{sp:0,drr:0};
-      const own = r.spend>0? adDrrBadge(r.drr) : `<span class="mut">—</span>`;
-      const tg  = T.sp>=AD_MIN_SPEND? adDrrBadge(T.drr) : `<span class="mut">—</span>`;
+      const own = r.spend>0? ozDrrBadge(r.drr) : `<span class="mut">—</span>`;
+      const tg  = T.sp>=AD_MIN_SPEND? ozDrrBadge(T.drr) : `<span class="mut">—</span>`;
       // видно, где ФАКТ выгрузки, а где модельная ставка — иначе цифры читаются одинаково
       const spCell = r.spend>0
         ? fmt(Math.round(r.spend))+`<div class="sub">${r.isFact? "факт XWAY":"ставка"}</div>`
