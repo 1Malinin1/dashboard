@@ -1763,7 +1763,7 @@ let WBDATA = null, OZDATA = null, activeMp = "wb", _appliedMp = null;
    появился тариф ИУ и стало из чего считать прибыль. «Финансы» и «Аналитика» намеренно НЕ
    здесь: «Финансы» — сверка с кабинетом ВБ (у Озона такого источника нет, там оценка по
    тарифу), «Аналитика» построена на строках отчёта о реализации. */
-const MP_TABS = { dynamics: true, turnover: true, product: true, home: true };
+const MP_TABS = { dynamics: true, turnover: true, product: true, home: true, ads: true };
 const catalogCostBySku = {}; // заполняется в hydrateData из RCAT
 // ручные/загруженные правки себестоимости (перекрывают каталог), хранятся в браузере
 const COST_OV_KEY="wb_cost_overrides_v1";
@@ -6640,6 +6640,22 @@ const adFmtD = v => v===Infinity? "∞" : Math.round(v);
 function renderAdsTab(){
   const el=document.getElementById("adTable"); if(!el) return;
   _adDrrCache=null;                    // ДРР уровней пересобираем на каждый рендер
+  /* ОЗОН — СВОЙ РЕНДЕР, а не ветки внутри ВБ-шного (тот же приём, что у «Главной»):
+     на ВБ вкладка про ОТБОР кандидатов (Парето, запас в Москве, потолок CPO), на Озоне
+     пока про ЦЕПОЧКУ ДРР по факту выгрузки. Смешать их в одной функции — сломать ВБ,
+     чьи цифры продавец сверяет с кабинетом XWAY. */
+  const mp=_appliedMp||"wb";           // площадку ставит switchTab/applyMpData
+  if(mp==="ozon"){ renderAdsOzon(); return; }
+  ["adGroupSel","adViewSeg","adDateRange","adExportBtn"].forEach(id=>{
+    const e=document.getElementById(id); if(e) e.style.display=""; });   // вернуть ВБ-шные органы управления
+  if(mp==="all"){
+    document.getElementById("adDrrTree").hidden=true;
+    document.getElementById("adKpis").innerHTML="";
+    document.getElementById("adHowTo").innerHTML="";
+    document.getElementById("adFreshness").innerHTML='<span class="dot" style="background:var(--warn-txt)"></span>'
+      +'Реклама считается по площадке — у ВБ и Ozon разные кабинеты, ставки и артикулы. Выберите ВБ или Ozon.';
+    el.innerHTML=""; return;
+  }
   initAdDateBounds();
   { const c=document.getElementById("adDrrTree"); if(c) c.hidden = adView!=="perf"; }
   /* Группы сортируем по числу карточек: первой должна открываться самая крупная
@@ -6917,6 +6933,173 @@ function renderAdDrrLevels(){
       +`<div class="lv-n">${badge(X.drr,X.sp)}</div>`+bar(X.sp)+`</div>`;
   html+=`</div>`;
   el.innerHTML=html;
+}
+/* ===========================================================================
+   OZON НА ВКЛАДКЕ «РЕКЛАМА» — ЦЕПОЧКА ДРР «КАБИНЕТ → КАТЕГОРИЯ → СКЛЕЙКА → ТОВАР»
+   (просьба продавца 18.09.2026: «нужно иметь полную цепочку … может быть были куплены
+   другие товары со склеек помимо рекламных, и тогда ситуация будет другая»).
+
+   ОН ПРАВ, И ЦИФРА ЭТО ПОКАЗАЛА: 17.09 личный ДРР восьми рекламируемых товаров — 28,0%,
+   а по их склейкам — 1,7–11,5% при цели ≤7%. Судить по личному ДРР значит выключать
+   «лошадку», которая тянет заказы соседям по склейке.
+
+   СКЛЕЙКИ БЕРУТСЯ ВБ-ШНЫЕ, ПО КОДУ 1С (он же артикул Озона) — продавец подтвердил
+   в тот же день: «склейки на озоне у нас точно такие же как и на вб», «шестизначный код
+   есть и там и там». Отдельного источника склеек для Озона не нужно; покрытие — 113
+   товаров Озона из 137, остальные идут «(без склейки)» и честно видны отдельной строкой.
+
+   ЗНАМЕНАТЕЛЬ — ВЫРУЧКА В ВЫКУПЕ ВСЕХ КАРТОЧЕК УРОВНЯ, включая те, где рекламы нет
+   (то же правило, что на ВБ). Период — дни, за которые есть выгрузка расхода XWAY:
+   расход и выручка обязаны считаться по ОДНИМ И ТЕМ ЖЕ дням, иначе ДРР бессмыслен.
+   =========================================================================== */
+let _ozAdMapCache=null, _ozAdTagFilter=null;
+function ozAdMap(){                       // код 1С → {group, tag} из каталога ВБ
+  if(_ozAdMapCache) return _ozAdMapCache;
+  const m={};
+  ((RD&&RD.catalog)||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(!s) return;
+    const e=m[s]||(m[s]={});
+    if(c.adGroup && !e.group) e.group=c.adGroup;
+    if(c.adTag   && !e.tag)   e.tag=c.adTag; });
+  return (_ozAdMapCache=m);
+}
+function ozAdWindow(){                    // период = дни выгрузок расхода
+  const P=ozAdSpendParts(); if(!P.length) return null;
+  return {from:P[0].from, to:P[P.length-1].to};
+}
+function ozAdRows(){
+  const W=ozAdWindow(), O=RD&&RD.ozon;
+  if(!W || !O || !O.orderSeries) return [];
+  const S=O.orderSeries, dates=S.dates||[], money=S.money||{}, byArt=S.byArt||{};
+  const M=ozAdMap(), spend={};
+  ozAdSpendParts().forEach(p=>Object.entries(p.bySup||{}).forEach(([s,v])=>spend[s]=(spend[s]||0)+v));
+  const days=dates.filter(d=>d>=W.from && d<=W.to);
+  const ord={}, rev={}, qty={};
+  days.forEach(d=>{ const b=ozBuyoutFor(d), i=dates.indexOf(d);
+    Object.entries(money[d]||{}).forEach(([s,v])=>{ ord[s]=(ord[s]||0)+(v[0]||0); rev[s]=(rev[s]||0)+(v[0]||0)*b; });
+    Object.entries(byArt).forEach(([s,a])=>{ if(a[i]) qty[s]=(qty[s]||0)+a[i]*b; }); });
+  const seen=new Set(), rows=[];
+  const push=(sup,c)=>{ if(seen.has(sup)) return; seen.add(sup);
+    const e=M[sup]||{};
+    rows.push({sup, ozonSku:(c&&c.ozonSku)||null, name:(c&&c.name)||sup, cat:(c&&c.category)||"",
+      group:e.group||"(без группы)", tag:e.tag||"(без склейки)",
+      spend:spend[sup]||0, ordRub:ord[sup]||0, rev:rev[sup]||0, qty:qty[sup]||0,
+      stock:(c&&c.ozStock)||0, days:days.length}); };
+  (O.catalog||[]).forEach(c=>push(""+c.sku,c));
+  Object.keys(spend).forEach(s=>push(s,null));      // расход есть, карточки в снимке нет — не теряем
+  rows.forEach(r=>{ r.drr = r.rev>0? r.spend/r.rev*100 : (r.spend>0? Infinity : 0);
+    r.spd = r.days? r.qty/r.days : 0;
+    r.coverDays = r.spd>0? r.stock/r.spd : (r.stock>0? Infinity : 0); });
+  return rows;
+}
+function ozAdLevels(rows){
+  const mk=list=>{ const sp=list.reduce((a,r)=>a+r.spend,0);
+    const ord=list.reduce((a,r)=>a+r.ordRub,0), rev=list.reduce((a,r)=>a+r.rev,0);
+    return {sp, ord, rev, boEff: ord>0? rev/ord : 0,
+      drr: rev>0? sp/rev*100 : (sp>0? Infinity : 0),
+      n:list.length, ads:list.filter(r=>r.spend>0).length}; };
+  const byG={}; rows.forEach(r=>(byG[r.group]||(byG[r.group]=[])).push(r));
+  // порядок — ПО ВЫРУЧКЕ (правило с ВБ: смотрим туда, где больше зарабатываем)
+  const groups=Object.entries(byG).map(([g,l])=>({key:g, ...mk(l)})).sort((a,b)=>b.ord-a.ord);
+  const byT={}; rows.forEach(r=>(byT[r.tag]||(byT[r.tag]=[])).push(r));
+  const tags=Object.entries(byT).map(([t,l])=>({key:t, ...mk(l)}))
+    .sort((a,b)=>(b.sp-a.sp)||(b.ord-a.ord));     // склейки — от самой дорогой по расходу
+  return {all:mk(rows), groups, tags};
+}
+function renderAdsOzon(){
+  const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  const el=document.getElementById("adTable"), fresh=document.getElementById("adFreshness");
+  const tree=document.getElementById("adDrrTree"), lv=document.getElementById("adDrrLevels");
+  const kp=document.getElementById("adKpis"), howto=document.getElementById("adHowTo");
+  // элементы, заточенные под ВБ-шный отбор кандидатов, на Озоне не нужны
+  ["adGroupSel","adViewSeg","adDateRange","adExportBtn","adSearch"].forEach(id=>{
+    const e=document.getElementById(id); if(e) e.style.display = (id==="adSearch")? "" : "none"; });
+  const W=ozAdWindow();
+  if(!W){
+    tree.hidden=true; kp.innerHTML=""; howto.innerHTML="";
+    fresh.innerHTML='<span class="dot" style="background:var(--warn-txt)"></span>'
+      +'Ozon · выгрузок расхода на рекламу пока нет. Пришлите выгрузку XWAY по Озону — '
+      +'<code>scripts/ozon-ads-spend.cjs</code> положит её в снимок, и цепочка ДРР появится здесь.';
+    el.innerHTML=""; return;
+  }
+  const rows=ozAdRows(), L=ozAdLevels(rows);
+  const q=(document.getElementById("adSearch").value||"").trim().toLowerCase();
+  fresh.innerHTML=`<span class="dot"></span>Ozon · реклама по факту XWAY за `
+    +`${fmtDateLong(W.from)}${W.from!==W.to? " – "+fmtDateLong(W.to):""}`
+    +` · расход и выручка считаются по одним и тем же дням`
+    +` · склейки взяты с Wildberries по коду 1С (товар физически один)`;
+  const drrOrd = L.all.ord>0? L.all.sp/L.all.ord*100 : 0;
+  kp.innerHTML=[
+    {lbl:"Расход на рекламу, ₽", val:fmt(Math.round(L.all.sp)),
+     tip:`<div class="t-hd">Факт из выгрузки XWAY</div>`+tr2("Товаров с кампанией",L.all.ads)
+       +tr2("Карточек в кабинете",L.all.n)
+       +tr2("Период",fmtDateLong(W.from)+(W.from!==W.to? " – "+fmtDateLong(W.to):""))},
+    {lbl:"Выручка в выкупе, ₽", val:fmt(Math.round(L.all.rev)),
+     tip:`<div class="t-hd">База ДРР</div>`+tr2("Заказано, ₽",fmt(Math.round(L.all.ord)))
+       +tr2("% выкупа",(ozBuyoutFor(W.to)*100).toFixed(1)+"%")
+       +tr2("Дни","те же, что у расхода")},
+    {lbl:"ДРР кабинета Ozon", val:L.all.sp>0? adDrrTxt(L.all.drr):"нет рекламы",
+     valColor:L.all.sp>0? (L.all.drr<=AD_DRR_GOAL?"var(--ok-txt)":"var(--bad-txt)"):"var(--text-1)",
+     tip:`<div class="t-hd">ДРР по всему кабинету</div>`+tr2("В выкупе",adDrrTxt(L.all.drr))
+       +tr2("В заказах",drrOrd.toFixed(1)+"%")+tr2("Цель","≤"+AD_DRR_GOAL+"%")},
+    {lbl:"Склеек с рекламой", val:String(L.tags.filter(t=>t.sp>0).length)+" из "+L.tags.length,
+     tip:`<div class="t-hd">Склейки</div>`+tr2("Всего склеек",L.tags.length)
+       +tr2("С запущенной рекламой",L.tags.filter(t=>t.sp>0).length)
+       +tr2("Источник склеек","Wildberries, по коду 1С")}
+  ].map(kpiCard).join("");
+  wireKpiTips("adKpis");
+  // ---- пирамида
+  tree.hidden=false;
+  const maxSp=Math.max(L.all.sp,1);
+  const badge=(v,sp)=> sp<AD_MIN_SPEND
+    ? `<span class="badge nodata"><span class="d"></span>${sp>0? "мелкий расход":"нет рекламы"}</span>`
+    : adDrrBadge(v);
+  const bar=sp=>`<div class="lv-bar"><i style="width:${Math.max(2,Math.round(sp/maxSp*100))}%;background:${
+    sp/maxSp>0.5?"var(--accent)":"var(--border-2)"}"></i></div>`;
+  const line=(o,cls,sub,click)=>`<div class="lv ${cls}"${click?` data-k="${esc(click.k)}" data-v="${esc(click.v)}"`:""}>`
+    +`<div class="lv-nm">${esc(o.key)}${sub?`<small>${esc(sub)}</small>`:""}</div>`
+    +`<div class="lv-n">${fmt(Math.round(o.sp))} ₽</div>`
+    +`<div class="lv-n">${fmt(Math.round(o.rev))} ₽</div>`
+    +`<div class="lv-n">${badge(o.drr,o.sp)}</div>`+bar(o.sp)+`</div>`;
+  const head=`<div class="lv" style="padding-bottom:0"><div class="lv-nm" style="color:var(--muted);font-size:11px">Уровень</div>`
+    +`<div class="lv-n" style="font-size:11px">расход</div><div class="lv-n" style="font-size:11px">выручка в выкупе</div>`
+    +`<div class="lv-n" style="font-size:11px">ДРР</div><div></div></div>`;
+  lv.innerHTML=`<div class="drrlv">`+head
+    +`<div class="lv total"><div class="lv-nm">Весь кабинет Ozon<small>${L.all.ads} ${plural(L.all.ads,"кампания","кампании","кампаний")} на ${L.all.n} карточках · ${fmtDateLong(W.from)}${W.from!==W.to? " – "+fmtDateLong(W.to):""}</small></div>`
+      +`<div class="lv-n">${fmt(Math.round(L.all.sp))} ₽</div><div class="lv-n">${fmt(Math.round(L.all.rev))} ₽</div>`
+      +`<div class="lv-n">${badge(L.all.drr,L.all.sp)}</div>`+bar(L.all.sp)+`</div>`
+    +`<div class="lv-h">Категории — по выручке</div>`
+    +L.groups.filter(g=>g.ord>0||g.sp>0).map(g=>line(g,"",g.ads+" с рекламой · "+g.n+" карточек")).join("")
+    +`<div class="lv-h">Склейки — по расходу · клик фильтрует таблицу</div>`
+    +L.tags.filter(t=>t.sp>0||t.ord>0).map(t=>line(t,"clickable"+(_ozAdTagFilter===t.key?" sel":""),
+        t.ads+" с рекламой · "+t.n+" карточек",{k:"oztag",v:t.key})).join("")
+    +`</div>`;
+  // ---- таблица товаров
+  let list=rows.filter(r=>r.spend>0 || r.ordRub>0);
+  if(_ozAdTagFilter) list=list.filter(r=>r.tag===_ozAdTagFilter);
+  if(q) list=list.filter(r=>matchQ(r.sup,r.name,q) || (""+(r.ozonSku||"")).includes(q));
+  const tagAgg={}; L.tags.forEach(t=>tagAgg[t.key]=t);
+  list.sort((a,b)=>(b.spend-a.spend)||(b.rev-a.rev));
+  const cnt=document.getElementById("adCount");
+  if(cnt) cnt.textContent=list.length+" "+plural(list.length,"товар","товара","товаров")
+    +(_ozAdTagFilter? " · склейка «"+_ozAdTagFilter+"»":"");
+  howto.innerHTML=`<b>Как считается — Ozon.</b> ДРР = расход ÷ выручка в выкупе. Выручка = заказано ₽ × % выкупа `
+    +`(${(ozBuyoutFor(W.to)*100).toFixed(1).replace(".",",")}%, замер по воронке). В знаменателе уровня — выручка ВСЕХ `
+    +`карточек склейки, включая те, где рекламы нет: реклама одного товара тянет заказы соседям по склейке, `
+    +`и судить по личному ДРР значит выключать «лошадку». Склейки — те же, что на Wildberries, связка по коду 1С. `
+    +`Период — дни присланных выгрузок XWAY; расход и выручка берутся по одним и тем же дням.`;
+  el.innerHTML=`<thead><tr>`
+    +`<th class="metric">Товар</th><th>Склейка</th><th>Заказано, ₽</th><th>Выручка в выкупе, ₽</th>`
+    +`<th>Расход, ₽</th><th>ДРР товара</th><th>ДРР склейки</th><th>Остаток Ozon</th><th>Хватит, дн</th></tr></thead><tbody>`
+    +(list.length? list.map(r=>{
+      const T=tagAgg[r.tag]||{sp:0,drr:0};
+      const own = r.spend>0? adDrrBadge(r.drr) : `<span class="mut">—</span>`;
+      const tg  = T.sp>=AD_MIN_SPEND? adDrrBadge(T.drr) : `<span class="mut">—</span>`;
+      return `<tr><td class="metric">${skuLink(r.sup)}<div class="sub">${esc(r.name.slice(0,44))}</div></td>`
+        +`<td>${esc(r.tag)}</td><td>${fmt(Math.round(r.ordRub))}</td><td>${fmt(Math.round(r.rev))}</td>`
+        +`<td>${r.spend>0? fmt(Math.round(r.spend)):"—"}</td><td>${own}</td><td>${tg}</td>`
+        +`<td>${fmt(r.stock)}</td><td>${r.coverDays===Infinity? "∞" : (r.spd>0? Math.round(r.coverDays):"—")}</td></tr>`;
+    }).join("") : `<tr><td colspan="9" class="mut">Нет данных за период выгрузки.</td></tr>`)
+    +`</tbody>`;
 }
 /* Сортировка в «Отдаче» — ВНУТРИ склейки: сами склейки всегда идут по расходу сверху вниз
    (разбор ведётся от самой дорогой), а клик по шапке переставляет товары внутри неё.
@@ -9743,6 +9926,10 @@ document.getElementById("recList").addEventListener("click",e=>{
 });
 document.getElementById("adDrrLevels").addEventListener("click",e=>{
   const r=e.target.closest(".lv.clickable"); if(!r) return;
+  if(r.dataset.k==="oztag"){                                  // Озон: клик по склейке фильтрует таблицу
+    _ozAdTagFilter = (_ozAdTagFilter===r.dataset.v)? null : r.dataset.v;
+    renderAdsTab(); return;
+  }
   if(r.dataset.k==="group"){
     adGroup = (adGroup===r.dataset.v)? null : r.dataset.v;   // повторный клик — снять выбор
     const sel=document.getElementById("adGroupSel"); if(sel){ sel.value=adGroup||"";
@@ -9898,6 +10085,7 @@ function hydrateData(){
   _wbFbsCache=null;              // раскладка своих складов под покрытие ВБ
   _recOutCache=null; _outSkuCache=null;   // списки товаров «На вывод» — производные каталога
   _ozCostCache=null; _ozFinCache=null;    // финансы Озона считаются из каталога и тарифа
+  _ozAdMapCache=null;                     // склейки Озона тянутся из каталога ВБ по коду 1С
   _wbCostBySku=null;                      // фолбэк себестоимости ВБ по артикулу
   OZ_FUNNEL = (RD && RD.ozon && RD.ozon.funnel) ? RD.ozon.funnel : [];
   applyOzRevBase();              // база выручки Озона с 31.08 — ДО сборки датасетов
