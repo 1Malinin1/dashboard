@@ -6458,13 +6458,16 @@ const adDrrCls = v => v===Infinity? "crit" : (v<=AD_DRR_GREAT? "good" : (v<=AD_D
 const adDrrTxt = v => v===Infinity? "нет продаж" : v.toFixed(1)+"%";
 function adDrrBadge(v){ const c=adDrrCls(v);
   return `<span class="badge ${c==="good"?"good":(c==="warning"?"warning":"critical")}"><span class="d"></span>${adDrrTxt(v)}</span>`; }
-/* У ОЗОНА СВОЯ ЦЕЛЬ ПО ДРР — 10%, А НЕ 7% КАК НА ВБ (правило продавца 18.09.2026:
-   «на озоне у нас с тобой другая цель, там необходимо держать ДРР 10%»). Причина
-   структурная: тариф Озона забирает 32,7% против ~38% удержаний ВБ, а комиссия
-   и логистика считаются иначе — поэтому и порог рекламы другой. Не подставляй сюда
-   `AD_DRR_GOAL`: на ВБ цель остаётся 7%, вкладки судят по разным линейкам. */
-const OZ_DRR_GOAL=10, OZ_DRR_GREAT=8;
-const ozDrrCls = v => v===Infinity? "crit" : (v<=OZ_DRR_GREAT? "good" : (v<=OZ_DRR_GOAL? "warning" : "crit"));
+/* НА ОЗОНЕ 10% — ЭТО МИНИМУМ, КОТОРЫЙ НАДО ДЕРЖАТЬ, А НЕ ПОТОЛОК (правило продавца
+   18.09.2026, дословно: «на озоне у меня иу и там задача держать минимум 10% дрр
+   для поддержания соинвеста»). Смысл ОБРАТНЫЙ ВБ-шному: там 7% — потолок и чем ниже,
+   тем лучше; здесь провал НИЖЕ 10% — это риск потерять соинвест, то есть плохо.
+   Поэтому «хорошо ≤8%» тут НЕ работает и второго порога нет вовсе — я его выдумал,
+   продавец снял (18.09.2026). Не заводи его обратно и не подставляй `AD_DRR_GOAL`:
+   на ВБ цель остаётся 7% как потолок, площадки судят по разным линейкам и в разные
+   стороны. Верхней границы продавец не задавал — пока её нет. */
+const OZ_DRR_GOAL=10;
+const ozDrrCls = v => v===Infinity? "crit" : (v>=OZ_DRR_GOAL? "good" : "warning");
 function ozDrrBadge(v){ const c=ozDrrCls(v);
   return `<span class="badge ${c==="good"?"good":(c==="warning"?"warning":"critical")}"><span class="d"></span>${adDrrTxt(v)}</span>`; }
 // московский FBS-остаток по коду 1С: оба московских склада, Нск-1 сюда НЕ входит
@@ -7070,9 +7073,10 @@ function renderAdsOzon(){
        +tr2("% выкупа",(ozBuyoutFor(W.to)*100).toFixed(1)+"%")
        +tr2("Дни","те же, что у расхода")},
     {lbl:"ДРР кабинета Ozon", val:L.all.sp>0? adDrrTxt(L.all.drr):"нет рекламы",
-     valColor:L.all.sp>0? (L.all.drr<=OZ_DRR_GOAL?"var(--ok-txt)":"var(--bad-txt)"):"var(--text-1)",
+     valColor:L.all.sp>0? (L.all.drr>=OZ_DRR_GOAL?"var(--ok-txt)":"var(--bad-txt)"):"var(--text-1)",
      tip:`<div class="t-hd">ДРР по всему кабинету</div>`+tr2("В выкупе",adDrrTxt(L.all.drr))
-       +tr2("В заказах",drrOrd.toFixed(1)+"%")+tr2("Цель","≤"+OZ_DRR_GOAL+"%")},
+       +tr2("В заказах",drrOrd.toFixed(1)+"%")+tr2("Цель","не ниже "+OZ_DRR_GOAL+"%")
+       +tr2("Зачем","минимум для поддержания соинвеста по ИУ")},
     {lbl:"Склеек с кампанией XWAY", val:String(L.tags.filter(t=>t.spF>0).length)+" из "+L.tags.length,
      tip:`<div class="t-hd">Склейки</div>`+tr2("Всего склеек",L.tags.length)
        +tr2("С отдельной кампанией",L.tags.filter(t=>t.spF>0).length)
@@ -7082,7 +7086,7 @@ function renderAdsOzon(){
   wireKpiTips("adKpis");
   // ---- пирамида
   tree.hidden=false;
-  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Кабинет Ozon → категория → склейка → товар. Цель ≤"+OZ_DRR_GOAL+"% (на Ozon она выше, чем на ВБ), хорошо "+OZ_DRR_GREAT+"%. Клик по склейке фильтрует таблицу."; }
+  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Кабинет Ozon → категория → склейка → товар. Цель — держать ДРР не ниже "+OZ_DRR_GOAL+"%: это минимум для поддержания соинвеста по ИУ, поэтому ниже "+OZ_DRR_GOAL+"% — недобор, а не экономия (на ВБ правило обратное, там 7% — потолок). Клик по склейке фильтрует таблицу."; }
   const maxSp=Math.max(L.all.sp,1);
   const badge=(v,sp)=> sp<AD_MIN_SPEND
     ? `<span class="badge nodata"><span class="d"></span>${sp>0? "мелкий расход":"нет рекламы"}</span>`
