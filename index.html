@@ -6963,29 +6963,48 @@ function ozAdMap(){                       // код 1С → {group, tag} из к
   return (_ozAdMapCache=m);
 }
 function ozAdWindow(){                    // период = дни выгрузок расхода
-  const P=ozAdSpendParts(); if(!P.length) return null;
-  return {from:P[0].from, to:P[P.length-1].to};
+  const P=ozAdSpendParts();
+  if(P.length) return {from:P[0].from, to:P[P.length-1].to};
+  // выгрузок ещё нет — цепочку всё равно показываем: реклама у всех идёт по ставке
+  const d=((RD&&RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[]);
+  if(!d.length) return null;
+  return {from:d[Math.max(0,d.length-14)], to:d[d.length-1], rateOnly:true};
 }
+/* РЕКЛАМА ЕСТЬ У КАЖДОГО ТОВАРА, А НЕ ТОЛЬКО У ВОСЬМИ ИЗ ВЫГРУЗКИ (правка продавца
+   18.09.2026: «по умолчанию, помимо тех товаров, что я скинул, есть рекламный расход —
+   там работает другой канал продвижения; по всем остальным ты берёшь фиксированный расход
+   по юнитке за август»). Первая версия брала в цепочку ТОЛЬКО факт XWAY (20 040 ₽ за 17.09),
+   и ДРР кабинета выходил 2,2% вместо реальных 6,1% — модельные 4,23% по остальным товарам
+   просто выпадали.
+   ПОЭТОМУ СТРОКИ БЕРУТСЯ ИЗ `ozFinRows()` — того же источника, что «Главная»: там у каждой
+   строки `ad` уже посчитан правильно (факт XWAY у своих товаров, ставка из юнит-экономики
+   у остальных). Так реклама в цепочке ДРР и реклама в прибыли — ОДНО И ТО ЖЕ ЧИСЛО;
+   считать их двумя разными способами нельзя, разъедутся при первой же правке. */
 function ozAdRows(){
   const W=ozAdWindow(), O=RD&&RD.ozon;
   if(!W || !O || !O.orderSeries) return [];
-  const S=O.orderSeries, dates=S.dates||[], money=S.money||{}, byArt=S.byArt||{};
-  const M=ozAdMap(), spend={};
-  ozAdSpendParts().forEach(p=>Object.entries(p.bySup||{}).forEach(([s,v])=>spend[s]=(spend[s]||0)+v));
-  const days=dates.filter(d=>d>=W.from && d<=W.to);
-  const ord={}, rev={}, qty={};
-  days.forEach(d=>{ const b=ozBuyoutFor(d), i=dates.indexOf(d);
-    Object.entries(money[d]||{}).forEach(([s,v])=>{ ord[s]=(ord[s]||0)+(v[0]||0); rev[s]=(rev[s]||0)+(v[0]||0)*b; });
-    Object.entries(byArt).forEach(([s,a])=>{ if(a[i]) qty[s]=(qty[s]||0)+a[i]*b; }); });
-  const seen=new Set(), rows=[];
-  const push=(sup,c)=>{ if(seen.has(sup)) return; seen.add(sup);
-    const e=M[sup]||{};
+  const M=ozAdMap();
+  const fin=ozFinRows().filter(r=>r.date>=W.from && r.date<=W.to);
+  const nDays=new Set(fin.map(r=>r.date)).size || 1;
+  // факт XWAY держим отдельно — в таблице видно, где факт, а где модель
+  const fact={};
+  ozAdSpendParts().forEach(p=>{ if(p.to<W.from || p.from>W.to) return;
+    Object.entries(p.bySup||{}).forEach(([s,v])=>fact[s]=(fact[s]||0)+v); });
+  const by={};
+  fin.forEach(r=>{ const e=by[r.sku]||(by[r.sku]={ordRub:0,rev:0,qty:0,spend:0});
+    e.ordRub+=r.ordRub; e.rev+=r.revenue; e.qty+=r.qty; e.spend+=r.ad; });
+  const cat={}; (O.catalog||[]).forEach(c=>cat[""+c.sku]=c);
+  const keys=new Set([...Object.keys(by), ...Object.keys(fact), ...Object.keys(cat)]);
+  const rows=[];
+  keys.forEach(sup=>{
+    const a=by[sup]||{ordRub:0,rev:0,qty:0,spend:0}, c=cat[sup], e=M[sup]||{};
     rows.push({sup, ozonSku:(c&&c.ozonSku)||null, name:(c&&c.name)||sup, cat:(c&&c.category)||"",
       group:e.group||"(без группы)", tag:e.tag||"(без склейки)",
-      spend:spend[sup]||0, ordRub:ord[sup]||0, rev:rev[sup]||0, qty:qty[sup]||0,
-      stock:(c&&c.ozStock)||0, days:days.length}); };
-  (O.catalog||[]).forEach(c=>push(""+c.sku,c));
-  Object.keys(spend).forEach(s=>push(s,null));      // расход есть, карточки в снимке нет — не теряем
+      spend:a.spend, spendFact:fact[sup]||0, spendRate:Math.max(0,a.spend-(fact[sup]||0)),
+      isFact:(fact[sup]||0)>0,
+      ordRub:a.ordRub, rev:a.rev, qty:a.qty,
+      stock:(c&&c.ozStock)||0, days:nDays});
+  });
   rows.forEach(r=>{ r.drr = r.rev>0? r.spend/r.rev*100 : (r.spend>0? Infinity : 0);
     r.spd = r.days? r.qty/r.days : 0;
     r.coverDays = r.spd>0? r.stock/r.spd : (r.stock>0? Infinity : 0); });
@@ -6993,10 +7012,11 @@ function ozAdRows(){
 }
 function ozAdLevels(rows){
   const mk=list=>{ const sp=list.reduce((a,r)=>a+r.spend,0);
+    const spF=list.reduce((a,r)=>a+r.spendFact,0);
     const ord=list.reduce((a,r)=>a+r.ordRub,0), rev=list.reduce((a,r)=>a+r.rev,0);
-    return {sp, ord, rev, boEff: ord>0? rev/ord : 0,
+    return {sp, spF, spR:Math.max(0,sp-spF), ord, rev, boEff: ord>0? rev/ord : 0,
       drr: rev>0? sp/rev*100 : (sp>0? Infinity : 0),
-      n:list.length, ads:list.filter(r=>r.spend>0).length}; };
+      n:list.length, ads:list.filter(r=>r.spendFact>0).length}; };
   const byG={}; rows.forEach(r=>(byG[r.group]||(byG[r.group]=[])).push(r));
   // порядок — ПО ВЫРУЧКЕ (правило с ВБ: смотрим туда, где больше зарабатываем)
   const groups=Object.entries(byG).map(([g,l])=>({key:g, ...mk(l)})).sort((a,b)=>b.ord-a.ord);
@@ -7017,20 +7037,22 @@ function renderAdsOzon(){
   if(!W){
     tree.hidden=true; kp.innerHTML=""; howto.innerHTML="";
     fresh.innerHTML='<span class="dot" style="background:var(--warn-txt)"></span>'
-      +'Ozon · выгрузок расхода на рекламу пока нет. Пришлите выгрузку XWAY по Озону — '
-      +'<code>scripts/ozon-ads-spend.cjs</code> положит её в снимок, и цепочка ДРР появится здесь.';
+      +'Ozon · нет данных о заказах — цепочку ДРР считать не из чего.';
     el.innerHTML=""; return;
   }
   const rows=ozAdRows(), L=ozAdLevels(rows);
   const q=(document.getElementById("adSearch").value||"").trim().toLowerCase();
-  fresh.innerHTML=`<span class="dot"></span>Ozon · реклама по факту XWAY за `
-    +`${fmtDateLong(W.from)}${W.from!==W.to? " – "+fmtDateLong(W.to):""}`
-    +` · расход и выручка считаются по одним и тем же дням`
+  fresh.innerHTML=`<span class="dot"></span>Ozon · ${fmtDateLong(W.from)}${W.from!==W.to? " – "+fmtDateLong(W.to):""}`
+    +` · расход = <b>факт XWAY</b> по ${L.all.ads} ${plural(L.all.ads,"товару","товарам","товарам")}`
+    +` + <b>ставка ${ozAdRateFor(W.to).toFixed(2).replace(".",",")}%</b> из юнит-экономики по остальным`
+    +` (другой канал продвижения, он есть у всех)`
     +` · склейки взяты с Wildberries по коду 1С (товар физически один)`;
   const drrOrd = L.all.ord>0? L.all.sp/L.all.ord*100 : 0;
   kp.innerHTML=[
     {lbl:"Расход на рекламу, ₽", val:fmt(Math.round(L.all.sp)),
-     tip:`<div class="t-hd">Факт из выгрузки XWAY</div>`+tr2("Товаров с кампанией",L.all.ads)
+     tip:`<div class="t-hd">Два источника расхода</div>`
+       +tr2("Факт XWAY ("+L.all.ads+" тов.)",fmt(Math.round(L.all.spF))+" ₽")
+       +tr2("Ставка "+ozAdRateFor(W.to).toFixed(2).replace(".",",")+"% (остальные)",fmt(Math.round(L.all.spR))+" ₽")
        +tr2("Карточек в кабинете",L.all.n)
        +tr2("Период",fmtDateLong(W.from)+(W.from!==W.to? " – "+fmtDateLong(W.to):""))},
     {lbl:"Выручка в выкупе, ₽", val:fmt(Math.round(L.all.rev)),
@@ -7041,9 +7063,10 @@ function renderAdsOzon(){
      valColor:L.all.sp>0? (L.all.drr<=AD_DRR_GOAL?"var(--ok-txt)":"var(--bad-txt)"):"var(--text-1)",
      tip:`<div class="t-hd">ДРР по всему кабинету</div>`+tr2("В выкупе",adDrrTxt(L.all.drr))
        +tr2("В заказах",drrOrd.toFixed(1)+"%")+tr2("Цель","≤"+AD_DRR_GOAL+"%")},
-    {lbl:"Склеек с рекламой", val:String(L.tags.filter(t=>t.sp>0).length)+" из "+L.tags.length,
+    {lbl:"Склеек с кампанией XWAY", val:String(L.tags.filter(t=>t.spF>0).length)+" из "+L.tags.length,
      tip:`<div class="t-hd">Склейки</div>`+tr2("Всего склеек",L.tags.length)
-       +tr2("С запущенной рекламой",L.tags.filter(t=>t.sp>0).length)
+       +tr2("С отдельной кампанией",L.tags.filter(t=>t.spF>0).length)
+       +tr2("У остальных","реклама по ставке из юнитки")
        +tr2("Источник склеек","Wildberries, по коду 1С")}
   ].map(kpiCard).join("");
   wireKpiTips("adKpis");
@@ -7068,10 +7091,10 @@ function renderAdsOzon(){
       +`<div class="lv-n">${fmt(Math.round(L.all.sp))} ₽</div><div class="lv-n">${fmt(Math.round(L.all.rev))} ₽</div>`
       +`<div class="lv-n">${badge(L.all.drr,L.all.sp)}</div>`+bar(L.all.sp)+`</div>`
     +`<div class="lv-h">Категории — по выручке</div>`
-    +L.groups.filter(g=>g.ord>0||g.sp>0).map(g=>line(g,"",g.ads+" с рекламой · "+g.n+" карточек")).join("")
+    +L.groups.filter(g=>g.ord>0||g.sp>0).map(g=>line(g,"",(g.ads? g.ads+" с кампанией XWAY · ":"")+g.n+" карточек")).join("")
     +`<div class="lv-h">Склейки — по расходу · клик фильтрует таблицу</div>`
     +L.tags.filter(t=>t.sp>0||t.ord>0).map(t=>line(t,"clickable"+(_ozAdTagFilter===t.key?" sel":""),
-        t.ads+" с рекламой · "+t.n+" карточек",{k:"oztag",v:t.key})).join("")
+        (t.ads? t.ads+" с кампанией XWAY · ":"")+t.n+" карточек",{k:"oztag",v:t.key})).join("")
     +`</div>`;
   // ---- таблица товаров
   let list=rows.filter(r=>r.spend>0 || r.ordRub>0);
@@ -7082,11 +7105,15 @@ function renderAdsOzon(){
   const cnt=document.getElementById("adCount");
   if(cnt) cnt.textContent=list.length+" "+plural(list.length,"товар","товара","товаров")
     +(_ozAdTagFilter? " · склейка «"+_ozAdTagFilter+"»":"");
-  howto.innerHTML=`<b>Как считается — Ozon.</b> ДРР = расход ÷ выручка в выкупе. Выручка = заказано ₽ × % выкупа `
-    +`(${(ozBuyoutFor(W.to)*100).toFixed(1).replace(".",",")}%, замер по воронке). В знаменателе уровня — выручка ВСЕХ `
-    +`карточек склейки, включая те, где рекламы нет: реклама одного товара тянет заказы соседям по склейке, `
-    +`и судить по личному ДРР значит выключать «лошадку». Склейки — те же, что на Wildberries, связка по коду 1С. `
-    +`Период — дни присланных выгрузок XWAY; расход и выручка берутся по одним и тем же дням.`;
+  howto.innerHTML=`<b>Как считается — Ozon.</b> ДРР = расход ÷ выручка в выкупе. `
+    +`<b>Расход — из двух источников:</b> по товарам с отдельной кампанией берётся ФАКТ из выгрузки XWAY, `
+    +`по всем остальным — ставка <b>${ozAdRateFor(W.to).toFixed(2).replace(".",",")}%</b> из юнит-экономики за август `
+    +`(там работает другой канал продвижения, и он есть у каждого товара). Это то же самое число, что уходит `
+    +`в прибыль на «Главной» — два разных расчёта рекламы развели бы вкладки между собой. `
+    +`Выручка = заказано ₽ × % выкупа (${(ozBuyoutFor(W.to)*100).toFixed(1).replace(".",",")}%, замер по воронке). `
+    +`В знаменателе уровня — выручка ВСЕХ карточек склейки, включая те, где отдельной кампании нет: реклама одного `
+    +`товара тянет заказы соседям, и судить по личному ДРР значит выключать «лошадку». `
+    +`Склейки — те же, что на Wildberries, связка по коду 1С.`;
   el.innerHTML=`<thead><tr>`
     +`<th class="metric">Товар</th><th>Склейка</th><th>Заказано, ₽</th><th>Выручка в выкупе, ₽</th>`
     +`<th>Расход, ₽</th><th>ДРР товара</th><th>ДРР склейки</th><th>Остаток Ozon</th><th>Хватит, дн</th></tr></thead><tbody>`
@@ -7094,9 +7121,13 @@ function renderAdsOzon(){
       const T=tagAgg[r.tag]||{sp:0,drr:0};
       const own = r.spend>0? adDrrBadge(r.drr) : `<span class="mut">—</span>`;
       const tg  = T.sp>=AD_MIN_SPEND? adDrrBadge(T.drr) : `<span class="mut">—</span>`;
+      // видно, где ФАКТ выгрузки, а где модельная ставка — иначе цифры читаются одинаково
+      const spCell = r.spend>0
+        ? fmt(Math.round(r.spend))+`<div class="sub">${r.isFact? "факт XWAY":"ставка"}</div>`
+        : "—";
       return `<tr><td class="metric">${skuLink(r.sup)}<div class="sub">${esc(r.name.slice(0,44))}</div></td>`
         +`<td>${esc(r.tag)}</td><td>${fmt(Math.round(r.ordRub))}</td><td>${fmt(Math.round(r.rev))}</td>`
-        +`<td>${r.spend>0? fmt(Math.round(r.spend)):"—"}</td><td>${own}</td><td>${tg}</td>`
+        +`<td>${spCell}</td><td>${own}</td><td>${tg}</td>`
         +`<td>${fmt(r.stock)}</td><td>${r.coverDays===Infinity? "∞" : (r.spd>0? Math.round(r.coverDays):"—")}</td></tr>`;
     }).join("") : `<tr><td colspan="9" class="mut">Нет данных за период выгрузки.</td></tr>`)
     +`</tbody>`;
