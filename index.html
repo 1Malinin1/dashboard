@@ -2104,6 +2104,23 @@ function buyoutInfo(mp){
   const bw = mp!=="ozon" && RD && RD.meta && RD.meta.buyoutWin;
   if(bw && bw.all>0) return (_buyoutWin[mp]={from:bw.from,to:bw.to,all:bw.all,
     pctBySku:bw.bySku||{}, dead:[], mature:true, measured:true, openPct:bw.openPct});
+  /* ОЗОН — ТО ЖЕ САМОЕ ПРАВИЛО, ЧТО У ВБ (решение продавца 21.09.2026: «процент выкупа давай
+     по озону брать так же как и на вб по точно такой же логике»).
+     Раньше Озон падал сразу в `buyoutFromFunnel` — окно по ПОДЁННОЙ воронке, а она ЗАМОРОЖЕНА
+     на момент выгрузки: доставка дозревает задним числом, и день, выгруженный сразу, навсегда
+     остаётся с заниженным выкупом. Отсюда и разъезд: финансы Озона шли по замеру 79,9%,
+     а оборачиваемость и подсорт — по воронке 75,3%, при ОДНОМ И ТОМ ЖЕ окне 31.08–13.09
+     и одной формуле. Замер из отчёта аналитики за период этим не страдает — он и берётся,
+     ровно как `meta.buyoutWin` у ВБ.
+     Берём ПОСЛЕДНИЙ замер: оборачиваемость и подсорт смотрят вперёд, им нужен действующий
+     процент, а не исторический (в финансах по-прежнему `ozBuyoutFor(дата)` — там правило
+     «с даты замера и вперёд», и прошлое не переписывается).
+     Воронка остаётся фолбэком: если замеров нет вовсе — работает как работала. */
+  if(mp==="ozon"){
+    const H=ozBuyoutHist(), last=(H&&H.length)? H[H.length-1] : null;
+    if(last && last.all>0) return (_buyoutWin[mp]={from:last.from,to:last.to,all:last.all,
+      pctBySku:last.bySku||{}, dead:[], mature:true, measured:true});
+  }
   const f = mp==="ozon" ? (typeof OZ_FUNNEL!=="undefined"? OZ_FUNNEL:[]) : (FUNNEL_CACHE||[]);
   return (_buyoutWin[mp]=buyoutFromFunnel(f));
 }
