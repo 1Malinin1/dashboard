@@ -40,6 +40,12 @@ const norm=v=>S(v).toLowerCase().replace(/[ёе]/g,'е');
 const code=v=>S(v).replace(/[\s,]/g,'');
 const normStatus=s=>{ s=S(s); return s? s[0].toUpperCase()+s.slice(1).toLowerCase() : ''; };
 const num=v=>{ const n=parseFloat(S(v).replace(/\s/g,'').replace(',','.')); return isNaN(n)?null:n; };
+// НОЛЬ В ЦЕНЕ/КРАТНОСТИ — ЭТО «НЕ ЗАПОЛНЕНО», А НЕ РЕАЛЬНОЕ ЗНАЧЕНИЕ. Продавец заполняет
+// файл частями и в незаполненных клетках оставляет 0. Себестоимость 0 означала бы «товар
+// достался бесплатно»: себестоимость проданного = 0, и карточка выглядела бы бесконечно
+// прибыльной на «Главной» — молчаливая ошибка, которую никто не заметит. Кратность 0
+// точно так же сломала бы округление дозаказа до контейнера.
+const numPos=v=>{ const n=num(v); return (n==null||n<=0)? null : n; };
 
 const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
@@ -85,13 +91,13 @@ for(let i=hr+1;i<rows.length;i++){
   if(bySku[sku]){ already.push(sku+(name?' — '+name.slice(0,40):'')); continue; }
   if(!sup){ noSup.push(sku+(name?' — '+name.slice(0,44):'')); continue; }
   const st=I.st>=0? normStatus(r[I.st]) : '';
-  const cost=I.cost>=0? num(r[I.cost]) : null;
+  const cost=I.cost>=0? numPos(r[I.cost]) : null;
   const c={
     sku, factoryCode:I.fac>=0? S(r[I.fac]):'', supplierCode:sup,
     name: name||sku, category: I.cat>=0? S(r[I.cat]):'',
     wbStock:0, inTransitToWB:0, ownWarehouseStock:0,
     buyoutPct14d:null,                       // неизвестен — не подставляем ноль, иначе «0% выкупа»
-    containerQty: I.cont>=0? num(r[I.cont]) : null,
+    containerQty: I.cont>=0? numPos(r[I.cont]) : null,
     productionStatus: st||'Новинка',          // новая карточка по умолчанию новинка, не «На вывод»
     pending:null,
     costPrice: cost,
