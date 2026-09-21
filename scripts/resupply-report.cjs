@@ -58,8 +58,17 @@ function buyoutFromFunnel(funnel){
 function wbMeasured(){ const b=RD.meta&&RD.meta.buyoutWin;
   return (b&&b.all>0)? {from:b.from,to:b.to,all:b.all,pctBySku:b.bySku||{},dead:[],
     mature:true,measured:true,openPct:b.openPct,days:null} : null; }
+/* ОЗОН — ТО ЖЕ ПРАВИЛО, ЧТО У ВБ (решение продавца 21.09.2026). Замер из отчёта аналитики
+   за период бьёт подённую воронку: воронка заморожена на момент выгрузки и занижает выкуп
+   у свежих дней. Берём ПОСЛЕДНИЙ замер — подсорт смотрит вперёд, ему нужен действующий
+   процент. Дубль buyoutInfo из index.html, держи синхронно. */
+function ozMeasured(){ const H=(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutWin&&RD.ozon.meta.buyoutWin.history)||null;
+  if(!H||!H.length) return null;
+  const last=H.slice().sort((a,b)=>(a.builtAt||'')<(b.builtAt||'')?-1:1).pop();
+  return (last&&last.all>0)? {from:last.from,to:last.to,all:last.all,pctBySku:last.bySku||{},
+    dead:[],mature:true,measured:true,days:null} : null; }
 const BW={ wb: wbMeasured()||buyoutFromFunnel(FUNNEL_WB),
-           ozon: buyoutFromFunnel((RD.ozon&&RD.ozon.funnel)||[]) };
+           ozon: ozMeasured()||buyoutFromFunnel((RD.ozon&&RD.ozon.funnel)||[]) };
 function buyoutOf(mp,sku,fallback){
   const bi=BW[mp];
   if(!bi || !bi.mature) return fallback;
@@ -224,7 +233,8 @@ const moveGap=moveAll.filter(r=>r.move<=0);                            // нет
 ['wb','ozon'].forEach(mp=>{ const b=BW[mp]; const nm=mp==='wb'?'ВБ  ':'Озон';
   if(!b){ console.log('% выкупа '+nm+': воронки нет → прежний источник'); return; }
   console.log('% выкупа '+nm+': окно '+b.from+'…'+b.to
-    +(b.measured? ' (замер сводным отчётом, в пути '+b.openPct+'%)' : ' ('+b.days+'/'+BUYOUT_WIN+' дн по воронке)')
+    +(b.measured? ' (замер отчётом аналитики'+(b.openPct!=null? ', в пути '+b.openPct+'%':'')+')'
+                : ' ('+b.days+'/'+BUYOUT_WIN+' дн по воронке)')
     +' → '+(b.all*100).toFixed(1)+'%'
     +(b.mature? ' · ПРИМЕНЕНО'
       : ' · НЕ ЗРЕЛО (выкуп не проставлен за '+b.dead.length+' дн: '
