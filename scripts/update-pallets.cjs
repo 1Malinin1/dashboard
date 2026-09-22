@@ -53,7 +53,7 @@ if(file==='set'){
 }
 
 const wb=XLSX.read(fs.readFileSync(file),{type:'buffer',cellStyles:false,cellFormula:false});
-let rows=null, hr=-1, iKey=-1, iOz=-1, iWb=-1, sheetName='';
+let rows=null, hr=-1, iKey=-1, iOz=-1, iWb=-1, sheetName='', aliasWb=false;
 for(const sh of wb.SheetNames){
   const r=XLSX.utils.sheet_to_json(wb.Sheets[sh],{header:1,raw:false,defval:''});
   for(let i=0;i<Math.min(10,r.length);i++){
@@ -63,13 +63,43 @@ for(const sh of wb.SheetNames){
     let k=-1;
     for(const re of [/^код 1с$/,/^артикул$/,/^код$/,/код поставщ/]){ k=H.findIndex(x=>re.test(x)); if(k>=0) break; }
     const o=H.findIndex(x=>/паллет/.test(x)&&/озон|ozon/.test(x));
-    const w=H.findIndex(x=>/паллет/.test(x)&&/вб|wildberries|wb/.test(x));
-    if(k>=0&&o>=0&&w>=0){ rows=r; hr=i; iKey=k; iOz=o; iWb=w; sheetName=sh; break; }
+    let w=H.findIndex(x=>/паллет/.test(x)&&/вб|wildberries|wb/.test(x));
+    /* КОЛОНКА ПАЛЛЕТЫ ВБ В СВОДЕ 1С НАЗЫВАЕТСЯ «Кратность отгрузки» (файл 22.09.2026).
+       Там пара колонок-свойств: «Кратность отгрузки (св-во Номенклатура)» и «Паллет Озон
+       (св-во Номенклатура)» — это вместимости паллеты у ВБ и у Озона, а НЕ размер контейнера.
+       Проверено на 73 кодах файла: у 65 «Кратность отгрузки» совпала с уже залитой паллетой ВБ
+       до штуки (500175 → 24, 500174 → 72, 500176 → 72). Размер контейнера у этого продавца
+       980–2 893 шт, то есть на порядок больше и перепутать нельзя.
+       Фолбэк срабатывает ТОЛЬКО когда явной «Паллет Вб» в шапке нет, и ТОЛЬКО рядом с
+       «Паллет Озон» — иначе файл с настоящей кратностью заказа попал бы сюда паллетой. */
+    let wAlias=false;
+    if(w<0 && o>=0){ const c2=H.findIndex(x=>/кратност/.test(x)&&/отгруз/.test(x));
+      if(c2>=0){ w=c2; wAlias=true; } }
+    if(k>=0&&o>=0&&w>=0){ rows=r; hr=i; iKey=k; iOz=o; iWb=w; sheetName=sh; aliasWb=wAlias; break; }
   }
   if(rows) break;
 }
 if(!rows){ console.error('не нашёл лист с колонками «Артикул» + «паллет Озон» + «паллет Вб»'); process.exit(1); }
-console.log('лист «'+sheetName+'» · шапка в строке '+(hr+1)+' · колонки: ключ '+iKey+' · Озон '+iOz+' · ВБ '+iWb);
+console.log('лист «'+sheetName+'» · шапка в строке '+(hr+1)+' · колонки: ключ '+iKey+' · Озон '+iOz+' · ВБ '+iWb
+  +(aliasWb? '  (паллета ВБ взята из «'+S(rows[hr][iWb])+'»)' : ''));
+/* Страховка к фолбэку выше: если в колонке стоят сотни и тысячи — это размер КОНТЕЙНЕРА,
+   а не вместимость паллеты, и залить его паллетой значит сломать отгрузку (одна «паллета»
+   в тысячу штук увезла бы весь склад). Сравниваем медиану с паллетой Озона в том же файле. */
+if(aliasWb){
+  const pv=[],ov=[];
+  for(let i=hr+1;i<rows.length;i++){ const a=num((rows[i]||[])[iWb]), b=num((rows[i]||[])[iOz]);
+    if(a>0) pv.push(a); if(b>0) ov.push(b); }
+  const med=a=>{ if(!a.length) return 0; const s=a.slice().sort((x,y)=>x-y); return s[Math.floor(s.length/2)]; };
+  const mW=med(pv), mO=med(ov);
+  if(mW > Math.max(400, mO*3)){
+    console.error('\n⛔ «'+S(rows[hr][iWb])+'» похожа не на паллету, а на размер контейнера:');
+    console.error('   медиана '+mW+' шт против '+mO+' шт у паллеты Озона. Ничего не записано.');
+    console.error('   Пришлите файл с явной колонкой «Паллет Вб» либо правьте точечно:');
+    console.error('   node scripts/update-pallets.cjs set <код1С> <палл_ВБ> <палл_Озон>');
+    process.exit(1);
+  }
+  console.log('   проверка: медиана паллеты ВБ '+mW+' шт · Озона '+mO+' шт — на контейнер не похоже, берём');
+}
 
 const bySup={}; let taken=0, unknown=[], noQty=[];
 for(let i=hr+1;i<rows.length;i++){
