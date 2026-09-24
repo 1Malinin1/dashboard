@@ -106,7 +106,12 @@ function mpStats(mp){
 const W=mpStats('wb'), O=mpStats('ozon');
 const wh=(RD.warehouse&&RD.warehouse.bySup)||{};
 const inb=RD.inbound||{};
-const chinaBy=(inb.china&&inb.china.bySup)||{}, orderBy=(inb.order&&inb.order.bySup)||{};
+/* Партий производства несколько, у каждой свой срок прихода (см. `inbKeys()` в index.html
+   и `scripts/prod-order.cjs`). Перечисляем ВСЕ ключи кроме `china`, а не имя `order`, —
+   иначе скрипт разойдётся с дашбордом на величину второй партии. */
+const chinaBy=(inb.china&&inb.china.bySup)||{}, orderBy={};
+Object.keys(inb).filter(k=>k!=='china'&&inb[k]&&inb[k].bySup)
+  .forEach(k=>Object.entries(inb[k].bySup).forEach(([s,q])=>orderBy[s]=(orderBy[s]||0)+q));
 const zero={spd:0,covered:0,days:0,name:''};
 const PAL=(RD.pallets&&RD.pallets.bySup)||{};
 const PALLETS_PER_TRUCK=33;

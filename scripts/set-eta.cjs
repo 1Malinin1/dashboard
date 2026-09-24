@@ -23,30 +23,39 @@
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const OUT=path.join(__dirname,'..','decrypted');
+/* ПАРТИЙ БОЛЬШЕ ДВУХ. Раньше ключи были захардкожены (`china`/`order`), но заказы
+   производству приходят несколькими партиями со своими сроками (`order2`, `order3`, …,
+   заводит `scripts/prod-order.cjs`) — и срок им было нечем поправить. Теперь допустим
+   ЛЮБОЙ ключ, который реально есть в снимке; список показывает `list`. */
 const KINDS={china:'из Китая', order:'заказ производству'};
-
-let argv=process.argv.slice(2);
-const SALE=argv.includes('--sale'); argv=argv.filter(a=>a!=='--sale');
-const kind=argv[0], date=argv[1], code=argv[2];
-if(!kind || (kind!=='list' && kind!=='drop' && !KINDS[kind])){
-  console.error('usage: node scripts/set-eta.cjs <china|order> [--sale] <ГГГГ-ММ-ДД> [код1С]\n'
-    +'       node scripts/set-eta.cjs drop <china|order>\n'
-    +'       node scripts/set-eta.cjs list'); process.exit(1); }
+const kindName=k=>KINDS[k]||((RD.inbound[k]&&RD.inbound[k].label)||('партия «'+k+'»'));
 
 const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
 const RD=ctx.__RD;
 RD.inbound=RD.inbound||{};
+const isKind=k=>!!KINDS[k] || !!(RD.inbound[k]&&RD.inbound[k].bySup);
+const allKinds=()=>[...new Set([...Object.keys(KINDS),
+  ...Object.keys(RD.inbound).filter(k=>RD.inbound[k]&&RD.inbound[k].bySup)])];
+
+let argv=process.argv.slice(2);
+const SALE=argv.includes('--sale'); argv=argv.filter(a=>a!=='--sale');
+const kind=argv[0], date=argv[1], code=argv[2];
+if(!kind || (kind!=='list' && kind!=='drop' && !isKind(kind))){
+  console.error('usage: node scripts/set-eta.cjs <партия> [--sale] <ГГГГ-ММ-ДД> [код1С]\n'
+    +'       node scripts/set-eta.cjs drop <партия>\n'
+    +'       node scripts/set-eta.cjs list\n'
+    +'партии в снимке: '+allKinds().join(', ')); process.exit(1); }
 
 const today=new Date().toISOString().slice(0,10);
 const days=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/864e5);
 
 if(kind==='list'){
-  Object.keys(KINDS).forEach(k=>{
+  allKinds().forEach(k=>{
     const b=RD.inbound[k];
-    if(!b){ console.log(KINDS[k]+': партии нет'); return; }
+    if(!b){ console.log('['+k+'] '+kindName(k)+': партии нет'); return; }
     const n=Object.keys(b.bySup||{}).length;
-    console.log(KINDS[k]+': '+(b.total||0).toLocaleString('ru-RU')+' шт по '+n+' кодам · загружено '+b.date);
+    console.log('['+k+'] '+kindName(k)+': '+(b.total||0).toLocaleString('ru-RU')+' шт по '+n+' кодам · загружено '+b.date);
     if(b.eta){ const d=days(today,b.eta);
       console.log('   приход НА СКЛАД: '+b.eta+(d>=0? ' (через '+d+' дн)' : ' — ПРОСРОЧЕНА на '+(-d)+' дн, уточните срок')); }
     else console.log('   приход на склад: НЕ ЗАДАН');
@@ -63,19 +72,19 @@ if(kind==='list'){
 // убрать партию целиком (загрузили по ошибке / всё уже пришло)
 if(kind==='drop'){
   const k=date;
-  if(!KINDS[k]){ console.error('usage: node scripts/set-eta.cjs drop <china|order>'); process.exit(1); }
-  if(!RD.inbound[k]){ console.log('партии «'+KINDS[k]+'» и так нет'); process.exit(0); }
+  if(!isKind(k)){ console.error('usage: node scripts/set-eta.cjs drop <партия>   (есть: '+allKinds().join(', ')+')'); process.exit(1); }
+  if(!RD.inbound[k]){ console.log('партии «'+kindName(k)+'» и так нет'); process.exit(0); }
   const was=RD.inbound[k].total||0;
   delete RD.inbound[k];
   fs.writeFileSync(path.join(OUT,'wb-data.js'),
     '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
     +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
-  console.log('Убрана партия «'+KINDS[k]+'» ('+was.toLocaleString('ru-RU')+' шт)');
+  console.log('Убрана партия «'+kindName(k)+'» ('+was.toLocaleString('ru-RU')+' шт)');
   console.log('\nДальше: node scripts/encrypt.cjs <код>'); process.exit(0);
 }
 if(!/^\d{4}-\d{2}-\d{2}$/.test(date||'')){ console.error('дата в формате ГГГГ-ММ-ДД'); process.exit(1); }
 const b=RD.inbound[kind];
-if(!b){ console.error('партии «'+KINDS[kind]+'» в снимке нет — сначала залейте её update-warehouse.cjs'); process.exit(1); }
+if(!b){ console.error('партии «'+kindName(kind)+'» в снимке нет — залейте её update-warehouse.cjs (китай/заказ) или prod-order.cjs (отдельная партия)'); process.exit(1); }
 const what=SALE? 'выход в продажу' : 'приход на склад';
 if(code){
   const c=(''+code).replace(/[\s ,]/g,'');
@@ -85,7 +94,7 @@ if(code){
   console.log('Код '+c+' ('+b.bySup[c].toLocaleString('ru-RU')+' шт) — '+what+' '+date);
 } else {
   if(SALE) b.etaSale=date; else b.eta=date;
-  console.log(KINDS[kind]+': '+(b.total||0).toLocaleString('ru-RU')+' шт — '+what+' '+date
+  console.log(kindName(kind)+': '+(b.total||0).toLocaleString('ru-RU')+' шт — '+what+' '+date
     +' (через '+days(today,date)+' дн от '+today+')');
 }
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
