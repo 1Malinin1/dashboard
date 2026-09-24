@@ -2522,6 +2522,24 @@ function monthlyOrders(){
   }).filter(r=>r.total>0);
   return {months,rows};
 }
+/* ПАРТИЙ ПРОИЗВОДСТВА БОЛЬШЕ ОДНОЙ — НЕ ХОДИ ПО ИМЕНИ `inbound.order` (24.09.2026).
+   Продавец размещает заказы на фабрику несколькими партиями, и у КАЖДОЙ свой срок прихода:
+   первая (05.08, 85 372 шт) приходит 09.11.2026, вторая (22.09, 28 390 шт) — 15.01.2027.
+   Раньше все потребители читали ровно два ключа, `china` и `order`, поэтому вторая партия
+   молча выпала бы из «Есть сейчас» в ЗАКУПЕ (её заказали бы второй раз) и из горизонта
+   в «Запасе и темпе». Теперь ключи перечисляются: `china` — товар уже едет из Китая,
+   всё остальное — заказы производству. Порядок — по дате прихода, чтобы «ближайшая партия»
+   бралась правильно. Новую партию заводит `scripts/prod-order.cjs` своим ключом. */
+function inbKeys(){ const inb=(RD&&RD.inbound)||{};
+  return Object.keys(inb).filter(k=>inb[k]&&inb[k].bySup)
+    .sort((a,b)=>{ if(a==="china")return -1; if(b==="china")return 1;
+      return (((inb[a].eta||"9999-99-99")+"|"+a)).localeCompare(((inb[b].eta||"9999-99-99")+"|"+b)); }); }
+function inbOrderKeys(){ return inbKeys().filter(k=>k!=="china"); }
+function inbLabel(k){ const b=((RD&&RD.inbound)||{})[k]||{};
+  if(b.label) return b.label;
+  return k==="china"? "Едет из Китая" : "Заказано производству"; }
+function inbSum(sup,keys){ const inb=(RD&&RD.inbound)||{};
+  return (keys||inbKeys()).reduce((s,k)=>s+(((inb[k]&&inb[k].bySup)||{})[sup]||0),0); }
 // Закуп на основе выбранной базы: 'peak' — пиковый месяц (без декабря), 'avg' — средний месяц.
 // Темп продаж = заказы/день выбранной базы × выкуп 85%. Нужно на TURN_COVER_DAYS (6 мес).
 // «Есть» = остаток + в пути на площадку (то же покрытие, что в «Дозаказе»). К закупу = нужно − есть,
@@ -2535,14 +2553,14 @@ function purchaseRows(base){
   // не складывайте выгрузки ВБ и Озона — труба в каждой вычтена целиком.
   const wh=(RD&&RD.warehouse&&RD.warehouse.bySup)||{};
   const inb=(RD&&RD.inbound)||{};
-  const chinaBy=(inb.china&&inb.china.bySup)||{}, orderBy=(inb.order&&inb.order.bySup)||{};
+  const chinaBy=(inb.china&&inb.china.bySup)||{}, ordKeys=inbOrderKeys();
   return mrows.map(r=>{
     const t=turn[r.sku]||{covered:0,contQty:0,reorderCost:0,status:""};
     const rate = base==="peak"? r.pkRate : r.avgRate;
     const salesPerDay = rate*TURN_PEAK_BUYOUT;
     const need = Math.ceil(salesPerDay*TURN_COVER_DAYS);
     const sup = code1c(r.sku) || (''+r.sku);
-    const whQty=(wh[sup]&&wh[sup].qty)||0, chinaQty=chinaBy[sup]||0, orderQty=orderBy[sup]||0;
+    const whQty=(wh[sup]&&wh[sup].qty)||0, chinaQty=chinaBy[sup]||0, orderQty=inbSum(sup,ordKeys);
     const mpCov = t.covered||0;
     const covered = mpCov + whQty + chinaQty + orderQty;
     // Закуп считаем для ВСЕХ товаров, включая «На вывод»: статус справочный, решение о заказе
@@ -2920,9 +2938,12 @@ function mpStats(mp){
 function resupplyRows(){
   const W=mpStats("wb"), O=mpStats("ozon");
   const wh=(RD&&RD.warehouse&&RD.warehouse.bySup)||{}, split=!!(RD&&RD.warehouse&&RD.warehouse.split);
-  // то, что едет К ПРОДАВЦУ (не на площадку): Китай ~1 мес, заказ производству ~3 мес до склада
+  // то, что едет К ПРОДАВЦУ (не на площадку): Китай ~1 мес, заказы производству — по своим
+  // датам прихода (партий несколько, см. inbKeys)
   const inb=(RD&&RD.inbound)||{};
-  const chinaBy=(inb.china&&inb.china.bySup)||{}, orderBy=(inb.order&&inb.order.bySup)||{};
+  const chinaBy=(inb.china&&inb.china.bySup)||{}, ordKeys=inbOrderKeys();
+  const orderBy={}; ordKeys.forEach(k=>Object.entries(inb[k].bySup||{})
+    .forEach(([s,q])=>orderBy[s]=(orderBy[s]||0)+q));
   const zero={spd:0,stock:0,transit:0,covered:0,days:0,name:"",category:""};
   // «На вывод» — товар выводим из ассортимента, ВЕЗТИ его на площадку смысла нет:
   // по просьбе продавца такие коды из подсорта исключаются целиком (в дозаказе/закупе
@@ -3620,10 +3641,17 @@ function itemAnalysis(sup){
   const whQty=whRow.qty||0;
   const inb=RD.inbound||{};
   const china=((inb.china&&inb.china.bySup)||{})[sup]||0;
-  const ordered=((inb.order&&inb.order.bySup)||{})[sup]||0;
+  const ordered=inbSum(sup,inbOrderKeys());
   const batchEta=k=>{ const b=inb[k]; if(!b) return null;
     return {toSale:((b.etaSaleBySup||{})[sup])||b.etaSale||null, toWh:((b.etaBySup||{})[sup])||b.eta||null}; };
-  const etaChina=batchEta("china"), etaOrder=batchEta("order");
+  const etaChina=batchEta("china");
+  /* Партий производства несколько, у каждой свой срок. Показываем их ОТДЕЛЬНЫМИ строками
+     (`batches`), а не одной суммой: продавец спрашивает «хватит ли до прихода», и ответ
+     зависит от того, КОГДА приедет именно эта часть. Для сводных мест берём ближайшую. */
+  const batches=inbOrderKeys().map(k=>{ const q=((inb[k].bySup||{})[sup])||0; if(!q) return null;
+      const e=batchEta(k); return {key:k, label:inbLabel(k), qty:q, eta:e}; }).filter(Boolean)
+    .sort((a,b)=>((a.eta&&(a.eta.toSale||a.eta.toWh))||"9999").localeCompare((b.eta&&(b.eta.toSale||b.eta.toWh))||"9999"));
+  const etaOrder=batches.length? batches[0].eta : null;
 
   const onSite=wbStock+wbPending+openShip+ozStock+ozTransit;   // уже на площадках или официально едет туда
   const atSeller=whQty;                                        // свой склад: FBS на ВБ и источник поставок на Озон
@@ -3676,7 +3704,7 @@ function itemAnalysis(sup){
     firstSale, lastSale, silentDays,
     boW, boO, wins, now, preRate, notRecovered, outW, outO, impW, impO,
     wbStock, wbPending, openShip, ozStock, ozTransit, ozIncoming, whQty, whBy,
-    china, ordered, etaChina, etaOrder, onSite, atSeller, coming, have,
+    china, ordered, etaChina, etaOrder, batches, onSite, atSeller, coming, have,
     days, runOut, saleEta, gapDays, price, cost};
 }
 /* График заказов по дням: ВБ и Озон стопкой, дни провалов залиты красным.
@@ -3907,10 +3935,14 @@ function renderTurnItem(){
     {k:"Ваш склад · Евросиб",v:a.whBy.nsk2},
     {k:"Ваш склад · прочее",v:a.whBy.other},
   ].filter(x=>x.v>0||x.always);
+  /* Партии производства — КАЖДАЯ СВОЕЙ СТРОКОЙ со своим сроком: их несколько, и приходят
+     они с разницей в месяцы. Одна суммарная строка «заказано производству 3 500 шт»
+     отвечала бы не на тот вопрос — продавцу важно, что 1 500 приедет в ноябре,
+     а 2 000 только в январе. */
   const later=[
     {k:"Едет к вам под Ozon (заявки «на оптовых»)",v:a.ozIncoming},
     {k:"Едет из Китая",v:a.china,eta:a.etaChina},
-    {k:"Заказано производству",v:a.ordered,eta:a.etaOrder},
+    ...(a.batches||[]).map(b=>({k:b.label,v:b.qty,eta:b.eta})),
   ].filter(x=>x.v>0);
   const mx=Math.max(1,...pipe.map(x=>x.v),...later.map(x=>x.v));
   const prow=(k,v,sub)=>`<div class="itm-pr"><span class="k">${esc(k)}${sub?`<small>${esc(sub)}</small>`:""}</span>`
@@ -4196,7 +4228,11 @@ function exportResupplyXLSX(){
     ["Отгрузка", "только целыми паллетами; "+PALLETS_PER_TRUCK+" паллет = машина, машина собирается с одного склада на одну площадку"],
     ["Вместимость паллеты", (RD&&RD.pallets)? ("из файла продавца от "+fmtDateLong(RD.pallets.date)+(W&&O?"; у ВБ и Озона разная":" (для "+(O?"Озона":"ВБ")+")")) : "не загружена"],
     ["Едет из Китая", (RD&&RD.inbound&&RD.inbound.china)? (fmt(RD.inbound.china.total)+" шт — ориентировочно через месяц у продавца на складе") : "не загружено"],
-    ["Заказано производству", (RD&&RD.inbound&&RD.inbound.order)? (fmt(RD.inbound.order.total)+" шт — ~3 месяца до склада, ~4 месяца до площадки") : "не загружено"],
+    ["Заказано производству", inbOrderKeys().length
+      ? inbOrderKeys().map(k=>{ const b=RD.inbound[k];
+          return fmt(b.total||0)+" шт"+(b.eta? " — на склад "+fmtDateLong(b.eta):"")
+            +(b.etaSale? ", в продажу "+fmtDateLong(b.etaSale):""); }).join("; ")
+      : "не загружено"],
     ["Файл сформирован", fmtDateLong(new Date().toISOString().slice(0,10))]];
   // Отдельный лист с планом машин: что грузим, с какого склада, на какую площадку.
   // По каждому коду — остаток на нашем складе, сколько штук уходит и сколько это паллет;
@@ -6185,10 +6221,15 @@ function srRows(){
      Дат у партии ДВЕ: `eta` — приход на склад продавца, `etaSale` — выход в продажу
      на площадке (между ними ещё месяц на приёмку и отгрузку). Для «на сколько хватит»
      нужна ВТОРАЯ: пока партия лежит непринятой, продажи она не закрывает. */
+  /* Партий может быть сколько угодно (Китай + несколько заказов производству со своими
+     сроками), поэтому перечисляем ВСЕ через inbKeys, а не два имени. `alsoQty` — сколько
+     ещё приедет ПОСЛЕ ближайшей партии: считается как остаток от общей суммы, иначе при
+     трёх партиях часть штук терялась бы из подписи. */
   const batchFor=sup=>{
-    let best=null;
-    ["china","order"].forEach(k=>{ const b=inb[k]; if(!b) return;
+    let best=null, tot=0;
+    inbKeys().forEach(k=>{ const b=inb[k]; if(!b) return;
       const q=(b.bySup||{})[sup]||0; if(!q) return;
+      tot+=q;
       const toWh  = ((b.etaBySup||{})[sup])||b.eta||null;
       const toSale= ((b.etaSaleBySup||{})[sup])||b.etaSale||null;
       const eta   = toSale||toWh;                    // считаем по выходу в продажу
@@ -6196,14 +6237,15 @@ function srRows(){
       if(!best) best=cand;
       else if(cand.eta && (!best.eta || cand.eta<best.eta)) best=cand;   // едет раньше
       else if(!cand.eta && !best.eta && cand.qty>best.qty) best=cand;
-      if(best!==cand && cand.qty) best.alsoQty=(best.alsoQty||0)+cand.qty;
     });
+    if(best && tot>best.qty) best.alsoQty=tot-best.qty;
     /* Кода нет ни в одной партии — но горизонт всё равно нужен: продавец решил считать такие
        товары до ОБЩЕЙ даты заказа производству (может, он их больше и не повезёт, но сравнивать
        темп всё равно надо от чего-то). Помечаем `noOwn`, чтобы в таблице было видно, что своей
-       партии у кода нет и цифра «приедет» пустая. */
+       партии у кода нет и цифра «приедет» пустая. Берём БЛИЖАЙШУЮ по дате партию. */
     if(!best){
-      const b=inb.order||inb.china;
+      const k=inbKeys().filter(x=>inb[x]&&(inb[x].etaSale||inb[x].eta))[0];
+      const b=k? inb[k] : null;
       const eta=b? (b.etaSale||b.eta||null) : null;
       if(eta) best={kind:"fallback",qty:0,eta,etaWh:(b.eta||null),left:dleft(eta),noOwn:true};
     }
