@@ -203,11 +203,20 @@ const series = keepOrders && prevSeries ? prevSeries : {dates:finalDates,byArt:f
        прибыль Озона на «Главной» просто исчезнет. Ровно это и случилось 07.09.2026 — заливка
        одних остатков стёрла тариф, залитый 04.09. */
 const prevStockHist = (RD.ozon && RD.ozon.stockHistory) || {};
+/* ШЕСТОЙ КАПКАН: `ozon.clusters` — РАЗРЕЗ ПО КЛАСТЕРАМ — тоже терялся при пересборке
+   (поймано 25.09.2026). Его кладут другие скрипты (`ozon-clusters.cjs` из листа
+   «Товар-кластер», `ozon-stock-detail.cjs` из детального отчёта по складам), а этот блок
+   переписывает `RD.ozon` целиком — в списке переносимых полей `clusters` не было, и
+   заливка ОДНИХ ЗАКАЗОВ молча стёрла спрос по кластерам (298,7 продаж/день по 25 кластерам).
+   Ни ошибки, ни пустой таблицы: расчёт «сколько везти в какой округ» просто остаётся без
+   спроса. Любое новое поле в `RD.ozon`, которое кладёт НЕ этот скрипт, добавляй сюда же. */
+const prevClusters = (RD.ozon && RD.ozon.clusters) || null;
 RD.ozon={
   catalog:ozCat,
   funnel:prevFunnel,
   orderSeries:series,
   stockHistory:prevStockHist,
+  clusters:prevClusters,
   ordersMeta: keepOrders && RD.ozon && RD.ozon.ordersMeta ? RD.ozon.ordersMeta
     : {period:finalDates[0]+'…'+finalDates[finalDates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
   meta:{ stockDate: stockFile? stockDate : prevMeta.stockDate||null,
