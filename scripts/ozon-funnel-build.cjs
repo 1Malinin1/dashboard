@@ -46,11 +46,20 @@ function readReport(f){
   const cOrd=idxOf(sub,v=>v.startsWith('Заказано товаров'));
   const cDeliv=idxOf(sub,v=>v.startsWith('Доставлено товаров'));
   const cCancel=idxOf(sub,v=>v.startsWith('Отменено товаров'));
-  const cSum=idxOf(sub,v=>v.startsWith('Заказано на сумму'));
+  // «Заказано на сумму» с 25.09.2026 приходит ДВУМЯ колонками: «(по цене реализации)» —
+  // новая база Ozon (~73% от потолка, см. перелом 31.08) и «(по предельной цене)» — цена
+  // продавца. Весь наш снимок (orderSeries.money, финансы Озона) считается по ПРЕДЕЛЬНОЙ,
+  // поэтому берём её, иначе ломается инвариант «Σ ordersSum воронки = orderSeries.money»
+  // и вкладка «Товар» расходится с «Главной» на ~27%. В старых файлах колонка одна —
+  // тогда фолбэк на первое совпадение (там это и есть цена реализации, как было).
+  let cSum=idxOf(sub,v=>/^Заказано на сумму/.test(v)&&/предельной/i.test(v));
+  const cSumReal=idxOf(sub,v=>/^Заказано на сумму/.test(v)&&/реализаци/i.test(v));
+  const sumBase=cSum>=0?'предельная цена':'цена реализации';
+  if(cSum<0) cSum=idxOf(sub,v=>v.startsWith('Заказано на сумму'));
   if([cArt,cDay,cImp,cCard,cCart,cOrd,cDeliv].some(x=>x<0))
     throw new Error('не нашёл ключевые колонки воронки в '+f+' (арт='+cArt+' день='+cDay+' показы='+cImp+' карточка='+cCard+' корзина='+cCart+' заказы='+cOrd+' доставлено='+cDeliv+')');
   const recs=[]; let matched=0, skipped=0; const ozSkuByArt={};   // артикул продавца → числовой SKU Озона (для ссылки)
-  const tot={imp:0,card:0,cart:0,ord:0,deliv:0,sum:0};
+  const tot={imp:0,card:0,cart:0,ord:0,deliv:0,sum:0,sumReal:0,base:sumBase,bothCols:cSumReal>=0&&sumBase==='предельная цена'};
   for(let i=hr+1;i<rows.length;i++){
     const r=rows[i]; const art=(''+(r[cArt]||'')).trim(); const day=(''+(r[cDay]||'')).trim();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;          // не строка данных (напр. «Итого и среднее»)
@@ -70,6 +79,7 @@ function readReport(f){
       ordersSum:Math.round(sum),buyoutSum,cancelSum:0,wbStock:0,ownStock:0});
     matched++;
     tot.imp+=imp;tot.card+=card;tot.cart+=cart;tot.ord+=ord;tot.deliv+=deliv;tot.sum+=sum;
+    if(cSumReal>=0) tot.sumReal+=num(r[cSumReal]);
   }
   return {recs,matched,skipped,tot,ozSkuByArt};
 }
@@ -80,7 +90,11 @@ for(const f of files){
   recs.forEach(r=>{ (byDate[r.date]||(byDate[r.date]=[])).push(r); });
   Object.assign(ozSkuByArt,m);
   console.log('  '+path.basename(f)+': строк наших '+matched+' (пропущено чужих '+skipped+') · показы '+tot.imp.toLocaleString('ru-RU')
-    +' · заказы '+tot.ord+' · доставлено '+tot.deliv+' · заказано '+Math.round(tot.sum).toLocaleString('ru-RU')+' ₽');
+    +' · заказы '+tot.ord+' · доставлено '+tot.deliv+' · заказано '+Math.round(tot.sum).toLocaleString('ru-RU')+' ₽'
+    +'  [база суммы: '+tot.base+']');
+  if(tot.bothCols) console.log('    в файле ЕСТЬ обе колонки: по предельной '+Math.round(tot.sum).toLocaleString('ru-RU')
+    +' ₽ · по цене реализации '+Math.round(tot.sumReal).toLocaleString('ru-RU')+' ₽ ('
+    +(tot.sum?Math.round(tot.sumReal/tot.sum*100):0)+'% от предельной) — в снимок идёт ПРЕДЕЛЬНАЯ, как orderSeries.money');
 }
 // вписать числовой SKU Озона в каталог (для прямой ссылки на ozon.ru/product/{ozonSku})
 let ozLinked=0; ozCat.forEach(c=>{ const s=ozSkuByArt[String(c.sku)]; if(s){ c.ozonSku=s; ozLinked++; } });
