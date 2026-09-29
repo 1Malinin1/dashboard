@@ -5027,6 +5027,7 @@ async function fdbRefreshCache(){
   _buyoutWin={};   // % выкупа ВБ считается по этой воронке — пересобрать окно
   _recOutCache=null; _outSkuCache=null;  // список выведенных из ассортимента кодов — тоже производная каталога
   _wbFbsCache=null; // покрытие ВБ включает FBS-запас — пересобрать раскладку складов
+  _adMskCache=null; _adMskHeld={};  // московский запас для рекламы — за вычетом собранного в паллеты
 }
 
 let FINANCE_CACHE=[];      // свод по (дата+артикул), пересобирается из построчных данных
@@ -6582,13 +6583,34 @@ const ozDrrCls = v => v===Infinity? "crit" : (v>=OZ_DRR_GOAL? "good" : "warning"
 function ozDrrBadge(v){ const c=ozDrrCls(v);
   return `<span class="badge ${c==="good"?"good":(c==="warning"?"warning":"critical")}"><span class="d"></span>${adDrrTxt(v)}</span>`; }
 // московский FBS-остаток по коду 1С: оба московских склада, Нск-1 сюда НЕ входит
+/* МОСКОВСКИЙ ЗАПАС ДЛЯ РЕКЛАМЫ — ЗА ВЫЧЕТОМ ТОГО, ЧТО УЖЕ СОБРАНО В ПАЛЛЕТЫ ПОД ОТГРУЗКУ
+   (объяснение продавца 29.09.2026, дословно: «тк я эти собрал в паллеты их я продавать
+   не могу пока что по fbs и из за этого у меня очень маленький остаток сейчас для продажи
+   на вб и вот поэтому я выключил почти всю рекламу»).
+   Пока товар лежит на складе штуками — он продаётся по FBS и законно идёт в запас для
+   рекламы. Как только склад собрал его в паллеты под машину, он из FBS выпадает: физически
+   он есть, продать его нельзя. Раньше здесь брался ВЕСЬ московский остаток, и вкладка
+   показывала запас на 22–29 дней по товару, которого для продажи почти не осталось:
+   замер 29.09 — 487197 «Мск 99 шт» при 96 шт уже в паллетах и FBO 2 шт, то есть покрытие
+   1 день вместо 22, и на него крутилось 41 319 ₽. Продавец выключал такие кампании руками.
+   Вычитаем `usedMsk` — то, что подсорт расписал с Москвы; то же самое вычитает `wbFbsBySup`
+   из покрытия ВБ (`mskFree = whMsk − usedMsk`), так что правило одно на весь дашборд.
+   Удержанное лежит в `_adMskHeld` и печатается в колонке «Запас ВБ» — молча запас не режем. */
+let _adMskCache=null, _adMskHeld={};
 function adMskBySup(){
+  if(_adMskCache) return _adMskCache;
   const wh=(RD&&RD.warehouse&&RD.warehouse.bySup)||{}, out={};
   Object.entries(wh).forEach(([sup,v])=>{ let m=0;
     Object.entries(v.wh||{}).forEach(([n,q])=>{ if(whKey(n)==="msk") m+=q; });
     out[sup]=m; });
-  return out;
+  const held={};
+  try{ resupplyRows().forEach(r=>{ if(r.usedMsk>0) held[r.sup]=r.usedMsk; }); }catch(e){ }
+  Object.keys(out).forEach(sup=>{ const h=Math.min(held[sup]||0, out[sup]);
+    if(h>0){ out[sup]-=h; held[sup]=h; } else delete held[sup]; });
+  _adMskHeld=held;
+  return (_adMskCache=out);
 }
+const adMskHeld = sup => _adMskHeld[sup]||0;
 /* ДРР склейки/категории для видов отбора. Считается по тому же правилу, что и в «Отдаче»:
    расход ÷ (выручка ВСЕХ карточек уровня в заказах × свой % выкупа каждой). Кешируется
    на один рендер — иначе adPerfRows() пересобирался бы на каждую строку таблицы. */
@@ -6696,9 +6718,12 @@ const adDrrBucketN = v => v==="нет продаж"? 3 : (v.startsWith("идеа
 function adCoverParts(r){ const p=[];
   if(r.fbo>0) p.push("FBO "+fmt(r.fbo)+" шт");
   if(r.msk>0) p.push("Мск "+fmt(r.msk)+" шт");
-  return p.length? p.join(" + ") : "нет остатка"; }
+  let s=p.length? p.join(" + ") : "нет остатка";
+  const h=adMskHeld(r.sup);                       // собрано в паллеты — по FBS не продаётся
+  if(h>0) s+=" · в паллетах "+fmt(h)+" шт";
+  return s; }
 function adCoverTxt(r){ if(!(r.spd>0)) return "нет продаж";
-  return adFmtD(r.coverDays)+" дн"+(r.fbo>0&&r.msk>0? " · "+adCoverParts(r) : ""); }
+  return adFmtD(r.coverDays)+" дн"+((r.fbo>0&&r.msk>0)||adMskHeld(r.sup)>0? " · "+adCoverParts(r) : ""); }
 const adStockBucket = r => r.cover<=0? "нет остатка"
   : (r.spd<=0? "остаток есть, продаж нет"
   : (r.coverDays<AD_MIN_STOCK_DAYS? "меньше "+AD_MIN_STOCK_DAYS+" дн" : AD_MIN_STOCK_DAYS+"+ дн"));
@@ -10240,6 +10265,7 @@ function hydrateData(){
   RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
   _buyoutWin={};                 // окно % выкупа считается от воронки — пересобрать
   _wbFbsCache=null;              // раскладка своих складов под покрытие ВБ
+  _adMskCache=null; _adMskHeld={};  // московский запас для рекламы — за вычетом собранного в паллеты
   _recOutCache=null; _outSkuCache=null;   // списки товаров «На вывод» — производные каталога
   _ozCostCache=null; _ozFinCache=null;    // финансы Озона считаются из каталога и тарифа
   _ozAdMapCache=null;                     // склейки Озона тянутся из каталога ВБ по коду 1С
