@@ -59,6 +59,14 @@ function show(){
   if(!list.length){ console.log('Отчётов юнит-экономики нет.'); return; }
   console.log('ОТЧЁТЫ ЮНИТ-ЭКОНОМИКИ OZON (по нашим товарам):');
   list.forEach(r=>{
+    if(r.src==='manual'){
+      console.log('  '+r.from+' и вперёд          РУЧНАЯ СТАВКА · РЕКЛАМА '+P(r.adsRate)+'% в выкупе'
+        +(r.perOrderRate? ' (= '+P(r.perOrderRate)+'% от заказа без возврата)':'')
+        +'   (поставлена '+(r.builtAt||'').slice(0,10)+')');
+      if(r.note) console.log('      '+r.note);
+      console.log('      НЕ ОТЧЁТ: заменится сама, когда зальёшь юнит-экономику за этот период');
+      return;
+    }
     console.log('  '+r.from+'…'+r.to+'  засчитано '+F(r.gross).padStart(12)+' ₽ ('+F(r.gross/r.del)+' ₽/шт, '+F(r.del)+' шт)'
       +' · комиссия '+P(r.commissionRate)+'% · эквайринг '+P(r.acquiringRate)+'%'
       +' · РЕКЛАМА '+P(r.adsRate)+'%'+(r.builtAt? '   (залит '+r.builtAt.slice(0,10)+')':'')
@@ -79,6 +87,30 @@ if(argv[0]==='drop'){
   const [,f,t]=argv; const i=list.findIndex(r=>r.from===f&&r.to===t);
   if(i<0){ console.error('нет отчёта '+f+'…'+t+'. Есть: '+list.map(r=>r.from+'…'+r.to).join(', ')); process.exit(1); }
   list.splice(i,1); console.log('Отчёт '+f+'…'+t+' удалён.');
+  write(); show(); process.exit(0);
+}
+/* РУЧНАЯ СТАВКА — КОГДА МЕХАНИЗМ ИЗВЕСТЕН, А ОТЧЁТА ЕЩЁ НЕТ (01.10.2026).
+   Продавец подтвердил: на товары БЕЗ подключённого продвижения Ozon по умолчанию списывает
+   5% ЗА ЗАКАЗ и НЕ ВОЗВРАЩАЕТ при отмене. Наша база — выручка В ВЫКУПЕ, поэтому ставка
+   пересчитывается: 5% / %выкупа. Это НЕ отчёт, поэтому запись помечается src:'manual' и
+   печатается в list отдельно — чтобы следующая сессия не приняла её за факт Ozon.
+   Как только придёт юнит-экономика за период, заливай файл: он перезапишет запись сам
+   (ключ — from+to), и ставка станет фактической. */
+if(argv[0]==='set'){
+  const [,f,rateS]=argv;
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(f||'')||!(+rateS>0)){
+    console.error('usage: node scripts/ozon-unit-report.cjs set <ГГГГ-ММ-ДД> <ставка % в выкупе> [--note "..."] [--per-order <% от заказа>]');
+    process.exit(1);
+  }
+  let note='', perOrder=null;
+  for(let i=3;i<argv.length;i++){ if(argv[i]==='--note') note=argv[++i]; else if(argv[i]==='--per-order') perOrder=+argv[++i]; }
+  const TO='2099-12-31';   // открытая запись: действует с указанной даты и вперёд
+  const rec={from:f, to:TO, adsRate:+(+rateS).toFixed(4), mature:true, src:'manual',
+    perOrderRate:perOrder, note:note||null, builtAt:new Date().toISOString()};
+  const at=list.findIndex(r=>r.from===f&&r.to===TO);
+  if(at>=0){ list[at]=rec; console.log('Ручная ставка с '+f+' ПЕРЕЗАПИСАНА.'); }
+  else { list.push(rec); console.log('Ручная ставка с '+f+' добавлена.'); }
+  list.sort((x,y)=>x.from<y.from?-1:1);
   write(); show(); process.exit(0);
 }
 
