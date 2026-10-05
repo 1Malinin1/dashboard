@@ -85,6 +85,10 @@ function mpStats(mp){
   const buyAvg = oz? ((RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutAll)||1)
     : (()=>{const v=RD.catalog.map(c=>c.buyoutPct14d).filter(x=>x>0);return v.length? v.reduce((a,b)=>a+b,0)/v.length/100:1;})();
   const openShip={}; (RD.shipments||[]).forEach(s=>{ if(s.mp==='wb'&&s.left>0) openShip[s.sup]=(openShip[s.sup]||0)+s.left; });
+  /* «РВБ Клин» — товар УЖЕ отправлен на ВБ (продавец 05.10.2026), просто ещё не принят в FBO.
+     Идёт в ту же строку, что журнал отгрузок: в `transit` у ВБ, и тем самым уменьшает
+     потребность подсорта. Держи синхронно с `klinBySup` в index.html. */
+  if(!oz){ const kl=klinBySup(); Object.keys(kl).forEach(k=>{ openShip[k]=(openShip[k]||0)+kl[k]; }); }
   const out={}, done=new Set();
   cat.forEach(c=>{
     const sup = oz? (''+c.sku) : (''+(c.supplierCode||'')).trim(); if(!sup) return;
@@ -128,13 +132,20 @@ const PALLETS_PER_TRUCK=33;
    «Москва на Ozon» (стоял с 11.09). Все ТРИ склада отгружают на ОБЕ площадки; порядок
    разбора — Евросиб → Нск-1 → Москва, сначала Ozon целиком, остатком — ВБ FBO.
    На Евросибе позиции с остатком меньше NSK2_MIN_TAKE не берём. Держи синхронно с index.html. */
-/* «РВБ Клин» — ПЯТЫЙ СВОЙ СКЛАД (05.10.2026): перевалка под Wildberries. Отгружает ТОЛЬКО
-   на ВБ FBO и разбирается ПЕРВЫМ (в этом его назначение, плюс так сберегается FBS-запас
-   Нск-1 и Москвы); на Ozon с него не возим; в покрытие ВБ он НЕ входит — по FBS с него
-   не торгуют, товар ещё не принят в FBO. Правило ловит именно «Клин»: общее /рвб/ поймало бы
-   «Склад РВБ ПФО» — баг выгрузки, который считать нельзя. Держи синхронно с index.html. */
+/* «РВБ Клин» — ПЯТЫЙ СВОЙ СКЛАД (05.10.2026), и он НЕ ОТГРУЖАЕТ НИЧЕГО. Продавец:
+   «я уже отправил товары, которые находятся там, на Wb … его в подсорт считать не нужно,
+   просто учитывай этот остаток при расчёте поставок с других складов». Поэтому Клин — это
+   товар В ПУТИ НА ВБ: он складывается в `transit` у ВБ и уменьшает потребность, которую
+   закрывают остальные склады; в отгрузочный запас (`have`) и в «останется на складе»
+   не входит. Правило ловит именно «Клин»: общее /рвб/ поймало бы «Склад РВБ ПФО» —
+   баг выгрузки, который считать нельзя. Держи синхронно с index.html. */
 const WB_FBO_SUPPLY=true, NSK1_MIN_DAYS=14, NSK2_MIN_TAKE=100;
-const SRC_WB=['klin','nsk2','nsk1','msk'], SRC_OZ=['nsk2','nsk1','msk'];
+const SRC_WB=['nsk2','nsk1','msk'], SRC_OZ=['nsk2','nsk1','msk'];
+function klinBySup(){ const wh=(RD.warehouse&&RD.warehouse.bySup)||{}, out={};
+  Object.keys(wh).forEach(s=>{ let q=0;
+    Object.entries(wh[s].wh||{}).forEach(([n,v])=>{ if(whKey(n)==='klin') q+=v; });
+    if(q>0) out[s]=q; });
+  return out; }
 function whKey(n){ const s=''+n;
   if(/клин/i.test(s)) return 'klin';
   if(/(^|\W)fbs(\W|$)|фбс/i.test(s)) return 'nsk1';
@@ -154,24 +165,26 @@ const outSup=new Set(); {
 }
 const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh)])].filter(s=>!outSup.has(s));
 let rows=sups.map(sup=>{
-  const w=W[sup]||zero, o=O[sup]||zero, have=(wh[sup]&&wh[sup].qty)||0;
+  const w=W[sup]||zero, o=O[sup]||zero;
+  // раскладку склада считаем ДО потребности: Клин надо вычесть из отгрузочного запаса
+  const whB=(wh[sup]&&wh[sup].wh)||{}; const q={msk:0,nsk1:0,nsk2:0,klin:0,other:0};
+  Object.entries(whB).forEach(([n,v])=>{ q[whKey(n)]+=v; });
+  const mMsk=q.msk, mNsk1=q.nsk1, mNsk2=q.nsk2, mKlin=q.klin;
+  // `have` — то, что РЕАЛЬНО можно отгрузить: весь склад МИНУС Клин (он уже уехал на ВБ)
+  const have=Math.max(0, ((wh[sup]&&wh[sup].qty)||0) - mKlin);
   const launchW = WB_FBO_SUPPLY && w.spd<=0 && w.covered<=0 && have>0;
   const launchO = o.spd<=0 && o.covered<=0 && have>0;
   const needW=!WB_FBO_SUPPLY? 0
     : (launchW? Math.min(LAUNCH_QTY,have) : Math.max(0,Math.ceil(w.spd*DAYS)-w.covered));
   const needO=launchO? Math.min(LAUNCH_QTY,have) : Math.max(0,Math.ceil(o.spd*DAYS)-o.covered);
-  // отгрузка целыми паллетами: на Ozon — сначала Евросиб, потом Нск-1 (его бережём под FBS)
-  const whB=(wh[sup]&&wh[sup].wh)||{}; const q={msk:0,nsk1:0,nsk2:0,klin:0,other:0};
-  Object.entries(whB).forEach(([n,v])=>{ q[whKey(n)]+=v; });
-  const mMsk=q.msk, mNsk1=q.nsk1, mNsk2=q.nsk2, mKlin=q.klin;
   const P=PAL[sup]||null, palOz=P?(P.oz||0):0, palWb=P?(P.wb||0):0;
   // леджер остатка по складам: из него берут ОБА прохода, порядок задают SRC_OZ / SRC_WB
-  const pool={nsk2:(mNsk2>=NSK2_MIN_TAKE ? mNsk2 : 0), nsk1:mNsk1, msk:mMsk, klin:mKlin};
+  const pool={nsk2:(mNsk2>=NSK2_MIN_TAKE ? mNsk2 : 0), nsk1:mNsk1, msk:mMsk};
   // Округляем ВВЕРХ (решение продавца 24.08) — округление вниз систематически не дотягивало
   // до цели 30 дней. Держи синхронно с takePallets в index.html.
   const take=(needQty,cap,src)=>{ if(cap<=0) return null;
     const want=Math.ceil(needQty/cap);
-    const pals={nsk1:0,nsk2:0,msk:0,klin:0}, pcs={nsk1:0,nsk2:0,msk:0,klin:0};
+    const pals={nsk1:0,nsk2:0,msk:0}, pcs={nsk1:0,nsk2:0,msk:0};
     if(want<=0) return {pal:0,pals,pcs,qty:0};
     let left=want;
     for(const k of src){ const p=Math.min(left,Math.floor(pool[k]/cap));
@@ -179,18 +192,18 @@ let rows=sups.map(sup=>{
     const pal=src.reduce((a,k)=>a+pals[k],0);
     return {pal,pals,pcs,qty:pal*cap}; };
   const takePcs=(needQty,src)=>{
-    const pals={nsk1:0,nsk2:0,msk:0,klin:0}, pcs={nsk1:0,nsk2:0,msk:0,klin:0};
+    const pals={nsk1:0,nsk2:0,msk:0}, pcs={nsk1:0,nsk2:0,msk:0};
     let left=needQty, qty=0;
     for(const k of src){ const q=Math.min(left,pool[k]); pcs[k]=q; pool[k]-=q; left-=q; qty+=q; }
     return {pal:0,pals,pcs,qty}; };
-  let shipO=0,shipW=0,palO=0,palW=0,oN1=0,oN2=0,oM=0,wN1=0,wN2=0,wM=0,wKl=0;
-  let usedNsk1=0,usedNsk2=0,usedMsk=0,usedKlin=0;
+  let shipO=0,shipW=0,palO=0,palW=0,oN1=0,oN2=0,oM=0,wN1=0,wN2=0,wM=0;
+  let usedNsk1=0,usedNsk2=0,usedMsk=0;
   const takeFor=(need,cap,src)=>{ const t = cap>0? take(need,cap,src) : takePcs(need,src);
-    usedNsk2+=t.pcs.nsk2; usedNsk1+=t.pcs.nsk1; usedMsk+=t.pcs.msk; usedKlin+=t.pcs.klin; return t; };
+    usedNsk2+=t.pcs.nsk2; usedNsk1+=t.pcs.nsk1; usedMsk+=t.pcs.msk; return t; };
   const tO=takeFor(needO,palOz,SRC_OZ);
   palO=tO.pal; shipO=tO.qty; oN1=tO.pals.nsk1; oN2=tO.pals.nsk2; oM=tO.pals.msk;
   if(WB_FBO_SUPPLY && needW>0){ const tW=takeFor(needW,palWb,SRC_WB);
-    palW=tW.pal; shipW=tW.qty; wN1=tW.pals.nsk1; wN2=tW.pals.nsk2; wM=tW.pals.msk; wKl=tW.pals.klin; }
+    palW=tW.pal; shipW=tW.qty; wN1=tW.pals.nsk1; wN2=tW.pals.nsk2; wM=tW.pals.msk; }
   // перемещение Евросиб → Нск-1 вместо отгрузки на ВБ (FBS уходит покупателю с Нск-1)
   // на Нск-1 смотрим то, что там РЕАЛЬНО останется: минус паллеты, забранные Озоном
   const nsk1Free = Math.max(0, mNsk1-usedNsk1);
@@ -205,8 +218,8 @@ let rows=sups.map(sup=>{
   const wbFbsFree = mskFree + nsk1Free;
   const wCovAll = w.covered + wbFbsFree;
   const wDaysAll = w.spd>0 ? wCovAll/w.spd : (wCovAll>0? Infinity : 0);
-  return {sup,name:(w.name||o.name||sup),have,palOz,palWb,palO,palW,oN1,oN2,oM,wN1,wN2,wM,wKl,
-    whMsk:mMsk,whNsk1:mNsk1,whNsk2:mNsk2,whKlin:mKlin,whNsk:mNsk1+mNsk2,usedNsk1,usedNsk2,usedMsk,usedKlin,
+  return {sup,name:(w.name||o.name||sup),have,palOz,palWb,palO,palW,oN1,oN2,oM,wN1,wN2,wM,
+    whMsk:mMsk,whNsk1:mNsk1,whNsk2:mNsk2,whKlin:mKlin,whNsk:mNsk1+mNsk2,usedNsk1,usedNsk2,usedMsk,
     oCov:o.covered,wCov:w.covered,topUpO:0,topUpW:0,
     noPal:(!P&&needO>0), move, moveNeed, nsk1Days, nsk1Free, mskFree, wbFbsFree, wCovAll, wDaysAll,
     wDays:w.days,oDays:o.days,wSpd:w.spd,oSpd:o.spd,needW,needO,shipW,shipO,
@@ -220,17 +233,14 @@ let rows=sups.map(sup=>{
 // разным кодам. Не добили до полной — не добираем вообще.
 const TRUCK_TOPUP_MIN=15, TOPUP_SELL_DAYS=90;
 (function topUp(){
-  // СЕМЬ направлений: три склада × две площадки плюс «Клин → ВБ FBO» (на Ozon Клин не возит)
+  // ШЕСТЬ направлений: три склада × две площадки. Клин не отгружает (см. SRC_WB).
   const cnt={}; ['Евросиб','Нск-FBS','Мск'].forEach(w=>{ cnt[w+'|ozon']=0; cnt[w+'|wb']=0; });
-  cnt['Клин|wb']=0;
   rows.forEach(r=>{ cnt['Евросиб|ozon']+=r.oN2; cnt['Нск-FBS|ozon']+=r.oN1; cnt['Мск|ozon']+=r.oM;
-                    cnt['Евросиб|wb']  +=r.wN2; cnt['Нск-FBS|wb']  +=r.wN1; cnt['Мск|wb']  +=r.wM;
-                    cnt['Клин|wb']     +=r.wKl; });
+                    cnt['Евросиб|wb']  +=r.wN2; cnt['Нск-FBS|wb']  +=r.wN1; cnt['Мск|wb']  +=r.wM; });
   const free={}, cap={};
   rows.forEach(r=>{ free[r.sup]={'Евросиб':Math.max(0,(r.whNsk2>=NSK2_MIN_TAKE? r.whNsk2:0)-r.usedNsk2),
                                  'Нск-FBS':Math.max(0,r.whNsk1-r.usedNsk1),
-                                 'Мск':    Math.max(0,r.whMsk -r.usedMsk),
-                                 'Клин':   Math.max(0,r.whKlin-r.usedKlin)};
+                                 'Мск':    Math.max(0,r.whMsk -r.usedMsk)};
     cap[r.sup]={ozon:Math.max(0,Math.floor(r.oSpd*TOPUP_SELL_DAYS)-(r.oCov+r.shipO)),
                 wb:  Math.max(0,Math.floor(r.wSpd*TOPUP_SELL_DAYS)-(r.wCov+r.shipW))}; });
   Object.keys(cnt).sort((a,b)=>cnt[b]-cnt[a]).forEach(k=>{
@@ -252,7 +262,6 @@ const TRUCK_TOPUP_MIN=15, TOPUP_SELL_DAYS=90;
       free[r.sup][wh]-=qty; cap[r.sup][mp]-=qty; cnt[k]+=pals;
       if(wh==='Евросиб'){ r.usedNsk2+=qty; if(oz) r.oN2+=pals; else r.wN2+=pals; }
       else if(wh==='Нск-FBS'){ r.usedNsk1+=qty; if(oz) r.oN1+=pals; else r.wN1+=pals; }
-      else if(wh==='Клин'){ r.usedKlin+=qty; r.wKl+=pals; }     // Клин — только ВБ FBO
       else { r.usedMsk+=qty; if(oz) r.oM+=pals; else r.wM+=pals; }
       if(oz){ r.shipO+=qty; r.palO+=pals; r.topUpO+=qty; }
       else  { r.shipW+=qty; r.palW+=pals; r.topUpW+=qty; } });
@@ -288,9 +297,12 @@ console.log('ПОДСОРТ НА '+DAYS+' ДНЕЙ · остатки ВБ на '
 console.log('─'.repeat(96));
 console.log('Требуют подсорта: '+needAny.length+' позиций (из них СРОЧНО, покрытие < '+Math.round(DAYS/3)+' дн: '+urgent.length+')');
 console.log('К отгрузке на Ozon: '+F(rows.reduce((a,r)=>a+r.shipO,0))+' шт'
-  +'  (Евросиб, Нск-1 и Москва; с РВБ Клин на Ozon не возим)');
+  +'  (Евросиб, Нск-1 и Москва)');
 console.log('К отгрузке на ВБ FBO: '+F(rows.reduce((a,r)=>a+r.shipW,0))+' шт'
-  +'  (из них с РВБ Клин: '+F(rows.reduce((a,r)=>a+(r.usedKlin||0),0))+' шт)');
+  +'  (Евросиб, Нск-1 и Москва)');
+{ const kl=klinBySup(); const tot=Object.values(kl).reduce((a,b)=>a+b,0);
+  if(tot>0) console.log('На складе РВБ Клин: '+F(tot)+' шт по '+Object.keys(kl).length
+    +' кодам — УЖЕ отправлено на ВБ, в отгрузку не идёт, засчитано в покрытие как «в пути»'); }
 console.log('Нечем закрыть (на складе пусто): '+noStock.length+' позиций, не хватает '
   +F(noStock.reduce((a,r)=>a+r.needO+r.needW,0))+' шт');
 const launches=needAny.filter(r=>r.launch);
@@ -298,9 +310,11 @@ if(launches.length) console.log('Стартовые партии (товара �
   +F(launches.reduce((a,r)=>a+r.shipO,0))+' шт');
 console.log('ПЕРЕМЕСТИТЬ Евросиб → Нск-1 (FBS на ВБ): '+F(rows.reduce((a,r)=>a+r.move,0))+' шт по '
   +movers.filter(r=>r.move>0).length+' кодам'+(moveGap.length? '  ·  нечем закрыть '+moveGap.length+' кодов':''));
-console.log('Покрытие ВБ: FBO '+F(rows.reduce((a,r)=>a+(r.wCov||0),0))+' шт + FBS со своих складов '
+console.log('Покрытие ВБ: на складах ВБ и в пути '+F(rows.reduce((a,r)=>a+(r.wCov||0),0))+' шт (включая Клин) + FBS со своих складов '
   +F(rows.reduce((a,r)=>a+r.wbFbsFree,0))+' шт (Москва и Нск-1 за вычетом того, что уже расписано под отгрузку)');
-console.log('Останется на складе: '+F(rows.reduce((a,r)=>a+r.rest,0))+' шт из '+F(Object.values(wh).reduce((a,v)=>a+v.qty,0)));
+{ const klTot=Object.values(klinBySup()).reduce((a,b)=>a+b,0);
+  console.log('Останется на складе: '+F(rows.reduce((a,r)=>a+r.rest,0))+' шт из '
+    +F(Object.values(wh).reduce((a,v)=>a+v.qty,0)-klTot)+' (склад без Клина)'); }
 
 // ---- план машин: паллеты по (склад × площадка), машина = 33 паллеты, ассортимент round-robin ----
 const buckets={};
@@ -309,7 +323,6 @@ const addB=(whn,mp,r,pal,days)=>{ if(pal<=0) return; const k=whn+'|'+mp;
 rows.forEach(r=>{
   addB('Евросиб','Ozon',r,r.oN2,r.oDays); addB('Нск-FBS','Ozon',r,r.oN1,r.oDays); addB('Мск','Ozon',r,r.oM,r.oDays);
   addB('Евросиб','ВБ FBO',r,r.wN2,r.wDays); addB('Нск-FBS','ВБ FBO',r,r.wN1,r.wDays); addB('Мск','ВБ FBO',r,r.wM,r.wDays);
-  addB('Клин','ВБ FBO',r,r.wKl,r.wDays);     // Клин отгружает только на ВБ FBO
 });
 const plan=Object.entries(buckets).map(([k,items])=>{
   const [whn,mp]=k.split('|'); const total=items.reduce((a,x)=>a+x.pal,0);
