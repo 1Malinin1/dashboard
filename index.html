@@ -237,6 +237,19 @@
   #adTable td.grp-head{text-align:left;font-weight:700;padding-top:12px}
   #adTable td.grp-head .grp-in{position:sticky;left:12px;display:inline-block;font-weight:inherit}
   #adTable tbody tr.row-sep > td{background:var(--surface-2);border-top:1px solid var(--border)}
+  /* ---- Остатки: категория как блок, товары внутри с отступом ---- */
+  #stkTable tbody tr.row-group > td{border-top:2px solid var(--border);
+    background:color-mix(in srgb,var(--accent) 6%,var(--surface))}
+  #stkTable tbody tr.row-group > td.metric{
+    background:color-mix(in srgb,var(--accent) 10%,var(--surface));
+    border-left:3px solid var(--accent)}
+  #stkTable tbody tr.row-group:hover > td.metric{
+    background:color-mix(in srgb,var(--accent) 16%,var(--surface))}
+  #stkTable tbody tr.in-grp > td.metric{
+    padding-left:26px;border-left:3px solid color-mix(in srgb,var(--accent) 22%,transparent)}
+  .stk-caret{display:inline-block;color:var(--accent);font-size:11px;
+    transition:transform .14s ease;transform-origin:50% 50%}
+  .stk-caret.open{transform:rotate(90deg)}
   /* ---- Карточка «что изменилось» ---- */
   .chg-card{border-radius:9px;padding:10px 12px;margin-top:6px;background:var(--surface-2);
     border-left:3px solid var(--muted)}
@@ -1029,6 +1042,7 @@
     <button class="tab-btn" data-tab="dynamics" role="tab" aria-selected="false">Динамика заказов</button>
     <button class="tab-btn" data-tab="turnover" role="tab" aria-selected="false">Оборачиваемость</button>
     <button class="tab-btn" data-tab="stockrate" role="tab" aria-selected="false">Запас и темп</button>
+    <button class="tab-btn" data-tab="stock" role="tab" aria-selected="false">Остатки</button>
     <button class="tab-btn" data-tab="product" role="tab" aria-selected="false">Товар</button>
     <button class="tab-btn" data-tab="finance" role="tab" aria-selected="false">Финансы</button>
     <button class="tab-btn" data-tab="ads" role="tab" aria-selected="false">Реклама</button>
@@ -1293,6 +1307,44 @@
     <div class="howto" id="srHowTo"></div>
     <div class="table-card">
       <div class="table-scroll"><table class="rnp" id="srTable"></table></div>
+    </div>
+  </section>
+
+  <!-- ОСТАТКИ: где сейчас лежит товар и как это менялось. Задача продавца (05.10.2026):
+       «отдал складу файл на сборку — позиции у меня пропадают, и дальше я их не вижу до самого
+       прихода на площадку; товарная матрица растёт, не хочу натыкаться на такое случайно».
+       Поэтому вкладка про ДВИЖЕНИЕ, а не про статический остаток: три уровня (всего →
+       категория → товар), динамика по дням и отдельный блок «ушло со склада, на площадке
+       ещё не появилось». -->
+  <section id="tab-stock" class="tab-panel" hidden>
+    <div class="freshness" id="stkFreshness"></div>
+    <div class="kpis4" id="stkKpis"></div>
+    <div class="toolbar">
+      <input type="search" id="stkSearch" placeholder="Поиск: артикул, код 1С или название…">
+      <select id="stkCat" multiple data-all="Все категории" data-plural="категорий"></select>
+      <div class="seg" id="stkPeriodSeg" role="group" aria-label="Период сравнения">
+        <button data-n="7" aria-pressed="true">7 дней</button>
+        <button data-n="14" aria-pressed="false">14 дней</button>
+        <button data-n="30" aria-pressed="false">30 дней</button>
+        <button data-n="0" aria-pressed="false">Вся история</button>
+      </div>
+      <span class="count" id="stkCount"></span>
+      <button class="btn" id="stkExportBtn">Скачать Excel</button>
+    </div>
+    <div class="howto" id="stkHowTo"></div>
+    <div class="card" id="stkMoveCard" hidden>
+      <h3>Ушло со склада, на площадке ещё не появилось</h3>
+      <div class="cap" id="stkMoveCap"></div>
+      <div id="stkMove"></div>
+    </div>
+    <div class="card" style="margin:0 0 14px">
+      <h3>Где лежит товар — по дням</h3>
+      <div class="cap" id="stkChartCap"></div>
+      <div class="legend" id="stkChartLegend"></div>
+      <div id="stkChart"></div>
+    </div>
+    <div class="table-card">
+      <div class="table-scroll"><table class="rnp" id="stkTable"></table></div>
     </div>
   </section>
 
@@ -6326,10 +6378,10 @@ function srRows(){
     const whQty=whMsk+whNsk+whKlin+whOther;
     const stockWb=w.stock||0, stockOz=(o.stock||0)+(o.transit||0);
     const total=stockWb+stockOz+whQty;
-    /* Сколько из этого запаса вообще МОЖЕТ дойти до Ozon: то, что уже на Озоне, плюс два
-       новосибирских склада. Москва на Ozon не отгружает, поэтому её остаток Озону недоступен
-       и целиком остаётся Wildberries — без этой оговорки спрос Озона вычитался бы из товара,
-       до которого он физически не дотянется. */
+    /* `ozReach` оставлен СПРАВОЧНО (сколько запаса вообще может дойти до Ozon) и в расчёт
+       цели больше НЕ ИДЁТ: с 05.10.2026 база цели — только ВБ и свой склад, см. `srDecorate`.
+       Там же считается, сколько Озон доберёт со склада, и там в расчёт входит Москва —
+       с 21.09.2026 она снова возит на Ozon, а эта строка осталась от старого правила. */
     const ozReach=stockOz+whNsk1+whNsk2;
     const spdWb=w.spd||0, spdOz=o.spd||0, spd=spdWb+spdOz;
     const b=batchFor(sup);
@@ -6360,10 +6412,27 @@ function srDecorate(rows){
       else if(r.etaLeft!=null && r.etaLeft<=0){ hz=null; hzSrc="партия просрочена ("+fmtDate(r.eta)+")"; }
       else hzSrc = r.incoming>0 ? "дата партии не задана" : "партии нет";
     } else { hz=+srHorizonMode; hzSrc=hz+" дн"; }
-    /* Озон съест своё независимо от цены — на ВБ остаётся то, что после него. Но взять он
-       может только из того, до чего дотягивается (`ozReach`): Москва на Ozon не отгружает. */
-    const ozTake = hz>0 ? Math.min(r.spdOz*hz, r.ozReach) : 0;
-    const wbAvail = hz>0 ? Math.max(0, r.total-ozTake) : null;
+    /* ЗАПАС ДЛЯ ЦЕЛИ — ТОЛЬКО ВБ И СВОЙ СКЛАД. ОСТАТОК НА ОЗОНЕ В БАЗУ НЕ ВХОДИТ
+       (правка продавца 05.10.2026, дословно: «план по продажам я указываю только на вб…
+       то, что ты все складываешь (остаток весь) — это неправильно, на озоне я могу следовать
+       только за вб в плане цены, соответственно если я не могу управлять ценой, я не могу
+       особо управлять продажами… остатки нужно учитывать только вб ну и на моем складе»).
+       ПОЧЕМУ ЭТО ВАЖНО: товар, уже лежащий на складах Ozon, Wildberries не продаст никогда —
+       он на другой витрине. Прежняя формула вычитала спрос Озона из ОБЩЕГО запаса, и остаток
+       Озона сверх его собственных продаж молча прибавлялся к базе ВБ, завышая цель.
+       Замер на светофорах 05.10: у 982149290 база падала с 240 до 89 шт — цель расходилась
+       втрое. Не возвращай `r.total` в `wbAvail`.
+       СКЛАД ОСТАВЛЕН В БАЗЕ, НО ЗА ВЫЧЕТОМ ТОГО, ЧТО С НЕГО ЗАБЕРЁТ ОЗОН: склад один на две
+       площадки, и если Озону своего остатка не хватает, он добирает отсюда. Вычитаем ТОЛЬКО
+       недостачу (`ozNeed − своё`), а не весь спрос Озона — иначе склад резался бы дважды.
+       `whReach` — все три отгрузочных склада: с 21.09.2026 на Ozon возит и Москва. Клин сюда
+       не входит: его товар уже назначен на ВБ. */
+    const ozNeed = hz>0 ? r.spdOz*hz : 0;                    // сколько Озон продаст за горизонт
+    const ozOwn  = (r.stockOz||0);                           // чем закроется сам (остаток + его «в пути»)
+    const whReach= (r.whMsk||0)+(r.whNsk1||0)+(r.whNsk2||0); // склад, доступный Озону
+    const ozTake = hz>0 ? Math.max(0, Math.min(ozNeed-ozOwn, whReach)) : 0;
+    const wbBase = (r.stockWb||0)+(r.whQty||0);              // ВБ FBO + весь свой склад
+    const wbAvail = hz>0 ? Math.max(0, wbBase-ozTake) : null;
     const target = hz>0 ? wbAvail/hz : null;                 // сколько можно продавать в день НА ВБ
     let verdict="none", ratio=null;
     if(target!=null){
@@ -7713,22 +7782,23 @@ function renderSrHowTo(){
   const hz = srHorizonMode==="eta" ? "до даты прихода партии по этому товару" : srHorizonMode+" дней";
   el.innerHTML=`<div class="howto-t">КАК СЧИТАЕТСЯ ЗАПАС И ТЕМП</div>`
     +`<div class="howto-s">`
-    +[`Запас = остаток на складах ВБ (FBO) + остаток и поставки Ozon + все три ваших склада (с них идёт FBS)`,
+    +[`База для цели = остаток на складах ВБ (FBO) + все ваши склады. Остаток, лежащий на Ozon, в базу НЕ входит: его Wildberries не продаст`,
       `Продаж/дн = заказы за 7 дней ÷ 7 × % выкупа — отдельно по ВБ и по Ozon`,
-      `Ozon съест за горизонт (${hz}) = его продаж/дн × дни, но не больше того, до чего он дотягивается (Озон + Нск-1 + Евросиб)`,
-      `ВБ доступно = запас − то, что съест Ozon; делим на горизонт → цель ПРОДАЖ в день`,
+      `Ozon доберёт со склада за горизонт (${hz}) = его продаж/дн × дни МИНУС то, что у него уже лежит; больше свободного склада взять не может`,
+      `ВБ доступно = ВБ FBO + склад − то, что доберёт Ozon; делим на горизонт → цель ПРОДАЖ в день`,
       `ВБ: ЦЕЛЬ ЗАКАЗОВ/ДН = цель продаж ÷ % выкупа товара — вот это число ставится в репрайсер`,
       `Темп ВБ выше цели на 15% — «поднять цену», ниже на 15% — «разогнать», в пределах — «держать»`,
       `Ozon: отгрузить через = на сколько хватит того, что уже на площадке, минус ${OZ_LEAD_DAYS} дн поставки`]
       .map(s=>`<span>${esc(s)}</span>`).join('<i>→</i>')+`</div>`
     +`<div class="howto-n">`
-    +[`ЦЕНОЙ ВЫ УПРАВЛЯЕТЕ ТОЛЬКО НА ВБ. Ozon следует за ценой ВБ (условие удержания индекса цен), поэтому его спрос — заданная величина: разогнать или притормозить его нельзя. В расчёте он вычитается из общего запаса, а цель по темпу считается для остатка, который достаётся ВБ.`,
-      `Ключ строки — код 1С: товар физически один, поэтому ВБ и Ozon считаются общим запасом. Товар на вашем складе учтён РОВНО ОДИН РАЗ, хотя он одновременно продаётся на ВБ по FBS и может уехать на Ozon.`,
+    +[`ЭТОТ ПЛАН — ТОЛЬКО ДЛЯ WILDBERRIES, под стратегию «план продаж» в репрайсере. Ценой вы управляете лишь на ВБ: Ozon следует за его ценой ради индекса, поэтому продажами на Ozon вы не управляете, и ставить по нему план смысла нет.`,
+      `ОСТАТОК НА СКЛАДАХ OZON В БАЗУ НЕ ВХОДИТ — этот товар уже на другой витрине, Wildberries его не продаст. В базе только склады ВБ (FBO) и ваши склады.`,
+      `Ключ строки — код 1С: товар физически один, и ваш склад кормит обе площадки. Поэтому из базы вычитается то, что Ozon доберёт со склада, — но только его НЕДОСТАЧА (спрос минус то, что у него уже лежит), а не весь спрос: иначе склад урезался бы дважды.`,
       `Wildberries считается ЦЕЛИКОМ: и остаток на складах WB (FBO), и ваш склад (FBS) — это один и тот же товар, которым вы торгуете на ВБ. Поэтому цель по темпу держит вас и от аута, и от залежавшегося остатка к приходу партии.`,
-      `Москва (СХ Солнечногорск) на Ozon не отгружает, поэтому её остаток Озону недоступен и целиком достаётся Wildberries. Спрос Озона вычитается только из того, до чего он дотягивается: остаток на Озоне + Нск-1 (Склад FBS) + Евросиб.`,
+      `Склад Озону доступен весь (Москва, Нск-1, Евросиб) — с 21.09.2026 на Ozon возит и Москва. Не входит только РВБ Клин: его товар уже собран и назначен на Wildberries.`,
       `«Ozon: отгрузить» — единственный рычаг по Ozon: цена не управляется, поэтому вопрос только в том, когда отправить товар, чтобы не уйти в аут. Срок доставки принят ${OZ_LEAD_DAYS} дней — скажите, если у вас другой, поправлю.`,
       `Горизонт — до даты, когда партия ВСТАНЕТ В ПРОДАЖУ (а не приедет к вам на склад): пока она лежит непринятой, продажи она не закрывает.`,
-      `Цель «0/дн» на ВБ означает, что при нынешнем спросе Ozon весь запас уйдёт на него — на ВБ продавать нечего, цену надо поднимать сильно.`,
+      `Цель «0/дн» на ВБ означает, что весь свободный склад заберёт Ozon и на ВБ не остаётся ничего — продавать нечего, цену надо поднимать сильно.`,
       `Цель дана в ЗАКАЗАХ, потому что репрайсер стремится именно к числу заказов в день: не добирает — снижает цену до вашего минимума, перебирает — поднимает. Выкупы получатся меньше на процент выкупа товара (он показан мелким под текущим числом заказов).`,
       `Если у товара нет своей партии, горизонт всё равно берётся до общей даты заказа производству — иначе цель не с чем сравнить. В колонке «Партия» у таких прочерк.`]
       .map(s=>`<div>${esc(s)}</div>`).join("")+`</div>`;
@@ -7769,11 +7839,13 @@ function exportStockRateXLSX(){
   const hz = srHorizonMode==="eta" ? "до даты прихода партии по каждому товару" : srHorizonMode+" дней";
   const how={name:"Как считается",widths:[34,80],headerRows:1,rows:[
     ["Показатель","Как получен"],
-    ["Запас всего","остаток на складах ВБ (FBO) + остаток и поставки Ozon + ваш склад (он же FBS)"],
-    ["Ключ строки","код 1С — товар физически один, поэтому обе площадки считаются общим запасом"],
+    ["Запас всего","остаток на складах ВБ (FBO) + остаток и поставки Ozon + ваш склад (он же FBS) — справочная колонка"],
+    ["Ключ строки","код 1С — товар физически один, и ваш склад кормит обе площадки"],
     ["Продаж/дн","заказы за 7 дней ÷ 7 × % выкупа площадки; ВБ и Ozon считаются отдельно"],
-    ["Ценой управляем только на ВБ","Ozon следует за ценой ВБ, поэтому его спрос задан: он вычитается из запаса, а цель по темпу считается для того, что достаётся ВБ"],
-    ["ВБ: цель продаж/дн","(запас − продажи Ozon за горизонт) ÷ горизонт"],
+    ["ЭТОТ ПЛАН — ТОЛЬКО ДЛЯ ВБ","под стратегию «план продаж» в репрайсере. Ценой вы управляете лишь на ВБ: Ozon следует за его ценой ради индекса, поэтому продажами на Ozon вы не управляете и план по нему не ставится"],
+    ["База цели","остаток ВБ (FBO) + ваш склад. Остаток, лежащий на складах Ozon, в базу НЕ входит: Wildberries его не продаст"],
+    ["Ozon съест за горизонт","только НЕДОСТАЧА Озона (его продажи за горизонт минус то, что у него уже лежит), и не больше свободного склада. Склад один на две площадки, поэтому эту часть ВБ не получит"],
+    ["ВБ: цель продаж/дн","(ВБ FBO + ваш склад − недостача Ozon) ÷ горизонт"],
     ["ВБ: ЦЕЛЬ ЗАКАЗОВ/ДН","цель продаж ÷ % выкупа товара — ЭТО ЧИСЛО СТАВИТСЯ В РЕПРАЙСЕР"],
     ["Ozon: отгрузить через","хватит дней на Ozon − "+OZ_LEAD_DAYS+" дн (поставка на Ozon идёт около месяца); «СРОЧНО» — отгружать уже сейчас"],
     ["% выкупа ВБ",(RD&&RD.meta&&RD.meta.buyoutWin)? (Math.round(RD.meta.buyoutWin.all*100)+"% за "+RD.meta.buyoutWin.from+"…"+RD.meta.buyoutWin.to):"—"],
@@ -7789,6 +7861,51 @@ function exportStockRateXLSX(){
     ["Файл сформирован",fmtDateLong(new Date().toISOString().slice(0,10))]]};
   xlsxDownload("запас-и-темп.xlsx",[how,
     {name:"Запас и темп",rows:data,widths:cols.map(c=>c.w),headerRows:1}]);
+}
+
+/* Выгрузка «Остатков»: что видишь — то и качаешь (те же фильтры и период, что на экране).
+   Лист «Как считается» едет вместе с цифрами — файл уходит без дашборда. */
+function exportStockXLSX(){
+  const rows=stkFiltered(stkRows());
+  if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
+  const cols=[
+    {h:"Наименование",v:r=>r.name||"",w:44},{h:"Категория",v:r=>r.cat||"",w:20},
+    {h:"Код 1С",v:r=>r.sup,w:14},{h:"Артикул ВБ",v:r=>r.sku||"",w:13},
+    {h:"Склады ВБ (FBO), шт",v:r=>r.fbo,w:20},
+    {h:"В пути на ВБ, шт",v:r=>r.wbTransit,w:18},
+    {h:"Москва, шт",v:r=>r.msk,w:12},{h:"Нск-1 (FBS), шт",v:r=>r.nsk1,w:16},
+    {h:"Евросиб, шт",v:r=>r.nsk2,w:13},{h:"РВБ Клин, шт",v:r=>r.klin,w:14},
+    {h:"Ozon, шт",v:r=>r.oz,w:12},{h:"В пути на Ozon, шт",v:r=>r.ozTransit,w:19},
+    {h:"ВСЕГО, шт",v:r=>r.total,w:13},
+    {h:"Изменение за период, шт",v:r=>r.dTotal==null? "" : r.dTotal,w:24},
+    {h:"из них ВБ",v:r=>r.dFbo==null? "" : r.dFbo,w:12},
+    {h:"из них Ozon",v:r=>r.dOz==null? "" : r.dOz,w:13},
+    {h:"из них свой склад",v:r=>r.dWh==null? "" : r.dWh,w:19}];
+  const data=[cols.map(c=>c.h)];
+  rows.slice().sort((a,b)=>b.total-a.total).forEach(r=>data.push(cols.map(c=>c.v(r))));
+  const {srcDays}=stockSeries();
+  const lastD=a=>a.length? fmtDateLong(a[a.length-1]) : "—";
+  const how={name:"Как считается",widths:[34,80],headerRows:1,rows:[
+    ["Показатель","Как получен"],
+    ["Зачем эта таблица","видеть, где лежит товар и как он движется: после отгрузки со склада он пропадает из виду до самого прихода на площадку"],
+    ["Ключ строки","код 1С — товар физически один, а витрин две"],
+    ["Склады ВБ (FBO)","остаток на складах Wildberries"],
+    ["В пути на ВБ","журнал отгрузок: товар отправлен, но ещё не принят. ВБ этот путь не показывает вовсе, поэтому отгрузка отмечается отдельно, а приёмка засчитывается по росту остатка"],
+    ["Ваши склады","ведомость 1С. РВБ Клин показан отдельно: его товар уже собран и назначен на ВБ, в отгрузку он не идёт"],
+    ["В пути на Ozon","заявки на поставку + партии в пути, их показывает сам Ozon"],
+    ["Изменение за период",(stkPeriod? "за "+stkPeriod+" дн":"за всю историю")+"; считается по остаткам, то, что в пути, в него не входит"],
+    ["История ВБ","подённо, "+srcDays.fbo.length+" дн — остаток едет в подённом отчёте аналитики по каждому артикулу"],
+    ["История Ozon",srcDays.oz.length+" замеров — только из отчётов «Остатки на складах», сколько прислали, столько и точек"],
+    ["История своего склада",srcDays.wh.length+" замеров — из ведомостей 1С"],
+    ["Между замерами","значение держится прежним: это «нового замера не было», а не «ничего не менялось»"],
+    ["Остатки ВБ на дату",lastD(srcDays.fbo)],
+    ["Остатки Ozon на дату",lastD(srcDays.oz)],
+    ["Свой склад на дату",lastD(srcDays.wh)],
+    ["Фильтры",(selCats("stkCat").join(", ")||"все категории")
+      +((document.getElementById("stkSearch").value||"").trim()? " · поиск: "+document.getElementById("stkSearch").value.trim():"")],
+    ["Файл сформирован",fmtDateLong(new Date().toISOString().slice(0,10))]]};
+  xlsxDownload("остатки.xlsx",[how,
+    {name:"Остатки",rows:data,widths:cols.map(c=>c.w),headerRows:1}]);
 }
 const SR_VERDICT={
   short:{lbl:"Не хватит и Озону",cls:"crit",tip:"Даже если на ВБ не продавать вообще, запаса не хватит: один Ozon выберет его до выхода партии.\nПоднятие цены на ВБ притормозит и Ozon (он следует за ценой), но одного этого может не хватить — смотрите, можно ли ускорить партию."},
@@ -9982,7 +10099,355 @@ function renderRecAdTree(){
   });
   el.innerHTML=html+`</div>`;
 }
-const TABS=["recs","home","dynamics","turnover","stockrate","product","finance","ads","analytics"];
+/* ===================== ВКЛАДКА «ОСТАТКИ» =====================
+   Задача продавца (05.10.2026): «я отдал складу файл на сборку — позиции у меня пропадают,
+   и дальше я их не вижу до самого прихода на площадку; матрица растёт, не хочу натыкаться
+   на такое случайно». Поэтому вкладка про ДВИЖЕНИЕ товара между местами хранения, а не про
+   статический остаток: сколько где лежит, как менялось, и что уже уехало, но ещё не принято.
+
+   ТРИ ИСТОЧНИКА, У КАЖДОГО СВОЯ ГЛУБИНА ИСТОРИИ — это главное, что надо помнить:
+   · ВБ FBO — подённо из воронки (`FUNNEL_CACHE.wbStock`): подённый отчёт аналитики несёт
+     остаток по каждому артикулу с 14.07.2026. Самая длинная история, досталась бесплатно.
+   · Ozon — `ozon.stockHistory`, точки копит `ozon-stock-history.cjs` из отчёта «Остатки».
+     Неравномерная: сколько раз продавец прислал отчёт, столько и точек.
+   · Свой склад — `whHistory`, точки копит `update-warehouse.cjs stock` (заведено 05.10.2026).
+   Значения переносятся вперёд до следующего замера (остаток не меняется, пока не пришёл новый
+   отчёт), а ДО первой точки слоя стоит `null`, а НЕ ноль: иначе в день первого замера
+   нарисовался бы фантомный приход на весь объём.
+
+   `ownStock` ИЗ ВОРОНКИ ВБ СЮДА НЕ ИДЁТ, ХОТЯ ОН ПОДЁННЫЙ И СОБЛАЗНИТЕЛЬНЫЙ. Это «Остатки
+   Свой склад» ГЛАЗАМИ ВБ — только то, что подключено к его FBS (24 341 шт на 04.10), тогда
+   как в 1С по пяти складам лежит 51 118 шт. Положить их в один слой значит нарисовать скачок
+   на 27 тыс шт, который читается как приход. Свой склад берём ТОЛЬКО из 1С (`whHistory`). */
+let stkPeriod=7, stkOpenCat=null, _stkSeries=null;
+
+function stockSeries(){
+  if(_stkSeries) return _stkSeries;
+  const supOf={};                                   // артикул ВБ → код 1С
+  ((RD&&RD.catalog)||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s) supOf[""+c.sku]=s; });
+
+  const fboBy={};                                   // дата → {код 1С: шт на складах ВБ}
+  (typeof FUNNEL_CACHE!=="undefined"? FUNNEL_CACHE:[]).forEach(r=>{
+    const s=supOf[""+r.sku]; if(!s||!r.date) return;
+    const d=fboBy[r.date]||(fboBy[r.date]={}); d[s]=(d[s]||0)+(r.wbStock||0); });
+  /* Свежий срез остатков ВБ приходит ОТДЕЛЬНЫМ отчётом (`update-wb-stock.cjs`) и обычно на
+     день-два новее последней подённой выгрузки — добавляем его точкой, иначе вкладка показывала
+     бы позавчерашний день, пока не доедет аналитика. */
+  const wbSnapD=(RD.meta&&RD.meta.stockSnapshotDate)||null;
+  if(wbSnapD){ const fresh={};
+    (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s) fresh[s]=(fresh[s]||0)+(c.wbStock||0); });
+    fboBy[wbSnapD]=fresh; }
+
+  const ozAll={}; Object.entries((RD.ozon&&RD.ozon.stockHistory)||{}).forEach(([k,v])=>ozAll[k]=v);
+  const ozSnapD=(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||null;
+  if(ozSnapD && !ozAll[ozSnapD]){ const m={};
+    ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ const s=(""+(c.sku||"")).trim(); if(s) m[s]=(m[s]||0)+(c.ozStock||0); });
+    ozAll[ozSnapD]=m; }
+
+  const whBy=RD.whHistory||{};
+  const dates=[...new Set([...Object.keys(fboBy),...Object.keys(ozAll),...Object.keys(whBy)])].sort();
+
+  let curFbo=null, curOz=null, curWh=null;
+  const snaps=dates.map(d=>{
+    if(fboBy[d]) curFbo=fboBy[d];
+    if(ozAll[d]) curOz=ozAll[d];
+    if(whBy[d])  curWh=whBy[d].bySup||{};
+    const sup={};
+    const ent=c=>sup[c]||(sup[c]={fbo:0,oz:0,wh:0,whBy:{}});
+    if(curFbo) Object.entries(curFbo).forEach(([c,v])=>{ if(v) ent(c).fbo+=v; });
+    if(curOz)  Object.entries(curOz).forEach(([c,v])=>{ if(v) ent(c).oz+=v; });
+    if(curWh)  Object.entries(curWh).forEach(([c,v])=>{ const q=v.qty||0; if(!q) return;
+      const e=ent(c); e.wh+=q;
+      Object.entries(v.wh||{}).forEach(([n,x])=>{ const k=whKey(n); e.whBy[k]=(e.whBy[k]||0)+x; }); });
+    const tot={fbo:0,oz:0,wh:0};
+    Object.values(sup).forEach(e=>{ tot.fbo+=e.fbo; tot.oz+=e.oz; tot.wh+=e.wh; });
+    return {date:d, sup, tot, has:{fbo:!!curFbo, oz:!!curOz, wh:!!curWh}};
+  });
+  return (_stkSeries={dates,snaps,
+    srcDays:{fbo:Object.keys(fboBy).sort(), oz:Object.keys(ozAll).sort(), wh:Object.keys(whBy).sort()}});
+}
+
+/* Срез «период назад» для колонки Δ. При «вся история» — самый первый. */
+function stkPrevSnap(){
+  const {snaps}=stockSeries(); if(snaps.length<2) return null;
+  if(!stkPeriod) return snaps[0];
+  const want=addDays(snaps[snaps.length-1].date,-stkPeriod);
+  for(let i=snaps.length-1;i>=0;i--) if(snaps[i].date<=want) return snaps[i];
+  return snaps[0];
+}
+
+/* Строки по коду 1С: товар физически один, а витрин две.
+   «В пути» истории не имеет вовсе (ВБ путь от отправки до приёмки не показывает, у Озона это
+   заявки на поставку), поэтому берётся ТЕКУЩЕЕ значение и в график не кладётся. */
+function stkRows(){
+  const {snaps}=stockSeries();
+  if(!snaps.length) return [];
+  const now=snaps[snaps.length-1], prev=stkPrevSnap();
+  const ship={}; (RD.shipments||[]).forEach(s=>{ if(s.mp==="wb"&&s.left>0) ship[s.sup]=(ship[s.sup]||0)+s.left; });
+  const klin=klinBySup();
+  const ozT={}; ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ const s=(""+(c.sku||"")).trim();
+    if(s) ozT[s]=(ozT[s]||0)+(c.ozTransit||0); });
+  const meta={};
+  (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim();
+    if(s&&!meta[s]) meta[s]={name:c.name||"",cat:c.category||"—",sku:""+c.sku}; });
+  ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ const s=(""+(c.sku||"")).trim();
+    if(s&&!meta[s]) meta[s]={name:c.name||"",cat:c.wbCategory||c.category||"—",sku:null}; });
+
+  /* СРАВНИВАЕМ ТОЛЬКО СЛОИ, КОТОРЫЕ ЕСТЬ В ОБОИХ СРЕЗАХ. У слоёв разная глубина истории:
+     остаток ВБ подённый с 14.07, свой склад — с первой ведомости (05.10.2026), Ozon — с первого
+     присланного отчёта. Если взять срез «30 дней назад», где слоя склада ещё не было, и вычесть
+     его из сегодняшнего, где он есть, получится приход на весь склад: на замере 05.10 Пушкары
+     показывали «+42 898 шт за 30 дней» при реальном падении. Поэтому слой, начавшийся позже
+     базовой даты, из Δ исключается целиком, а не считается с нуля. */
+  const cmp={}; ["fbo","oz","wh"].forEach(k=>cmp[k]=!!(prev&&prev.has[k]&&now.has[k]));
+  const anyCmp=cmp.fbo||cmp.oz||cmp.wh;
+  const codes=[...new Set([...Object.keys(now.sup),...Object.keys(ship),...Object.keys(ozT)])];
+  return codes.map(s=>{
+    const a=now.sup[s]||{fbo:0,oz:0,wh:0,whBy:{}}, b=(prev&&prev.sup[s])||{fbo:0,oz:0,wh:0}, w=a.whBy||{};
+    const dOf=k=>cmp[k]? a[k]-b[k] : null;
+    const wbT=ship[s]||0, oT=ozT[s]||0;
+    const m=meta[s]||{name:s,cat:"—",sku:null};
+    return {sup:s, name:m.name, cat:m.cat, sku:m.sku,
+      fbo:a.fbo, oz:a.oz, wh:a.wh,
+      msk:w.msk||0, nsk1:w.nsk1||0, nsk2:w.nsk2||0, klin:klin[s]||0,
+      wbTransit:wbT, ozTransit:oT,
+      total:a.fbo+a.oz+a.wh+wbT+oT,
+      dFbo:dOf("fbo"), dOz:dOf("oz"), dWh:dOf("wh"),
+      dTotal:anyCmp? ["fbo","oz","wh"].reduce((x,k)=>cmp[k]? x+(a[k]-b[k]) : x, 0) : null};
+  }).filter(r=>r.total>0 || (r.dTotal!=null && r.dTotal!==0));
+}
+
+/* Какие слои вообще участвуют в Δ при текущем периоде — нужно и для расчёта, и для подписи:
+   молча не сравнивать слой нельзя, иначе продавец решит, что по складу движения не было. */
+function stkCmpLayers(){
+  const {snaps}=stockSeries(); const prev=stkPrevSnap();
+  if(!snaps.length||!prev) return {fbo:false,oz:false,wh:false};
+  const now=snaps[snaps.length-1], o={};
+  ["fbo","oz","wh"].forEach(k=>o[k]=!!(prev.has[k]&&now.has[k]));
+  return o;
+}
+function stkFiltered(all){
+  const q=((document.getElementById("stkSearch")||{}).value||"").trim().toLowerCase();
+  const cats=selCats("stkCat"), pred=catPred(cats.length?cats:null);
+  return all.filter(r=>{
+    if(pred && !pred(r.cat)) return false;
+    if(!q) return true;
+    return (r.sup+" "+(r.sku||"")+" "+r.name+" "+r.cat).toLowerCase().includes(q);
+  });
+}
+const stkNum=v=>v? nf.format(v) : `<span class="muted">—</span>`;
+function stkDelta(v){
+  if(v==null) return `<span class="muted">—</span>`;
+  if(!v) return `<span class="muted">0</span>`;
+  return `<span style="color:${v>0?"var(--good-txt)":"var(--crit-txt)"}">${v>0?"+":"−"}${nf.format(Math.abs(v))}</span>`;
+}
+
+function renderStockTab(){
+  const fresh=document.getElementById("stkFreshness");
+  if(!RD){ renderNoData("stkTable"); fresh.innerHTML=""; document.getElementById("stkKpis").innerHTML=""; return; }
+  const catSel=document.getElementById("stkCat"); if(!catSel.options.length) fillCategorySelect(catSel);
+  const {snaps,srcDays}=stockSeries();
+  if(!snaps.length){ renderNoData("stkTable"); fresh.innerHTML="Истории остатков пока нет"; return; }
+  const prev=stkPrevSnap();
+  const all=stkRows(), rows=stkFiltered(all);
+  const pTxt=stkPeriod? `за ${stkPeriod} ${plural(stkPeriod,"день","дня","дней")}` : "за всю историю";
+  const cmp=stkCmpLayers();
+  const cmpOn=[cmp.fbo&&"склады ВБ",cmp.oz&&"Ozon",cmp.wh&&"ваши склады"].filter(Boolean);
+  const cmpOff=[!cmp.fbo&&"склады ВБ",!cmp.oz&&"Ozon",!cmp.wh&&"ваши склады"].filter(Boolean);
+  const cmpTxt=(cmpOn.length? cmpOn.join(", ") : "ничего — сравнивать не с чем")
+    +(cmpOff.length? ` (не участвуют: ${cmpOff.join(", ")} — на начало периода замера ещё не было)` : "");
+
+  const lastD=a=>a.length? a[a.length-1] : null;
+  fresh.innerHTML=`<span class="dot"></span>`
+    +`Остатки ВБ ${fmtDateLong(lastD(srcDays.fbo))} · история ${srcDays.fbo.length} дн &nbsp;|&nbsp; `
+    +`Ozon ${fmtDateLong(lastD(srcDays.oz))} · ${srcDays.oz.length} ${plural(srcDays.oz.length,"замер","замера","замеров")} &nbsp;|&nbsp; `
+    +`свой склад ${fmtDateLong(lastD(srcDays.wh))} · ${srcDays.wh.length} ${plural(srcDays.wh.length,"замер","замера","замеров")}`;
+
+  const sum=f=>rows.reduce((a,r)=>a+f(r),0);
+  const sFbo=sum(r=>r.fbo), sOz=sum(r=>r.oz), sWh=sum(r=>r.wh);
+  const sWbT=sum(r=>r.wbTransit), sOzT=sum(r=>r.ozTransit);
+  const dAll=prev? sum(r=>r.dTotal||0) : null;
+  document.getElementById("stkKpis").innerHTML=[
+    {lbl:"Всего товара, шт", val:nf.format(sFbo+sOz+sWh+sWbT+sOzT), hero:true,
+      tip:"Весь товар по выбранным позициям, во всех местах сразу.\n\n"
+        +"Склады ВБ (FBO): "+nf.format(sFbo)+" шт\nOzon: "+nf.format(sOz)+" шт\n"
+        +"Ваши склады: "+nf.format(sWh)+" шт\nВ пути на площадки: "+nf.format(sWbT+sOzT)+" шт\n\n"
+        +(dAll==null? "Сравнить не с чем: по этому срезу пока один замер."
+          : "Изменение "+pTxt+": "+(dAll>=0?"+":"−")+nf.format(Math.abs(dAll))+" шт (без учёта того, что в пути)")},
+    {lbl:"На площадках, шт", val:nf.format(sFbo+sOz),
+      tip:"Товар, который уже продаётся.\n\nВБ (FBO): "+nf.format(sFbo)+" шт\nOzon: "+nf.format(sOz)+" шт\n\n"
+        +"Остаток падает от продаж и растёт от приёмки поставки."},
+    {lbl:"На ваших складах, шт", val:nf.format(sWh),
+      tip:"Ведомость 1С по вашим складам.\n\n"
+        +"Москва: "+nf.format(sum(r=>r.msk))+" шт\nНск-1 (FBS): "+nf.format(sum(r=>r.nsk1))+" шт\n"
+        +"Евросиб: "+nf.format(sum(r=>r.nsk2))+" шт\nРВБ Клин: "+nf.format(sum(r=>r.klin))+" шт\n\n"
+        +"Клин показан отдельно: его товар уже собран и назначен на ВБ, в отгрузку он не идёт."},
+    {lbl:"В пути на площадки, шт", val:nf.format(sWbT+sOzT),
+      valColor:(sWbT+sOzT)?"var(--warn-txt)":"var(--text-1)",
+      tip:"Товар отправлен, но на площадке ещё не появился.\n\n"
+        +"На ВБ: "+nf.format(sWbT)+" шт — журнал отгрузок. ВБ путь от отправки до приёмки не показывает вовсе, "
+        +"поэтому отгрузка отмечается отдельно, а приёмка засчитывается по росту остатка.\n"
+        +"На Ozon: "+nf.format(sOzT)+" шт — заявки на поставку и партии в пути, их показывает сам Ozon."}
+  ].map(kpiCard).join("");
+  wireKpiTips("stkKpis");
+
+  renderStockChart(rows.map(r=>r.sup));
+  renderStockMove(rows,pTxt);
+
+  document.getElementById("stkHowTo").innerHTML=
+    `<div class="howto-t">КАК ЧИТАТЬ ОСТАТКИ</div><div class="howto-n">`
+    +[`Строка — код 1С: товар физически один, а витрин две, поэтому ВБ и Ozon показаны рядом. Клик по категории разворачивает товары внутри.`,
+      `Колонки — МЕСТА, где может лежать товар: склады ВБ (FBO) · в пути на ВБ · ваши склады (Москва, Нск-1, Евросиб, РВБ Клин) · Ozon · в пути на Ozon.`,
+      `«Δ» — насколько изменился остаток ${pTxt}, без учёта того, что в пути. Минус на складе при плюсе на площадке — это приёмка поставки. Минус на складе БЕЗ плюса на площадке — товар уехал и ещё не принят: такие позиции собраны в блоке выше.`,
+      `Сейчас в «Δ» участвуют: ${cmpTxt}. Слой, у которого на начало периода замера ещё не было, в сравнение не берётся вовсе — иначе его остаток целиком показался бы приходом.`,
+      `У каждого слоя своя глубина истории. Остаток ВБ приезжает в подённом отчёте аналитики (${srcDays.fbo.length} дн подряд), Ozon и свой склад — только отдельными выгрузками: сколько прислали, столько и точек. Между замерами линия на графике ровная — это «нового замера не было», а не «ничего не менялось».`,
+      `«В пути» истории не имеет: ни ВБ, ни 1С не показывают товар между отправкой и приёмкой. На ВБ это журнал отгрузок, на Ozon — заявки на поставку, которые Ozon показывает сам.`,
+      `Чем чаще присылаете ведомость 1С и отчёт остатков Ozon, тем точнее картина движения: по ВБ она подённая сама по себе.`]
+      .map(s=>`<div>${esc(s)}</div>`).join("")+`</div>`;
+
+  // ---- таблица: категория → товары
+  const byCat={};
+  rows.forEach(r=>{ (byCat[r.cat]||(byCat[r.cat]=[])).push(r); });
+  const cats=Object.entries(byCat).map(([cat,list])=>{
+    const a={cat,n:list.length,list};
+    ["fbo","oz","wh","msk","nsk1","nsk2","klin","wbTransit","ozTransit","total"].forEach(k=>
+      a[k]=list.reduce((x,r)=>x+(r[k]||0),0));
+    a.dTotal=list.some(r=>r.dTotal!=null)? list.reduce((x,r)=>x+(r.dTotal||0),0) : null;
+    return a;
+  }).sort((a,b)=>b.total-a.total);
+
+  const H=["Категория / товар","Склады ВБ","В пути ВБ","Москва","Нск-1","Евросиб","Клин","Ozon","В пути Ozon","ВСЕГО",`Δ ${stkPeriod||"всё"}`];
+  const maxTot=Math.max(...cats.map(c=>c.total),1);
+  let html=`<thead><tr>${H.map((h,i)=>`<th${i===0?' class="metric"':''}>${esc(h)}</th>`).join("")}</tr></thead><tbody>`;
+  cats.forEach(c=>{
+    const open=stkOpenCat===c.cat;
+    html+=`<tr class="row-group stk-cat" data-cat="${esc(c.cat)}" style="cursor:pointer">`
+      +`<td class="metric"><span class="stk-caret${open?" open":""}">▸</span> <b>${esc(c.cat)}</b> `
+      +`<span class="sub">${c.n} ${plural(c.n,"товар","товара","товаров")}</span></td>`
+      +`<td>${stkNum(c.fbo)}</td><td>${stkNum(c.wbTransit)}</td><td>${stkNum(c.msk)}</td>`
+      +`<td>${stkNum(c.nsk1)}</td><td>${stkNum(c.nsk2)}</td><td>${stkNum(c.klin)}</td>`
+      +`<td>${stkNum(c.oz)}</td><td>${stkNum(c.ozTransit)}</td>`
+      +`<td style="background:${heatBg(c.total,maxTot)}"><b>${nf.format(c.total)}</b></td>`
+      +`<td>${stkDelta(c.dTotal)}</td></tr>`;
+    if(open) c.list.slice().sort((a,b)=>b.total-a.total).forEach(r=>{
+      html+=`<tr class="in-grp"><td class="metric">${r.sku? skuLink(r.sku) : esc(r.sup)} `
+        +`<span class="sub">${esc((r.name||"").slice(0,44))}</span><br><span class="sub">1С ${esc(r.sup)}</span></td>`
+        +`<td>${stkNum(r.fbo)}</td><td>${stkNum(r.wbTransit)}</td><td>${stkNum(r.msk)}</td>`
+        +`<td>${stkNum(r.nsk1)}</td><td>${stkNum(r.nsk2)}</td><td>${stkNum(r.klin)}</td>`
+        +`<td>${stkNum(r.oz)}</td><td>${stkNum(r.ozTransit)}</td>`
+        +`<td><b>${nf.format(r.total)}</b></td><td>${stkDelta(r.dTotal)}</td></tr>`;
+    });
+  });
+  html+="</tbody>";
+  document.getElementById("stkTable").innerHTML=html;
+  document.getElementById("stkCount").textContent=
+    `${cats.length} ${plural(cats.length,"категория","категории","категорий")} · ${rows.length} ${plural(rows.length,"товар","товара","товаров")}`;
+}
+
+/* Блок «ушло со склада, а на площадке не появилось» — то, ради чего вкладка и делается.
+   Пока у склада ОДИН замер, сравнивать не с чем: пишем об этом прямо, а не прячем блок молча —
+   иначе продавец решит, что движения нет, хотя его просто не из чего посчитать. */
+function renderStockMove(rows,pTxt){
+  const card=document.getElementById("stkMoveCard"), box=document.getElementById("stkMove");
+  const cap=document.getElementById("stkMoveCap");
+  const whDays=Object.keys(RD.whHistory||{}).sort();
+  card.hidden=false;
+  if(whDays.length<2){
+    cap.textContent="";
+    box.innerHTML=`<div class="empty-hint">Замер склада пока ОДИН (${fmtDateLong(whDays[0]||null)}), сравнивать не с чем. `
+      +`Движение появится здесь после следующей ведомости 1С: дашборд сам сопоставит, что ушло со склада и сколько из этого уже приняли на площадках.</div>`;
+    return;
+  }
+  const moved=rows.filter(r=>r.dWh!=null && r.dWh<0)
+    .map(r=>({...r, gone:-r.dWh, arrived:Math.max(0,(r.dFbo||0)+(r.dOz||0))}))
+    .filter(r=>r.arrived < r.gone*0.5)        // больше половины ушедшего на площадках ещё не видно
+    .sort((a,b)=>(b.gone-b.arrived)-(a.gone-a.arrived));
+  if(!moved.length){
+    cap.textContent="";
+    box.innerHTML=`<div class="empty-hint">Всё, что уходило со склада ${pTxt}, уже видно на площадках — зависших отгрузок нет.</div>`;
+    return;
+  }
+  const wait=moved.reduce((a,r)=>a+(r.gone-r.arrived),0);
+  cap.textContent=`${moved.length} ${plural(moved.length,"позиция","позиции","позиций")} · ${nf.format(wait)} шт ушло со склада ${pTxt}, на площадках пока не появилось`;
+  box.innerHTML=`<div class="table-scroll"><table class="rnp"><thead><tr><th class="metric">Товар</th>`
+    +`<th>Ушло со склада</th><th>Появилось на площадках</th><th>Ждём</th><th>Отмечено в пути</th></tr></thead><tbody>`
+    +moved.slice(0,25).map(r=>`<tr><td class="metric">${r.sku? skuLink(r.sku) : esc(r.sup)} `
+      +`<span class="sub">${esc((r.name||"").slice(0,40))}</span><br><span class="sub">1С ${esc(r.sup)} · ${esc(r.cat)}</span></td>`
+      +`<td style="color:var(--crit-txt)">−${nf.format(r.gone)}</td>`
+      +`<td>${r.arrived? '<span style="color:var(--good-txt)">+'+nf.format(r.arrived)+'</span>' : '<span class="muted">0</span>'}</td>`
+      +`<td><b>${nf.format(r.gone-r.arrived)}</b></td>`
+      +`<td>${r.wbTransit? nf.format(r.wbTransit) : '<span class="muted">не отмечено</span>'}</td></tr>`).join("")
+    +`</tbody></table></div>`;
+}
+
+/* График слоёв по дням. ЛИНИИ, А НЕ СТОПКА: у слоёв разная глубина истории, и стопка в днях
+   без замера рисовала бы ступени на всю высоту там, где просто нет данных. */
+function renderStockChart(codes){
+  const {snaps}=stockSeries();
+  const set=new Set(codes), dates=snaps.map(s=>s.date);
+  const series=[
+    {k:"fbo", l:"Склады ВБ (FBO)", c:cssv("--s1")},
+    {k:"oz",  l:"Ozon",            c:cssv("--s2")},
+    {k:"wh",  l:"Ваши склады",     c:cssv("--s3")}
+  ];
+  const vals=series.map(s=>snaps.map(sn=>{
+    if(!sn.has[s.k]) return null;                    // слой ещё не начинался — разрыв, а не ноль
+    let v=0; set.forEach(c=>{ const e=sn.sup[c]; if(e) v+=e[s.k]||0; });
+    return v;
+  }));
+  document.getElementById("stkChartCap").textContent=
+    dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · ${set.size} ${plural(set.size,"товар","товара","товаров")} по текущему фильтру` : "";
+  legend(document.getElementById("stkChartLegend"), series.map((s,i)=>{
+    const first=vals[i].findIndex(v=>v!=null);
+    return {name:s.l+(first>0? ` (замеры с ${fmtDate(dates[first])})`:""), color:s.c, line:true};
+  }));
+  stockLines(document.getElementById("stkChart"),dates,series,vals);
+}
+
+function stockLines(mount,dates,series,vals){
+  const W=1000,H=260,m={t:16,r:14,b:34,l:72};
+  const iw=W-m.l-m.r, ih=H-m.t-m.b, n=Math.max(1,dates.length);
+  const flat=vals.flat().filter(v=>v!=null);
+  const sc=niceScale(0,Math.max(...flat,0),4), max=sc.max||1;
+  const X=i=>m.l+(n===1? iw/2 : iw*i/(n-1));
+  const Y=v=>m.t+ih-(v/max)*ih;
+  const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
+  for(let v=0;v<=max+1e-6;v+=sc.step){ const y=Y(v);
+    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":1}));
+    const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});
+    tx.textContent=fmtAxis(v); svg.appendChild(tx); }
+  series.forEach((s,si)=>{
+    let d="", open=false;
+    vals[si].forEach((v,i)=>{ if(v==null){ open=false; return; }
+      d+=(open?"L":"M")+X(i)+" "+Y(v)+" "; open=true; });
+    if(d) svg.appendChild(el("path",{d,fill:"none",stroke:s.c,"stroke-width":2.2,
+      "stroke-linejoin":"round","stroke-linecap":"round"}));
+  });
+  const maxLabels=n<=10?n:9, stride=Math.max(1,Math.round(n/maxLabels));
+  for(let i=0;i<n;i++) if(i%stride===0 || i===n-1){
+    const tx=el("text",{x:X(i),y:H-12,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
+    tx.textContent=fmtDate(dates[i]); svg.appendChild(tx); }
+  const vline=el("line",{x1:0,y1:m.t,x2:0,y2:m.t+ih,stroke:cssv("--muted"),"stroke-width":1,opacity:0});
+  const hit=el("rect",{x:m.l,y:m.t,width:iw,height:ih,fill:"transparent"});
+  hit.style.cursor="crosshair";
+  hit.addEventListener("pointermove",ev=>{
+    const r=svg.getBoundingClientRect(), px=(ev.clientX-r.left)/r.width*W;
+    let i=n===1?0:Math.round((px-m.l)/(iw/(n-1))); i=Math.max(0,Math.min(n-1,i));
+    vline.setAttribute("x1",X(i)); vline.setAttribute("x2",X(i)); vline.setAttribute("opacity",.45);
+    const body=series.map((s,si)=>{ const v=vals[si][i];
+      return `<div class="t-row"><span class="k"><i style="background:${s.c}"></i>${s.l}</span>`
+        +`<span class="v">${v==null? "нет замера" : nf.format(v)+" шт"}</span></div>`; }).join("");
+    const tot=series.reduce((a,s,si)=>a+(vals[si][i]||0),0);
+    showTip(`<div class="t-hd">${fmtDateLong(dates[i])}</div>${body}`
+      +`<div class="t-row"><span class="k">Всего</span><span class="v">${nf.format(tot)} шт</span></div>`,
+      ev.clientX,ev.clientY);
+  });
+  hit.addEventListener("pointerleave",()=>{ vline.setAttribute("opacity",0); hideTip(); });
+  svg.appendChild(vline); svg.appendChild(hit);
+  mount.innerHTML=""; mount.appendChild(svg);
+}
+
+const TABS=["recs","home","dynamics","turnover","stockrate","stock","product","finance","ads","analytics"];
 function switchTab(name){
   TABS.forEach(t=>{ document.getElementById("tab-"+t).hidden=(t!==name); });
   if(recFocus && recFocus.tab!==name) recFocus=null;   // фокус живёт только на своей вкладке
@@ -9997,6 +10462,7 @@ function switchTab(name){
   if(name==="dynamics") renderDynamicsTab();
   if(name==="turnover") renderTurnoverTab();
   if(name==="stockrate") renderStockRateTab();
+  if(name==="stock") renderStockTab();
   if(name==="product"){ renderProductHistoryInfo(); initProductTabControls(); renderCostInfo(); refreshProductView(); }
   if(name==="finance") renderFinanceTab();
   if(name==="ads") renderAdsTab();
@@ -10118,6 +10584,20 @@ document.getElementById("srSearch").addEventListener("input",renderStockRateTab)
 document.getElementById("srCat").addEventListener("change",renderStockRateTab);
 document.getElementById("srHorizon").addEventListener("change",e=>{
   srHorizonMode=e.target.value; renderStockRateTab(); });
+// ---- Остатки ----
+document.getElementById("stkSearch").addEventListener("input",renderStockTab);
+document.getElementById("stkCat").addEventListener("change",renderStockTab);
+document.getElementById("stkPeriodSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); stkPeriod=+b.dataset.n; renderStockTab(); });
+/* Раскрытие категории — одна открыта за раз: так таблица остаётся обозримой, а продавец
+   всегда видит полный список категорий сверху, не теряя контекст. */
+document.getElementById("stkTable").addEventListener("click",e=>{
+  if(e.target.closest("a")) return;                       // ссылка на карточку — не разворачиваем
+  const tr=e.target.closest("tr.stk-cat"); if(!tr) return;
+  const c=tr.dataset.cat; stkOpenCat = stkOpenCat===c? null : c; renderStockTab(); });
+document.getElementById("stkExportBtn").addEventListener("click",exportStockXLSX);
 // ---- Реклама ----
 document.getElementById("adGroupSel")?.addEventListener("change",e=>{ adGroup=e.target.value||null; renderAdsTab(); });
 function applyAdDates(){
