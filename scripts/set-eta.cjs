@@ -40,12 +40,46 @@ const allKinds=()=>[...new Set([...Object.keys(KINDS),
 
 let argv=process.argv.slice(2);
 const SALE=argv.includes('--sale'); argv=argv.filter(a=>a!=='--sale');
+/* РУЧНОЙ СРОК ПО КОДУ — `over` / `over-drop`. Отдельно от `etaSaleBySup` внутри партии:
+   тот читается ТОЛЬКО для кодов, которые в партию входят, а править срок чаще всего надо
+   как раз тем, кого в партиях НЕТ — они молча считаются до общей даты заказа производству.
+   Хранится в `meta.etaOverride.bySup[код] = {sale, wh, note, setAt}`; в дашборде читают
+   `batchFor` («Запас и темп») и `itemAnalysis` («Разбор товара»). --wh = приход на склад,
+   по умолчанию ставится ВЫХОД В ПРОДАЖУ (его и показывает «Запас и темп»). */
+const WH=argv.includes('--wh'); argv=argv.filter(a=>a!=='--wh');
+const ci=argv.indexOf('--cat'); let CAT=null;
+if(ci>=0){ CAT=argv[ci+1]; argv=argv.filter((a,i)=>i!==ci&&i!==ci+1); }
 const kind=argv[0], date=argv[1], code=argv[2];
-if(!kind || (kind!=='list' && kind!=='drop' && !isKind(kind))){
+if(!kind || (kind!=='list' && kind!=='drop' && kind!=='over' && kind!=='over-drop' && !isKind(kind))){
   console.error('usage: node scripts/set-eta.cjs <партия> [--sale] <ГГГГ-ММ-ДД> [код1С]\n'
+    +'       node scripts/set-eta.cjs over <ГГГГ-ММ-ДД> [--wh] [коды 1С | --cat "Категория"]\n'
+    +'       node scripts/set-eta.cjs over-drop [коды 1С | --cat "Категория"]\n'
     +'       node scripts/set-eta.cjs drop <партия>\n'
     +'       node scripts/set-eta.cjs list\n'
     +'партии в снимке: '+allKinds().join(', ')); process.exit(1); }
+
+const normCode=c=>(''+c).replace(/[\s ,]/g,'');
+const catCodes=name=>{ const want=(''+name).trim().toLowerCase(); const out=new Set();
+  (RD.catalog||[]).forEach(x=>{ const s=normCode(x.supplierCode||''); if(!s) return;
+    if((''+(x.category||'')).trim().toLowerCase()===want) out.add(s); });
+  return [...out]; };
+const overTargets=()=>{
+  if(CAT){ const list=catCodes(CAT);
+    if(!list.length){ console.error('в каталоге ВБ нет категории «'+CAT+'»'); process.exit(1); }
+    return list; }
+  const list=argv.slice(kind==='over'?2:1).map(normCode).filter(Boolean);
+  if(!list.length){ console.error('укажите коды 1С или --cat "Категория"'); process.exit(1); }
+  return list;
+};
+const overStore=()=>{ RD.meta=RD.meta||{};
+  RD.meta.etaOverride=RD.meta.etaOverride||{bySup:{}};
+  RD.meta.etaOverride.bySup=RD.meta.etaOverride.bySup||{};
+  return RD.meta.etaOverride.bySup; };
+const saveRD=()=>fs.writeFileSync(path.join(OUT,'wb-data.js'),
+  '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
+  +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
+const nameOf=s=>{ const c=(RD.catalog||[]).find(x=>normCode(x.supplierCode||'')===s);
+  return c? ((c.category||'')+' · '+(c.name||'').slice(0,34)) : 'нет в каталоге ВБ'; };
 
 const today=new Date().toISOString().slice(0,10);
 const days=(a,b)=>Math.round((new Date(b+'T00:00:00Z')-new Date(a+'T00:00:00Z'))/864e5);
@@ -67,7 +101,39 @@ if(kind==='list'){
     const k2=Object.keys(per); if(k2.length) console.log('   свои даты у '+k2.length+' кодов: '
       +k2.slice(0,8).map(c=>c+'→'+per[c]).join(', ')+(k2.length>8?' …':''));
   });
+  const ov=((RD.meta||{}).etaOverride||{}).bySup||{};
+  const ok=Object.keys(ov);
+  if(ok.length){
+    console.log('\nРУЧНЫЕ СРОКИ ПО КОДАМ (перекрывают партии и фолбэк) — '+ok.length+':');
+    ok.sort().forEach(c=>{ const o=ov[c], d=o.sale||o.wh;
+      console.log('   '+c+'  '+(o.sale? 'в продажу '+o.sale : 'на склад '+o.wh)
+        +(d? '  (через '+days(today,d)+' дн)' : '')
+        +(o.note? '  — '+o.note : '')+'   '+nameOf(c)); });
+  } else console.log('\nРучных сроков по кодам нет.');
   process.exit(0);
+}
+
+// ---- ручной срок по коду (работает и для кодов БЕЗ партии)
+if(kind==='over'){
+  if(!/^\d{4}-\d{2}-\d{2}$/.test(date||'')){ console.error('дата в формате ГГГГ-ММ-ДД'); process.exit(1); }
+  const list=overTargets(), store=overStore(), note=CAT? ('категория «'+CAT+'»') : '';
+  list.forEach(c=>{ const o=store[c]||(store[c]={});
+    if(WH) o.wh=date; else o.sale=date;
+    if(note) o.note=note; o.setAt=new Date().toISOString(); });
+  saveRD();
+  console.log('Ручной срок — '+(WH? 'приход НА СКЛАД':'ВЫХОД В ПРОДАЖУ')+' '+date
+    +' (через '+days(today,date)+' дн от '+today+'), кодов: '+list.length);
+  list.forEach(c=>console.log('   '+c+'   '+nameOf(c)));
+  console.log('\nЭти коды больше не считаются до общей даты заказа производству.');
+  console.log('Дальше: node scripts/encrypt.cjs <код>'); process.exit(0);
+}
+if(kind==='over-drop'){
+  const list=overTargets(), store=overStore();
+  let n=0; list.forEach(c=>{ if(store[c]){ delete store[c]; n++; } });
+  saveRD();
+  console.log('Убрано ручных сроков: '+n+' (из '+list.length+' запрошенных)');
+  console.log('Эти коды снова считаются по своей партии, а без неё — до общей даты заказа производству.');
+  console.log('\nДальше: node scripts/encrypt.cjs <код>'); process.exit(0);
 }
 // убрать партию целиком (загрузили по ошибке / всё уже пришло)
 if(kind==='drop'){
