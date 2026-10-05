@@ -35,6 +35,18 @@ const XLSX=require('./node_modules/xlsx');
 const OUT=path.join(__dirname,'..','decrypted');
 
 const MIN_CLOSED=10;                      // свой % у товара — при 10+ ЗАКРЫТЫХ заказах
+
+// ОКНО ОБЯЗАНО БЫТЬ ЗРЕЛЫМ — ПРОВЕРКА ПО ДОЛЕ «В ПУТИ» (поймано 05.10.2026).
+// Формула «от закрытых» снимает смещение по ДОСТАВКАМ, но не по ОТМЕНАМ: у Озона отмена
+// проставляется позже доставки, поэтому у свежего окна отмен в разы меньше, чем будет.
+// Замер по воронке за 14–27.09 дал 90,2% против 79,9% на зрелых данных — доля отмен среди
+// закрытых обрывается ровно 16.09: 20,0% (01.07–31.08) · 20,4% (01–13.09) · 9,8% (14–27.09)
+// · 11,4% (28.09–04.10). Доля «в пути» при этом 4,2–5,7% у зрелых против 10,3–15,0% у свежих.
+// Пустить такое в снимок значит задрать выкуп на 10 п.п.: подсорт и оборачиваемость берут
+// ПОСЛЕДНИЙ замер, то есть потребность площадки занизилась бы на те же 13%.
+// Порог по «в пути», а не по доле отмен: он не зависит от ассортимента и считается из одних
+// только штук отчёта. Перебить вручную — `--force` (только для прикидок).
+const MATURE_OPEN_PCT=7;
 const argv=process.argv.slice(2);
 const wi=argv.indexOf('--win');
 const winFrom=wi>=0? argv[wi+1] : null, winTo=wi>=0? argv[wi+2] : null;
@@ -133,6 +145,21 @@ console.log('  для сверки: доставлено ÷ все заказы 
 console.log('  прежняя формула в снимке (не отменён ÷ все заказы): '+pc(O.meta.buyoutAll||1));
 console.log('  свой % у '+Object.keys(bySku).length+' товаров ('+MIN_CLOSED+'+ закрытых), у остальных общий');
 
+// ---- ПРОВЕРКА ЗРЕЛОСТИ ОКНА (см. MATURE_OPEN_PCT выше)
+const openPct=O_? 100*open/O_ : 0, cancelPct=closed? 100*C/closed : 0;
+const mature=openPct<=MATURE_OPEN_PCT;
+console.log('  доля отмен среди закрытых: '+cancelPct.toFixed(1)+'%'
+  +'   (у зрелых окон Озона ~20%, у свежих ~10% — отмены доезжают позже доставок)');
+if(!mature){
+  console.log('\n⚠ ОКНО НЕ ДОЗРЕЛО: «в пути» '+openPct.toFixed(1)+'% при пороге '+MATURE_OPEN_PCT+'%.');
+  console.log('  Отмены по этим дням ещё не доехали, поэтому '+pc(all)+' — завышенная цифра,');
+  console.log('  а не рост выкупа. Запись НЕ СДЕЛАНА: подсорт берёт последний замер, и такой');
+  console.log('  процент занизил бы потребность площадки. Возьмите окно постарше:');
+  console.log('  14 дней, кончающиеся не позже чем за 7–10 дней до последнего дня отчёта.');
+  if(!argv.includes('--force')){ console.log(''); showHistory(); process.exit(0); }
+  console.log('  --force: пишем вопреки проверке (только для прикидок).');
+}
+
 // ---- запись: замер той же даты И того же окна не перезаписывается
 const key=from+'…'+to;
 const already=hist.find(h=>h.from+'…'+h.to===key);
@@ -142,7 +169,7 @@ if(already){
 }else{
   hist.push({from,to,all:+all.toFixed(4),ordered:O_,delivered:D,cancelled:C,open,
     minClosed:MIN_CLOSED, bySku, source: fromFunnel? 'ozon-funnel' : 'ozon-analytics-period',
-    builtAt:new Date().toISOString()});
+    openPct:+openPct.toFixed(1), mature, builtAt:new Date().toISOString()});
   hist.sort((a,b)=>(a.builtAt||'')<(b.builtAt||'')?-1:1);
   O.meta.buyoutWin={history:hist,
     note:'% выкупа = доставлено ÷ (доставлено + отменено), «от закрытых заказов». '
