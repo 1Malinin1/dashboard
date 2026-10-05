@@ -85,9 +85,9 @@ function mpStats(mp){
   const buyAvg = oz? ((RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutAll)||1)
     : (()=>{const v=RD.catalog.map(c=>c.buyoutPct14d).filter(x=>x>0);return v.length? v.reduce((a,b)=>a+b,0)/v.length/100:1;})();
   const openShip={}; (RD.shipments||[]).forEach(s=>{ if(s.mp==='wb'&&s.left>0) openShip[s.sup]=(openShip[s.sup]||0)+s.left; });
-  /* «РВБ Клин» — товар УЖЕ отправлен на ВБ (продавец 05.10.2026), просто ещё не принят в FBO.
-     Идёт в ту же строку, что журнал отгрузок: в `transit` у ВБ, и тем самым уменьшает
-     потребность подсорта. Держи синхронно с `klinBySup` в index.html. */
+  /* «РВБ Клин» — товар собран и назначен к отправке на ВБ (продавец 05.10.2026). Физически
+     ещё лежит на Клине, но распоряжён, поэтому идёт в ту же строку, что журнал отгрузок:
+     в `transit` у ВБ, и тем самым уменьшает потребность подсорта. Синхронно с index.html. */
   if(!oz){ const kl=klinBySup(); Object.keys(kl).forEach(k=>{ openShip[k]=(openShip[k]||0)+kl[k]; }); }
   const out={}, done=new Set();
   cat.forEach(c=>{
@@ -302,7 +302,7 @@ console.log('К отгрузке на ВБ FBO: '+F(rows.reduce((a,r)=>a+r.shipW
   +'  (Евросиб, Нск-1 и Москва)');
 { const kl=klinBySup(); const tot=Object.values(kl).reduce((a,b)=>a+b,0);
   if(tot>0) console.log('На складе РВБ Клин: '+F(tot)+' шт по '+Object.keys(kl).length
-    +' кодам — УЖЕ отправлено на ВБ, в отгрузку не идёт, засчитано в покрытие как «в пути»'); }
+    +' кодам — собрано и назначено к отправке на ВБ: в отгрузку не идёт, засчитано в покрытие'); }
 console.log('Нечем закрыть (на складе пусто): '+noStock.length+' позиций, не хватает '
   +F(noStock.reduce((a,r)=>a+r.needO+r.needW,0))+' шт');
 const launches=needAny.filter(r=>r.launch);
