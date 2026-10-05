@@ -48,9 +48,21 @@ const num=v=>{ const s=S(v).replace(/[\s ]/g,'').replace(/,/g,''); if(!s) return
 //   СХ Солнечногорск (Москва) — только FBS для Wildberries, никуда не отгружает;
 //   Склад FBS (Новосибирск-1) — FBS для Wildberries + поставки на Ozon;
 //   Склад Евросиб (Новосибирск-2) — поставки на Ozon + перемещение на Нск-1.
-const WH_MSK='СХ Солнечногорск', WH_MSK2='РЦ Солнечногорский', WH_NSK1='Склад FBS', WH_NSK2='Склад Евросиб';
-const WH_ALIAS={msk:WH_MSK, msk2:WH_MSK2, nsk1:WH_NSK1, nsk2:WH_NSK2};
-const KNOWN_WH=new Set([WH_MSK, WH_MSK2, WH_NSK1, WH_NSK2]);
+/* «РВБ Клин» — ПЯТЫЙ СВОЙ СКЛАД, появился 05.10.2026. Продавец: «это мой ещё один новый склад
+   временного товара для вб, с него впоследствии товар уезжает на WB FBO». То есть это ПЕРЕВАЛКА
+   под Wildberries: товар уже наш и физически лежит, но ещё не принят в FBO (в отчёте остатков ВБ
+   его нет, задвоения с `wbStock` не будет) и покупателю с него НЕ продаётся.
+   Следствия для маршрутизации (см. WHS/whKey в index.html и дубль в resupply-report.cjs):
+     · отгружает ТОЛЬКО на ВБ FBO и разбирается ПЕРВЫМ — в этом его назначение, и так
+       сберегается FBS-запас Нск-1 и Москвы;
+     · на Ozon НЕ отгружает (продавец про Ozon не говорил — не домысливать);
+     · в покрытие ВБ (`wbFbsBySup`) НЕ входит: по FBS с него не торгуют.
+   ВНИМАНИЕ: правило ловит ИМЕННО «Клин». Общее `/рвб/` писать НЕЛЬЗЯ — под него попадёт
+   «Склад РВБ ПФО», а это баг выгрузки, который продавец велел не считать (31.08.2026). */
+const WH_MSK='СХ Солнечногорск', WH_MSK2='РЦ Солнечногорский', WH_NSK1='Склад FBS', WH_NSK2='Склад Евросиб',
+      WH_KLIN='РВБ Клин';
+const WH_ALIAS={msk:WH_MSK, msk2:WH_MSK2, nsk1:WH_NSK1, nsk2:WH_NSK2, klin:WH_KLIN};
+const KNOWN_WH=new Set([WH_MSK, WH_MSK2, WH_NSK1, WH_NSK2, WH_KLIN]);
 const whForced=whArg? (WH_ALIAS[(''+whArg).toLowerCase()]||S(whArg)) : null;
 /* «РЦ Солнечногорский (Москва)» — ОТДЕЛЬНАЯ площадка, появилась 28.08.2026. Держим её
    отдельным складом, а не сливаем с «СХ Солнечногорск»: продавец видит обе строки, а на
@@ -64,6 +76,7 @@ const whForced=whArg? (WH_ALIAS[(''+whArg).toLowerCase()]||S(whArg)) : null;
    Правило обязано стоять ДО «евросиб». В файле 07.09.2026 колонка пустая, но появиться может. */
 const canonWh=v=>{ if(whForced) return whForced; const s=S(v);
   if(/ответхран|отв\.?\s*хран/i.test(s)) return s;
+  if(/клин/i.test(s)) return WH_KLIN;            // «РВБ Клин» — ДО правила FBS: это не FBS-склад
   if(/(^|\W)fbs(\W|$)|фбс/i.test(s)) return WH_NSK1;
   if(/евросиб/i.test(s)) return WH_NSK2;
   if(/рц\s*солнечногор/i.test(s)) return WH_MSK2;
