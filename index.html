@@ -250,6 +250,14 @@
   .stk-caret{display:inline-block;color:var(--accent);font-size:11px;
     transition:transform .14s ease;transform-origin:50% 50%}
   .stk-caret.open{transform:rotate(90deg)}
+  /* Строка «ИТОГО» липнет под шапкой: сумма категорий должна быть видна всегда,
+     иначе первая крупная категория читается как общий итог (см. renderStockTab). */
+  #stkTable tbody tr.stk-total > td{position:sticky;top:var(--stk-th,38px);z-index:3;
+    background:color-mix(in srgb,var(--accent) 14%,var(--surface));
+    border-bottom:2px solid color-mix(in srgb,var(--accent) 45%,transparent);
+    font-variant-numeric:tabular-nums}
+  #stkTable tbody tr.stk-total > td.metric{z-index:4;
+    background:color-mix(in srgb,var(--accent) 18%,var(--surface))}
   /* ---- Карточка «что изменилось» ---- */
   .chg-card{border-radius:9px;padding:10px 12px;margin-top:6px;background:var(--surface-2);
     border-left:3px solid var(--muted)}
@@ -10319,6 +10327,21 @@ function renderStockTab(){
   const H=["Категория / товар","Склады ВБ","В пути ВБ","Москва","Нск-1","Евросиб","Клин","Ozon","В пути Ozon","ВСЕГО",`Δ ${stkPeriod||"всё"}`];
   const maxTot=Math.max(...cats.map(c=>c.total),1);
   let html=`<thead><tr>${H.map((h,i)=>`<th${i===0?' class="metric"':''}>${esc(h)}</th>`).join("")}</tr></thead><tbody>`;
+  /* СТРОКА «ИТОГО» ПЕРВОЙ И ЗАКРЕПЛЁННОЙ. Без неё продавец сопоставил KPI «Всего товара»
+     (116 970) с первой строкой таблицы — «Пушкары» 80 942 — и решил, что цифры разъехались
+     (05.10.2026). Сумма 13 категорий ровно равна KPI, но увидеть это было негде: итога
+     в таблице не было вовсе, а первая категория даёт 69% объёма и читается как общий итог.
+     Строка липнет под шапкой, поэтому видна и после прокрутки. */
+  const T={}; ["fbo","oz","wh","msk","nsk1","nsk2","klin","wbTransit","ozTransit","total"].forEach(k=>
+    T[k]=cats.reduce((a,c)=>a+(c[k]||0),0));
+  T.dTotal=cats.some(c=>c.dTotal!=null)? cats.reduce((a,c)=>a+(c.dTotal||0),0) : null;
+  html+=`<tr class="stk-total"><td class="metric"><b>ИТОГО</b> `
+    +`<span class="sub">${cats.length} ${plural(cats.length,"категория","категории","категорий")} · `
+    +`${rows.length} ${plural(rows.length,"товар","товара","товаров")}</span></td>`
+    +`<td><b>${stkNum(T.fbo)}</b></td><td><b>${stkNum(T.wbTransit)}</b></td><td><b>${stkNum(T.msk)}</b></td>`
+    +`<td><b>${stkNum(T.nsk1)}</b></td><td><b>${stkNum(T.nsk2)}</b></td><td><b>${stkNum(T.klin)}</b></td>`
+    +`<td><b>${stkNum(T.oz)}</b></td><td><b>${stkNum(T.ozTransit)}</b></td>`
+    +`<td><b>${nf.format(T.total)}</b></td><td><b>${stkDelta(T.dTotal)}</b></td></tr>`;
   cats.forEach(c=>{
     const open=stkOpenCat===c.cat;
     html+=`<tr class="row-group stk-cat" data-cat="${esc(c.cat)}" style="cursor:pointer">`
@@ -10383,7 +10406,13 @@ function renderStockMove(rows,pTxt){
 /* График слоёв по дням. ЛИНИИ, А НЕ СТОПКА: у слоёв разная глубина истории, и стопка в днях
    без замера рисовала бы ступени на всю высоту там, где просто нет данных. */
 function renderStockChart(codes){
-  const {snaps}=stockSeries();
+  const all=stockSeries().snaps;
+  /* ГРАФИК ПОКАЗЫВАЕТ ТОТ ЖЕ ОТРЕЗОК, ЧТО И КОЛОНКА Δ (просьба продавца 05.10.2026: «выбрал
+     7 дней и видишь на графике динамику по 7 дням»). Начало — ровно тот срез, с которым
+     считается Δ, поэтому разница между концами линии и есть число в колонке. Раньше график
+     всегда рисовал всю историю, и период переключал только таблицу. */
+  const base=stkPrevSnap();
+  const snaps=(stkPeriod && base)? all.filter(s=>s.date>=base.date) : all;
   const set=new Set(codes), dates=snaps.map(s=>s.date);
   const series=[
     {k:"fbo", l:"Склады ВБ (FBO)", c:cssv("--s1")},
@@ -10422,9 +10451,16 @@ function stockLines(mount,dates,series,vals){
       d+=(open?"L":"M")+X(i)+" "+Y(v)+" "; open=true; });
     if(d) svg.appendChild(el("path",{d,fill:"none",stroke:s.c,"stroke-width":2.2,
       "stroke-linejoin":"round","stroke-linecap":"round"}));
+    /* ОДИНОЧНЫЙ ЗАМЕР РИСУЕМ ТОЧКОЙ: линия из одной вершины не видна вовсе, и слой выглядел бы
+       отсутствующим. Реальный случай — короткий период и свой склад, у которого замер пока один. */
+    const idx=vals[si].map((v,i)=>v==null?-1:i).filter(i=>i>=0);
+    if(idx.length===1) svg.appendChild(el("circle",{cx:X(idx[0]),cy:Y(vals[si][idx[0]]),r:3.4,fill:s.c}));
   });
+  /* Последняя подпись рисуется всегда, поэтому промежуточную рядом с ней ПРОПУСКАЕМ
+     (`(n-1-i)>=stride`) — иначе «03.10.26» и «05.10.26» налезали друг на друга.
+     Тот же приём, что в `metricBars`. */
   const maxLabels=n<=10?n:9, stride=Math.max(1,Math.round(n/maxLabels));
-  for(let i=0;i<n;i++) if(i%stride===0 || i===n-1){
+  for(let i=0;i<n;i++) if((i%stride===0 && (n-1-i)>=stride) || i===n-1){
     const tx=el("text",{x:X(i),y:H-12,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
     tx.textContent=fmtDate(dates[i]); svg.appendChild(tx); }
   const vline=el("line",{x1:0,y1:m.t,x2:0,y2:m.t+ih,stroke:cssv("--muted"),"stroke-width":1,opacity:0});
