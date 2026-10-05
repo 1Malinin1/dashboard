@@ -212,6 +212,55 @@ if(kind==='stock'){
   });
   console.log('склады из файла (перезаписаны): '+[...fileWh].join(' · ')
     +(kept.size? ' | сохранены как были: '+[...kept].join(' · ') : ' | других складов в снимке не было'));
+
+  /* ТОВАР УШЁЛ С «РВБ КЛИН» → САМ ЗАВОДИМ ОТГРУЗКУ НА ВБ (просьба продавца 05.10.2026:
+     «как только видишь, что с клина товар пропал, жди его в последующих отчётах по вб,
+     будет рост по остаткам, только так мы сможем понять, что товар приняли»).
+     ЗАЧЕМ. Клин — товар, уже назначенный на ВБ, он считается в покрытии через `transit`.
+     Пока он лежит на Клине, всё сходится. Но в день, когда склад его физически отправил,
+     он исчезает из ведомости, а на ВБ ещё не появился — покрытие проваливается на ровном
+     месте, и продавец видит дефицит, которого нет. Руками это не ловится: он сам сказал,
+     что по двум отчётам (свой склад и ВБ) понять момент приёмки не может.
+     КАК. Пропажу с Клина записываем в тот же журнал `REAL_DATA.shipments`, которым
+     пользуется `wb-shipment.cjs`, — и приход закрывается АВТОМАТИЧЕСКИ в `update-wb-stock.cjs`
+     по РОСТУ остатка ВБ (продажи остаток только уменьшают, поэтому рост = приёмка).
+     Новой механики не вводим: уже есть и «в пути», и авто-закрытие по росту.
+     ВАЖНО: срабатывает ТОЛЬКО когда файл реально отчитался по Клину (иначе мерж сохранил
+     прежние цифры, и «пропажа» была бы артефактом выгрузки по одному складу). */
+  const klinQty=src=>{ const o={};
+    Object.entries(src||{}).forEach(([k,v])=>{ let q=0;
+      Object.entries(v.wh||{}).forEach(([n,x])=>{ if(/клин/i.test(n)) q+=x; });
+      if(q>0) o[k]=q; });
+    return o; };
+  const klinHad=klinQty(prev), klinNow=klinQty(bySup);
+  const klinInFile=[...fileWh].some(n=>/клин/i.test(n));
+  if(klinInFile && Object.keys(klinHad).length){
+    RD.shipments=RD.shipments||[];
+    const left=Object.keys(klinHad).filter(k=>(klinHad[k]-(klinNow[k]||0))>0);
+    if(left.length){
+      const catBySup={}; RD.catalog.forEach(c=>{ const s=(''+(c.supplierCode||'')).trim();
+        if(s)(catBySup[s]||(catBySup[s]=[])).push(c); });
+      let gone=0, skip=[];
+      console.log('\nС «РВБ Клин» УШЁЛ ТОВАР — записываю как отгрузку на ВБ (закроется сама по росту остатка ВБ):');
+      left.forEach(k=>{
+        const q=klinHad[k]-(klinNow[k]||0), cat=catBySup[k];
+        if(!cat){ skip.push(k); return; }
+        const id='wb-'+dateArg.replace(/-/g,'')+'-'+k;
+        const ex=RD.shipments.find(s=>s.id===id);
+        if(ex){ ex.qty+=q; ex.left+=q; } else RD.shipments.push({id,mp:'wb',sup:k,
+          sku:cat[0].sku,qty:q,left:q,date:dateArg,arrived:[],src:'klin'});
+        gone+=q;
+        console.log('   1С '+k+' · '+q.toLocaleString('ru-RU')+' шт  (на Клине было '
+          +klinHad[k].toLocaleString('ru-RU')+', стало '+(klinNow[k]||0).toLocaleString('ru-RU')+')  '
+          +(cat[0].name||'').slice(0,40));
+      });
+      if(skip.length) console.log('   не нашёл в каталоге ВБ (пропущено): '+skip.join(', '));
+      const openAll=RD.shipments.filter(s=>s.left>0);
+      console.log('   итого отправлено с Клина: '+gone.toLocaleString('ru-RU')+' шт · всего «в пути на ВБ» теперь '
+        +openAll.reduce((a,s)=>a+s.left,0).toLocaleString('ru-RU')+' шт по '+openAll.length+' позициям');
+      console.log('   приёмку поймает рост остатка ВБ при следующей заливке update-wb-stock.cjs');
+    }
+  }
   RD.warehouse={date:dateArg, split:false, byWh, bySup};
   // колонки «едет ко мне» из этого же файла — полная замена соответствующего слоя
   ['china','order'].forEach(t=>{ if(!inbCols[t].length) return;
