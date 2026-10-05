@@ -1345,8 +1345,19 @@
       <div class="cap" id="stkMoveCap"></div>
       <div id="stkMove"></div>
     </div>
+    <div class="card" id="stkArrCard" hidden style="margin:0 0 14px">
+      <h3>Приходы и отгрузки — что реально двигалось</h3>
+      <div class="cap" id="stkArrCap"></div>
+      <div id="stkArr"></div>
+    </div>
     <div class="card" style="margin:0 0 14px">
-      <h3>Где лежит товар — по дням</h3>
+      <div class="table-head" style="padding:0 0 10px">
+        <h3 style="margin:0">Где лежит товар — по дням</h3>
+        <div class="seg" id="stkChartSeg" role="group" aria-label="Что показывать на графике">
+          <button data-m="delta" aria-pressed="true">Движение</button>
+          <button data-m="level" aria-pressed="false">Остаток</button>
+        </div>
+      </div>
       <div class="cap" id="stkChartCap"></div>
       <div class="legend" id="stkChartLegend"></div>
       <div id="stkChart"></div>
@@ -7902,7 +7913,7 @@ function exportStockXLSX(){
     ["Ваши склады","ведомость 1С. РВБ Клин показан отдельно: его товар уже собран и назначен на ВБ, в отгрузку он не идёт"],
     ["В пути на Ozon","заявки на поставку + партии в пути, их показывает сам Ozon"],
     ["Изменение за период",(stkPeriod? "за "+stkPeriod+" дн":"за всю историю")+"; считается по остаткам, то, что в пути, в него не входит"],
-    ["История ВБ","подённо, "+srcDays.fbo.length+" дн — остаток едет в подённом отчёте аналитики по каждому артикулу"],
+    ["История ВБ",srcDays.fbo.length+" замеров — из подённого отчёта аналитики; отчёт подённый, но ВБ переносит последний замер вперёд, поэтому новая цифра приходит раз в 2–3 дня"],
     ["История Ozon",srcDays.oz.length+" замеров — только из отчётов «Остатки на складах», сколько прислали, столько и точек"],
     ["История своего склада",srcDays.wh.length+" замеров — из ведомостей 1С"],
     ["Между замерами","значение держится прежним: это «нового замера не было», а не «ничего не менялось»"],
@@ -10127,7 +10138,12 @@ function renderRecAdTree(){
    Свой склад» ГЛАЗАМИ ВБ — только то, что подключено к его FBS (24 341 шт на 04.10), тогда
    как в 1С по пяти складам лежит 51 118 шт. Положить их в один слой значит нарисовать скачок
    на 27 тыс шт, который читается как приход. Свой склад берём ТОЛЬКО из 1С (`whHistory`). */
-let stkPeriod=7, stkOpenCat=null, _stkSeries=null;
+/* РЕЖИМ ГРАФИКА — ПО УМОЛЧАНИЮ «ИЗМЕНЕНИЯ», А НЕ «ОСТАТОК» (правка продавца 05.10.2026:
+   «разница в цифрах у 30 сентября и 1 октября небольшая, поэтому на графике этого не видно,
+   линия сплошная… задача в моменте понять, когда зайдут поставки, поставка заходит машинами,
+   в машине около 900 шт»). На графике УРОВНЕЙ приход машины — 2,4% высоты при остатке 36 807 шт,
+   то есть не виден в принципе. На графике ИЗМЕНЕНИЙ он столбик в полшкалы. */
+let stkPeriod=7, stkOpenCat=null, _stkSeries=null, stkChartMode="delta";
 
 function stockSeries(){
   if(_stkSeries) return _stkSeries;
@@ -10171,8 +10187,52 @@ function stockSeries(){
     Object.values(sup).forEach(e=>{ tot.fbo+=e.fbo; tot.oz+=e.oz; tot.wh+=e.wh; });
     return {date:d, sup, tot, has:{fbo:!!curFbo, oz:!!curOz, wh:!!curWh}};
   });
+  const whSup={}; Object.entries(whBy).forEach(([d,v])=>{ const m={};
+    Object.entries(v.bySup||{}).forEach(([c,x])=>{ if(x.qty) m[c]=x.qty; }); whSup[d]=m; });
+  const dF=stkDistinct(fboBy), dO=stkDistinct(ozAll), dW=stkDistinct(whSup);
   return (_stkSeries={dates,snaps,
-    srcDays:{fbo:Object.keys(fboBy).sort(), oz:Object.keys(ozAll).sort(), wh:Object.keys(whBy).sort()}});
+    srcDays:{fbo:dF, oz:dO, wh:dW},
+    breaks:{fbo:stkBreaks(fboBy,dF), oz:stkBreaks(ozAll,dO), wh:stkBreaks(whSup,dW)}});
+}
+
+/* ОСТАТОК ВБ ЛЕЖИТ ПОДЁННО, НО ЗАМЕР В НЁМ НЕ КАЖДЫЙ ДЕНЬ. Проверка по снимку: значения
+   повторяются сериями — 14–20.07 семь дней одно и то же, 07.08–23.08 семнадцать дней одно
+   и то же, дальше тройками. То есть ВБ сам переносит последний замер вперёд, и подённость
+   тут только внешняя. Если считать замером каждый день, то вся дельта, набежавшая за две
+   недели, приписывается ОДНОМУ дню, а подпись «дней без замера» врёт. Поэтому день,
+   идентичный предыдущему по ВСЕМ кодам, замером не считается (83 дня → 37 замеров). */
+function stkDistinct(by){
+  const out=[]; let prev=null;
+  /* НУЛИ В ПОДПИСЬ НЕ БЕРЁМ. Воронка кладёт строку и артикулам с нулевым остатком, и набор
+     таких строк каждый день свой (кто попал в отчёт, тот и попал). Если считать их частью
+     замера, два одинаковых по остаткам дня выглядят разными, дедуп не срабатывает и возвращаются
+     ложные события «за один день». Остаток нулевой — значит товара нет, и для замера это
+     то же самое, что отсутствие строки. */
+  Object.keys(by).sort().forEach(d=>{ const m=by[d];
+    const sig=Object.keys(m).filter(c=>m[c]).sort().map(c=>c+":"+m[c]).join(",");
+    if(sig!==prev){ out.push(d); prev=sig; } });
+  return out;
+}
+/* СМЕНА СОСТАВА ОТЧЁТА — ЭТО НЕ ДВИЖЕНИЕ ТОВАРА, И БЕЗ ЭТОЙ ПРОВЕРКИ ВКЛАДКА ВРЁТ САМЫМ
+   КРУПНЫМ ЧИСЛОМ. 07.08 у ВБ обнулились 154 артикула из 270 и остаток упал на 68 385 шт —
+   это ВБ скрыл остатки сгоревших складов (см. «Склад WB РФ» в памятке), а не 76 машин уехали
+   за сутки. 25.08 ровно наоборот: пришла выгрузка в прежнем формате, +57 артикулов и
+   +18 321 шт. Признак общий и не зависит от ассортимента: товар не исчезает с половины
+   карточек за один замер и не появляется на половине сразу. Такие события не скрываем
+   (иначе продавец решит, что движения не было), но помечаем и в «пришло всего» не берём.
+   Событие, у которого ПРЕДЫДУЩИЙ замер был таким сломанным, тоже ненадёжно — его база
+   посчитана по другой методике (так ловится 26.08 с базой 25.08). */
+const STK_BREAK_PCT=25;
+function stkBreaks(by,days){
+  const bad=new Set();
+  for(let i=1;i<days.length;i++){
+    const a=by[days[i]]||{}, b=by[days[i-1]]||{};
+    const ka=Object.keys(a).filter(c=>a[c]), kb=Object.keys(b).filter(c=>b[c]);
+    if(kb.length<20) continue;                       // мало кодов — доля ничего не значит
+    const z=kb.filter(c=>!a[c]).length, ap=ka.filter(c=>!b[c]).length;
+    if(100*(z+ap)/kb.length>=STK_BREAK_PCT) bad.add(days[i]);
+  }
+  return bad;
 }
 
 /* Срез «период назад» для колонки Δ. При «вся история» — самый первый. */
@@ -10267,7 +10327,7 @@ function renderStockTab(){
 
   const lastD=a=>a.length? a[a.length-1] : null;
   fresh.innerHTML=`<span class="dot"></span>`
-    +`Остатки ВБ ${fmtDateLong(lastD(srcDays.fbo))} · история ${srcDays.fbo.length} дн &nbsp;|&nbsp; `
+    +`Остатки ВБ ${fmtDateLong(lastD(srcDays.fbo))} · ${srcDays.fbo.length} ${plural(srcDays.fbo.length,"замер","замера","замеров")} &nbsp;|&nbsp; `
     +`Ozon ${fmtDateLong(lastD(srcDays.oz))} · ${srcDays.oz.length} ${plural(srcDays.oz.length,"замер","замера","замеров")} &nbsp;|&nbsp; `
     +`свой склад ${fmtDateLong(lastD(srcDays.wh))} · ${srcDays.wh.length} ${plural(srcDays.wh.length,"замер","замера","замеров")}`;
 
@@ -10299,6 +10359,7 @@ function renderStockTab(){
   ].map(kpiCard).join("");
   wireKpiTips("stkKpis");
 
+  renderStockEvents(rows.map(r=>r.sup));
   renderStockChart(rows.map(r=>r.sup));
   renderStockMove(rows,pTxt);
 
@@ -10308,9 +10369,10 @@ function renderStockTab(){
       `Колонки — МЕСТА, где может лежать товар: склады ВБ (FBO) · в пути на ВБ · ваши склады (Москва, Нск-1, Евросиб, РВБ Клин) · Ozon · в пути на Ozon.`,
       `«Δ» — насколько изменился остаток ${pTxt}, без учёта того, что в пути. Минус на складе при плюсе на площадке — это приёмка поставки. Минус на складе БЕЗ плюса на площадке — товар уехал и ещё не принят: такие позиции собраны в блоке выше.`,
       `Сейчас в «Δ» участвуют: ${cmpTxt}. Слой, у которого на начало периода замера ещё не было, в сравнение не берётся вовсе — иначе его остаток целиком показался бы приходом.`,
-      `У каждого слоя своя глубина истории. Остаток ВБ приезжает в подённом отчёте аналитики (${srcDays.fbo.length} дн подряд), Ozon и свой склад — только отдельными выгрузками: сколько прислали, столько и точек. Между замерами линия на графике ровная — это «нового замера не было», а не «ничего не менялось».`,
+      `У каждого слоя своя глубина истории. ВБ — ${srcDays.fbo.length} ${plural(srcDays.fbo.length,"замер","замера","замеров")} из подённого отчёта аналитики (сам отчёт подённый, но ВБ переносит последний замер вперёд, поэтому новых цифр меньше, чем дней), Ozon — ${srcDays.oz.length}, свой склад — ${srcDays.wh.length}: сколько выгрузок прислали, столько и точек. Между замерами линия ровная — это «нового замера не было», а не «ничего не менялось».`,
       `«В пути» истории не имеет: ни ВБ, ни 1С не показывают товар между отправкой и приёмкой. На ВБ это журнал отгрузок, на Ozon — заявки на поставку, которые Ozon показывает сам.`,
-      `Чем чаще присылаете ведомость 1С и отчёт остатков Ozon, тем точнее картина движения: по ВБ она подённая сама по себе.`]
+      `Если отчёт площадки разом обнулил или разом показал четверть артикулов — это смена методики, а не движение товара (так ВБ 07.08 скрыл остатки сгоревших складов, −61 522 шт за сутки). Такие дни помечены и в приходы не считаются, но из списка не убраны.`,
+      `Чем чаще присылаете ведомость 1С и отчёт остатков Ozon, тем точнее картина движения: по ВБ новый замер приходит сам, раз в 2–3 дня.`]
       .map(s=>`<div>${esc(s)}</div>`).join("")+`</div>`;
 
   // ---- таблица: категория → товары
@@ -10424,13 +10486,172 @@ function renderStockChart(codes){
     let v=0; set.forEach(c=>{ const e=sn.sup[c]; if(e) v+=e[s.k]||0; });
     return v;
   }));
-  document.getElementById("stkChartCap").textContent=
-    dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · ${set.size} ${plural(set.size,"товар","товара","товаров")} по текущему фильтру` : "";
+  const per=dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · ${set.size} ${plural(set.size,"товар","товара","товаров")} по текущему фильтру` : "";
+
+  if(stkChartMode==="delta"){
+    /* Δ между соседними ЗАМЕРАМИ. Первый день окна показать нечем (не с чем сравнивать),
+       поэтому он пустой. У слоя с редкими замерами всё движение между ними схлопывается
+       в день замера — это честно, и так подписано в подсказке.
+       ДНИ СО СМЕНОЙ СОСТАВА ОТЧЁТА ИЗ ГРАФИКА ВЫБРОШЕНЫ (см. `stkBreaks`): 07.08 у ВБ даёт
+       −61 522 шт, и этот столбик задаёт масштаб — реальные приходы по 900 шт становятся
+       невидимой полоской в 1,5% высоты, то есть график перестаёт работать ровно для того,
+       ради чего сделан. Выброшенные дни пересчитываются в подписи, молча не исчезают. */
+    const brk=stockSeries().breaks||{};
+    let skipped=0;
+    const dv=vals.map((col,si)=>{ const bad=brk[series[si].k]||new Set();
+      return col.map((v,i)=>{ if(i===0||v==null||col[i-1]==null) return null;
+        if(bad.has(dates[i])||bad.has(dates[i-1])){ skipped++; return null; }
+        return v-col[i-1]; }); });
+    document.getElementById("stkChartCap").textContent=per
+      +" · столбик = насколько изменился остаток между замерами"
+      +(skipped? ` · ${skipped} ${plural(skipped,"день","дня","дней")} со сменой состава отчёта не показан`:"");
+    legend(document.getElementById("stkChartLegend"), series.map(s=>({name:s.l,color:s.c})));
+    stockDeltaBars(document.getElementById("stkChart"),dates,series,dv);
+    return;
+  }
+  document.getElementById("stkChartCap").textContent=per;
   legend(document.getElementById("stkChartLegend"), series.map((s,i)=>{
     const first=vals[i].findIndex(v=>v!=null);
     return {name:s.l+(first>0? ` (замеры с ${fmtDate(dates[first])})`:""), color:s.c, line:true};
   }));
   stockLines(document.getElementById("stkChart"),dates,series,vals);
+}
+
+/* Столбцы изменений: ноль посередине, приход вверх, расход вниз. Слои идут рядом, а не стопкой —
+   иначе приход на одной площадке гасился бы продажами на другой и движение снова исчезало. */
+function stockDeltaBars(mount,dates,series,dv){
+  const W=1000,H=280,m={t:18,r:14,b:34,l:72};
+  const iw=W-m.l-m.r, ih=H-m.t-m.b, n=Math.max(1,dates.length);
+  const flat=dv.flat().filter(v=>v!=null);
+  const maxAbs=Math.max(1,...flat.map(Math.abs));
+  const sc=niceScale(0,maxAbs,3), top=sc.max||1;
+  const Y=v=>m.t+ih/2-(v/top)*(ih/2);
+  const band=iw/n, gw=Math.min(band*0.72,30), bw=Math.max(1.5,gw/series.length-1);
+  const svg=el("svg",{class:"chart",viewBox:`0 0 ${W} ${H}`});
+  for(let v=-top;v<=top+1e-6;v+=sc.step){ if(Math.abs(v)<1e-9&&v!==0) continue; const y=Y(v);
+    svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,
+      stroke:cssv("--grid"),"stroke-width":Math.abs(v)<1e-9?1.6:1}));
+    const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});
+    tx.textContent=(v>0?"+":"")+fmtAxis(v); svg.appendChild(tx); }
+  for(let i=0;i<n;i++){
+    const cx=m.l+band*i+band/2;
+    series.forEach((s,si)=>{
+      const v=dv[si][i]; if(v==null||v===0) return;
+      const x=cx-gw/2+si*(gw/series.length);
+      const y=v>0? Y(v) : Y(0), h=Math.max(1.5,Math.abs(Y(v)-Y(0)));
+      const rect=el("rect",{x,y,width:bw,height:h,rx:1.5,fill:s.c,opacity:v>0?1:.55});
+      rect.style.cursor="pointer";
+      rect.addEventListener("pointermove",ev=>{
+        const body=series.map((s2,j)=>{ const v2=dv[j][i];
+          return `<div class="t-row"><span class="k"><i style="background:${s2.c}"></i>${s2.l}</span>`
+            +`<span class="v">${v2==null? "нет замера" : (v2>0?"+":"")+nf.format(v2)+" шт"}</span></div>`; }).join("");
+        showTip(`<div class="t-hd">${fmtDateLong(dates[i])}</div>${body}`,ev.clientX,ev.clientY); });
+      rect.addEventListener("pointerleave",hideTip);
+      svg.appendChild(rect);
+    });
+  }
+  const maxLabels=n<=10?n:9, stride=Math.max(1,Math.round(n/maxLabels));
+  for(let i=0;i<n;i++) if((i%stride===0 && (n-1-i)>=stride) || i===n-1){
+    const tx=el("text",{x:m.l+band*i+band/2,y:H-12,"text-anchor":"middle","font-size":10.5,fill:cssv("--muted")});
+    tx.textContent=fmtDate(dates[i]); svg.appendChild(tx); }
+  mount.innerHTML=""; mount.appendChild(svg);
+}
+
+/* БЛОК «ПРИХОДЫ И ОТГРУЗКИ»: дни, когда остаток ДВИНУЛСЯ заметно. Это и есть ответ на вопрос
+   «когда зайдут поставки» — рост остатка на площадке и есть приёмка машины.
+   ВАЖНО: на площадке остаток ОДНОВРЕМЕННО падает от продаж, поэтому «пришло» ≈ Δ + продано
+   за день. Без этой поправки машина 900 шт выглядит как +650 и читается как «пришло меньше». */
+const STK_EVENT_MIN=150;      // шт: ниже этого — обычное дневное шевеление, не событие
+function renderStockEvents(codes){
+  const card=document.getElementById("stkArrCard"), box=document.getElementById("stkArr");
+  const all=stockSeries().snaps, base=stkPrevSnap();
+  const snaps=(stkPeriod && base)? all.filter(s=>s.date>=base.date) : all;
+  const set=new Set(codes);
+  if(snaps.length<2){ card.hidden=true; return; }
+  /* ПРОДАЖИ ПО ДНЯМ НУЖНЫ ДВАЖДЫ, И ЭТО КЛЮЧЕВОЕ.
+     1) Приход: остаток площадки одновременно падает от продаж, поэтому «пришло» ≈ Δ + продано.
+        Без поправки машина 900 шт выглядит как +650 и читается как «пришло меньше».
+     2) ОТСЕВ ШУМА: без неё падение остатка от обычных продаж (200–500 шт/день) проходит порог,
+        и в блоке оказывается почти каждый день — 24 события на 30 днях. Падение показываем,
+        только если оно ЗАМЕТНО больше дневных продаж, то есть товар реально ушёл, а не продался. */
+  const supOf={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s) supOf[""+c.sku]=s; });
+  const boW=(buyoutInfo("wb")||{}).all||0.8, boO=(buyoutInfo("ozon")||{}).all||0.8;
+  const soldWb={}, soldOz={};
+  const Dw=(RD.orderSeries&&RD.orderSeries.dates)||[], Sw=(RD.orderSeries&&RD.orderSeries.bySku)||{};
+  Dw.forEach((d,i)=>{ let q=0; Object.keys(Sw).forEach(sku=>{ const sup=supOf[sku];
+    if(sup&&set.has(sup)) q+=(Sw[sku][i]||0); }); soldWb[d]=q*boW; });
+  const Do=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[],
+        So=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.byArt)||{};
+  Do.forEach((d,i)=>{ let q=0; set.forEach(c=>{ q+=((So[c]||[])[i]||0); }); soldOz[d]=q*boO; });
+  /* ПРОДАЖИ БЕРЁМ ЗА ВЕСЬ ИНТЕРВАЛ МЕЖДУ ЗАМЕРАМИ, А НЕ ЗА ОДИН ДЕНЬ. У Озона замеры редкие
+     (между 17.09 и 05.10 — 18 дней), и вся дельта за эти дни схлопывается в день замера.
+     Сравнивать её с продажами ОДНОГО дня нельзя: падение за две недели выглядело бы как
+     «ушло сверх продаж», а приход занижался бы в разы (05.10 давал «+466 пришло» вместо ≈6 400). */
+  const soldOn=(k,from,to)=>{ const src=k==="fbo"? soldWb : (k==="oz"? soldOz : null);
+    if(!src) return 0; let q=0;
+    Object.keys(src).forEach(d=>{ if(d>from && d<=to) q+=src[d]; });
+    return q; };
+
+  /* ИДЁМ ПО СОБСТВЕННЫМ ЗАМЕРАМ КАЖДОГО СЛОЯ, А НЕ ПО ОБЩЕЙ ОСИ ДАТ. На общей оси значение
+     перенесено вперёд, поэтому вся дельта Озона за 18 дней между замерами выглядит как
+     изменение за ОДИН день — и продажи к ней подставлялись однодневные: приход 05.10 выходил
+     «+466 шт» вместо реальных ≈6 400. Сравниваем замер с ПРЕДЫДУЩИМ ЗАМЕРОМ ТОГО ЖЕ СЛОЯ. */
+  const byDate={}; all.forEach(s=>byDate[s.date]=s);
+  const S=stockSeries(), src=S.srcDays, brk=S.breaks||{};
+  const LAY=[{k:"fbo",l:"склады ВБ",c:cssv("--s1")},{k:"oz",l:"Ozon",c:cssv("--s2")},{k:"wh",l:"ваши склады",c:cssv("--s3")}];
+  const from=snaps[0].date, ev=[];
+  LAY.forEach(L=>{
+    const days=(src[L.k]||[]).filter(d=>byDate[d]), bad=brk[L.k]||new Set();
+    for(let i=1;i<days.length;i++){
+      const a=byDate[days[i]], b=byDate[days[i-1]];
+      if(a.date<from) continue;                       // замер целиком до окна — не наше событие
+      let d=0; const byCode=[];
+      set.forEach(c=>{ const x=(a.sup[c]||{})[L.k]||0, y=(b.sup[c]||{})[L.k]||0;
+        if(x-y) byCode.push([c,x-y]); d+=x-y; });
+      if(Math.abs(d)<STK_EVENT_MIN) continue;
+      const sold=Math.round(soldOn(L.k,b.date,a.date));
+      const broken=bad.has(days[i])||bad.has(days[i-1]);
+      /* Падение меньше продаж за тот же интервал — это и есть продажи, а не событие.
+         На своём складе продаж нет вовсе, поэтому там любое падение — отгрузка, и она важна. */
+      if(!broken && d<0 && Math.abs(d) < sold+STK_EVENT_MIN) continue;
+      byCode.sort((p,q)=>Math.abs(q[1])-Math.abs(p[1]));
+      ev.push({date:a.date, from:b.date, gap:Math.round((new Date(a.date)-new Date(b.date))/864e5),
+        lay:L, d, top:byCode.slice(0,3), sold, broken});
+    }
+  });
+  ev.sort((x,y)=>x.date<y.date?-1:1);
+  if(!ev.length){
+    card.hidden=false;
+    document.getElementById("stkArrCap").textContent="";
+    box.innerHTML=`<div class="empty-hint">За выбранный период остатки между замерами менялись меньше чем на ${STK_EVENT_MIN} шт — крупных приходов и отгрузок не было.</div>`;
+    return;
+  }
+  ev.reverse();                                        // свежее сверху
+  const ins=ev.filter(e=>e.d>0&&!e.broken).reduce((a,e)=>a+e.d+(e.sold>0?e.sold:0),0);
+  const nbr=ev.filter(e=>e.broken).length;
+  card.hidden=false;
+  document.getElementById("stkArrCap").textContent=
+    `${ev.length} ${plural(ev.length,"событие","события","событий")} крупнее ${STK_EVENT_MIN} шт между замерами`
+    +(ins? ` · пришло ≈ ${nf.format(ins)} шт` : "")
+    +(nbr? ` · ${nbr} ${plural(nbr,"день","дня","дней")} со сменой состава отчёта — не движение товара` : "");
+  const nm={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s&&!nm[s]) nm[s]=c.name||s; });
+  box.innerHTML=`<div class="table-scroll"><table class="rnp"><thead><tr><th class="metric">Когда и где</th>`
+    +`<th>Изменение</th><th>Оценка прихода</th><th class="metric" style="text-align:left">Что двигалось</th></tr></thead><tbody>`
+    +ev.slice(0,30).map(e=>{
+      const up=e.d>0;
+      const arrival=(up&&e.sold>0)? e.d+e.sold : null;
+      const went=e.lay.k==="wh"? "отгружено со склада" : "ушло с площадки";
+      return `<tr><td class="metric"><b>${fmtDate(e.date)}</b> <span class="sub">${e.lay.l}`
+        +(e.gap>1? ` · с ${fmtDate(e.from)}, ${e.gap} ${plural(e.gap,"день","дня","дней")} без замера`:"")+`</span></td>`
+        +`<td style="color:${e.broken?"var(--muted)":(up?"var(--good-txt)":"var(--crit-txt)")};font-weight:650">${up?"+":"−"}${nf.format(Math.abs(e.d))}</td>`
+        +`<td>${e.broken? `<span class="sub">отчёт изменил состав — похоже на смену методики, а не движение товара</span>`
+            : (arrival? "<b>≈ "+nf.format(arrival)+"</b> <span class=\"sub\">шт пришло (остаток +"+nf.format(e.d)+", продано "+nf.format(e.sold)+")</span>"
+            : (up? "<b>≈ "+nf.format(e.d)+"</b> <span class=\"sub\">шт пришло</span>"
+                 : `<span class="sub">${went}${e.sold>0? ", сверх продаж "+nf.format(e.sold):""}</span>`))}</td>`
+        +`<td class="metric" style="text-align:left"><span class="sub">`
+        +e.top.map(([c,v])=>`${esc((nm[c]||c).slice(0,26))} <b>${v>0?"+":"−"}${nf.format(Math.abs(v))}</b>`).join(" · ")
+        +`</span></td></tr>`;
+    }).join("")+`</tbody></table></div>`;
 }
 
 function stockLines(mount,dates,series,vals){
@@ -10633,6 +10854,10 @@ document.getElementById("stkTable").addEventListener("click",e=>{
   if(e.target.closest("a")) return;                       // ссылка на карточку — не разворачиваем
   const tr=e.target.closest("tr.stk-cat"); if(!tr) return;
   const c=tr.dataset.cat; stkOpenCat = stkOpenCat===c? null : c; renderStockTab(); });
+document.getElementById("stkChartSeg").addEventListener("click",e=>{
+  const b=e.target.closest("button"); if(!b) return;
+  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
+  b.setAttribute("aria-pressed","true"); stkChartMode=b.dataset.m; renderStockTab(); });
 document.getElementById("stkExportBtn").addEventListener("click",exportStockXLSX);
 // ---- Реклама ----
 document.getElementById("adGroupSel")?.addEventListener("change",e=>{ adGroup=e.target.value||null; renderAdsTab(); });
