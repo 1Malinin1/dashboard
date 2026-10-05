@@ -262,6 +262,24 @@ if(kind==='stock'){
     }
   }
   RD.warehouse={date:dateArg, split:false, byWh, bySup};
+
+  /* ИСТОРИЯ СВОЕГО СКЛАДА ПО ДНЯМ — `RD.whHistory[дата]` (заведено 05.10.2026 под вкладку
+     «Остатки»). Зачем: ведомость 1С — СНИМОК НА МОМЕНТ выгрузки, прошлые дни из неё не достать,
+     а продавцу нужно видеть движение: «отдал складу файл на сборку — позиции пропали, и дальше
+     я их не вижу до самого прихода на площадку». Остаток ВБ по дням уже лежит в воронке
+     (`BAKED_FUNNEL.wbStock/ownStock` с 14.07), остаток Озона копит `ozon-stock-history.cjs`,
+     а свой склад не копил НИКТО — поэтому стрелку «ушло со склада → приехало на площадку»
+     построить было не из чего.
+     Храним ровно то же, что в `warehouse`, но датой: без разбивки по складам нельзя отличить
+     «уехало на отгрузку» от «продалось по FBS», а это разные события.
+     Точка за ту же дату ПЕРЕЗАПИСЫВАЕТСЯ — за день может прийти уточнённая ведомость. */
+  RD.whHistory=RD.whHistory||{};
+  const wasPoint=!!RD.whHistory[dateArg];
+  RD.whHistory[dateArg]={byWh:JSON.parse(JSON.stringify(byWh)),
+    bySup:Object.fromEntries(Object.entries(bySup).map(([k,v])=>[k,{qty:v.qty,wh:Object.assign({},v.wh)}]))};
+  const hDays=Object.keys(RD.whHistory).sort();
+  console.log('История своего склада: '+(wasPoint?'ОБНОВЛЕНА':'добавлена')+' точка '+dateArg
+    +' · всего дней '+hDays.length+' ['+hDays[0]+' … '+hDays[hDays.length-1]+']');
   // колонки «едет ко мне» из этого же файла — полная замена соответствующего слоя
   ['china','order'].forEach(t=>{ if(!inbCols[t].length) return;
     const tot=Object.values(inbBy[t]).reduce((a,b)=>a+b,0);
