@@ -10432,10 +10432,27 @@ function renderStockTab(){
 /* Блок «ушло со склада, а на площадке не появилось» — то, ради чего вкладка и делается.
    Пока у склада ОДИН замер, сравнивать не с чем: пишем об этом прямо, а не прячем блок молча —
    иначе продавец решит, что движения нет, хотя его просто не из чего посчитать. */
+/* Продано по коду за интервал, В ВЫКУПЕ (ВБ + Озон). Нужно и событиям, и блоку «ушло со склада»:
+   остаток площадки падает от продаж, поэтому «пришло» ≈ рост остатка + продано за те же дни. */
+function stkSoldByCode(from,to){
+  const out={};
+  const supOf={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s) supOf[""+c.sku]=s; });
+  const boW=(buyoutInfo("wb")||{}).all||0.8, boO=(buyoutInfo("ozon")||{}).all||0.8;
+  const D=(RD.orderSeries&&RD.orderSeries.dates)||[], S=(RD.orderSeries&&RD.orderSeries.bySku)||{};
+  D.forEach((d,i)=>{ if(!(d>from&&d<=to)) return;
+    Object.keys(S).forEach(sku=>{ const sup=supOf[sku]; const q=S[sku][i]||0;
+      if(sup&&q) out[sup]=(out[sup]||0)+q*boW; }); });
+  const Do=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[],
+        So=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.byArt)||{};
+  Do.forEach((d,i)=>{ if(!(d>from&&d<=to)) return;
+    Object.keys(So).forEach(c=>{ const q=(So[c]||[])[i]||0; if(q) out[c]=(out[c]||0)+q*boO; }); });
+  return out;
+}
+
 function renderStockMove(rows,pTxt){
   const card=document.getElementById("stkMoveCard"), box=document.getElementById("stkMove");
   const cap=document.getElementById("stkMoveCap");
-  const whDays=Object.keys(RD.whHistory||{}).sort();
+  const whDays=(stockSeries().srcDays||{}).wh||[];
   card.hidden=false;
   if(whDays.length<2){
     cap.textContent="";
@@ -10443,19 +10460,45 @@ function renderStockMove(rows,pTxt){
       +`Движение появится здесь после следующей ведомости 1С: дашборд сам сопоставит, что ушло со склада и сколько из этого уже приняли на площадках.</div>`;
     return;
   }
-  const moved=rows.filter(r=>r.dWh!=null && r.dWh<0)
-    .map(r=>({...r, gone:-r.dWh, arrived:Math.max(0,(r.dFbo||0)+(r.dOz||0))}))
-    .filter(r=>r.arrived < r.gone*0.5)        // больше половины ушедшего на площадках ещё не видно
+  /* СРАВНИВАЕМ ДВА ПОСЛЕДНИХ ЗАМЕРА СКЛАДА, А НЕ ОКНО ПЕРИОДА. Раньше брались `r.dWh` — Δ за
+     выбранные 7/30 дней, а слой склада начался 05.10.2026 и в такое окно не попадал: `stkCmpLayers`
+     честно ставил `null`, строк не находилось, и блок печатал «зависших отгрузок нет» в тот самый
+     день, когда со склада ушло 1 107 шт, а на ВБ пришло 233. Пустой результат читался как «всё
+     в порядке» — ровно та ловушка, против которой вкладка и сделана. Склад — редкий слой,
+     и сравнивать его надо с его же предыдущим замером.
+     ПРИЁМКА СЧИТАЕТСЯ С ПОПРАВКОЙ НА ПРОДАЖИ: остаток площадки за те же дни падает от продаж,
+     поэтому «появилось» = рост остатка + продано, иначе ходовой товар всегда выглядит зависшим. */
+  const to=whDays[whDays.length-1], from=whDays[whDays.length-2];
+  const byDate={}; stockSeries().snaps.forEach(s=>byDate[s.date]=s);
+  const A=byDate[to], B=byDate[from];
+  const sold=stkSoldByCode(from,to);
+  const gapTxt=`с ${fmtDate(from)} по ${fmtDate(to)}`;
+  /* СО СКЛАДА ТОВАР УХОДИТ И БЕЗ ОТГРУЗКИ — ПО FBS ПРЯМО ПОКУПАТЕЛЮ. Поэтому мелкие минусы
+     (единицы штук) это обычный расход дня, а не зависшая поставка; без порога блок выдавал
+     37 позиций, из которых 25 были на 5–20 шт. `STK_MOVE_MIN` оставляет только то, что похоже
+     на машину или её часть. */
+  const ordLast=((RD.orderSeries&&RD.orderSeries.dates)||[]).slice(-1)[0]||"";
+  const moved=rows.map(r=>{
+    const a=(A&&A.sup[r.sup])||{fbo:0,oz:0,wh:0}, b=(B&&B.sup[r.sup])||{fbo:0,oz:0,wh:0};
+    const gone=(b.wh||0)-(a.wh||0);
+    const arrived=Math.max(0, (a.fbo-b.fbo)+(a.oz-b.oz)+Math.round(sold[r.sup]||0));
+    return {...r, gone, arrived};
+  }).filter(r=>r.gone>0 && r.arrived<r.gone*0.5 && (r.gone-r.arrived)>=STK_MOVE_MIN)
     .sort((a,b)=>(b.gone-b.arrived)-(a.gone-a.arrived));
+  /* Если ряд заказов не достаёт до конца интервала, продажи за хвост в поправку не вошли —
+     говорим об этом прямо, иначе часть FBS-расхода читается как уехавшая поставка. */
+  const noteGap=(ordLast && ordLast<to)
+    ? ` Заказы залиты по ${fmtDate(ordLast)}, поэтому продажи за ${fmtDate(to)} в поправку не вошли: часть этого минуса — обычные продажи по FBS.`:"";
   if(!moved.length){
     cap.textContent="";
-    box.innerHTML=`<div class="empty-hint">Всё, что уходило со склада ${pTxt}, уже видно на площадках — зависших отгрузок нет.</div>`;
+    box.innerHTML=`<div class="empty-hint">Всё, что уходило со склада ${gapTxt}, уже видно на площадках — зависших отгрузок крупнее ${STK_MOVE_MIN} шт нет.${noteGap}</div>`;
     return;
   }
   const wait=moved.reduce((a,r)=>a+(r.gone-r.arrived),0);
-  cap.textContent=`${moved.length} ${plural(moved.length,"позиция","позиции","позиций")} · ${nf.format(wait)} шт ушло со склада ${pTxt}, на площадках пока не появилось`;
+  cap.textContent=`${moved.length} ${plural(moved.length,"позиция","позиции","позиций")} · ${nf.format(wait)} шт ушло со склада ${gapTxt}, на площадках пока не появилось`
+    +(noteGap?" ·"+noteGap:"");
   box.innerHTML=`<div class="table-scroll"><table class="rnp"><thead><tr><th class="metric">Товар</th>`
-    +`<th>Ушло со склада</th><th>Появилось на площадках</th><th>Ждём</th><th>Отмечено в пути</th></tr></thead><tbody>`
+    +`<th>Ушло со склада</th><th title="Рост остатка площадок плюс продажи за те же дни: остаток падает от продаж, без поправки ходовой товар всегда выглядел бы зависшим">Приняли на площадках</th><th>Ждём</th><th>Отмечено в пути</th></tr></thead><tbody>`
     +moved.slice(0,25).map(r=>`<tr><td class="metric">${r.sku? skuLink(r.sku) : esc(r.sup)} `
       +`<span class="sub">${esc((r.name||"").slice(0,40))}</span><br><span class="sub">1С ${esc(r.sup)} · ${esc(r.cat)}</span></td>`
       +`<td style="color:var(--crit-txt)">−${nf.format(r.gone)}</td>`
@@ -10562,6 +10605,7 @@ function stockDeltaBars(mount,dates,series,dv){
    ВАЖНО: на площадке остаток ОДНОВРЕМЕННО падает от продаж, поэтому «пришло» ≈ Δ + продано
    за день. Без этой поправки машина 900 шт выглядит как +650 и читается как «пришло меньше». */
 const STK_EVENT_MIN=150;      // шт: ниже этого — обычное дневное шевеление, не событие
+const STK_MOVE_MIN=30;        // шт: минимум «ждём» в блоке отгрузок — ниже это расход по FBS
 function renderStockEvents(codes){
   const card=document.getElementById("stkArrCard"), box=document.getElementById("stkArr");
   const all=stockSeries().snaps, base=stkPrevSnap();
