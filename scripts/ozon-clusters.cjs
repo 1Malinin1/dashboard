@@ -89,6 +89,23 @@ Object.keys(byCluster).forEach(cl=>{
 
 RD.ozon=RD.ozon||{};
 RD.ozon.clusters={ date:dateArg, byCluster, bySup };
+
+/* ИСТОРИЯ ОСТАТКА ПО КЛАСТЕРАМ — БЕЗ НЕЁ НЕЛЬЗЯ ОТВЕТИТЬ «В КАКОЙ ОКРУГ ПРИЕХАЛ ТОВАР»
+   (просьба продавца 07.10.2026: «если товар прибыл на озон, мне нужно знать, в какой
+   округ-город он приехал»). `clusters` — это ТЕКУЩИЙ срез, он перезаписывается каждой
+   выгрузкой, поэтому по нему видно «где лежит сейчас», но не «где прибавилось».
+   `stockHistory` историю хранит, но только суммой по артикулу, без разреза.
+   Храним ТОЛЬКО `avail` и ТОЛЬКО ненулевые пары: у артикула реально 3–8 живых кластеров
+   из 26, полная матрица раздула бы снимок в разы без пользы. */
+RD.ozon.clusterHistory=RD.ozon.clusterHistory||{};
+const histPoint={};
+Object.entries(bySup).forEach(([a,m])=>{
+  const row={};
+  Object.entries(m).forEach(([cl,e])=>{ const v=(e.avail||0)+(e.req||0)+(e.road||0); if(v) row[cl]=[e.avail||0,(e.req||0)+(e.road||0)]; });
+  if(Object.keys(row).length) histPoint[a]=row;
+});
+const hadPoint=!!RD.ozon.clusterHistory[dateArg];
+RD.ozon.clusterHistory[dateArg]=histPoint;
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
   +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
@@ -97,7 +114,12 @@ const F=n=>Math.round(n).toLocaleString('ru-RU');
 const list=Object.entries(byCluster).map(([cl,e])=>({cl,...e})).sort((a,b)=>b.spd-a.spd);
 const tot=list.reduce((s,e)=>({avail:s.avail+e.avail,spd:s.spd+e.spd,req:s.req+e.req,road:s.road+e.road}),{avail:0,spd:0,req:0,road:0});
 console.log('лист «'+SH+'» · наших строк '+ours+' · чужих пропущено '+alien);
-console.log('кластеров: '+list.length+' · дата '+dateArg+'\n');
+console.log('кластеров: '+list.length+' · дата '+dateArg);
+const hd=Object.keys(RD.ozon.clusterHistory).sort();
+console.log('история по кластерам: '+hd.length+' '+(hd.length===1?'точка':'точек')+' ['+hd[0]+' … '+hd[hd.length-1]+']'
+  +(hadPoint?' · точка этой даты ПЕРЕЗАПИСАНА':' · добавлена точка '+dateArg)
+  +(hd.length<2? '\n  ⚠ пока ОДНА точка — «куда приехал товар по округам» заработает со следующей выгрузки':''));
+console.log('');
 console.log('КЛАСТЕР                         остаток  продаж/дн  хватит,дн   заявки   в пути  кодов');
 list.forEach(e=>{
   const cov=e.avail+e.req+e.road;

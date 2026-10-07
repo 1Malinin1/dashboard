@@ -40,12 +40,18 @@ function readReport(f){
   const top=rows[hr], sub=rows[hr+1]||[];
   const cArt=idxOf(top,v=>v==='Артикул'), cDay=idxOf(top,v=>v==='День'), cOzSku=idxOf(top,v=>v==='SKU');
   // метрики воронки — по под-строке шапки
-  const cImp=idxOf(sub,v=>v.startsWith('Показы всего'));
-  const cCard=idxOf(sub,v=>v.startsWith('Посещения карточки'));
-  const cCart=idxOf(sub,v=>v.startsWith('Добавления в корзину всего'));
-  const cOrd=idxOf(sub,v=>v.startsWith('Заказано товаров'));
-  const cDeliv=idxOf(sub,v=>v.startsWith('Доставлено товаров'));
-  const cCancel=idxOf(sub,v=>v.startsWith('Отменено товаров'));
+  /* ИМЕНА КОЛОНОК ВОРОНКИ ПЛАВАЮТ — ДЕРЖИМ СПИСОК, А НЕ ОДНО ИМЯ (07.10.2026).
+     Было «Показы всего» / «Добавления в корзину всего», стало «Показы в поиске и каталоге» /
+     «Добавления из карточки в корзину». Скрипт падал на поиске колонок, то есть воронка Озона
+     просто переставала заливаться. Новое имя ДОБАВЛЯЙ, старое не удаляй: продавец присылает
+     и старые выгрузки. */
+  const anyOf=(...pats)=>idxOf(sub,v=>pats.some(p=>p.test(v)));
+  const cImp=anyOf(/^Показы всего/,/^Показы в поиске/);
+  const cCard=anyOf(/^Посещения карточки/);
+  const cCart=anyOf(/^Добавления в корзину всего/,/^Добавления из карточки в корзину/);
+  const cOrd=anyOf(/^Заказано товаров/);
+  const cDeliv=anyOf(/^Доставлено товаров/);
+  const cCancel=anyOf(/^Отменено товаров/);
   // «Заказано на сумму» с 25.09.2026 приходит ДВУМЯ колонками: «(по цене реализации)» —
   // новая база Ozon (~73% от потолка, см. перелом 31.08) и «(по предельной цене)» — цена
   // продавца. Весь наш снимок (orderSeries.money, финансы Озона) считается по ПРЕДЕЛЬНОЙ,
@@ -56,10 +62,18 @@ function readReport(f){
   const cSumReal=idxOf(sub,v=>/^Заказано на сумму/.test(v)&&/реализаци/i.test(v));
   const sumBase=cSum>=0?'предельная цена':'цена реализации';
   if(cSum<0) cSum=idxOf(sub,v=>v.startsWith('Заказано на сумму'));
-  if([cArt,cDay,cImp,cCard,cCart,cOrd,cDeliv].some(x=>x<0))
-    throw new Error('не нашёл ключевые колонки воронки в '+f+' (арт='+cArt+' день='+cDay+' показы='+cImp+' карточка='+cCard+' корзина='+cCart+' заказы='+cOrd+' доставлено='+cDeliv+')');
+  /* «ДОСТАВЛЕНО» И «ОТМЕНЕНО» В ВЫГРУЗКЕ МОГУТ ОТСУТСТВОВАТЬ — ЭТО НЕ ПОВОД ПАДАТЬ (07.10.2026).
+     В аналитике Ozon набор показателей выбирает человек, и в присланном файле секция «Воронка
+     продаж» пришла из четырёх колонок: показы, карточка, корзина, заказы. Показы и заказы —
+     полезные данные, терять их из-за отсутствия доставки неправильно. Но и писать НОЛЬ в уже
+     заполненные поля нельзя: мерж идёт по ключу «дата+артикул», и повторная заливка того же
+     дня урезанным файлом молча обнулила бы дозревшую доставку. Поэтому такие строки помечаются
+     `noDeliv`, и при мерже прежние `buyoutQty`/`buyoutSum`/`cancelQty` СОХРАНЯЮТСЯ. */
+  const noDeliv=cDeliv<0;
+  if([cArt,cDay,cImp,cCard,cCart,cOrd].some(x=>x<0))
+    throw new Error('не нашёл ключевые колонки воронки в '+f+' (арт='+cArt+' день='+cDay+' показы='+cImp+' карточка='+cCard+' корзина='+cCart+' заказы='+cOrd+')');
   const recs=[]; let matched=0, skipped=0; const ozSkuByArt={};   // артикул продавца → числовой SKU Озона (для ссылки)
-  const tot={imp:0,card:0,cart:0,ord:0,deliv:0,sum:0,sumReal:0,base:sumBase,bothCols:cSumReal>=0&&sumBase==='предельная цена'};
+  const tot={imp:0,card:0,cart:0,ord:0,deliv:0,sum:0,sumReal:0,base:sumBase,noDeliv,bothCols:cSumReal>=0&&sumBase==='предельная цена'};
   for(let i=hr+1;i<rows.length;i++){
     const r=rows[i]; const art=(''+(r[cArt]||'')).trim(); const day=(''+(r[cDay]||'')).trim();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;          // не строка данных (напр. «Итого и среднее»)
@@ -68,7 +82,7 @@ function readReport(f){
     const oz=ozBySku[art], wb=wbBySup[art];
     const name=(oz&&oz.name)||(wb&&wb.name)||(''+(r[0]||'')).trim()||art;
     const category=(wb&&wb.category)||(oz&&oz.category)||'Без категории';
-    const imp=num(r[cImp]),card=num(r[cCard]),cart=num(r[cCart]),ord=num(r[cOrd]),deliv=num(r[cDeliv]),
+    const imp=num(r[cImp]),card=num(r[cCard]),cart=num(r[cCart]),ord=num(r[cOrd]),deliv=noDeliv?0:num(r[cDeliv]),
       cancel=cCancel>=0?num(r[cCancel]):0, sum=cSum>=0?num(r[cSum]):0;
     // отчёт Озона не отдаёт «Доставлено на сумму» — ОЦЕНКА: доставлено × средний чек заказа (sum/ord)
     const avg = ord>0 ? sum/ord : 0;
@@ -76,7 +90,7 @@ function readReport(f){
     recs.push({id:day+'_'+art,date:day,sku:art,name,category,
       impressions:imp,cardViews:card,addCart:cart,addFav:0,
       ordersQty:ord,buyoutQty:deliv,cancelQty:cancel,
-      ordersSum:Math.round(sum),buyoutSum,cancelSum:0,wbStock:0,ownStock:0});
+      ordersSum:Math.round(sum),buyoutSum,cancelSum:0,wbStock:0,ownStock:0,noDeliv});
     matched++;
     tot.imp+=imp;tot.card+=card;tot.cart+=cart;tot.ord+=ord;tot.deliv+=deliv;tot.sum+=sum;
     if(cSumReal>=0) tot.sumReal+=num(r[cSumReal]);
@@ -90,7 +104,7 @@ for(const f of files){
   recs.forEach(r=>{ (byDate[r.date]||(byDate[r.date]=[])).push(r); });
   Object.assign(ozSkuByArt,m);
   console.log('  '+path.basename(f)+': строк наших '+matched+' (пропущено чужих '+skipped+') · показы '+tot.imp.toLocaleString('ru-RU')
-    +' · заказы '+tot.ord+' · доставлено '+tot.deliv+' · заказано '+Math.round(tot.sum).toLocaleString('ru-RU')+' ₽'
+    +' · заказы '+tot.ord+' · доставлено '+(tot.noDeliv?'нет колонки в файле':tot.deliv)+' · заказано '+Math.round(tot.sum).toLocaleString('ru-RU')+' ₽'
     +'  [база суммы: '+tot.base+']');
   if(tot.bothCols) console.log('    в файле ЕСТЬ обе колонки: по предельной '+Math.round(tot.sum).toLocaleString('ru-RU')
     +' ₽ · по цене реализации '+Math.round(tot.sumReal).toLocaleString('ru-RU')+' ₽ ('
@@ -109,11 +123,19 @@ console.log('  SKU Озона проставлен у '+ozLinked+' товаро�
 const old=(RD.ozon.funnel||[]);
 const map={}; old.forEach(r=>{ map[r.date+'_'+r.sku]=r; });
 let replaced=0, fresh=0;
+let keptDeliv=0;
 Object.values(byDate).forEach(list=>list.forEach(r=>{ const k=r.date+'_'+r.sku;
-  if(map[k]) replaced++; else fresh++; map[k]=r; }));
+  const prev=map[k];
+  if(prev) replaced++; else fresh++;
+  // в файле нет «Доставлено» — не затираем уже дозревшую доставку прежней заливки
+  if(r.noDeliv && prev && ((prev.buyoutQty||0)||(prev.cancelQty||0))){
+    r.buyoutQty=prev.buyoutQty||0; r.buyoutSum=prev.buyoutSum||0; r.cancelQty=prev.cancelQty||0; keptDeliv++; }
+  delete r.noDeliv;
+  map[k]=r; }));
 const merged=Object.values(map).sort((a,b)=>a.date<b.date?-1:(a.date>b.date?1:(a.sku<b.sku?-1:1)));
 RD.ozon.funnel=merged;
-console.log('  строк товар×день: новых '+fresh+' · перезаписано (уже были) '+replaced);
+console.log('  строк товар×день: новых '+fresh+' · перезаписано (уже были) '+replaced
+  +(keptDeliv? ' · у '+keptDeliv+' сохранена прежняя доставка (в файле колонки нет)':''));
 
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'

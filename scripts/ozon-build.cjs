@@ -211,12 +211,19 @@ const prevStockHist = (RD.ozon && RD.ozon.stockHistory) || {};
    Ни ошибки, ни пустой таблицы: расчёт «сколько везти в какой округ» просто остаётся без
    спроса. Любое новое поле в `RD.ozon`, которое кладёт НЕ этот скрипт, добавляй сюда же. */
 const prevClusters = (RD.ozon && RD.ozon.clusters) || null;
+/* СЕДЬМОЙ КАПКАН: `ozon.clusterHistory` — ИСТОРИЯ остатка по кластерам (07.10.2026).
+   Копит `ozon-clusters.cjs`, нужна для ответа «в какой округ приехал товар»: `clusters` —
+   это только текущий срез, он перезаписывается каждой выгрузкой. Потерять историю значит
+   молча лишиться разреза приходов по округам, причём заметить это можно только по числу
+   точек. Ровно та же ошибка, что была с `clusters` 25.09. */
+const prevClusterHist = (RD.ozon && RD.ozon.clusterHistory) || {};
 RD.ozon={
   catalog:ozCat,
   funnel:prevFunnel,
   orderSeries:series,
   stockHistory:prevStockHist,
   clusters:prevClusters,
+  clusterHistory:prevClusterHist,
   ordersMeta: keepOrders && RD.ozon && RD.ozon.ordersMeta ? RD.ozon.ordersMeta
     : {period:finalDates[0]+'…'+finalDates[finalDates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
   meta:{ stockDate: stockFile? stockDate : prevMeta.stockDate||null,

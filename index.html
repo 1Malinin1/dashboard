@@ -1341,7 +1341,7 @@
     </div>
     <div class="howto" id="stkHowTo"></div>
     <div class="card" id="stkMoveCard" hidden>
-      <h3>Ушло со склада, на площадке ещё не появилось</h3>
+      <h3>Движение товара — откуда ушло и куда приехало</h3>
       <div class="cap" id="stkMoveCap"></div>
       <div id="stkMove"></div>
     </div>
@@ -10435,18 +10435,54 @@ function renderStockTab(){
 /* Продано по коду за интервал, В ВЫКУПЕ (ВБ + Озон). Нужно и событиям, и блоку «ушло со склада»:
    остаток площадки падает от продаж, поэтому «пришло» ≈ рост остатка + продано за те же дни. */
 function stkSoldByCode(from,to){
-  const out={};
+  /* РАЗДЕЛЬНО ПО ПЛОЩАДКАМ: приход на ВБ поправляется продажами ВБ, на Озон — продажами Озона.
+     Общей суммой пользоваться нельзя, иначе продажи одной площадки «съедят» приход другой. */
+  const wb={}, oz={};
   const supOf={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s) supOf[""+c.sku]=s; });
   const boW=(buyoutInfo("wb")||{}).all||0.8, boO=(buyoutInfo("ozon")||{}).all||0.8;
   const D=(RD.orderSeries&&RD.orderSeries.dates)||[], S=(RD.orderSeries&&RD.orderSeries.bySku)||{};
   D.forEach((d,i)=>{ if(!(d>from&&d<=to)) return;
     Object.keys(S).forEach(sku=>{ const sup=supOf[sku]; const q=S[sku][i]||0;
-      if(sup&&q) out[sup]=(out[sup]||0)+q*boW; }); });
+      if(sup&&q) wb[sup]=(wb[sup]||0)+q*boW; }); });
   const Do=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[],
         So=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.byArt)||{};
   Do.forEach((d,i)=>{ if(!(d>from&&d<=to)) return;
-    Object.keys(So).forEach(c=>{ const q=(So[c]||[])[i]||0; if(q) out[c]=(out[c]||0)+q*boO; }); });
+    Object.keys(So).forEach(c=>{ const q=(So[c]||[])[i]||0; if(q) oz[c]=(oz[c]||0)+q*boO; }); });
+  return {wb,oz};
+}
+
+/* ОТКУДА УБЫЛО — раскладка падения по СВОИМ складам (Евросиб / Нск-1 / Москва / РЦ / Клин).
+   `whHistory` хранит `bySup[код].wh = {склад: шт}`, поэтому разрез есть с первой же ведомости. */
+function stkWhDelta(sup,from,to){
+  const H=RD.whHistory||{};
+  const a=((H[to]||{}).bySup||{})[sup]||{}, b=((H[from]||{}).bySup||{})[sup]||{};
+  const aw=a.wh||{}, bw=b.wh||{}, out={};
+  new Set([...Object.keys(aw),...Object.keys(bw)]).forEach(w=>{
+    const d=(aw[w]||0)-(bw[w]||0); if(d) out[w]=d; });
   return out;
+}
+
+/* КУДА ПРИЕХАЛО НА ОЗОНЕ — разрез по кластерам (просьба продавца 07.10.2026: «если товар
+   прибыл на озон, мне нужно знать, в какой округ-город он приехал»). Источник — свой
+   накопитель `ozon.clusterHistory` (его копит `ozon-clusters.cjs`): `clusters` держит только
+   ТЕКУЩИЙ срез и перезаписывается каждой выгрузкой, а `stockHistory` — только сумму по
+   артикулу. Пока точек меньше двух, возвращаем null и честно пишем об этом в блоке. */
+function stkClusterDays(){ return Object.keys((RD.ozon&&RD.ozon.clusterHistory)||{}).sort(); }
+/* Ближайший замер кластеров НЕ ПОЗЖЕ даты; если таких нет — САМЫЙ РАННИЙ. Фолбэк обязателен:
+   история кластеров началась 06.10.2026, а история склада на день раньше, и без него граница
+   окна не находилась вовсе — разрез по округам молча не показывался при живых данных. */
+function stkClusterNear(d){ const ds=stkClusterDays(); if(!ds.length) return null;
+  let r=null; ds.forEach(x=>{ if(x<=d) r=x; }); return r||ds[0]; }
+function stkClusterDelta(sup,from,to){
+  const H=(RD.ozon&&RD.ozon.clusterHistory)||{};
+  const da=stkClusterNear(to), db=stkClusterNear(from);
+  if(!da||!db||da===db) return null;
+  const a=H[da][sup]||{}, b=H[db][sup]||{}, by={};
+  new Set([...Object.keys(a),...Object.keys(b)]).forEach(cl=>{
+    const x=a[cl]||[0,0], y=b[cl]||[0,0];
+    const dA=(x[0]||0)-(y[0]||0), dT=(x[1]||0)-(y[1]||0);
+    if(dA||dT) by[cl]={avail:dA, transit:dT}; });
+  return {from:db, to:da, by};
 }
 
 function renderStockMove(rows,pTxt){
@@ -10457,22 +10493,21 @@ function renderStockMove(rows,pTxt){
   if(whDays.length<2){
     cap.textContent="";
     box.innerHTML=`<div class="empty-hint">Замер склада пока ОДИН (${fmtDateLong(whDays[0]||null)}), сравнивать не с чем. `
-      +`Движение появится здесь после следующей ведомости 1С: дашборд сам сопоставит, что ушло со склада и сколько из этого уже приняли на площадках.</div>`;
+      +`Движение появится здесь после следующей ведомости 1С: дашборд сам сопоставит, что ушло со склада и куда приехало.</div>`;
     return;
   }
-  /* СРАВНИВАЕМ ДВА ПОСЛЕДНИХ ЗАМЕРА СКЛАДА, А НЕ ОКНО ПЕРИОДА. Раньше брались `r.dWh` — Δ за
-     выбранные 7/30 дней, а слой склада начался 05.10.2026 и в такое окно не попадал: `stkCmpLayers`
-     честно ставил `null`, строк не находилось, и блок печатал «зависших отгрузок нет» в тот самый
-     день, когда со склада ушло 1 107 шт, а на ВБ пришло 233. Пустой результат читался как «всё
-     в порядке» — ровно та ловушка, против которой вкладка и сделана. Склад — редкий слой,
-     и сравнивать его надо с его же предыдущим замером.
-     ПРИЁМКА СЧИТАЕТСЯ С ПОПРАВКОЙ НА ПРОДАЖИ: остаток площадки за те же дни падает от продаж,
-     поэтому «появилось» = рост остатка + продано, иначе ходовой товар всегда выглядит зависшим.
-     ОТРЕЗОК НАКОПИТЕЛЬНЫЙ — ОТ ПЕРВОГО ЗАМЕРА СКЛАДА В ОКНЕ ДО ПОСЛЕДНЕГО, А НЕ ПОСЛЕДНЯЯ ПАРА
-     (поймано 07.10.2026). Отгрузка едет на площадку одну-три недели, и всё это время она обязана
-     висеть в блоке. По последней паре замеров груши 512166 и 512179 (947 шт, ушли 05→06.10)
-     пропали из блока уже на следующий день — при том что на ВБ и Ozon у них по-прежнему ноль
-     и заказов за неделю ноль. Продавец получил бы сигнал один раз и больше никогда. */
+  /* ГЛАВНЫЙ ВОПРОС ВКЛАДКИ — «ОТКУДА УБЫЛО И КУДА ПРИЕХАЛО» (продавец 07.10.2026: «смотрим,
+     откуда товар убыл с какого моего склада и куда прибыл на какой мп; если это озон —
+     в какой округ-город он приехал»). Поэтому блок показывает всю цепочку, а не только
+     «зависло»: склад → площадка → (у Озона) кластер.
+     СРАВНИВАЕМ ЗАМЕРЫ СКЛАДА, А НЕ ОКНО ПЕРИОДА. Раньше брались `r.dWh` — Δ за выбранные
+     7/30 дней, а слой склада начался 05.10.2026 и в такое окно не попадал: `stkCmpLayers`
+     честно ставил `null`, строк не находилось, и блок печатал «зависших отгрузок нет» в тот
+     самый день, когда со склада ушло 1 107 шт, а на ВБ пришло 233.
+     ОТРЕЗОК НАКОПИТЕЛЬНЫЙ — от первого замера склада в окне до последнего, а не последняя
+     пара: отгрузка едет на площадку одну-три недели, и всё это время она обязана висеть тут.
+     ПРИЁМКА СЧИТАЕТСЯ С ПОПРАВКОЙ НА ПРОДАЖИ и РАЗДЕЛЬНО ПО ПЛОЩАДКАМ: остаток падает от
+     продаж, без поправки ходовой товар всегда выглядит зависшим. */
   const base=stkPrevSnap();
   const inWin=(stkPeriod && base)? whDays.filter(d=>d>=base.date) : whDays.slice();
   const win=inWin.length>=2? inWin : whDays.slice(-2);
@@ -10481,38 +10516,71 @@ function renderStockMove(rows,pTxt){
   const A=byDate[to], B=byDate[from];
   const sold=stkSoldByCode(from,to);
   const gapTxt=`с ${fmtDate(from)} по ${fmtDate(to)}`;
-  /* СО СКЛАДА ТОВАР УХОДИТ И БЕЗ ОТГРУЗКИ — ПО FBS ПРЯМО ПОКУПАТЕЛЮ. Поэтому мелкие минусы
-     (единицы штук) это обычный расход дня, а не зависшая поставка; без порога блок выдавал
-     37 позиций, из которых 25 были на 5–20 шт. `STK_MOVE_MIN` оставляет только то, что похоже
-     на машину или её часть. */
   const ordLast=((RD.orderSeries&&RD.orderSeries.dates)||[]).slice(-1)[0]||"";
-  const moved=rows.map(r=>{
+
+  const WHN={msk:"Москва",nsk1:"Нск-1",nsk2:"Евросиб",klin:"РВБ Клин"};
+  const whShort=n=>WHN[whKey(n)]||n;
+  const mv=rows.map(r=>{
     const a=(A&&A.sup[r.sup])||{fbo:0,oz:0,wh:0}, b=(B&&B.sup[r.sup])||{fbo:0,oz:0,wh:0};
     const gone=(b.wh||0)-(a.wh||0);
-    const arrived=Math.max(0, (a.fbo-b.fbo)+(a.oz-b.oz)+Math.round(sold[r.sup]||0));
-    return {...r, gone, arrived};
-  }).filter(r=>r.gone>0 && r.arrived<r.gone*0.5 && (r.gone-r.arrived)>=STK_MOVE_MIN)
-    .sort((a,b)=>(b.gone-b.arrived)-(a.gone-a.arrived));
-  /* Если ряд заказов не достаёт до конца интервала, продажи за хвост в поправку не вошли —
-     говорим об этом прямо, иначе часть FBS-расхода читается как уехавшая поставка. */
+    const dFbo=a.fbo-b.fbo, dOz=a.oz-b.oz;
+    const toWb=dFbo+Math.round(sold.wb[r.sup]||0);
+    const toOz=dOz+Math.round(sold.oz[r.sup]||0);
+    const arrived=Math.max(0,toWb)+Math.max(0,toOz);
+    return {...r, gone, dFbo, dOz, toWb, toOz, arrived, whBy:stkWhDelta(r.sup,from,to), clu:stkClusterDelta(r.sup,from,to)};
+  /* В СТРОКУ ПУСКАЕМ ТОЛЬКО РЕАЛЬНОЕ ПЕРЕМЕЩЕНИЕ: либо товар ушёл со склада, либо ВЫРОС ОСТАТОК
+     площадки. Поправка на продажи нужна, чтобы не занижать приход, но сама по себе признаком
+     прихода не является: у ходового товара остаток держится ровно, и «Δ + продано» даёт
+     «приехало +119» там, где просто идут продажи с уже лежащего запаса. Без этого условия блок
+     заполнялся такими строками и реальные отгрузки в нём терялись. */
+  }).filter(r=>r.gone>=STK_MOVE_MIN || (r.dFbo+r.dOz)>=STK_MOVE_MIN)
+    .sort((x,y)=>Math.max(y.gone,y.dFbo+y.dOz)-Math.max(x.gone,x.dFbo+x.dOz));
+
   const noteGap=(ordLast && ordLast<to)
-    ? ` Заказы залиты по ${fmtDate(ordLast)}, поэтому продажи за ${fmtDate(to)} в поправку не вошли: часть этого минуса — обычные продажи по FBS.`:"";
-  if(!moved.length){
+    ? ` · заказы залиты по ${fmtDate(ordLast)}, продажи за ${fmtDate(to)} в поправку не вошли — часть минуса склада это обычный FBS`:"";
+  const cluDays=stkClusterDays();
+  const noteClu=cluDays.length<2
+    ? ` · разрез Ozon по округам появится со следующего отчёта остатков: замеров по кластерам пока ${cluDays.length}`:"";
+  if(!mv.length){
     cap.textContent="";
-    box.innerHTML=`<div class="empty-hint">Всё, что уходило со склада ${gapTxt}, уже видно на площадках — зависших отгрузок крупнее ${STK_MOVE_MIN} шт нет.${noteGap}</div>`;
+    box.innerHTML=`<div class="empty-hint">Движения крупнее ${STK_MOVE_MIN} шт ${gapTxt} не было.${noteGap}${noteClu}</div>`;
     return;
   }
-  const wait=moved.reduce((a,r)=>a+(r.gone-r.arrived),0);
-  cap.textContent=`${moved.length} ${plural(moved.length,"позиция","позиции","позиций")} · ${nf.format(wait)} шт ушло со склада ${gapTxt}, на площадках пока не появилось`
-    +(noteGap?" ·"+noteGap:"");
+  const wait=mv.reduce((s,r)=>s+Math.max(0,r.gone-r.arrived),0);
+  const came=mv.reduce((s,r)=>s+Math.max(0,r.toWb)+Math.max(0,r.toOz),0);
+  cap.textContent=`${gapTxt} · приехало на площадки ${nf.format(came)} шт`
+    +(wait? ` · ушло со склада и ещё не появилось ${nf.format(wait)} шт`:"")
+    +noteGap+noteClu;
+
+  /* Имена кластеров Ozon длинные («Москва, МО и Дальние регионы»), и в ячейку они не влезают —
+     таблица уезжала вправо и колонка обрезалась. Режем по первой запятой и показываем два
+     крупнейших направления: остальное видно в выгрузке. */
+  const cluShort=c=>String(c).split(",")[0].replace(/ и СЗО$/,"").trim();
+  const cluTxt=r=>{
+    if(!r.clu) return "";
+    const up=Object.entries(r.clu.by).filter(([,v])=>v.avail>0).sort((a,b)=>b[1].avail-a[1].avail);
+    const go=Object.entries(r.clu.by).filter(([,v])=>v.transit>0).sort((a,b)=>b[1].transit-a[1].transit);
+    let t="";
+    if(up.length) t+=`<br><span class="sub">приняли: ${up.slice(0,2).map(([c,v])=>esc(cluShort(c))+" <b>+"+nf.format(v.avail)+"</b>").join(" · ")}${up.length>2?" …":""}</span>`;
+    if(go.length) t+=`<br><span class="sub">едет в: ${go.slice(0,2).map(([c,v])=>esc(cluShort(c))+" "+nf.format(v.transit)).join(" · ")}${go.length>2?" …":""}</span>`;
+    return t;
+  };
   box.innerHTML=`<div class="table-scroll"><table class="rnp"><thead><tr><th class="metric">Товар</th>`
-    +`<th>Ушло со склада</th><th title="Рост остатка площадок плюс продажи за те же дни: остаток падает от продаж, без поправки ходовой товар всегда выглядел бы зависшим">Приняли на площадках</th><th>Ждём</th><th>Отмечено в пути</th></tr></thead><tbody>`
-    +moved.slice(0,25).map(r=>`<tr><td class="metric">${r.sku? skuLink(r.sku) : esc(r.sup)} `
-      +`<span class="sub">${esc((r.name||"").slice(0,40))}</span><br><span class="sub">1С ${esc(r.sup)} · ${esc(r.cat)}</span></td>`
-      +`<td style="color:var(--crit-txt)">−${nf.format(r.gone)}</td>`
-      +`<td>${r.arrived? '<span style="color:var(--good-txt)">+'+nf.format(r.arrived)+'</span>' : '<span class="muted">0</span>'}</td>`
-      +`<td><b>${nf.format(r.gone-r.arrived)}</b></td>`
-      +`<td>${r.wbTransit? nf.format(r.wbTransit) : '<span class="muted">не отмечено</span>'}</td></tr>`).join("")
+    +`<th>Ушло со складов</th><th>На ВБ</th><th>На Ozon</th><th>Ждём</th></tr></thead><tbody>`
+    +mv.slice(0,30).map(r=>{
+      const outWh=Object.entries(r.whBy).filter(([,v])=>v<0).sort((a,b)=>a[1]-b[1]);
+      const inWh=Object.entries(r.whBy).filter(([,v])=>v>0).sort((a,b)=>b[1]-a[1]);
+      const waitQ=Math.max(0,r.gone-r.arrived);
+      return `<tr><td class="metric">${r.sku? skuLink(r.sku) : esc(r.sup)} `
+        +`<span class="sub">${esc((r.name||"").slice(0,30))}</span><br><span class="sub">1С ${esc(r.sup)} · ${esc(r.cat)}</span></td>`
+        +`<td>${r.gone>0? '<span style="color:var(--crit-txt);font-weight:650">−'+nf.format(r.gone)+'</span>':'<span class="muted">—</span>'}`
+          +(outWh.length? '<br><span class="sub">'+outWh.map(([w,v])=>esc(whShort(w))+" "+nf.format(-v)).join(" · ")+'</span>':'')
+          +(inWh.length? '<br><span class="sub">пришло на склад: '+inWh.map(([w,v])=>esc(whShort(w))+" +"+nf.format(v)).join(" · ")+'</span>':'')+`</td>`
+        +`<td>${r.toWb>0? '<span style="color:var(--good-txt);font-weight:650">+'+nf.format(r.toWb)+'</span>':'<span class="muted">—</span>'}</td>`
+        +`<td>${r.toOz>0? '<span style="color:var(--good-txt);font-weight:650">+'+nf.format(r.toOz)+'</span>':'<span class="muted">—</span>'}`
+          +cluTxt(r)+`</td>`
+        +`<td>${waitQ? '<b>'+nf.format(waitQ)+'</b>'+(r.wbTransit? '<br><span class="sub">в пути отмечено '+nf.format(r.wbTransit)+'</span>':'<br><span class="sub">не отмечено</span>') : '<span class="muted">—</span>'}</td></tr>`;
+    }).join("")
     +`</tbody></table></div>`;
 }
 
