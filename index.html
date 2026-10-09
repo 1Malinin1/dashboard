@@ -6063,6 +6063,17 @@ function ozFinRows(){
 function ozApplyAdFact(rows,dates,meta){
   const P=ozAdSpendParts(); if(!P.length) return;
   const fixed=ozFixedRate();
+  /* БАЗОВЫЕ 5% ЗА ЗАКАЗ В ВЫГРУЗКУ XWAY НЕ ПОПАДАЮТ — их надо ДОБАВИТЬ к факту (09.10.2026).
+     Ozon списывает 5% с каждого заказа по умолчанию и отключить их нельзя, но XWAY видит
+     только свои кампании: у 487176 за 07.10 весь расход выгрузки 3 600 ₽ при 5% = 3 667 ₽,
+     а у товара вовсе без кампаний XWAY показывает «расход за месяц 0 ₽» при живых продажах.
+     Раньше факт ПОДМЕНЯЛ ставку целиком, и у товаров «клики есть, оплата за заказ выключена»
+     базовые 5% терялись с обеих сторон: прибыль Озона была завышена на 20 116 ₽/день (10%
+     маржи кабинета), шесть товаров числились в плюсе, будучи в минусе.
+     ИСКЛЮЧЕНИЕ — товары из ozzOn: у них включена оплата за заказ, её ставка (10 или 23%)
+     ЗАМЕНЯЕТ базовые 5% и уже сидит внутри выгрузки. Добавлять им — двойной счёт.
+     Список ведёт scripts/ozon-ozz.cjs, дубль логики — в scripts/ozon-finance.cjs. */
+  const ozz=((RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.ozzOn&&RD.ozon.meta.ozzOn.bySup)||{});
   const idx=new Map();                                   // "часть|артикул" → строки
   rows.forEach(r=>{ const pi=ozAdSpendPartIdx(r.date); if(pi<0) return;
     if(((P[pi].bySup)||{})[r.sku]==null) return;
@@ -6079,9 +6090,10 @@ function ozApplyAdFact(rows,dates,meta){
           mpFee:spend, ad:spend, adFact:true, profit:-spend});
         return; }
       const tot=arr.reduce((a,r)=>a+r.revenue,0);
+      const addBase = ozz[sku]==null;                  // оплата за заказ выключена → базовые 5% сверху
       arr.forEach((r,i)=>{
         const share = tot>0? r.revenue/tot : (i===arr.length-1? 1 : 0);
-        const ad=spend*share;
+        const ad=spend*share + (addBase? r.revenue*ozAdRateFor(r.date)/100 : 0);
         r.ad=ad; r.adFact=true;
         r.mpFee=r.revenue*fixed/100+ad;
         r.profit=r.revenue-r.mpFee-r.cogs;
