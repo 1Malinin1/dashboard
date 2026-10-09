@@ -150,6 +150,14 @@ if(AP.length) dates.forEach(d=>{ const pi=apIdx(d); if(pi<0) return;
   const m=money[d]||{}, k=revK(d), b=boFor(d);
   Object.entries(m).forEach(([a,v])=>{ if((AP[pi].bySup||{})[a]==null) return;
     partRev[pi][a]=(partRev[pi][a]||0)+(v[0]||0)*k*b; }); });
+/* БАЗОВЫЕ 5% ЗА ЗАКАЗ В ВЫГРУЗКУ XWAY НЕ ПОПАДАЮТ — добавляем их к факту (09.10.2026).
+   XWAY видит только свои кампании: у товара вовсе без кампаний она показывает расход 0
+   при живых продажах, а у 487176 за 07.10 весь её расход (3 600 ₽) меньше, чем 5% от его
+   продаж (3 667 ₽). Исключение — товары с ВКЛЮЧЁННОЙ оплатой за заказ (ozzOn): там ставка
+   10 или 23% ЗАМЕНЯЕТ базовые 5% и уже сидит в выгрузке, добавлять нельзя.
+   Список ведёт scripts/ozon-ozz.cjs. ДУБЛЬ ЛОГИКИ — ozApplyAdFact в index.html, держать синхронно. */
+const OZZ=((O.meta&&O.meta.ozzOn&&O.meta.ozzOn.bySup)||{});
+const baseOn=a=>OZZ[a]==null;                       // true → базовые 5% начисляются сверх факта
 function adFact(d,a,rv){                            // абсолютный расход товара в этот день, либо null
   const pi=apIdx(d); if(pi<0) return null;
   const sp=(AP[pi].bySup||{})[a]; if(sp==null) return null;
@@ -165,7 +173,8 @@ function calc(ds){
     const ar=adRateFor(d);                         // и ставка рекламы — тоже по дате дня
     Object.entries(m).forEach(([a,v])=>{ const r=(v[0]||0)*k, rv=r*b; ordRub+=r; rev+=rv;
       const af=adFact(d,a,rv);                     // факт XWAY перекрывает ставку — только у своих товаров
-      if(af!=null){ mp+=rv*FIXED/100+af; ads+=af; }
+      if(af!=null){ const ad=af+(baseOn(a)? rv*ar/100 : 0);   // базовые 5% сверх факта, кроме ozzOn
+        mp+=rv*FIXED/100+ad; ads+=ad; }
       else { mp+=rv*(FIXED+ar)/100; ads+=rv*ar/100; } });
     Object.entries(byArt).forEach(([a,s])=>{
       const q=s[i]||0; if(!q) return;
