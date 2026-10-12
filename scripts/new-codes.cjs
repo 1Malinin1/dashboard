@@ -186,6 +186,65 @@ if(cmd==='oz'){
   process.exit(0);
 }
 
+if(cmd==='oz-bulk'){
+  /* ПАКЕТНОЕ ЗАВЕДЕНИЕ КАРТОЧЕК ОЗОНА ИЗ ВЫГРУЗКИ СО СВЯЗКОЙ «код 1С → SKU Озона».
+     Нужно потому, что каталог Озона собирается ТОЛЬКО из того, что встретилось в заказах
+     и в отчёте остатков: товар, заведённый на площадке, но пока не продававшийся и не
+     отгруженный, в него не попадает вовсе. Продавец видит его в своём перечне и ждёт,
+     что он есть и у нас. Файл — выгрузка XWAY по ВБ («Артикул продавца» + «SKU»). */
+  const file=argv[1];
+  if(!file){ console.error('usage: node scripts/new-codes.cjs oz-bulk <файл.xlsx> [лист] [--apply]'); process.exit(1); }
+  if(!XLSX){ console.error('нет пакета xlsx — cd scripts && npm install'); process.exit(1); }
+  if(!O.catalog){ console.error('в снимке нет каталога Озона'); process.exit(1); }
+  const apply=argv.includes('--apply');
+  const wbk=XLSX.read(fs.readFileSync(file),{type:'buffer',cellStyles:false,cellFormula:false});
+  const sheet=(argv[2]&&!argv[2].startsWith('--'))? argv[2] : wbk.SheetNames[0];
+  const rows=XLSX.utils.sheet_to_json(wbk.Sheets[sheet],{header:1,blankrows:false});
+  const hdr=(rows[0]||[]).map(x=>String(x==null?'':x));
+  const i1c=hdr.findIndex(x=>/артикул\s*продавца|код\s*1с|код\s*поставщика/i.test(x));
+  const iSku=hdr.findIndex(x=>/^sku$/i.test(x));
+  const iName=hdr.findIndex(x=>/название|наименование/i.test(x));
+  if(i1c<0||iSku<0){ console.error('не нашёл колонки «Артикул продавца» и «SKU». Шапка: '+hdr.join(' | ')); process.exit(1); }
+  const add=[], skip=[], bad=[];
+  rows.slice(1).forEach(r=>{
+    const code=norm(r[i1c]), sku=norm(r[iSku]);
+    if(!code) return;
+    if(!sku||!/^\d{6,}$/.test(sku)){ bad.push(code); return; }
+    if(ozBy[code]){ skip.push(code); return; }
+    if(add.some(x=>x.code===code)) return;
+    const wb=(wbBySup[code]||[])[0]||null;
+    add.push({code, sku, name:(iName>=0? String(r[iName]||'').trim() : '')||code,
+      wbSku:wb? wb.sku : null, wbCat:wb? wb.category : null});
+  });
+  console.log('лист «'+sheet+'» · строк '+(rows.length-1));
+  console.log('  уже есть в каталоге Озона: '+skip.length);
+  if(bad.length) console.log('  без SKU Озона (пропущены): '+bad.length+'  '+bad.slice(0,12).join(', '));
+  console.log('\nК ЗАВЕДЕНИЮ НА ОЗОНЕ: '+add.length);
+  const noWb=add.filter(x=>!x.wbSku);
+  add.forEach(x=>console.log('   1С '+x.code+' · ozonSku '+x.sku+' · '+(x.wbCat||'БЕЗ СВЯЗКИ С ВБ')+' · '+x.name.slice(0,42)));
+  if(noWb.length) console.log('\nБЕЗ КАРТОЧКИ ВБ (категория ВБ не определится, на «Всего» уедут в чужую категорию): '
+    +noWb.map(x=>x.code).join(', ')+' — их пропускаю, заведите сначала карточку ВБ');
+  if(!apply){ console.log('\nСУХОЙ ПРОГОН. Ничего не записано. Повторите с --apply.'); process.exit(0); }
+  /* РЯД ЗАКАЗОВ ЗАВОДИМ НУЛЯМИ, А НЕ ОСТАВЛЯЕМ ПУСТЫМ. Правило снимка: ряды `byArt`
+     строго одной длины с `dates` (то же, что у ВБ в `bySku`). Карточка без ряда — это
+     отсутствующий ключ, и каждый потребитель («Динамика», «Всего», подсорт) должен сам
+     догадаться подставить ноль; один забывчивый рендер даёт съехавший график. */
+  const OS=(O.orderSeries&&Array.isArray(O.orderSeries.dates))? O.orderSeries : null;
+  let n=0, z=0;
+  add.forEach(x=>{ if(!x.wbSku) return;
+    O.catalog.push({sku:x.code, name:x.name, category:'Без категории',
+      wbSku:x.wbSku, wbCategory:x.wbCat, ozStock:0, ozTransit:0, ozonSku:x.sku});
+    if(OS && !OS.byArt[x.code]){ OS.byArt[x.code]=new Array(OS.dates.length).fill(0); z++; }
+    n++; });
+  if(z) console.log('нулевые ряды заказов заведены: '+z+' (длина '+OS.dates.length+', как dates)');
+  save();
+  console.log('\nЗаведено карточек Озона: '+n+' · в каталоге Озона теперь '+O.catalog.length);
+  console.log('Остатки 0 — подтянутся из ближайшего stocks_report. Родные категории Озона'
+    +' проставит ozon-category.cjs из отчёта «Аналитика → По товарам».');
+  console.log('Дальше: node scripts/encrypt.cjs <код>');
+  process.exit(0);
+}
+
 if(cmd==='check'){
   const files=argv.slice(1).filter(x=>!x.startsWith('--'));
   if(!files.length){ console.error('usage: node scripts/new-codes.cjs check <файл.xlsx|csv> [ещё…]'); process.exit(1); }
