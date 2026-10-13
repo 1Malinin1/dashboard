@@ -90,8 +90,10 @@ function mpStats(mp){
      в `transit` у ВБ, и тем самым уменьшает потребность подсорта. Синхронно с index.html. */
   if(!oz){ const kl=klinBySup(); Object.keys(kl).forEach(k=>{ openShip[k]=(openShip[k]||0)+kl[k]; }); }
   /* Симметрично для Ozon — виртуальные склады «Ozon СФО»/«Ozon ЦФО» (13.10.2026): товар
-     уже распределён на площадку и ждёт машину, значит он тоже «в пути». Это ДОПОЛНЕНИЕ
-     к `ozTransit`, который показывает сам Ozon, а не замена. Синхронно с index.html. */
+     уже распределён на площадку и ждёт машину, значит он тоже «в пути». НО это НЕ слагаемое
+     к `ozTransit`: заявка Озона и виртуальный склад — ОДНА партия в двух отчётах (правка
+     продавца 13.10, см. `ozTransitEff` в index.html). Арифметика:
+     `в пути = «в поставках в пути» + max(«в заявках», виртуальный склад)`. Синхронно с index.html. */
   const ozAsg = oz? ozAssignedBySup() : {};
   const out={}, done=new Set();
   cat.forEach(c=>{
@@ -103,7 +105,7 @@ function mpStats(mp){
     const stock = oz? (c.ozStock||0) : (c.wbStock||0);   // свой склад в покрытие НЕ входит
     let transit = oz? (c.ozTransit||0) : 0;
     if(!done.has(sup)){
-      if(oz){ const az=ozAsg[sup]; if(az) transit+=az.all; }
+      if(oz){ const az=ozAsg[sup]; transit=ozTransitEff(c, az? az.all : 0); }
       else transit+=(openShip[sup]||0);
       done.add(sup);
     }
@@ -166,6 +168,16 @@ function ozAssignedBySup(){ const wh=(RD.warehouse&&RD.warehouse.bySup)||{}, out
       if(k==='ozsfo') sfo+=v; else if(k==='ozcfo') cfo+=v; });
     if(sfo+cfo>0) out[s]={sfo,cfo,all:sfo+cfo}; });
   return out; }
+/* «В пути на Ozon» по карточке: «в поставках в пути» + max(«в заявках», назначенное у нас).
+   Две стадии хранятся порознь (`ozReq`/`ozWay`), потому что виртуальный склад ведомости 1С
+   и заявка Озона — один и тот же товар, увиденный двумя отчётами с разной скоростью.
+   Карточка без разделения (старый снимок) → считаем весь `ozTransit` заявками: осторожный
+   max, без задвоения. ДЕРЖИ СИНХРОННО с `ozTransitEff` в index.html. */
+function ozTransitEff(card, assigned){
+  const tot=(card&&card.ozTransit)||0;
+  const split=card && card.ozReq!=null && card.ozWay!=null;
+  const req=split? (card.ozReq||0) : tot, way=split? (card.ozWay||0) : 0;
+  return way + Math.max(req, assigned||0); }
 function whKey(n){ const s=''+n;
   // виртуальные склады Ozon — первыми и по ПАРЕ слов: общее /озон/ поймало бы «Склад ОЗОН ПФО»
   if(/(озон|ozon)/i.test(s) && /сфо/i.test(s)) return 'ozsfo';
@@ -328,8 +340,14 @@ console.log('К отгрузке на ВБ FBO: '+F(rows.reduce((a,r)=>a+r.shipW
     +' кодам — собрано и назначено к отправке на ВБ: в отгрузку не идёт, засчитано в покрытие'); }
 { const az=ozAssignedBySup(); const ks=Object.keys(az);
   const sfo=ks.reduce((a,k)=>a+az[k].sfo,0), cfo=ks.reduce((a,k)=>a+az[k].cfo,0);
-  if(sfo+cfo>0) console.log('Назначено на Ozon (виртуальные склады): '+F(sfo+cfo)+' шт по '+ks.length
-    +' кодам — СФО '+F(sfo)+' / ЦФО '+F(cfo)+': в отгрузку не идёт, засчитано в покрытие Ozon'); }
+  if(sfo+cfo>0){ console.log('Назначено на Ozon (виртуальные склады): '+F(sfo+cfo)+' шт по '+ks.length
+    +' кодам — СФО '+F(sfo)+' / ЦФО '+F(cfo)+': в отгрузку не идёт, засчитано в покрытие Ozon');
+    const oc=(RD.ozon&&RD.ozon.catalog)||[]; let dup=0, dupK=0;
+    ks.forEach(k=>{ const c=oc.find(x=>(''+x.sku).trim()===k); if(!c) return;
+      const req=c.ozReq!=null? (c.ozReq||0) : (c.ozTransit||0);
+      const d=Math.min(req, az[k].all); if(d>0){ dup+=d; dupK++; } });
+    if(dup>0) console.log('  из них '+F(dup)+' шт по '+dupK+' кодам Ozon УЖЕ показывает как заявку на поставку'
+      +' — это та же партия, в покрытии она считается один раз (иначе покрытие завышено)'); } }
 console.log('Нечем закрыть (на складе пусто): '+noStock.length+' позиций, не хватает '
   +F(noStock.reduce((a,r)=>a+r.needO+r.needW,0))+' шт');
 const launches=needAny.filter(r=>r.launch);

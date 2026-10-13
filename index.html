@@ -2108,6 +2108,34 @@ function ozAssignedBySup(){
     if(sfo+cfo>0) out[s]={sfo,cfo,all:sfo+cfo}; });
   return (_ozAsgCache=out);
 }
+/* «В ПУТИ НА OZON» — ДВА ИСТОЧНИКА ОПИСЫВАЮТ ОДНУ ПАРТИЮ, СКЛАДЫВАТЬ ИХ НЕЛЬЗЯ
+   (правка продавца 13.10.2026, цена ошибки — 391 шт завышенного покрытия).
+   Он объяснил последовательность: приходит контейнер → он распределяет его по направлениям,
+   и в ЕГО ведомости 1С появляются виртуальные склады «Ozon СФО/ЦФО» → и только ПОТОМ внутри
+   Озона создаётся поставка, и партия всплывает у Озона в «В заявках на поставку». Дословно:
+   «у тебя может быть одновременно и с моего отчёта висеть на озон ЦФО заявка на 300 шт,
+   и с отчёта по остаткам озона. А фактически приедет всего 300 шт».
+   Плюс второе уточнение того же дня: бывает и наоборот — «в отчёте по моим складам товара
+   нету в этих складах, а на озоне есть», и тогда вернее Озон: «индикатор на Озоне это товар
+   в пути, там уже практически точно то, что стоит, уедет».
+   ОТСЮДА ПРАВИЛО: `в пути = «в поставках в пути» + max(«в заявках», виртуальный склад)`.
+   · «в поставках в пути» складывается ВСЕГДА: товар физически уехал со склада, в ведомости
+     1С его уже нет, пересечься с виртуальным складом он не может;
+   · «в заявках» и виртуальный склад — ОДНА И ТА ЖЕ стадия, увиденная двумя отчётами с разной
+     скоростью, поэтому берём БОЛЬШЕЕ: Озон опередил ведомость → верим Озону, ведомость
+     опередила Озон (заявка ещё не создана) → верим ведомости.
+   ПОЧЕМУ НЕ ПРОСТО `max(весь ozTransit, виртуальный склад)`, хотя продавец и сказал «Озон
+   вернее»: это съедало бы партию, которая УЖЕ едет, когда на склад пришёл новый контейнер.
+   Реальные случаи 13.10: 512166 — 640 шт в пути и 384 шт свежего распределения, 493379 —
+   648 и 324, 512179 — 160 и 342. По `max` потерялось бы 1 050 шт честного покрытия.
+   У карточки без разделения (старый снимок) считаем `ozReq = ozTransit`, `ozWay = 0` —
+   то есть осторожный `max`, без задвоения. */
+function ozTransitEff(card, assigned){
+  const tot=(card&&card.ozTransit)||0;
+  const split=card && card.ozReq!=null && card.ozWay!=null;
+  const req=split? (card.ozReq||0) : tot, way=split? (card.ozWay||0) : 0;
+  return way + Math.max(req, assigned||0);
+}
 /* ПОСТАВКИ НА ВБ FBO СНОВА ИДУТ (правило продавца 21.09.2026, отменяет запрет от 27.08).
    Дословно: «я могу отправить с Евросиба так же товар на Ozon и на вб Fbo». Тогда же снят
    запрет «Москва на Ozon не отгружает» (он стоял с 11.09 из-за технических неполадок) —
@@ -3047,8 +3075,10 @@ function mpStats(mp){
   /* СИММЕТРИЧНО ДЛЯ OZON — виртуальные склады «Ozon СФО»/«Ozon ЦФО» (13.10.2026).
      Товар уже распределён на Ozon и ждёт машины, поэтому он тоже «в пути»: иначе подсорт
      предложит отгрузить на площадку второй раз то, что на неё уже назначено.
-     Это ДОПОЛНЕНИЕ к `ozTransit` (заявки и партии, которые показывает сам Ozon), а не
-     замена: там товар уже сдан площадке, здесь ещё стоит у нас. */
+     ВАЖНО: это НЕ слагаемое к `ozTransit`, а ВТОРОЙ ВЗГЛЯД НА ТУ ЖЕ ПАРТИЮ — заявка Озона
+     и виртуальный склад описывают один и тот же товар, просто отчёты видят его в разное
+     время. Сложение завышало покрытие (13.10: 11 281 шт вместо 10 890). Арифметика —
+     в `ozTransitEff`, там же объяснение продавца. */
   const ozAsg = oz? ozAssignedBySup() : {};
   const out={}, shipDone=new Set();
   ds.catalog.forEach(c=>{
@@ -3066,7 +3096,7 @@ function mpStats(mp){
     // отгрузку по коду 1С добавляем ОДИН раз, даже если под кодом несколько артикулов ВБ
     let transit = oz ? (c.ozTransit||0) : 0;
     if(!shipDone.has(sup)){
-      if(oz){ const az=ozAsg[sup]; if(az) transit += az.all; }
+      if(oz){ const az=ozAsg[sup]; transit = ozTransitEff(c, az? az.all : 0); }
       else transit += (openShip[sup]||0);
       shipDone.add(sup);
     }
@@ -3798,12 +3828,19 @@ function itemAnalysis(sup){
   const wbStock=wbCards.reduce((a,c)=>a+(c.wbStock||0),0);
   const wbPending=wbCards.reduce((a,c)=>a+((c.pending&&c.pending.qty)||0),0);
   let openShip=0; (RD.shipments||[]).forEach(s=>{ if(s.mp==="wb"&&s.left>0&&(""+s.sup)===sup) openShip+=s.left; });
-  const ozStock=ozCard? (ozCard.ozStock||0):0, ozTransit=ozCard? (ozCard.ozTransit||0):0;
   const ozIncoming=ozCard? (ozCard.ozIncoming||0):0;
   const whRow=((RD.warehouse&&RD.warehouse.bySup)||{})[sup]||{qty:0,wh:{}};
-  const whBy={msk:0,nsk1:0,nsk2:0,klin:0,other:0};
-  Object.entries(whRow.wh||{}).forEach(([n,q])=>{ whBy[whKey(n)]+=q; });
-  const whQty=whRow.qty||0;
+  const whBy={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,other:0};
+  Object.entries(whRow.wh||{}).forEach(([n,q])=>{ const k=whKey(n); whBy[k]=(whBy[k]||0)+q; });
+  /* «Клин» и виртуальные склады «Ozon СФО/ЦФО» физически лежат у продавца, но товар на них
+     УЖЕ НАЗНАЧЕН площадке, поэтому в трубе они идут строкой «едет на …», а не «ваш склад» —
+     ровно как в покрытии (`mpStats`). А заявки Озона и виртуальный склад — один и тот же
+     товар в двух отчётах, поэтому «в пути на Ozon» считается через `ozTransitEff`, иначе
+     «Есть сейчас» завышается на величину пересечения (13.10 — 391 шт на 4 кодах). */
+  const whAsgOz=(whBy.ozsfo||0)+(whBy.ozcfo||0), whKlinQty=whBy.klin||0;
+  const ozStock=ozCard? (ozCard.ozStock||0):0;
+  const ozTransit=ozTransitEff(ozCard, whAsgOz);
+  const whQty=Math.max(0,(whRow.qty||0)-whAsgOz-whKlinQty);
   const inb=RD.inbound||{};
   const china=((inb.china&&inb.china.bySup)||{})[sup]||0;
   const ordered=inbSum(sup,inbOrderKeys());
@@ -3818,8 +3855,8 @@ function itemAnalysis(sup){
     .sort((a,b)=>((a.eta&&(a.eta.toSale||a.eta.toWh))||"9999").localeCompare((b.eta&&(b.eta.toSale||b.eta.toWh))||"9999"));
   const etaOrder=batches.length? batches[0].eta : null;
 
-  const onSite=wbStock+wbPending+openShip+ozStock+ozTransit;   // уже на площадках или официально едет туда
-  const atSeller=whQty;                                        // свой склад: FBS на ВБ и источник поставок на Озон
+  const onSite=wbStock+wbPending+openShip+whKlinQty+ozStock+ozTransit;  // на площадках или официально едет туда
+  const atSeller=whQty;                                        // свой склад БЕЗ назначенного площадкам (Клин, Ozon СФО/ЦФО)
   const coming=ozIncoming+china+ordered;                       // едет к продавцу, на площадке ещё не будет долго
   const have=onSite+atSeller;
 
@@ -3872,7 +3909,7 @@ function itemAnalysis(sup){
     dates, wbBy, ozBy, wdLast:wd[wd.length-1]||null, ozLast:ozd[ozd.length-1]||null,
     firstSale, lastSale, silentDays,
     boW, boO, wins, now, preRate, notRecovered, outW, outO, impW, impO,
-    wbStock, wbPending, openShip, ozStock, ozTransit, ozIncoming, whQty, whBy,
+    wbStock, wbPending, openShip, whKlinQty, whAsgOz, ozStock, ozTransit, ozIncoming, whQty, whBy,
     china, ordered, etaChina, etaOrder, batches, onSite, atSeller, coming, have,
     days, runOut, saleEta, gapDays, price, cost};
 }
@@ -4097,8 +4134,10 @@ function renderTurnItem(){
   const pipe=[
     {k:"Склады Wildberries (FBO)",v:a.wbStock,always:true},
     {k:"Едет на Wildberries",v:a.wbPending+a.openShip},
+    {k:"Назначен на ВБ · РВБ Клин (собран, уезжает)",v:a.whKlinQty},
     {k:"Ozon, доступно к продаже",v:a.ozStock,always:!!a.ozCard},
-    {k:"Ozon, заявки и поставки в пути",v:a.ozTransit},
+    {k:"Едет и назначен на Ozon",v:a.ozTransit,
+      sub:a.whAsgOz? "заявки и поставки Озона сверены с вашими «Ozon СФО/ЦФО» ("+fmt(a.whAsgOz)+" шт) — один и тот же товар не считается дважды" : ""},
     {k:"Ваш склад · Москва",v:a.whBy.msk},
     {k:"Ваш склад · Нск-1 (FBS)",v:a.whBy.nsk1},
     {k:"Ваш склад · Евросиб",v:a.whBy.nsk2},
@@ -4117,7 +4156,7 @@ function renderTurnItem(){
   const prow=(k,v,sub)=>`<div class="itm-pr"><span class="k">${esc(k)}${sub?`<small>${esc(sub)}</small>`:""}</span>`
     +`<span class="v">${fmt(v)} шт</span><span class="b"><i style="width:${Math.max(2,v/mx*100)}%"></i></span></div>`;
   h+=`<div class="itm-sec"><h4>Где лежит товар</h4><div class="itm-pipe">`
-    +(pipe.length? pipe.map(x=>prow(x.k,x.v)).join("") : `<div class="empty-hint" style="padding:8px 2px">Ни на площадках, ни на складе остатка нет.</div>`)
+    +(pipe.length? pipe.map(x=>prow(x.k,x.v,x.sub)).join("") : `<div class="empty-hint" style="padding:8px 2px">Ни на площадках, ни на складе остатка нет.</div>`)
     +`<div class="itm-pr sum"><span class="k">Считается в «хватит до»</span><span class="v">${fmt(a.have)} шт</span><span class="b"></span></div>`
     +(later.length? `<div style="margin-top:9px">`+later.map(x=>prow(x.k,x.v,
         x.eta? ((x.eta.toWh? "на склад "+fmtDate(x.eta.toWh):"")+(x.eta.toSale? " · в продажу "+fmtDate(x.eta.toSale):"")) : "")).join("")+`</div>`
@@ -4224,8 +4263,10 @@ function exportItemXLSX(){
   add("","");
   add("Остаток на складах WB (FBO), шт",a.wbStock);
   add("Едет на Wildberries, шт",a.wbPending+a.openShip);
+  add("Назначен на ВБ — РВБ Клин, шт",a.whKlinQty,a.whKlinQty?"собран, уезжает на ВБ":"");
   add("Ozon, доступно к продаже, шт",a.ozStock);
-  add("Ozon, в пути на площадку, шт",a.ozTransit);
+  add("Едет и назначен на Ozon, шт",a.ozTransit,
+    a.whAsgOz? "заявки Озона сверены с вашими «Ozon СФО/ЦФО» ("+a.whAsgOz+" шт), дважды не считается":"");
   add("Ваш склад — Москва, шт",a.whBy.msk);
   add("Ваш склад — Нск-1 (FBS), шт",a.whBy.nsk1);
   add("Ваш склад — Евросиб, шт",a.whBy.nsk2);
@@ -6074,6 +6115,19 @@ function ozCostMap(){
   ((RD&&RD.catalog)||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(!s) return;
     if(c.costPrice!=null && now[s]==null) now[s]=c.costPrice;
     if(c.costHistory && c.costHistory.length && !hist[s]) hist[s]=c.costHistory; });
+  /* ФОЛБЭК `meta.costBySup` — ЦЕНА ПО КОДУ 1С ДЛЯ ТОВАРОВ БЕЗ КАРТОЧКИ ВБ (13.10.2026).
+     Себестоимость ведётся в каталоге ВБ, а новый товар часто выходит сначала на Озоне:
+     карточки ВБ нет, значит цену записать НЕКУДА — и товар считается с нулевой
+     себестоимостью, то есть выглядит бесконечно прибыльным, причём молча (ровно тот же
+     капкан, что `numPos` в add-catalog-cards.cjs). Реальный случай: 519333 — карточка
+     Озона есть, карточки ВБ нет, цена 3 358 ₽ от продавца.
+     Это ЗАПАСНОЙ путь, а не второй источник правды: как только появляется карточка ВБ,
+     `add-catalog-cards.cjs` переносит цену в каталог и убирает её отсюда. Каталог ВБ
+     всегда сильнее — он проверяется первым. */
+  const fb=(RD&&RD.meta&&RD.meta.costBySup)||{};
+  Object.keys(fb).forEach(s=>{ const v=fb[s]; if(!v) return;
+    const c=(typeof v==="object")? v.cost : v;
+    if(c!=null && now[s]==null) now[s]=c; });
   return (_ozCostCache={now,hist});
 }
 function ozCostAt(sup,date){
@@ -7967,7 +8021,9 @@ function exportStockXLSX(){
     {h:"В пути на ВБ, шт",v:r=>r.wbTransit,w:18},
     {h:"Москва, шт",v:r=>r.msk,w:12},{h:"Нск-1 (FBS), шт",v:r=>r.nsk1,w:16},
     {h:"Евросиб, шт",v:r=>r.nsk2,w:13},{h:"РВБ Клин, шт",v:r=>r.klin,w:14},
+    {h:"Назначено на Ozon (СФО/ЦФО), шт",v:r=>r.ozAsg,w:32},
     {h:"Ozon, шт",v:r=>r.oz,w:12},{h:"В пути на Ozon, шт",v:r=>r.ozTransit,w:19},
+    {h:"Из ВСЕГО вычтено (та же партия в двух отчётах), шт",v:r=>r.ozDup||"",w:48},
     {h:"ВСЕГО, шт",v:r=>r.total,w:13},
     {h:"Изменение за период, шт",v:r=>r.dTotal==null? "" : r.dTotal,w:24},
     {h:"из них ВБ",v:r=>r.dFbo==null? "" : r.dFbo,w:12},
@@ -7984,7 +8040,9 @@ function exportStockXLSX(){
     ["Склады ВБ (FBO)","остаток на складах Wildberries"],
     ["В пути на ВБ","журнал отгрузок: товар отправлен, но ещё не принят. ВБ этот путь не показывает вовсе, поэтому отгрузка отмечается отдельно, а приёмка засчитывается по росту остатка"],
     ["Ваши склады","ведомость 1С. РВБ Клин показан отдельно: его товар уже собран и назначен на ВБ, в отгрузку он не идёт"],
+    ["Назначено на Ozon (СФО/ЦФО)","виртуальные склады ведомости 1С: контейнер уже распределён по направлениям и ждёт машины. Товар лежит у вас, поэтому входит в «Ваши склады»"],
     ["В пути на Ozon","заявки на поставку + партии в пути, их показывает сам Ozon"],
+    ["Почему из ВСЕГО вычитается","«Назначено на Ozon» и заявка Ozon — это ОДНА партия, увиденная двумя отчётами: сначала она появляется у вас в ведомости, потом Ozon создаёт поставку и показывает её у себя, а товар всё ещё на складе. Складывать их нельзя, поэтому в «ВСЕГО» пересечение считается один раз"],
     ["Изменение за период",(stkPeriod? "за "+stkPeriod+" дн":"за всю историю")+"; считается по остаткам, то, что в пути, в него не входит"],
     ["История ВБ",srcDays.fbo.length+" замеров — из подённого отчёта аналитики; отчёт подённый, но ВБ переносит последний замер вперёд, поэтому новая цифра приходит раз в 2–3 дня"],
     ["История Ozon",srcDays.oz.length+" замеров — только из отчётов «Остатки на складах», сколько прислали, столько и точек"],
@@ -10325,9 +10383,15 @@ function stkRows(){
   if(!snaps.length) return [];
   const now=snaps[snaps.length-1], prev=stkPrevSnap();
   const ship={}; (RD.shipments||[]).forEach(s=>{ if(s.mp==="wb"&&s.left>0) ship[s.sup]=(ship[s.sup]||0)+s.left; });
-  const klin=klinBySup();
-  const ozT={}; ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ const s=(""+(c.sku||"")).trim();
-    if(s) ozT[s]=(ozT[s]||0)+(c.ozTransit||0); });
+  const klin=klinBySup(), asg=ozAssignedBySup();
+  /* «В пути Ozon» и виртуальные склады «Ozon СФО/ЦФО» описывают ОДНУ партию (см.
+     `ozTransitEff`): виртуальный склад сидит внутри `wh` (это ведомость 1С), а заявка Озона —
+     в `ozT`. Поэтому из «ВСЕГО» вычитается пересечение `min(заявки, виртуальный склад)`,
+     иначе товар считается дважды. Сами колонки остаются как есть: это таблица про МЕСТА,
+     и видеть надо оба отчёта. */
+  const ozT={}, ozR={}; ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ const s=(""+(c.sku||"")).trim();
+    if(!s) return; ozT[s]=(ozT[s]||0)+(c.ozTransit||0);
+    ozR[s]=(ozR[s]||0)+(c.ozReq!=null? (c.ozReq||0) : (c.ozTransit||0)); });
   const meta={};
   (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim();
     if(s&&!meta[s]) meta[s]={name:c.name||"",cat:c.category||"—",sku:""+c.sku}; });
@@ -10347,12 +10411,13 @@ function stkRows(){
     const a=now.sup[s]||{fbo:0,oz:0,wh:0,whBy:{}}, b=(prev&&prev.sup[s])||{fbo:0,oz:0,wh:0}, w=a.whBy||{};
     const dOf=k=>cmp[k]? a[k]-b[k] : null;
     const wbT=ship[s]||0, oT=ozT[s]||0;
+    const ozA=(asg[s]&&asg[s].all)||0, dup=Math.min(ozR[s]||0, ozA);
     const m=meta[s]||{name:s,cat:"—",sku:null};
     return {sup:s, name:m.name, cat:m.cat, sku:m.sku,
       fbo:a.fbo, oz:a.oz, wh:a.wh,
-      msk:w.msk||0, nsk1:w.nsk1||0, nsk2:w.nsk2||0, klin:klin[s]||0,
+      msk:w.msk||0, nsk1:w.nsk1||0, nsk2:w.nsk2||0, klin:klin[s]||0, ozAsg:ozA, ozDup:dup,
       wbTransit:wbT, ozTransit:oT,
-      total:a.fbo+a.oz+a.wh+wbT+oT,
+      total:a.fbo+a.oz+a.wh+wbT+oT-dup,
       dFbo:dOf("fbo"), dOz:dOf("oz"), dWh:dOf("wh"),
       dTotal:anyCmp? ["fbo","oz","wh"].reduce((x,k)=>cmp[k]? x+(a[k]-b[k]) : x, 0) : null};
   }).filter(r=>r.total>0 || (r.dTotal!=null && r.dTotal!==0));
@@ -10406,13 +10471,14 @@ function renderStockTab(){
 
   const sum=f=>rows.reduce((a,r)=>a+f(r),0);
   const sFbo=sum(r=>r.fbo), sOz=sum(r=>r.oz), sWh=sum(r=>r.wh);
-  const sWbT=sum(r=>r.wbTransit), sOzT=sum(r=>r.ozTransit);
+  const sWbT=sum(r=>r.wbTransit), sOzT=sum(r=>r.ozTransit), sDup=sum(r=>r.ozDup), sAsg=sum(r=>r.ozAsg);
   const dAll=prev? sum(r=>r.dTotal||0) : null;
   document.getElementById("stkKpis").innerHTML=[
-    {lbl:"Всего товара, шт", val:nf.format(sFbo+sOz+sWh+sWbT+sOzT), hero:true,
+    {lbl:"Всего товара, шт", val:nf.format(sFbo+sOz+sWh+sWbT+sOzT-sDup), hero:true,
       tip:"Весь товар по выбранным позициям, во всех местах сразу.\n\n"
         +"Склады ВБ (FBO): "+nf.format(sFbo)+" шт\nOzon: "+nf.format(sOz)+" шт\n"
-        +"Ваши склады: "+nf.format(sWh)+" шт\nВ пути на площадки: "+nf.format(sWbT+sOzT)+" шт\n\n"
+        +"Ваши склады: "+nf.format(sWh)+" шт\nВ пути на площадки: "+nf.format(sWbT+sOzT)+" шт\n"
+        +(sDup? "минус "+nf.format(sDup)+" шт — заявки Ozon на товар, который ещё стоит у вас на «Ozon СФО/ЦФО»: один и тот же товар в двух отчётах\n":"")+"\n"
         +(dAll==null? "Сравнить не с чем: по этому срезу пока один замер."
           : "Изменение "+pTxt+": "+(dAll>=0?"+":"−")+nf.format(Math.abs(dAll))+" шт (без учёта того, что в пути)")},
     {lbl:"На площадках, шт", val:nf.format(sFbo+sOz),
@@ -10421,14 +10487,17 @@ function renderStockTab(){
     {lbl:"На ваших складах, шт", val:nf.format(sWh),
       tip:"Ведомость 1С по вашим складам.\n\n"
         +"Москва: "+nf.format(sum(r=>r.msk))+" шт\nНск-1 (FBS): "+nf.format(sum(r=>r.nsk1))+" шт\n"
-        +"Евросиб: "+nf.format(sum(r=>r.nsk2))+" шт\nРВБ Клин: "+nf.format(sum(r=>r.klin))+" шт\n\n"
-        +"Клин показан отдельно: его товар уже собран и назначен на ВБ, в отгрузку он не идёт."},
+        +"Евросиб: "+nf.format(sum(r=>r.nsk2))+" шт\nРВБ Клин: "+nf.format(sum(r=>r.klin))+" шт\n"
+        +"Назначено на Ozon (СФО/ЦФО): "+nf.format(sAsg)+" шт\n\n"
+        +"Клин и «Ozon СФО/ЦФО» показаны отдельно: этот товар уже назначен площадке, в отгрузку он не идёт."},
     {lbl:"В пути на площадки, шт", val:nf.format(sWbT+sOzT),
       valColor:(sWbT+sOzT)?"var(--warn-txt)":"var(--text-1)",
       tip:"Товар отправлен, но на площадке ещё не появился.\n\n"
         +"На ВБ: "+nf.format(sWbT)+" шт — журнал отгрузок. ВБ путь от отправки до приёмки не показывает вовсе, "
         +"поэтому отгрузка отмечается отдельно, а приёмка засчитывается по росту остатка.\n"
-        +"На Ozon: "+nf.format(sOzT)+" шт — заявки на поставку и партии в пути, их показывает сам Ozon."}
+        +"На Ozon: "+nf.format(sOzT)+" шт — заявки на поставку и партии в пути, их показывает сам Ozon."
+        +(sDup? "\n\nИз «Всего товара» вычтено "+nf.format(sDup)+" шт: на эту партию заявка Ozon уже создана, "
+          +"а в вашей ведомости она ещё стоит на «Ozon СФО/ЦФО». Это один и тот же товар." : "")}
   ].map(kpiCard).join("");
   wireKpiTips("stkKpis");
 
@@ -10439,7 +10508,8 @@ function renderStockTab(){
   document.getElementById("stkHowTo").innerHTML=
     `<div class="howto-t">КАК ЧИТАТЬ ОСТАТКИ</div><div class="howto-n">`
     +[`Строка — код 1С: товар физически один, а витрин две, поэтому ВБ и Ozon показаны рядом. Клик по категории разворачивает товары внутри.`,
-      `Колонки — МЕСТА, где может лежать товар: склады ВБ (FBO) · в пути на ВБ · ваши склады (Москва, Нск-1, Евросиб, РВБ Клин) · Ozon · в пути на Ozon.`,
+      `Колонки — МЕСТА, где может лежать товар: склады ВБ (FBO) · в пути на ВБ · ваши склады (Москва, Нск-1, Евросиб, РВБ Клин, «→Ozon» — назначенное на Ozon СФО/ЦФО) · Ozon · в пути на Ozon.`,
+      `«→Ozon» и «В пути Ozon» могут описывать ОДНУ партию: вы распределили контейнер — он встал на «Ozon СФО/ЦФО», потом Ozon создал заявку и показал её у себя, а товар всё ещё у вас. Поэтому в «ВСЕГО» такая партия считается ОДИН раз (вычитается пересечение), хотя в обеих колонках видна.`,
       `«Δ» — насколько изменился остаток ${pTxt}, без учёта того, что в пути. Минус на складе при плюсе на площадке — это приёмка поставки. Минус на складе БЕЗ плюса на площадке — товар уехал и ещё не принят: такие позиции собраны в блоке выше.`,
       `Сейчас в «Δ» участвуют: ${cmpTxt}. Слой, у которого на начало периода замера ещё не было, в сравнение не берётся вовсе — иначе его остаток целиком показался бы приходом.`,
       `У каждого слоя своя глубина истории. ВБ — ${srcDays.fbo.length} ${plural(srcDays.fbo.length,"замер","замера","замеров")} из подённого отчёта аналитики (сам отчёт подённый, но ВБ переносит последний замер вперёд, поэтому новых цифр меньше, чем дней), Ozon — ${srcDays.oz.length}, свой склад — ${srcDays.wh.length}: сколько выгрузок прислали, столько и точек. Между замерами линия ровная — это «нового замера не было», а не «ничего не менялось».`,
@@ -10453,13 +10523,13 @@ function renderStockTab(){
   rows.forEach(r=>{ (byCat[r.cat]||(byCat[r.cat]=[])).push(r); });
   const cats=Object.entries(byCat).map(([cat,list])=>{
     const a={cat,n:list.length,list};
-    ["fbo","oz","wh","msk","nsk1","nsk2","klin","wbTransit","ozTransit","total"].forEach(k=>
+    ["fbo","oz","wh","msk","nsk1","nsk2","klin","ozAsg","wbTransit","ozTransit","total"].forEach(k=>
       a[k]=list.reduce((x,r)=>x+(r[k]||0),0));
     a.dTotal=list.some(r=>r.dTotal!=null)? list.reduce((x,r)=>x+(r.dTotal||0),0) : null;
     return a;
   }).sort((a,b)=>b.total-a.total);
 
-  const H=["Категория / товар","Склады ВБ","В пути ВБ","Москва","Нск-1","Евросиб","Клин","Ozon","В пути Ozon","ВСЕГО",`Δ ${stkPeriod||"всё"}`];
+  const H=["Категория / товар","Склады ВБ","В пути ВБ","Москва","Нск-1","Евросиб","Клин","→Ozon","Ozon","В пути Ozon","ВСЕГО",`Δ ${stkPeriod||"всё"}`];
   const maxTot=Math.max(...cats.map(c=>c.total),1);
   let html=`<thead><tr>${H.map((h,i)=>`<th${i===0?' class="metric"':''}>${esc(h)}</th>`).join("")}</tr></thead><tbody>`;
   /* СТРОКА «ИТОГО» ПЕРВОЙ И ЗАКРЕПЛЁННОЙ. Без неё продавец сопоставил KPI «Всего товара»
@@ -10467,7 +10537,7 @@ function renderStockTab(){
      (05.10.2026). Сумма 13 категорий ровно равна KPI, но увидеть это было негде: итога
      в таблице не было вовсе, а первая категория даёт 69% объёма и читается как общий итог.
      Строка липнет под шапкой, поэтому видна и после прокрутки. */
-  const T={}; ["fbo","oz","wh","msk","nsk1","nsk2","klin","wbTransit","ozTransit","total"].forEach(k=>
+  const T={}; ["fbo","oz","wh","msk","nsk1","nsk2","klin","ozAsg","wbTransit","ozTransit","total"].forEach(k=>
     T[k]=cats.reduce((a,c)=>a+(c[k]||0),0));
   T.dTotal=cats.some(c=>c.dTotal!=null)? cats.reduce((a,c)=>a+(c.dTotal||0),0) : null;
   html+=`<tr class="stk-total"><td class="metric"><b>ИТОГО</b> `
@@ -10475,7 +10545,7 @@ function renderStockTab(){
     +`${rows.length} ${plural(rows.length,"товар","товара","товаров")}</span></td>`
     +`<td><b>${stkNum(T.fbo)}</b></td><td><b>${stkNum(T.wbTransit)}</b></td><td><b>${stkNum(T.msk)}</b></td>`
     +`<td><b>${stkNum(T.nsk1)}</b></td><td><b>${stkNum(T.nsk2)}</b></td><td><b>${stkNum(T.klin)}</b></td>`
-    +`<td><b>${stkNum(T.oz)}</b></td><td><b>${stkNum(T.ozTransit)}</b></td>`
+    +`<td><b>${stkNum(T.ozAsg)}</b></td><td><b>${stkNum(T.oz)}</b></td><td><b>${stkNum(T.ozTransit)}</b></td>`
     +`<td><b>${nf.format(T.total)}</b></td><td><b>${stkDelta(T.dTotal)}</b></td></tr>`;
   cats.forEach(c=>{
     const open=stkOpenCat===c.cat;
@@ -10484,7 +10554,7 @@ function renderStockTab(){
       +`<span class="sub">${c.n} ${plural(c.n,"товар","товара","товаров")}</span></td>`
       +`<td>${stkNum(c.fbo)}</td><td>${stkNum(c.wbTransit)}</td><td>${stkNum(c.msk)}</td>`
       +`<td>${stkNum(c.nsk1)}</td><td>${stkNum(c.nsk2)}</td><td>${stkNum(c.klin)}</td>`
-      +`<td>${stkNum(c.oz)}</td><td>${stkNum(c.ozTransit)}</td>`
+      +`<td class="${c.ozAsg?"":"d-zero"}" title="Назначено на Ozon: лежит у вас на виртуальных складах «Ozon СФО/ЦФО» и ждёт машины. Входит в «Ваши склады».">${stkNum(c.ozAsg)}</td><td>${stkNum(c.oz)}</td><td>${stkNum(c.ozTransit)}</td>`
       +`<td style="background:${heatBg(c.total,maxTot)}"><b>${nf.format(c.total)}</b></td>`
       +`<td>${stkDelta(c.dTotal)}</td></tr>`;
     if(open) c.list.slice().sort((a,b)=>b.total-a.total).forEach(r=>{
@@ -10492,7 +10562,7 @@ function renderStockTab(){
         +`<span class="sub">${esc((r.name||"").slice(0,44))}</span><br><span class="sub">1С ${esc(r.sup)}</span></td>`
         +`<td>${stkNum(r.fbo)}</td><td>${stkNum(r.wbTransit)}</td><td>${stkNum(r.msk)}</td>`
         +`<td>${stkNum(r.nsk1)}</td><td>${stkNum(r.nsk2)}</td><td>${stkNum(r.klin)}</td>`
-        +`<td>${stkNum(r.oz)}</td><td>${stkNum(r.ozTransit)}</td>`
+        +`<td class="${r.ozAsg?"":"d-zero"}"${r.ozDup?` title="Из «ВСЕГО» вычтено ${r.ozDup} шт: на эту партию Ozon уже создал заявку, а в ведомости она ещё стоит здесь."`:""}>${stkNum(r.ozAsg)}</td><td>${stkNum(r.oz)}</td><td>${stkNum(r.ozTransit)}</td>`
         +`<td><b>${nf.format(r.total)}</b></td><td>${stkDelta(r.dTotal)}</td></tr>`;
     });
   });
@@ -11266,7 +11336,7 @@ function applyMpData(mp){
 function hydrateData(){
   RD = (typeof REAL_DATA!=="undefined") ? REAL_DATA : null;
   _buyoutWin={};                 // окно % выкупа считается от воронки — пересобрать
-  _wbFbsCache=null; _klinCache=null;   // раскладка своих складов под покрытие ВБ + Клин
+  _wbFbsCache=null; _klinCache=null; _ozAsgCache=null;   // раскладка своих складов: покрытие ВБ + Клин + назначенное на Ozon
   _adMskCache=null; _adMskHeld={};  // московский запас для рекламы — за вычетом собранного в паллеты
   _recOutCache=null; _outSkuCache=null;   // списки товаров «На вывод» — производные каталога
   _ozCostCache=null; _ozFinCache=null;    // финансы Озона считаются из каталога и тарифа

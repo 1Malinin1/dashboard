@@ -29,7 +29,8 @@ const supToWb={}, wbCatBySku={};RD.catalog.forEach(c=>{const s=(''+(c.supplierCo
 // 2) Озон-каталог: из листа «Июль» (обычный режим) ИЛИ из существующего снимка (--reuse)
 const ozCat=[]; const byA={}; const seen=new Set();
 function ensure(art){ if(seen.has(art)) return byA[art]; seen.add(art);
-  const c={sku:art, name:art, category:'Без категории', wbSku:supToWb[art]||null, ozStock:0, ozTransit:0};
+  const c={sku:art, name:art, category:'Без категории', wbSku:supToWb[art]||null,
+           ozStock:0, ozTransit:0, ozReq:0, ozWay:0};
   byA[art]=c; ozCat.push(c); return c; }
 if(reuse){
   // Сохраняем существующий каталог целиком (name/category/wbSku/ozonSku и пр.).
@@ -40,7 +41,7 @@ if(reuse){
   const prev=(RD.ozon&&RD.ozon.catalog)||[];
   if(!prev.length){ console.error('--reuse: в снимке нет каталога Озона. Соберите его один раз из файла «Июль».'); process.exit(1); }
   prev.forEach(c=>{ const cc=Object.assign({},c);
-    if(stockFile){ cc.ozStock=0; cc.ozTransit=0; }
+    if(stockFile){ cc.ozStock=0; cc.ozTransit=0; cc.ozReq=0; cc.ozWay=0; }
     byA[cc.sku]=cc; ozCat.push(cc); seen.add(cc.sku); });
 } else {
   const wb=XLSX.read(fs.readFileSync(catalogFile),{type:'buffer',cellStyles:false,cellFormula:false});
@@ -87,7 +88,13 @@ Object.entries(ord.byDateArtBuyRub||{}).forEach(([k,v])=>{ const d=k.slice(0,10)
 //   [18] «В заявках на поставку»  — заявка создана, товар назначен на отгрузку;
 //   [19] «В поставках в пути»     — партия физически едет на склад Озона.
 // Это две непересекающиеся стадии одного пути, поэтому `ozTransit` = их СУММА
-// (решение продавца: заявка = «товар уже направлен на Озон»). НЕ путать с `ozIncoming` —
+// (решение продавца: заявка = «товар уже направлен на Озон»).
+// СТАДИИ ХРАНЯТСЯ И ПОРОЗНЬ — `ozReq` (заявки) и `ozWay` (физически в пути), 13.10.2026.
+// Зачем: виртуальные склады «Ozon СФО/ЦФО» в ведомости 1С описывают ТУ ЖЕ партию, что
+// заявка Озона, только раньше по времени, и складывать их нельзя (см. `ozTransitEff`
+// в index.html). А вот «в поставках в пути» — товар, который физически уехал со склада,
+// он с виртуальным складом не пересекается. Без разделения отличить одно от другого нечем.
+// НЕ путать с `ozIncoming` —
 // это наши данные из файла «на оптовых» (то, что ещё только собираемся отправить).
 let stockRows=0, stockSum=0, sumZayav=0, sumPath=0;
 if(stockFile){
@@ -109,6 +116,7 @@ if(stockFile){
     // затирала реальный остаток нулём (арт. 493370: 25 шт и 936 в заявках превращались в 0).
     const avail=num(r[cAvail]);
     c.ozStock+=avail; c.ozTransit+=zayav+path;
+    c.ozReq=(c.ozReq||0)+zayav; c.ozWay=(c.ozWay||0)+path;
     const dl=num(r[6]); if(dl>0) c.ozDaysLeftReport=Math.round(dl);
     const av=num(r[7]); if(av>0) c.ozAvg28=av;
     stockRows++; stockSum+=avail;

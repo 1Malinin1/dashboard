@@ -22,6 +22,7 @@
 //   node scripts/new-codes.cjs add "519333, 519334" [--note "толокары Bentley"]
 //   node scripts/new-codes.cjs check <файл.xlsx|csv> [ещё файлы…]   ← ищет коды в отчётах
 //   node scripts/new-codes.cjs oz <код> <ozonSku> [--name "…"] [--cat "…"]  ← завести карточку Озона
+//   node scripts/new-codes.cjs cost "519333=3358, 519594=173"   ← себестоимость заранее
 //   node scripts/new-codes.cjs drop "519333"      ← код заведён или отменён
 //
 // ПОСЛЕ `check`, НАШЕДШЕГО АРТИКУЛ ВБ: завести карточку `add-catalog-cards.cjs`, затем
@@ -54,6 +55,16 @@ function where(code){
 }
 
 function save(){
+  /* ЦЕНА ПО КОДУ 1С — В `meta.costBySup`, А НЕ ТОЛЬКО В СПИСКЕ ОЖИДАНИЯ. Себестоимость
+     ведётся в каталоге ВБ, и у кода без карточки ВБ её записать некуда: товар, вышедший
+     сначала на Озоне, считался бы с нулевой себестоимостью — то есть бесконечно прибыльным,
+     и молча. Поэтому цена дублируется в фолбэк-карту, которую читают `ozCostMap()`
+     (index.html) и `ozon-finance.cjs`. Как только появится карточка ВБ,
+     `add-catalog-cards.cjs` переносит цену в каталог и чистит запись отсюда. */
+  const cb=Object.assign({}, RD.meta.costBySup||{});
+  list.forEach(it=>{ if(it.cost!=null) cb[it.code]={cost:it.cost, from:null,
+    setAt:it.costAt||today, note:'со слов продавца, карточки ВБ ещё нет'}; });
+  if(Object.keys(cb).length) RD.meta.costBySup=cb;
   RD.meta.newCodes={items:list, updatedAt:today,
     note:'Коды 1С, которые продавец назвал как новый товар. Лежат здесь, пока в отчётах не появится '
       +'артикул ВБ или Озона; после этого заводится карточка (add-catalog-cards.cjs / new-codes.cjs oz) '
@@ -75,6 +86,7 @@ function show(){
     if(it.wbSku && !w.wb) st.push('найден арт. ВБ '+it.wbSku+' — ЗАВОДИТЬ КАРТОЧКУ');
     if(it.ozonSku && !w.oz) st.push('найден SKU Озона '+it.ozonSku+' — ЗАВОДИТЬ КАРТОЧКУ');
     console.log('   '+it.code+'  '+(st.length? st.join(' · ') : 'артикулов пока нет')
+      +(it.cost!=null? ' · себестоимость '+it.cost+' ₽' : ' · СЕБЕСТОИМОСТИ НЕТ')
       +(it.name? '  — '+String(it.name).slice(0,46) : '')
       +(it.note? '   ['+it.note+']' : '')+'   добавлен '+(it.addedAt||'?'));
   });
@@ -145,6 +157,38 @@ if(cmd==='add'){
   console.log('');
   show();
   console.log('\nДальше: при следующей заливке — node scripts/new-codes.cjs check <файлы отчётов…>');
+  process.exit(0);
+}
+
+if(cmd==='cost'){
+  /* СЕБЕСТОИМОСТЬ ЗАРАНЕЕ, ДО КАРТОЧКИ. Продавец присылает цены пачкой, как только
+     распределил контейнер, — раньше, чем в отчётах появится артикул. `update-cost.cjs`
+     такие коды принять не может (он ищет их в каталоге и честно пишет «не найдены»),
+     и цена терялась в переписке: 13.10.2026 из шести присланных цен четыре было некуда
+     записать. Храним у кода и переносим в каталог при заведении карточки. */
+  const pairs=String(argv[1]||'').split(/[,;\n]+/).map(x=>x.trim()).filter(Boolean);
+  if(!pairs.length){ console.error('usage: node scripts/new-codes.cjs cost "519333=3358, 519594=173"'); process.exit(1); }
+  let set=0, add=0, bad=[];
+  pairs.forEach(p=>{
+    const m=p.split(/[=:\s]+/).filter(Boolean);
+    const code=norm(m[0]), cost=parseFloat(String(m[1]||'').replace(',','.'));
+    if(!code||!isFinite(cost)||cost<=0){ bad.push(p); return; }   // ноль = «не заполнено», не цена
+    let it=list.find(x=>x.code===code);
+    if(!it){ it={code, addedAt:today, note:'цена пришла раньше артикула', wbSku:null, ozonSku:null, name:null};
+      list.push(it); add++; }
+    it.cost=cost; it.costAt=today; set++;
+    const w=where(code);
+    if(w.wb) console.log('   '+code+' — карточка ВБ уже есть ('+w.wb.join(',')+'): цену лучше залить '
+      +'update-cost.cjs, в каталоге она сильнее фолбэка');
+  });
+  if(bad.length) console.log('Не разобрано (нужен вид «код=цена», ноль ценой не считается): '+bad.join(' | '));
+  save();
+  console.log('Записано цен: '+set+(add? ' · новых кодов в списке: '+add : ''));
+  console.log('');
+  show();
+  console.log('\nЦена применится автоматически при заведении карточки (add-catalog-cards.cjs),'
+    +' а до этого уже считается на Озоне через meta.costBySup.');
+  console.log('Дальше: node scripts/encrypt.cjs <код>');
   process.exit(0);
 }
 
