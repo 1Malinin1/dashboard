@@ -314,6 +314,10 @@ if(kind==='stock'){
   RD.inbound=RD.inbound||{};
   RD.inbound[kind]={date:dateArg, total, bySup:Object.fromEntries(Object.entries(bySup).map(([k,v])=>[k,v.qty]))};
 }
+/* ВОЗВРАТ СТАТУСА «На вывод», ЕСЛИ ОСТАТОК КОНЧИЛСЯ. Логика одна на все загрузчики
+   остатков — см. lib/out-when-empty.cjs (правило продавца 13.10.2026). Проверка стоит
+   ПЕРЕД записью снимка, чтобы изменённый статус попал в тот же файл. */
+require('./lib/out-when-empty.cjs').check(RD);
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
   +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
