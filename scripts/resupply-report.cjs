@@ -89,6 +89,10 @@ function mpStats(mp){
      ещё лежит на Клине, но распоряжён, поэтому идёт в ту же строку, что журнал отгрузок:
      в `transit` у ВБ, и тем самым уменьшает потребность подсорта. Синхронно с index.html. */
   if(!oz){ const kl=klinBySup(); Object.keys(kl).forEach(k=>{ openShip[k]=(openShip[k]||0)+kl[k]; }); }
+  /* Симметрично для Ozon — виртуальные склады «Ozon СФО»/«Ozon ЦФО» (13.10.2026): товар
+     уже распределён на площадку и ждёт машину, значит он тоже «в пути». Это ДОПОЛНЕНИЕ
+     к `ozTransit`, который показывает сам Ozon, а не замена. Синхронно с index.html. */
+  const ozAsg = oz? ozAssignedBySup() : {};
   const out={}, done=new Set();
   cat.forEach(c=>{
     const sup = oz? (''+c.sku) : (''+(c.supplierCode||'')).trim(); if(!sup) return;
@@ -98,10 +102,19 @@ function mpStats(mp){
       oz? (c.ozBuyout!=null?c.ozBuyout:buyAvg) : (c.buyoutPct14d>0? c.buyoutPct14d/100 : buyAvg));
     const stock = oz? (c.ozStock||0) : (c.wbStock||0);   // свой склад в покрытие НЕ входит
     let transit = oz? (c.ozTransit||0) : 0;
-    if(!oz && !done.has(sup)){ transit+=(openShip[sup]||0); done.add(sup); }
+    if(!done.has(sup)){
+      if(oz){ const az=ozAsg[sup]; if(az) transit+=az.all; }
+      else transit+=(openShip[sup]||0);
+      done.add(sup);
+    }
     const e=out[sup]||(out[sup]={spd:0,stock:0,transit:0,name:c.name});
     e.spd+=avgD*buyout; e.stock+=stock; e.transit+=transit; if(!e.name) e.name=c.name;
   });
+  /* Код уже распределён на Ozon, а карточки Озона ещё нет (519571/519588 на 13.10.2026):
+     цикл выше идёт по каталогу площадки и такой код пропустил бы, покрытие вышло бы 0,
+     и подсорт отправил бы стартовую партию поверх назначенного. Синхронно с index.html. */
+  if(oz) Object.keys(ozAsg).forEach(sup=>{ if(out[sup]) return;
+    out[sup]={spd:0,stock:0,transit:ozAsg[sup].all,name:sup}; done.add(sup); });
   Object.values(out).forEach(e=>{ e.covered=e.stock+e.transit;
     e.days = e.spd>0? e.covered/e.spd : (e.covered>0? Infinity:0); });
   return out;
@@ -146,7 +159,17 @@ function klinBySup(){ const wh=(RD.warehouse&&RD.warehouse.bySup)||{}, out={};
     Object.entries(wh[s].wh||{}).forEach(([n,v])=>{ if(whKey(n)==='klin') q+=v; });
     if(q>0) out[s]=q; });
   return out; }
+/* Назначено на Ozon (виртуальные склады СФО/ЦФО) — то же, что klinBySup, но направление Ozon. */
+function ozAssignedBySup(){ const wh=(RD.warehouse&&RD.warehouse.bySup)||{}, out={};
+  Object.keys(wh).forEach(s=>{ let sfo=0,cfo=0;
+    Object.entries(wh[s].wh||{}).forEach(([n,v])=>{ const k=whKey(n);
+      if(k==='ozsfo') sfo+=v; else if(k==='ozcfo') cfo+=v; });
+    if(sfo+cfo>0) out[s]={sfo,cfo,all:sfo+cfo}; });
+  return out; }
 function whKey(n){ const s=''+n;
+  // виртуальные склады Ozon — первыми и по ПАРЕ слов: общее /озон/ поймало бы «Склад ОЗОН ПФО»
+  if(/(озон|ozon)/i.test(s) && /сфо/i.test(s)) return 'ozsfo';
+  if(/(озон|ozon)/i.test(s) && /цфо/i.test(s)) return 'ozcfo';
   if(/клин/i.test(s)) return 'klin';
   if(/(^|\W)fbs(\W|$)|фбс/i.test(s)) return 'nsk1';
   if(/евросиб/i.test(s)) return 'nsk2';
@@ -167,11 +190,11 @@ const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh)])
 let rows=sups.map(sup=>{
   const w=W[sup]||zero, o=O[sup]||zero;
   // раскладку склада считаем ДО потребности: Клин надо вычесть из отгрузочного запаса
-  const whB=(wh[sup]&&wh[sup].wh)||{}; const q={msk:0,nsk1:0,nsk2:0,klin:0,other:0};
+  const whB=(wh[sup]&&wh[sup].wh)||{}; const q={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,other:0};
   Object.entries(whB).forEach(([n,v])=>{ q[whKey(n)]+=v; });
-  const mMsk=q.msk, mNsk1=q.nsk1, mNsk2=q.nsk2, mKlin=q.klin;
-  // `have` — то, что РЕАЛЬНО можно отгрузить: весь склад МИНУС Клин (он уже уехал на ВБ)
-  const have=Math.max(0, ((wh[sup]&&wh[sup].qty)||0) - mKlin);
+  const mMsk=q.msk, mNsk1=q.nsk1, mNsk2=q.nsk2, mKlin=q.klin, mOzAsg=q.ozsfo+q.ozcfo;
+  // `have` — то, что РЕАЛЬНО можно отгрузить: склад МИНУС Клин МИНУС назначенное на Ozon
+  const have=Math.max(0, ((wh[sup]&&wh[sup].qty)||0) - mKlin - mOzAsg);
   const launchW = WB_FBO_SUPPLY && w.spd<=0 && w.covered<=0 && have>0;
   const launchO = o.spd<=0 && o.covered<=0 && have>0;
   const needW=!WB_FBO_SUPPLY? 0
@@ -303,6 +326,10 @@ console.log('К отгрузке на ВБ FBO: '+F(rows.reduce((a,r)=>a+r.shipW
 { const kl=klinBySup(); const tot=Object.values(kl).reduce((a,b)=>a+b,0);
   if(tot>0) console.log('На складе РВБ Клин: '+F(tot)+' шт по '+Object.keys(kl).length
     +' кодам — собрано и назначено к отправке на ВБ: в отгрузку не идёт, засчитано в покрытие'); }
+{ const az=ozAssignedBySup(); const ks=Object.keys(az);
+  const sfo=ks.reduce((a,k)=>a+az[k].sfo,0), cfo=ks.reduce((a,k)=>a+az[k].cfo,0);
+  if(sfo+cfo>0) console.log('Назначено на Ozon (виртуальные склады): '+F(sfo+cfo)+' шт по '+ks.length
+    +' кодам — СФО '+F(sfo)+' / ЦФО '+F(cfo)+': в отгрузку не идёт, засчитано в покрытие Ozon'); }
 console.log('Нечем закрыть (на складе пусто): '+noStock.length+' позиций, не хватает '
   +F(noStock.reduce((a,r)=>a+r.needO+r.needW,0))+' шт');
 const launches=needAny.filter(r=>r.launch);
@@ -313,8 +340,10 @@ console.log('ПЕРЕМЕСТИТЬ Евросиб → Нск-1 (FBS на ВБ):
 console.log('Покрытие ВБ: на складах ВБ и в пути '+F(rows.reduce((a,r)=>a+(r.wCov||0),0))+' шт (включая Клин) + FBS со своих складов '
   +F(rows.reduce((a,r)=>a+r.wbFbsFree,0))+' шт (Москва и Нск-1 за вычетом того, что уже расписано под отгрузку)');
 { const klTot=Object.values(klinBySup()).reduce((a,b)=>a+b,0);
+  const azTot=Object.values(ozAssignedBySup()).reduce((a,v)=>a+v.all,0);
   console.log('Останется на складе: '+F(rows.reduce((a,r)=>a+r.rest,0))+' шт из '
-    +F(Object.values(wh).reduce((a,v)=>a+v.qty,0)-klTot)+' (склад без Клина)'); }
+    +F(Object.values(wh).reduce((a,v)=>a+v.qty,0)-klTot-azTot)
+    +' (склад без Клина и без назначенного на Ozon)'); }
 
 // ---- план машин: паллеты по (склад × площадка), машина = 33 паллеты, ассортимент round-robin ----
 const buckets={};
