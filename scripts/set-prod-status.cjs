@@ -111,6 +111,10 @@ codes.forEach(s=>{
     if(was!==status){ c.productionStatus=status; cards++; any=true; } });
   if(any){ changed++; list.push({s,name:cs[0].name,was:'разный'}); } else same++;
 });
+/* Статус «На вывод» мог вернуться этой заливкой коду, у которого он снят НАМЕРЕННО
+   до конца остатка (`meta.outWhenEmpty`). Проверка снимает его обратно — только по кодам
+   из этого списка. См. lib/out-when-empty.cjs. */
+require('./lib/out-when-empty.cjs').check(RD);
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
   +'const REAL_DATA = '+JSON.stringify(RD)+';\n');

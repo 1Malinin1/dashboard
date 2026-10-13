@@ -58,16 +58,31 @@ function stockOf(RD,sup){
 function check(RD){
   const items=store(RD);
   if(!items.length) return {returned:[], waiting:[]};
-  const returned=[], waiting=[], keep=[];
+  const returned=[], waiting=[], keep=[], healed=[];
   items.forEach(it=>{
     const st=stockOf(RD,it.sup);
-    if(st.all>0){ waiting.push({sup:it.sup, st, it}); keep.push(it); return; }
+    if(st.all>0){
+      /* САМОЗАЖИВЛЕНИЕ. Статус «На вывод» заливается пачками из справочника продавца
+         (`update-catalog-meta.cjs`, `set-prod-status.cjs`), и такая заливка молча вернула бы
+         его коду, который мы сняли НАМЕРЕННО до конца остатка, — товар снова исчез бы
+         с глаз. Поэтому при каждой проверке статус у кодов ИЗ ЭТОГО СПИСКА возвращается
+         к снятому. Действует ТОЛЬКО на перечисленные коды: ко всем прочим товарам
+         правило не применяется никогда. */
+      let fix=0;
+      (RD.catalog||[]).forEach(c=>{ if(norm(c.supplierCode)!==norm(it.sup)) return;
+        if(c.productionStatus===OUT_STATUS){ c.productionStatus=it.status||'В работе'; fix++; } });
+      if(fix) healed.push({sup:it.sup, cards:fix});
+      waiting.push({sup:it.sup, st, it}); keep.push(it); return; }
     let n=0;
     (RD.catalog||[]).forEach(c=>{ if(norm(c.supplierCode)!==norm(it.sup)) return;
       if(c.productionStatus!==OUT_STATUS){ c.productionStatus=OUT_STATUS; n++; } });
     returned.push({sup:it.sup, cards:n, it});
   });
   save(RD,keep);
+  if(healed.length){
+    console.log('\nСТАТУС «На вывод» ВЕРНУЛСЯ ЗАЛИВКОЙ, СНЯЛ ОБРАТНО (остаток ещё есть) — '+healed.length+':');
+    healed.forEach(h=>console.log('   1С '+h.sup+' · карточек ВБ: '+h.cards));
+  }
   if(returned.length){
     console.log('\nСТАТУС «НА ВЫВОД» ВОЗВРАЩЁН — ОСТАТОК КОНЧИЛСЯ (правило продавца 13.10.2026):');
     returned.forEach(r=>console.log('   1С '+r.sup+' · карточек ВБ: '+r.cards
