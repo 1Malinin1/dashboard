@@ -107,6 +107,12 @@ const costHist={}, costNow={};
 (RD.catalog||[]).forEach(c=>{ const s=(''+(c.supplierCode||'')).trim(); if(!s) return;
   if(c.costPrice!=null && costNow[s]==null) costNow[s]=c.costPrice;
   if(c.costHistory && c.costHistory.length && !costHist[s]) costHist[s]=c.costHistory; });
+/* Фолбэк `meta.costBySup` — цена по коду 1С для товаров без карточки ВБ (куда её иначе
+   записать некуда, и товар считался бы с нулевой себестоимостью). Каталог ВБ сильнее.
+   ДЕРЖИ СИНХРОННО с `ozCostMap()` в index.html. */
+Object.entries((RD.meta&&RD.meta.costBySup)||{}).forEach(([s,v])=>{ if(!v) return;
+  const c=(typeof v==='object')? v.cost : v;
+  if(c!=null && costNow[s]==null) costNow[s]=c; });
 function costAt(sup,date){
   const h=costHist[sup];
   if(h){ let v=null; for(const e of h){ if(!e.from || e.from<=date) v=e.cost; } if(v!=null) return v; }

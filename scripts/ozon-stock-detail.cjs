@@ -75,7 +75,7 @@ function cols(H,file){
     road:find(/Товары в пути \/ В поставках в пути/,true) };
 }
 
-const byArt={}, byArtTr={}, bySup={}, byCluster={}, whs=new Set();
+const byArt={}, byArtTr={}, byArtReq={}, byArtWay={}, bySup={}, byCluster={}, whs=new Set();
 let rowsAll=0, ourRows=0, alienRows=0;
 files.forEach(f=>{
   const wb=XLSX.readFile(f);
@@ -90,6 +90,9 @@ files.forEach(f=>{
     ourRows++;
     const av=num(x[I.avail]), rq=num(x[I.req]), rd=num(x[I.road]);
     byArt[a]=(byArt[a]||0)+av; byArtTr[a]=(byArtTr[a]||0)+rq+rd;
+    /* Стадии храним и порознь: «в заявках» описывает ту же партию, что виртуальные склады
+       «Ozon СФО/ЦФО» в ведомости 1С, и складывать их нельзя (см. `ozTransitEff`). */
+    byArtReq[a]=(byArtReq[a]||0)+rq; byArtWay[a]=(byArtWay[a]||0)+rd;
     const cl=nb(x[I.cluster])||'(без кластера)';
     whs.add(nb(x[I.wh]));
     const s=bySup[a]||(bySup[a]={});
@@ -145,7 +148,7 @@ Object.keys(byArt).forEach(a=>{
   const w=(RD.catalog||[]).find(c=>code(c.supplierCode)===a);
   cat.push({ sku:a, name:(w&&w.name)||a, category:'Без категории',
     wbCategory:(w&&w.category)||'', wbSku:(w? ''+w.sku : null),
-    ozStock:0, ozTransit:0, ozIncoming:0 });
+    ozStock:0, ozTransit:0, ozReq:0, ozWay:0, ozIncoming:0 });
   added++;
 });
 
@@ -155,7 +158,7 @@ cat.forEach(c=>{ const a=code(c.sku);
   const av=byArt[a]||0, tr=byArtTr[a]||0;
   if((c.ozStock||0)!==av || (c.ozTransit||0)!==tr) touched++;
   if(byArt[a]===undefined && ((c.ozStock||0)>0||(c.ozTransit||0)>0)) zeroed++;
-  c.ozStock=av; c.ozTransit=tr;
+  c.ozStock=av; c.ozTransit=tr; c.ozReq=byArtReq[a]||0; c.ozWay=byArtWay[a]||0;
 });
 RD.ozon.meta=RD.ozon.meta||{};
 RD.ozon.meta.stockDate=dateArg;
@@ -173,6 +176,9 @@ console.log('  строк во всех частях: '+F(rowsAll)+' (наших
 console.log('  СТРОКИ НЕ ДЕДУПЛИЦИРОВАНЫ — один артикул на складе идёт несколькими строками (признак/зона), это разный товар');
 console.log('  доступно к продаже: '+F(wasStock)+' → '+F(nowStock)+' шт  ('+(nowStock-wasStock>=0?'+':'')+F(nowStock-wasStock)+')');
 console.log('  в пути (заявки + поставки): '+F(wasTr)+' → '+F(nowTr)+' шт  ('+(nowTr-wasTr>=0?'+':'')+F(nowTr-wasTr)+')');
+console.log('    из них заявки на поставку '+F(Object.values(byArtReq).reduce((s,v)=>s+v,0))
+  +' шт · физически в пути '+F(Object.values(byArtWay).reduce((s,v)=>s+v,0))+' шт'
+  +'  (заявки сверяются с виртуальными складами «Ozon СФО/ЦФО», не складываются с ними)');
 console.log('  артикулов с остатком: '+Object.keys(byArt).filter(a=>byArt[a]>0).length
   +' · обновлено карточек: '+touched+' · обнулено (нет в отчёте): '+zeroed);
 console.log('  кластеров: '+Object.keys(byCluster).length+' · складов: '+whs.size

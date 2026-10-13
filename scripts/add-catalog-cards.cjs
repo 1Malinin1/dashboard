@@ -83,7 +83,15 @@ if(hr<0){
 }
 console.log('лист «'+sheet+'» · шапка в строке '+(hr+1));
 
-const add=[], noSup=[], already=[], sameSup=[];
+const add=[], noSup=[], already=[], sameSup=[], fromWait=[];
+/* Цена, присланная до карточки: `meta.costBySup` (new-codes.cjs cost) + список ожидания. */
+function waitCost(sup){
+  if(!sup) return null;
+  const m=(RD.meta&&RD.meta.costBySup)||{};
+  const v=m[sup]; if(v!=null){ const c=(typeof v==='object')? v.cost : v; if(c>0) return c; }
+  const it=(((RD.meta||{}).newCodes||{}).items||[]).find(x=>String(x.code)===String(sup));
+  return (it&&it.cost>0)? it.cost : null;
+}
 for(let i=hr+1;i<rows.length;i++){
   const r=rows[i]||[]; const sku=code(r[I.sku]); if(!sku) continue;
   const sup=I.sup>=0? code(r[I.sup]) : '';
@@ -91,7 +99,13 @@ for(let i=hr+1;i<rows.length;i++){
   if(bySku[sku]){ already.push(sku+(name?' — '+name.slice(0,40):'')); continue; }
   if(!sup){ noSup.push(sku+(name?' — '+name.slice(0,44):'')); continue; }
   const st=I.st>=0? normStatus(r[I.st]) : '';
-  const cost=I.cost>=0? numPos(r[I.cost]) : null;
+  /* ЦЕНА МОЖЕТ ЖДАТЬ КОД РАНЬШЕ КАРТОЧКИ. Продавец присылает себестоимость, как только
+     распределил контейнер, — артикула в отчётах тогда ещё нет, и цена лежит в
+     `meta.costBySup` (кладёт `new-codes.cjs cost`). Здесь карточка наконец заводится,
+     и цену надо ПОДХВАТИТЬ, иначе товар выйдет в продажу с нулевой себестоимостью и
+     будет выглядеть бесконечно прибыльным. Файл сильнее: если цена есть в нём, берём её. */
+  let cost=I.cost>=0? numPos(r[I.cost]) : null;
+  if(cost==null){ const w=waitCost(sup); if(w!=null){ cost=w; fromWait.push(sku+' → '+w+' ₽ (1С '+sup+')'); } }
   const c={
     sku, factoryCode:I.fac>=0? S(r[I.fac]):'', supplierCode:sup,
     name: name||sku, category: I.cat>=0? S(r[I.cat]):'',
@@ -109,6 +123,11 @@ for(let i=hr+1;i<rows.length;i++){
   add.push(c);
 }
 
+if(fromWait.length){
+  console.log('СЕБЕСТОИМОСТЬ ВЗЯТА ИЗ СПИСКА ОЖИДАНИЯ (meta.costBySup, прислана до карточки):');
+  fromWait.forEach(x=>console.log('     '+x));
+  console.log('     После --apply запись из фолбэка убирается: цена живёт в каталоге.\n');
+}
 console.log('');
 if(noSup.length){
   console.log('⚠  НЕ ДОБАВЛЕНЫ — пустой код 1С ('+noSup.length+'):');
@@ -147,6 +166,14 @@ if(noCont) console.log('без размера контейнера: '+noCont+' �
 if(!APPLY){ console.log('\nСУХОЙ ПРОГОН. Ничего не записано. Повторите с --apply, чтобы применить.'); process.exit(0); }
 
 RD.catalog.push(...add);
+/* ЦЕНА ПЕРЕЕХАЛА В КАТАЛОГ — ЧИСТИМ ФОЛБЭК. Иначе две записи об одной цене, и при
+   следующем `update-cost.cjs` каталог и фолбэк разъедутся молча. */
+if(RD.meta&&RD.meta.costBySup){
+  let cleaned=0;
+  add.forEach(c=>{ if(c.costPrice!=null && RD.meta.costBySup[c.supplierCode]!=null){
+    delete RD.meta.costBySup[c.supplierCode]; cleaned++; } });
+  if(cleaned) console.log('из meta.costBySup убрано записей: '+cleaned+' — цена теперь в каталоге');
+}
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
   +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
