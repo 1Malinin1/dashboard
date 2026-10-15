@@ -164,6 +164,15 @@ if(AP.length) dates.forEach(d=>{ const pi=apIdx(d); if(pi<0) return;
    Список ведёт scripts/ozon-ozz.cjs. ДУБЛЬ ЛОГИКИ — ozApplyAdFact в index.html, держать синхронно. */
 const OZZ=((O.meta&&O.meta.ozzOn&&O.meta.ozzOn.bySup)||{});
 const baseOn=a=>OZZ[a]==null;                       // true → базовые 5% начисляются сверх факта
+/* ОПЛАТА ЗА ЗАКАЗ — ФАКТ ИЗ ОТЧЁТА OZON (продавец 15.10.2026: «в этих файлах идёт точное
+   списание за заказ… за клики будем брать с Xway»; «Xway не учитывает дополнительную оплату
+   за заказ, дублировать он не может»). В дни, за которые отчёт загружен, вместо модельной
+   ставки берётся списание товара из отчёта (нет товара в отчёте — 0), к нему — выгрузка XWAY
+   целиком; ozzOn в эти дни не нужен. Дни без отчёта — по-старому. Ведёт ozon-order-fee.cjs.
+   ДУБЛЬ — ozOrderFeeOn()/ozFinRows()/ozApplyAdFact() в index.html, ДЕРЖАТЬ СИНХРОННО. */
+const OFE=(!adForced && O.meta.orderFee && Array.isArray(O.meta.orderFee.periods))? O.meta.orderFee : null;
+const feeOn=d=>!!(OFE && OFE.periods.some(p=>p.from<=d&&d<=p.to));
+const feeDay=d=>(OFE&&OFE.byDate&&OFE.byDate[d])||{};
 function adFact(d,a,rv){                            // абсолютный расход товара в этот день, либо null
   const pi=apIdx(d); if(pi<0) return null;
   const sp=(AP[pi].bySup||{})[a]; if(sp==null) return null;
@@ -177,11 +186,16 @@ function calc(ds){
     const i=dates.indexOf(d); if(i<0) return;
     const m=money[d]||{}, k=revK(d), b=boFor(d);   // выкуп берётся ПО ДАТЕ ДНЯ
     const ar=adRateFor(d);                         // и ставка рекламы — тоже по дате дня
+    const fo=feeOn(d), fd=fo? feeDay(d) : null;    // день покрыт отчётом «Оплата за заказ»?
     Object.entries(m).forEach(([a,v])=>{ const r=(v[0]||0)*k, rv=r*b; ordRub+=r; rev+=rv;
+      // база за заказ: факт отчёта Ozon в покрытые дни, иначе модельная ставка
+      const base = fo? (fd[a]||0) : rv*ar/100;
       const af=adFact(d,a,rv);                     // факт XWAY перекрывает ставку — только у своих товаров
-      if(af!=null){ const ad=af+(baseOn(a)? rv*ar/100 : 0);   // базовые 5% сверх факта, кроме ozzOn
+      if(af!=null){ const ad=af+(fo? base : (baseOn(a)? base : 0));   // сверх XWAY; ozzOn — только без отчёта
         mp+=rv*FIXED/100+ad; ads+=ad; }
-      else { mp+=rv*(FIXED+ar)/100; ads+=rv*ar/100; } });
+      else { mp+=rv*FIXED/100+base; ads+=base; } });
+    // списание по товару, у которого в этот день нет денег заказов, не теряется
+    if(fo) Object.entries(fd).forEach(([a,fee])=>{ if(m[a]!=null) return; mp+=fee; ads+=fee; });
     Object.entries(byArt).forEach(([a,s])=>{
       const q=s[i]||0; if(!q) return;
       ordQty+=q; sold+=q*b;
@@ -227,6 +241,12 @@ if(AP.length){
   console.log('      остальные товары в эти дни считаются по ставке из отчёта юнит-экономики');
 }else if(O.meta.adSpend){
   console.log('   (фактических выгрузок рекламы нет — вся площадка по ставке)');
+}
+if(OFE && OFE.periods.length){
+  const t=OFE.periods.reduce((a,p)=>a+(p.total||0),0);
+  console.log('   оплата за заказ ПО ФАКТУ (отчёт Ozon «Оплата за заказ (все товары)») — в эти дни вместо ставки:');
+  console.log('      '+OFE.periods[0].from+'…'+OFE.periods[OFE.periods.length-1].to+' → '+OFE.periods.length
+    +' дн. · списано '+Math.round(t).toLocaleString('ru-RU')+' ₽; реклама дня = выгрузка XWAY + это списание');
 }
 console.log('   (соинвест '+T.coinvest+'% не вычитается — см. комментарий в скрипте)');
 if(BOH){ console.log('   % выкупа Озона — «доставлено ÷ (доставлено+отменено)», по истории замеров:');

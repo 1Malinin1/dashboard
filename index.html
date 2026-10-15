@@ -6144,6 +6144,21 @@ function ozAdSpendParts(){
   return (A&&Array.isArray(A.parts)&&A.parts.length)? A.parts.slice().sort((a,b)=>a.from<b.from?-1:1) : [];
 }
 function ozAdSpendPartIdx(d){ const P=ozAdSpendParts(); for(let i=0;i<P.length;i++) if(P[i].from<=d&&d<=P[i].to) return i; return -1; }
+/* ОПЛАТА ЗА ЗАКАЗ — ФАКТ ИЗ ОТЧЁТА OZON «Оплата за заказ (все товары)» (продавец 15.10.2026:
+   «в этих файлах идёт точное списание за заказ… за клики будем брать с Xway»; «Xway не учитывает
+   дополнительную оплату за заказ, дублировать он не может — у меня на кабинет подключено
+   продвижение, которое по умолчанию снимает за заказ 7%, и его Xway не видит»).
+   В дни, за которые отчёт загружен: реклама товара = выгрузка XWAY целиком + списание из
+   отчёта (нет товара в отчёте — 0). Модельная ставка unitReports и список ozzOn в эти дни НЕ
+   применяются. Дни без отчёта — по-старому. Ведёт scripts/ozon-order-fee.cjs;
+   ДУБЛЬ — feeOn()/feeDay()/calc() в scripts/ozon-finance.cjs, ДЕРЖАТЬ СИНХРОННО. */
+function ozOrderFee(){ const F=RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.orderFee;
+  return (F&&Array.isArray(F.periods)&&F.periods.length)? F : null; }
+function ozOrderFeeOn(d){ const F=ozOrderFee(); return !!(F && F.periods.some(p=>p.from<=d&&d<=p.to)); }
+function ozOrderFeeDay(d){ const F=ozOrderFee(); return (F&&F.byDate&&F.byDate[d])||{}; }
+function ozOrderFeeSpan(){ const F=ozOrderFee(); if(!F) return null;
+  const P=F.periods.slice().sort((a,b)=>a.from<b.from?-1:1);
+  return {from:P[0].from, to:P[P.length-1].to, n:P.length, total:P.reduce((a,p)=>a+(p.total||0),0)}; }
 // подпись для строки свежести: у скольких товаров реклама идёт по факту, а не по ставке
 function ozAdFactNote(){
   const P=ozAdSpendParts();
@@ -6153,7 +6168,13 @@ function ozAdFactNote(){
   const skus=new Set(); let sum=0;
   P.forEach(p=>Object.entries(p.bySup||{}).forEach(([s,v])=>{ skus.add(s); sum+=v; }));
   if(skus.size) out+=` · по ${skus.size} ${plural(skus.size,"товару","товарам","товарам")} реклама взята <b>по факту XWAY</b>`
-    +` (${fmtDateLong(P[0].from)} – ${fmtDateLong(P[P.length-1].to)}, ${fmt(sum)} ₽), у остальных — ставка`;
+    +` (${fmtDateLong(P[0].from)} – ${fmtDateLong(P[P.length-1].to)}, ${fmt(sum)} ₽)`;
+  /* Кабинетная оплата за заказ: в дни с отчётом Ozon — факт по каждому товару, без него — ставка.
+     Промолчать нельзя: иначе «ставка» в подписи читалась бы как модель там, где уже факт. */
+  const FS=ozOrderFeeSpan();
+  if(FS) out+=` · оплата за заказ (её XWAY не видит) — <b>факт отчёта Ozon</b> за ${fmtDateLong(FS.from)}`
+    +`${FS.from!==FS.to? " – "+fmtDateLong(FS.to):""} (${fmt(Math.round(FS.total))} ₽), в остальные дни — ставка`;
+  else if(skus.size) out+=`, у остальных — ставка`;
   /* Реклама запущена, а выгрузки по ней ещё нет — значит эти кампании считаются по августовской
      ставке и их реальный расход в прибыли НЕ учтён. Молчать об этом нельзя. */
   const wait=W.filter(s=>!skus.has(s));
@@ -6257,17 +6278,27 @@ function ozFinRows(){
     const bo=ozBuyoutFor(d);          // выкуп берётся ПО ДАТЕ ДНЯ (история замеров, как на ВБ)
     const adRate=ozAdRateFor(d);      // ставка рекламы — тоже по дате дня, из отчёта юнит-экономики
     const fixed=ozFixedRate();        // всё остальное по тарифу ИУ, включая Premium 1,4%
+    // день покрыт отчётом «Оплата за заказ» → вместо ставки ФАКТ списания по товару
+    const fo=ozOrderFeeOn(d), fd=fo? ozOrderFeeDay(d) : null, made=new Set();
     arts.forEach(a=>{
       const ordRub=(m[a]&&m[a][0])||0, ordQty=(byArt[a]&&byArt[a][i])||0;
       if(!ordRub && !ordQty) return;
       const rev=ordRub*bo, qty=ordQty*bo;
       const cp=ozCostAt(a,d), cogs=cp!=null? qty*cp : 0;
-      const mpFee=rev*(fixed+adRate)/100, ads=rev*adRate/100;
+      const ads=fo? (fd[a]||0) : rev*adRate/100, mpFee=rev*fixed/100+ads;
       const e=meta[a]||{};
+      made.add(a);
       rows.push({date:d, sku:a, sup:a, name:e.name||a, category:e.cat||"", wbCategory:e.wbCat||"",
         ordRub, ordQty, revenue:rev, qty, cogs, hasCost:cp!=null, mpFee, ad:ads,
-        profit:rev-mpFee-cogs});
+        fee:fo? (fd[a]||0) : null, feeFact:fo, profit:rev-mpFee-cogs});
     });
+    /* Списание есть, а строки товара в этот день нет (заказы легли другим днём) — заводим
+       строку с нулевой выручкой, иначе деньги молча выпали бы из прибыли. */
+    if(fo) Object.entries(fd).forEach(([a,fee])=>{ if(made.has(a)||!fee) return;
+      const e=meta[a]||{};
+      rows.push({date:d, sku:a, sup:a, name:e.name||a, category:e.cat||"", wbCategory:e.wbCat||"",
+        ordRub:0, ordQty:0, revenue:0, qty:0, cogs:0, hasCost:false, mpFee:fee, ad:fee,
+        fee, feeFact:true, profit:-fee}); });
   });
   ozApplyAdFact(rows,dates,meta);
   return (_ozFinCache=rows);
@@ -6309,7 +6340,10 @@ function ozApplyAdFact(rows,dates,meta){
       const addBase = ozz[sku]==null;                  // оплата за заказ выключена → базовые 5% сверху
       arr.forEach((r,i)=>{
         const share = tot>0? r.revenue/tot : (i===arr.length-1? 1 : 0);
-        const ad=spend*share + (addBase? r.revenue*ozAdRateFor(r.date)/100 : 0);
+        /* в дни с отчётом «Оплата за заказ» сверху идёт ФАКТ списания (r.fee), ozzOn не нужен;
+           без отчёта — модельная ставка, как раньше */
+        const base = r.feeFact? (r.fee||0) : (addBase? r.revenue*ozAdRateFor(r.date)/100 : 0);
+        const ad=spend*share + base;
         r.ad=ad; r.adFact=true;
         r.mpFee=r.revenue*fixed/100+ad;
         r.profit=r.revenue-r.mpFee-r.cogs;
@@ -7529,16 +7563,18 @@ function ozAdRows(){
   ozAdSpendParts().forEach(p=>{ if(p.to<W.from || p.from>W.to) return;
     Object.entries(p.bySup||{}).forEach(([s,v])=>fact[s]=(fact[s]||0)+v); });
   const by={};
-  fin.forEach(r=>{ const e=by[r.sku]||(by[r.sku]={ordRub:0,rev:0,qty:0,spend:0});
-    e.ordRub+=r.ordRub; e.rev+=r.revenue; e.qty+=r.qty; e.spend+=r.ad; });
+  // fee — ФАКТ оплаты за заказ из отчёта Ozon (дни, за которые он загружен), см. ozOrderFeeOn
+  fin.forEach(r=>{ const e=by[r.sku]||(by[r.sku]={ordRub:0,rev:0,qty:0,spend:0,fee:0});
+    e.ordRub+=r.ordRub; e.rev+=r.revenue; e.qty+=r.qty; e.spend+=r.ad; if(r.feeFact) e.fee+=(r.fee||0); });
   const cat={}; (O.catalog||[]).forEach(c=>cat[""+c.sku]=c);
   const keys=new Set([...Object.keys(by), ...Object.keys(fact), ...Object.keys(cat)]);
   const rows=[];
   keys.forEach(sup=>{
-    const a=by[sup]||{ordRub:0,rev:0,qty:0,spend:0}, c=cat[sup], e=M[sup]||{};
+    const a=by[sup]||{ordRub:0,rev:0,qty:0,spend:0,fee:0}, c=cat[sup], e=M[sup]||{};
     rows.push({sup, ozonSku:(c&&c.ozonSku)||null, name:(c&&c.name)||sup, cat:(c&&c.category)||"",
       group:e.group||"(без группы)", tag:e.tag||"(без склейки)",
-      spend:a.spend, spendFact:fact[sup]||0, spendRate:Math.max(0,a.spend-(fact[sup]||0)),
+      spend:a.spend, spendFact:fact[sup]||0, spendFee:a.fee,
+      spendRate:Math.max(0,a.spend-(fact[sup]||0)-a.fee),
       isFact:(fact[sup]||0)>0,
       ordRub:a.ordRub, rev:a.rev, qty:a.qty,
       stock:(c&&c.ozStock)||0, days:nDays});
@@ -7550,9 +7586,9 @@ function ozAdRows(){
 }
 function ozAdLevels(rows){
   const mk=list=>{ const sp=list.reduce((a,r)=>a+r.spend,0);
-    const spF=list.reduce((a,r)=>a+r.spendFact,0);
+    const spF=list.reduce((a,r)=>a+r.spendFact,0), spO=list.reduce((a,r)=>a+(r.spendFee||0),0);
     const ord=list.reduce((a,r)=>a+r.ordRub,0), rev=list.reduce((a,r)=>a+r.rev,0);
-    return {sp, spF, spR:Math.max(0,sp-spF), ord, rev, boEff: ord>0? rev/ord : 0,
+    return {sp, spF, spO, spR:Math.max(0,sp-spF-spO), ord, rev, boEff: ord>0? rev/ord : 0,
       drr: rev>0? sp/rev*100 : (sp>0? Infinity : 0),
       n:list.length, ads:list.filter(r=>r.spendFact>0).length}; };
   const byG={}; rows.forEach(r=>(byG[r.group]||(byG[r.group]=[])).push(r));
@@ -7580,17 +7616,21 @@ function renderAdsOzon(){
   }
   const rows=ozAdRows(), L=ozAdLevels(rows);
   const q=(document.getElementById("adSearch").value||"").trim().toLowerCase();
+  const rateTxt=ozAdRateFor(W.to).toFixed(2).replace(".",",");
+  const FS=ozOrderFeeSpan();
+  const FSper=FS? fmtDateLong(FS.from)+(FS.from!==FS.to? " – "+fmtDateLong(FS.to):"") : "";
   fresh.innerHTML=`<span class="dot"></span>Ozon · ${fmtDateLong(W.from)}${W.from!==W.to? " – "+fmtDateLong(W.to):""}`
-    +` · расход = <b>факт XWAY</b> по ${L.all.ads} ${plural(L.all.ads,"товару","товарам","товарам")}`
-    +` + <b>ставка ${ozAdRateFor(W.to).toFixed(2).replace(".",",")}%</b> из юнит-экономики по остальным`
-    +` (другой канал продвижения, он есть у всех)`
+    +` · расход = <b>выгрузка XWAY</b> по ${L.all.ads} ${plural(L.all.ads,"товару","товарам","товарам")}`
+    +(FS? ` + <b>оплата за заказ по отчёту Ozon</b> (${FSper}, кабинетное продвижение — его XWAY не видит)` : "")
+    +(L.all.spR>0? ` + <b>ставка ${rateTxt}%</b> из юнит-экономики${FS? " в дни без отчёта Ozon" : " по остальным (другой канал продвижения, он есть у всех)"}` : "")
     +` · склейки взяты с Wildberries по коду 1С (товар физически один)`;
   const drrOrd = L.all.ord>0? L.all.sp/L.all.ord*100 : 0;
   kp.innerHTML=[
     {lbl:"Расход на рекламу, ₽", val:fmt(Math.round(L.all.sp)),
-     tip:`<div class="t-hd">Два источника расхода</div>`
-       +tr2("Факт XWAY ("+L.all.ads+" тов.)",fmt(Math.round(L.all.spF))+" ₽")
-       +tr2("Ставка "+ozAdRateFor(W.to).toFixed(2).replace(".",",")+"% (остальные)",fmt(Math.round(L.all.spR))+" ₽")
+     tip:`<div class="t-hd">Из чего сложен расход</div>`
+       +tr2("Выгрузка XWAY ("+L.all.ads+" тов.)",fmt(Math.round(L.all.spF))+" ₽")
+       +(FS? tr2("Оплата за заказ, отчёт Ozon",fmt(Math.round(L.all.spO))+" ₽") : "")
+       +(L.all.spR>0||!FS? tr2("Ставка "+rateTxt+"%"+(FS? " (дни без отчёта)" : " (остальные)"),fmt(Math.round(L.all.spR))+" ₽") : "")
        +tr2("Карточек в кабинете",L.all.n)
        +tr2("Период",fmtDateLong(W.from)+(W.from!==W.to? " – "+fmtDateLong(W.to):""))},
     {lbl:"Выручка в выкупе, ₽", val:fmt(Math.round(L.all.rev)),
@@ -7646,9 +7686,13 @@ function renderAdsOzon(){
   if(cnt) cnt.textContent=list.length+" "+plural(list.length,"товар","товара","товаров")
     +(_ozAdTagFilter? " · склейка «"+_ozAdTagFilter+"»":"");
   howto.innerHTML=`<b>Как считается — Ozon.</b> ДРР = расход ÷ выручка в выкупе. `
-    +`<b>Расход — из двух источников:</b> по товарам с отдельной кампанией берётся ФАКТ из выгрузки XWAY, `
-    +`по всем остальным — ставка <b>${ozAdRateFor(W.to).toFixed(2).replace(".",",")}%</b> из юнит-экономики за август `
-    +`(там работает другой канал продвижения, и он есть у каждого товара). Это то же самое число, что уходит `
+    +`<b>Расход складывается из двух частей.</b> Первая — выгрузка XWAY целиком (клики и оплата за заказ в кампаниях, `
+    +`которые вы запускали сами). Вторая — кабинетное продвижение «оплата за заказ», которое Ozon списывает `
+    +`со всех товаров и которого XWAY не видит: `
+    +(FS? `за ${FSper} — <b>ФАКТ из отчёта Ozon</b> «Оплата за заказ (все товары)» по каждому товару и дню`
+       +(L.all.spR>0? `, в дни без этого отчёта — ставка <b>${rateTxt}%</b> из юнит-экономики` : "")
+       : `ставка <b>${rateTxt}%</b> из юнит-экономики (отчёта Ozon «Оплата за заказ» за эти дни нет)`)
+    +`. Это то же самое число, что уходит `
     +`в прибыль на «Главной» — два разных расчёта рекламы развели бы вкладки между собой. `
     +`Выручка = заказано ₽ × % выкупа (${(ozBuyoutFor(W.to)*100).toFixed(1).replace(".",",")}%, замер по воронке). `
     +`В знаменателе уровня — выручка ВСЕХ карточек склейки, включая те, где отдельной кампании нет: реклама одного `
@@ -7662,8 +7706,9 @@ function renderAdsOzon(){
       const own = r.spend>0? ozDrrBadge(r.drr) : `<span class="mut">—</span>`;
       const tg  = T.sp>=AD_MIN_SPEND? ozDrrBadge(T.drr) : `<span class="mut">—</span>`;
       // видно, где ФАКТ выгрузки, а где модельная ставка — иначе цифры читаются одинаково
+      const src=[r.isFact? "XWAY":"", r.spendFee>0? "отчёт Ozon":"", r.spendRate>=1? "ставка":""].filter(Boolean).join(" + ");
       const spCell = r.spend>0
-        ? fmt(Math.round(r.spend))+`<div class="sub">${r.isFact? "факт XWAY":"ставка"}</div>`
+        ? fmt(Math.round(r.spend))+`<div class="sub">${src||"факт"}</div>`
         : "—";
       return `<tr><td class="metric">${skuLink(r.sup)}<div class="sub">${esc(r.name.slice(0,44))}</div></td>`
         +`<td>${esc(r.tag)}</td><td>${fmt(Math.round(r.ordRub))}</td><td>${fmt(Math.round(r.rev))}</td>`
@@ -8197,9 +8242,13 @@ function renderHomeOzon(){
   fresh.innerHTML=`<span class="dot"></span>Ozon · заказы по ${fmtDateLong(allDates[allDates.length-1])}`
     +` · история с ${fmtDateLong(allDates[0])} · <b>ОЦЕНКА</b>: выручка = заказано × ${(bo*100).toFixed(1)}% выкупа`
     +(boH? ` (замер ${fmtDateLong(boH[boH.length-1].from)} – ${fmtDateLong(boH[boH.length-1].to)}, от закрытых заказов)` : "")+`,`
-    // ставка рекламы — ПРИМЕНЁННАЯ (из отчёта юнит-экономики), а не запасная T.ads из тарифа
-    +` площадка забирает ${(ozFixedRate()+ozAdRateFor(allDates[allDates.length-1])).toFixed(1)}% по вашим ИУ`
-    +` (${ozFixedRate().toFixed(1)}% тариф + реклама ${ozAdRateFor(allDates[allDates.length-1]).toFixed(2).replace(".",",")}% по отчёту юнит-экономики)`
+    // ставка рекламы — ПРИМЕНЁННАЯ (из отчёта юнит-экономики), а не запасная T.ads из тарифа;
+    // если последний день покрыт отчётом «Оплата за заказ», ставки там нет вовсе — только факт
+    +(ozOrderFeeOn(allDates[allDates.length-1])
+      ? ` площадка забирает ${ozFixedRate().toFixed(1)}% тарифа по вашим ИУ + реклама <b>по факту</b>`
+        +` (выгрузка XWAY + оплата за заказ по отчёту Ozon)`
+      : ` площадка забирает ${(ozFixedRate()+ozAdRateFor(allDates[allDates.length-1])).toFixed(1)}% по вашим ИУ`
+        +` (${ozFixedRate().toFixed(1)}% тариф + реклама ${ozAdRateFor(allDates[allDates.length-1]).toFixed(2).replace(".",",")}% по отчёту юнит-экономики)`)
     // по части товаров реклама идёт ПО ФАКТУ выгрузки XWAY — молчать об этом нельзя, у них другая экономика
     +(ozAdFactNote()||"")
     // база выручки сменилась с даты — молча этого показывать нельзя, цифры до и после несопоставимы
