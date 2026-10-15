@@ -41,6 +41,20 @@ const BASE_ORD = (() => {
   const r = L.find(x => x.from <= d && d <= x.to) || L.sort((a, b) => a.from < b.from ? -1 : 1)[L.length - 1];
   return r ? r.perOrderRate : BASE_ORD_FALLBACK;
 })();
+/* НОМИНАЛ ≠ ФАКТ (РЕК-22, 15.10.2026). Отчёт Ozon «Оплата за заказ (все товары)» показал: ставка
+   номинальная (5%, с 14.10 — 7%), но списывают не со всех заказов и от цены для покупателя — база
+   списаний 41–72% нашего заказанного ₽ по дням. Поэтому базовые за заказ = НОМИНАЛ × ДОЛЯ БАЗЫ,
+   где доля — Σ «Стоимость» списанных заказов ÷ Σ заказанного ₽ (предельная) за последние 7 дней
+   с отчётом, по кабинету (по товару слишком шумно). Нет отчётов — номинал, как раньше. */
+const BASE_SHARE = (() => {
+  const F = O.meta && O.meta.orderFee; if (!F || !Array.isArray(F.periods) || !F.periods.length) return null;
+  const M = (O.orderSeries && O.orderSeries.money) || {};
+  const P = F.periods.slice().sort((a, b) => a.from < b.from ? -1 : 1).filter(p => p.from === p.to).slice(-7);
+  let base = 0, ord = 0;
+  P.forEach(p => { const o = Object.values(M[p.from] || {}).reduce((a, v) => a + (v[0] || 0), 0); if (o > 0 && p.rub > 0) { base += p.rub; ord += o; } });
+  return ord > 0 ? { share: base / ord, from: P[0].from, to: P[P.length - 1].to } : null;
+})();
+const BASE_EFF = BASE_SHARE ? BASE_ORD * BASE_SHARE.share : BASE_ORD;
 
 const key = String(process.argv[2] || "").trim();
 const priceArg = process.argv[3] ? Number(String(process.argv[3]).replace(/[^\d.]/g, "")) : null;
@@ -198,7 +212,7 @@ if (!price || !cost) {
   console.log("  не хватает " + (!price ? "цены" : "") + (!price && !cost ? " и " : "") + (!cost ? "себестоимости" : "") + " — считать нельзя.");
   if (!price) console.log("  передай цену вторым аргументом: node scripts/price-check.cjs " + sup + " 7480");
 } else {
-  const base5 = BASE_ORD / bo;                  // базовая ставка за заказ в базе выкупа
+  const base5 = BASE_EFF / bo;                  // базовая ставка за заказ в базе выкупа (факт доли, РЕК-22)
   const share = cost / price * 100;             // доля себестоимости (выкуп сокращается)
   const brk = 100 - FIX - share;
   const ceil = brk - MARGIN_FLOOR;
@@ -206,7 +220,9 @@ if (!price || !cost) {
   const marg = revB - revB * FIX / 100 - cost * bo - revB * base5 / 100;
   const cpoFloor = marg - revB * MARGIN_FLOOR / 100;
   console.log("  предельная " + rub(price) + (priceArg ? " (задана аргументом)" : "") + " · себестоимость " + rub(cost) + " = " + pct(share) + " выручки");
-  console.log("  % выкупа " + pct(bo * 100) + " · фикс Озона " + pct(FIX) + " · базовые " + pct(BASE_ORD) + " за заказ = " + pct(base5) + " в выкупе");
+  console.log("  % выкупа " + pct(bo * 100) + " · фикс Озона " + pct(FIX) + " · базовые " + pct(BASE_ORD) + " за заказ"
+    + (BASE_SHARE ? " × " + pct(BASE_SHARE.share * 100) + " (доля заказанного ₽, с которой Ozon реально списывал, отчёты " + BASE_SHARE.from + "…" + BASE_SHARE.to + ") = " + pct(BASE_EFF) + " от заказа" : " (номинал, отчётов «Оплата за заказ» нет)")
+    + " = " + pct(base5) + " в выкупе");
   console.log("  безубыточный ДРР " + pct(brk) + "  →  ПОТОЛОК (−" + MARGIN_FLOOR + " п.п.) " + pct(Math.max(0, ceil)));
   console.log("  выручка в выкупе " + rub(revB) + " − фикс " + rub(revB * FIX / 100) + " − себест " + rub(cost * bo) + " − базовые " + rub(revB * base5 / 100));
   console.log("  = МАРЖА С ЗАКАЗА " + rub(marg));
