@@ -60,7 +60,8 @@ function show(){
   console.log('ОТЧЁТЫ ЮНИТ-ЭКОНОМИКИ OZON (по нашим товарам):');
   list.forEach(r=>{
     if(r.src==='manual'){
-      console.log('  '+r.from+' и вперёд          РУЧНАЯ СТАВКА · РЕКЛАМА '+P(r.adsRate)+'% в выкупе'
+      const per=r.to>='2099-12-31'? r.from+' и вперёд        ' : r.from+'…'+r.to;
+      console.log('  '+per+'  РУЧНАЯ СТАВКА · РЕКЛАМА '+P(r.adsRate)+'% в выкупе'
         +(r.perOrderRate? ' (= '+P(r.perOrderRate)+'% от заказа без возврата)':'')
         +'   (поставлена '+(r.builtAt||'').slice(0,10)+')');
       if(r.note) console.log('      '+r.note);
@@ -79,6 +80,25 @@ function show(){
     console.log('ТАРИФ: фиксированная часть '+P(fixed)+'% (в т.ч. Premium и прочее '+P(t.other)+'% — её в отчёте нет, считаем всегда)');
     console.log('       + реклама по отчёту → итог зависит от периода. Запасная ставка без отчётов: '+P(t.ads)+'%');
   }
+}
+
+/* РУЧНЫЕ ЗАПИСИ НЕ ДОЛЖНЫ ПЕРЕКРЫВАТЬСЯ (15.10.2026). Ставка ищется по ПЕРВОМУ периоду,
+   в который попадает день (ozAdRateFor в index.html, adRateFor в ozon-finance.cjs), а список
+   отсортирован по началу. Открытая запись «с 01.10 без конца» поэтому выигрывала бы у любой
+   более поздней — новая ставка с 14.10 молча не применилась бы. carve() вырезает интервал
+   [f,t] из РУЧНЫХ записей: обрезает, делит надвое или удаляет. Отчёты Ozon не трогает —
+   их период закрыт и окончательный. Вызывается из `set` (новая ставка закрывает старую)
+   и при заливке отчёта (факт вытесняет ручную ставку за свой период). */
+const dayShift=(d,n)=>{ const x=new Date(d+'T00:00:00Z'); x.setUTCDate(x.getUTCDate()+n); return x.toISOString().slice(0,10); };
+function carve(f,t){
+  const out=[];
+  for(const r of list){
+    if(r.src!=='manual' || r.to<f || r.from>t){ out.push(r); continue; }
+    if(r.from<f) out.push(Object.assign({},r,{to:dayShift(f,-1)}));
+    if(r.to>t)   out.push(Object.assign({},r,{from:dayShift(t,1)}));
+    console.log('Ручная ставка '+r.from+'…'+r.to+' ('+r.adsRate+'%) обрезана по '+f+'…'+t);
+  }
+  list.splice(0,list.length,...out);
 }
 
 const argv=process.argv.slice(2);
@@ -107,9 +127,8 @@ if(argv[0]==='set'){
   const TO='2099-12-31';   // открытая запись: действует с указанной даты и вперёд
   const rec={from:f, to:TO, adsRate:+(+rateS).toFixed(4), mature:true, src:'manual',
     perOrderRate:perOrder, note:note||null, builtAt:new Date().toISOString()};
-  const at=list.findIndex(r=>r.from===f&&r.to===TO);
-  if(at>=0){ list[at]=rec; console.log('Ручная ставка с '+f+' ПЕРЕЗАПИСАНА.'); }
-  else { list.push(rec); console.log('Ручная ставка с '+f+' добавлена.'); }
+  carve(f,TO);   // прежняя открытая ставка закрывается днём раньше, а не перекрывает новую
+  list.push(rec); console.log('Ручная ставка с '+f+' добавлена.');
   list.sort((x,y)=>x.from<y.from?-1:1);
   write(); show(); process.exit(0);
 }
@@ -217,6 +236,7 @@ rec.mature = rec.commissionRate >= COMM*0.8;
 if(!rec.mature) rec.immatureNote='удержания Ozon за период ещё не начислены (комиссия '
   +P(rec.commissionRate)+'% против '+P(COMM)+'% по тарифу) — ставка рекламы из него НЕ берётся';
 
+if(rec.mature) carve(FROM,TO);   // зрелый факт вытесняет ручную ставку за свой период
 const at=list.findIndex(r=>r.from===FROM&&r.to===TO);
 if(at>=0){ list[at]=rec; console.log('Отчёт '+FROM+'…'+TO+' ПЕРЕЗАПИСАН (был залит раньше).'); }
 else { list.push(rec); console.log('Отчёт '+FROM+'…'+TO+' добавлен.'); }

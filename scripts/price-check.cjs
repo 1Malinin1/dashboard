@@ -19,7 +19,7 @@ const path = require("path");
 const vm = require("vm");
 
 const FIX = 32.7;              // ДАН-03: фиксированная ставка Озона
-const BASE5_ORD = 5;           // РЕК-03: базовые 5% за заказ
+const BASE_ORD_FALLBACK = 5;   // РЕК-03: базовая ставка за заказ, если в снимке нет ручной записи
 const MARGIN_FLOOR = 10;       // пол по марже, п.п.
 const FRESH_MIN_ORDERS = 5;    // ЦЕНА-03
 
@@ -32,6 +32,15 @@ const ctx = {};
 vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(DEC, "utf8") + "\nglobalThis.__RD=REAL_DATA;", ctx);
 const RD = ctx.__RD, O = RD.ozon;
+/* БАЗОВАЯ СТАВКА ЗА ЗАКАЗ МЕНЯЕТСЯ — БЕРЁМ ЕЁ ИЗ СНИМКА, А НЕ КОНСТАНТОЙ (15.10.2026: Ozon поднял
+   её с 5% до 7% с 14.10). Источник — ручная запись в ozon.meta.unitReports (ставит
+   `ozon-unit-report.cjs set … --per-order N`), действующая СЕГОДНЯ: экономика здесь смотрит вперёд. */
+const BASE_ORD = (() => {
+  const d = new Date().toISOString().slice(0, 10);
+  const L = ((O.meta && O.meta.unitReports) || []).filter(r => r.src === "manual" && r.perOrderRate > 0);
+  const r = L.find(x => x.from <= d && d <= x.to) || L.sort((a, b) => a.from < b.from ? -1 : 1)[L.length - 1];
+  return r ? r.perOrderRate : BASE_ORD_FALLBACK;
+})();
 
 const key = String(process.argv[2] || "").trim();
 const priceArg = process.argv[3] ? Number(String(process.argv[3]).replace(/[^\d.]/g, "")) : null;
@@ -189,7 +198,7 @@ if (!price || !cost) {
   console.log("  не хватает " + (!price ? "цены" : "") + (!price && !cost ? " и " : "") + (!cost ? "себестоимости" : "") + " — считать нельзя.");
   if (!price) console.log("  передай цену вторым аргументом: node scripts/price-check.cjs " + sup + " 7480");
 } else {
-  const base5 = BASE5_ORD / bo;                 // базовые 5% в базе выкупа
+  const base5 = BASE_ORD / bo;                  // базовая ставка за заказ в базе выкупа
   const share = cost / price * 100;             // доля себестоимости (выкуп сокращается)
   const brk = 100 - FIX - share;
   const ceil = brk - MARGIN_FLOOR;
@@ -197,9 +206,9 @@ if (!price || !cost) {
   const marg = revB - revB * FIX / 100 - cost * bo - revB * base5 / 100;
   const cpoFloor = marg - revB * MARGIN_FLOOR / 100;
   console.log("  предельная " + rub(price) + (priceArg ? " (задана аргументом)" : "") + " · себестоимость " + rub(cost) + " = " + pct(share) + " выручки");
-  console.log("  % выкупа " + pct(bo * 100) + " · фикс Озона " + pct(FIX) + " · базовые 5% = " + pct(base5) + " в выкупе");
+  console.log("  % выкупа " + pct(bo * 100) + " · фикс Озона " + pct(FIX) + " · базовые " + pct(BASE_ORD) + " за заказ = " + pct(base5) + " в выкупе");
   console.log("  безубыточный ДРР " + pct(brk) + "  →  ПОТОЛОК (−" + MARGIN_FLOOR + " п.п.) " + pct(Math.max(0, ceil)));
-  console.log("  выручка в выкупе " + rub(revB) + " − фикс " + rub(revB * FIX / 100) + " − себест " + rub(cost * bo) + " − 5% " + rub(revB * base5 / 100));
+  console.log("  выручка в выкупе " + rub(revB) + " − фикс " + rub(revB * FIX / 100) + " − себест " + rub(cost * bo) + " − базовые " + rub(revB * base5 / 100));
   console.log("  = МАРЖА С ЗАКАЗА " + rub(marg));
   console.log("  CPO безубытка " + rub(marg) + "   ·   CPO при поле маржи " + rub(cpoFloor));
   console.log("  (РЕК-02: между ними — «работает, не наращивать», выключать только выше CPO безубытка)");
@@ -212,7 +221,7 @@ if (!price || !cost) {
     const sp = ceil / 100 * bo * ordDay, b5d = base5 / 100 * bo * ordDay;
     console.log("  заказано " + rub(ordDay) + "/день → всего на рекламу ≤ " + rub(sp) +
       "/день − базовые " + rub(b5d) + " → НА КЛИКИ ≤ " + rub(sp - b5d) + "/день = " + rub((sp - b5d) * 7) + "/нед");
-    if ((sp - b5d) * 7 < 2000) console.log("    ⚠ минимум кампании Ozon 2 000 ₽/нед больше потолка в " + (2000 / ((sp - b5d) * 7)).toFixed(1) + "x — запуск невозможен");
+    if ((sp - b5d) * 7 < 2000) console.log("    недельный бюджет кампании ставь 2 000 ₽ (меньше Ozon не даёт), а расход режь дневным лимитом товара ≤ " + rub(Math.max(0, sp - b5d)) + "/день — минимум это потолок, а не пол (РЕК-17)");
     console.log("  «Целевой расход» (в ЗАКАЗАХ, РЕК-06): " + pct(Math.max(0, (ceil - base5) * bo)));
   }
 }
