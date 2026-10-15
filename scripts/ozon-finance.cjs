@@ -211,7 +211,9 @@ console.log('ТАРИФ OZON (ИУ 2026), % от выручки в выкупе:
 console.log('   '+'фиксированная часть'.padEnd(28)+String(FIXED).padStart(6)+'%   (в т.ч. Premium и прочее '+T.other+'% — в отчёте Ozon её нет, считаем всегда)');
 if(UR.length && !adForced){
   console.log('   реклама — ИЗ ОТЧЁТА юнит-экономики, по дате дня:');
-  UR.forEach(r=>console.log('      '+r.from+'…'+r.to+' → '+r.adsRate.toFixed(2).replace('.',',')+'%   (засчитано '+Math.round(r.gross).toLocaleString('ru-RU')+' ₽, реклама '+Math.round(r.ads).toLocaleString('ru-RU')+' ₽)'));
+  UR.forEach(r=>console.log('      '+r.from+'…'+r.to+' → '+r.adsRate.toFixed(2).replace('.',',')+'%   '+(r.src==='manual'
+    ? '(ручная ставка'+(r.perOrderRate? ': '+String(r.perOrderRate).replace('.',',')+'% от заказа' : '')+' — не отчёт)'
+    : '(засчитано '+Math.round(r.gross).toLocaleString('ru-RU')+' ₽, реклама '+Math.round(r.ads).toLocaleString('ru-RU')+' ₽)')));
   console.log('      дни после последнего отчёта считаются по нему же; дни раньше первого — по первому');
 }else{
   console.log('   '+'реклама (нет отчётов)'.padEnd(28)+String(T.ads).padStart(6)+'%'+(adForced?'   ← задана вручную --ads':''));

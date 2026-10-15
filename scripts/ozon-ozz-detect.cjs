@@ -75,7 +75,7 @@ found.sort((a, b) => b.ozz - a.ozz);
 
 const rub = v => Math.round(v).toLocaleString("ru-RU") + " ₽";
 console.log("\nОПЛАТА ЗА ЗАКАЗ ПО ДАННЫМ ВЫГРУЗКИ — " + path.basename(file));
-console.log("расход ОЗЗ = «Расход» − Клики × CPC   (правило РЕК-15)\n");
+console.log("расход ОЗЗ = «Расход» − Клики × CPC   (правило РЕК-20)\n");
 if (!found.length) {
   console.log("  Ни по одному нашему товару остатка нет: весь расход объясняется кликами.");
 } else {
