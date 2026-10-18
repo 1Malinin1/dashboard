@@ -972,14 +972,28 @@
   #homeWeeksTable .m-caret{display:inline-block;width:14px;color:var(--accent);font-size:11px}
   #homeWeeksTable tr.w-row>td:first-child{padding-left:30px}
   #homeWeeksTable tr.w-row>td{color:var(--text-2)}
-  /* «Запас и темп»: колонок много, поэтому наименование не растягивает таблицу,
-     а категория и артикул держат свою узкую ширину */
-  #srTable td.name-cell{max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  #srTable td.sr-cat{max-width:130px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text-2)}
-  #srTable td.sr-art{white-space:nowrap;font-variant-numeric:tabular-nums}
+  /* «Запас и темп»: колонок много, поэтому наименование не растягивает таблицу, а категория
+     и артикулы идут строками под названием (колонка закреплена слева, класс metric) */
+  #srTable td.name-cell{min-width:190px;max-width:210px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   #srTable td .sub2{display:block;font-size:10px;font-weight:500;line-height:1.25;margin-top:2px;white-space:nowrap}
   #srTable td .sub2.mut{color:var(--muted)}
-  #srTable th,#srTable td{padding-left:9px;padding-right:9px}
+  #srTable th,#srTable td{padding-left:8px;padding-right:8px}
+  /* Три вида вкладки (Wildberries / Ozon / Всего, 18.10.2026): шаги «Как считается» нумерованным
+     списком вместо строки через стрелки; полоски «где лежит / где продаётся» на виде «Всего». */
+  #srHowTo .sr-steps{margin:2px 0 0;padding-left:20px}
+  #srHowTo .sr-steps li{margin:3px 0;padding-left:2px}
+  #srHowTo .sr-steps li::marker{color:var(--accent);font-weight:700}
+  #srHowTo .sr-notes{margin-top:7px;font-size:11.5px;color:var(--muted)}
+  #srHowTo .sr-notes div+div{margin-top:3px}
+  #srActionSeg .sr-n{font-size:11px;color:var(--muted);font-weight:600;margin-left:2px}
+  #srTable td.sr-dec{min-width:116px}
+  #srTable .sr-split{display:flex;width:108px;height:7px;border-radius:4px;overflow:hidden;
+    background:var(--surface-3);margin:3px 0 1px auto}
+  #srTable .sr-split i{display:block;height:100%}
+  #srTable td.sr-act{text-align:left;white-space:normal;min-width:120px;max-width:150px;font-size:12.5px;line-height:1.3}
+  #srTable td.sr-act .sub2{font-size:11px;color:var(--text-2);white-space:normal;margin-top:3px}
+  /* на телефоне закреплённая колонка с названием не должна съедать половину экрана */
+  @media (max-width:600px){ #srTable th.metric,#srTable td.name-cell{min-width:136px;max-width:146px} }
   /* Вкладка «Реклама». Стиль .sub2 прописан ПО ID каждой таблицы (см. #turnTable/#srTable выше),
      поэтому новой таблице нужен свой блок — иначе вторая строка ячейки липнет к первой
      и «1 930» + «537 дн» читаются как «1 930537 дн». */
@@ -1481,9 +1495,10 @@
     </div>
   </section>
 
-  <!-- ЗАПАС И ТЕМП: сколько всего товара есть по коду 1С (обе площадки + свой склад),
-       на сколько его хватит при нынешних продажах и какой темп нужен, чтобы дотянуть
-       до прихода партии. Отсюда решение: демпинговать, поднять цену или включить рекламу. -->
+  <!-- ЗАПАС И ТЕМП: сколько товара есть по коду 1С, на сколько его хватит и что делать до прихода
+       партии. Три вида по переключателю площадки (18.10.2026): Wildberries — план заказов для
+       репрайсера; Ozon — запас на площадке, темп и когда отгружать; Всего — бизнес целиком и доли
+       площадок. Сегмент «Что показать» и колонки перестраивает renderStockRateTab под вид. -->
   <section id="tab-stockrate" class="tab-panel" hidden>
     <div class="freshness" id="srFreshness"></div>
     <div class="kpis4" id="srKpis"></div>
@@ -1491,7 +1506,7 @@
       <input type="search" id="srSearch" placeholder="Поиск: артикул, код 1С или название…">
       <select id="srCat" multiple></select>
       <select id="srHorizon">
-        <option value="eta" selected>Горизонт: до прихода партии</option>
+        <option value="eta" selected>Горизонт: до выхода партии в продажу</option>
         <option value="60">Горизонт: 60 дней</option>
         <option value="90">Горизонт: 90 дней</option>
         <option value="120">Горизонт: 120 дней</option>
@@ -1499,11 +1514,10 @@
       </select>
       <div class="seg" id="srActionSeg" role="group" aria-label="Что показать">
         <button data-act="all" aria-pressed="true">Все</button>
-        <button data-act="short">Не хватит</button>
+        <button data-act="short">Не хватит и Озону</button>
         <button data-act="up">Поднять цену</button>
         <button data-act="down">Разогнать</button>
         <button data-act="hold">Держать</button>
-        <button data-act="ship">Ozon: отгружать</button>
       </div>
       <span class="count" id="srCount"></span>
       <button class="btn" id="srExportBtn">Скачать Excel</button>
@@ -2060,12 +2074,13 @@ let RD = null, RCAT = [], RSERIES = {}, RDATES = [], RLAST = null;
 // RCAT/RSERIES/RDATES ниже «перенаводятся» на выбранную площадку (см. applyMpData).
 let WBDATA = null, OZDATA = null, activeMp = "wb", _appliedMp = null;
 /* Вкладки, где работает выбор площадки. «Главная» добавлена 04.09.2026, когда у Озона
-   появился тариф ИУ и стало из чего считать прибыль. «Рекомендации» и «Аналитика» — 18.10.2026
-   (просьба продавца): в «Рекомендациях» у каждой площадки свои правила, на «Всего» — общий список
-   по приоритету; в «Аналитике» у Озона своя ветка на тех же строках, что «Главная» Ozon
-   (renderAnalyticsOzon), на «Всего» — две площадки рядом без сложения. «Финансы» намеренно НЕ
-   здесь: это сверка с кабинетом ВБ, у Озона такого источника нет (там оценка по тарифу). */
-const MP_TABS = { dynamics: true, turnover: true, product: true, home: true, ads: true, recs: true, analytics: true };
+   появился тариф ИУ и стало из чего считать прибыль. «Рекомендации», «Аналитика» и «Запас и темп» —
+   18.10.2026 (просьбы продавца): в «Рекомендациях» у каждой площадки свои правила, на «Всего» — общий
+   список по приоритету; в «Аналитике» у Озона своя ветка на тех же строках, что «Главная» Ozon
+   (renderAnalyticsOzon), на «Всего» — две площадки рядом без сложения; «Запас и темп» — виды
+   Wildberries (план репрайсера) / Ozon / Всего. «Финансы» намеренно НЕ здесь: это сверка с кабинетом
+   ВБ, у Озона такого источника нет (там оценка по тарифу). */
+const MP_TABS = { dynamics: true, turnover: true, product: true, home: true, ads: true, recs: true, analytics: true, stockrate: true };
 const catalogCostBySku = {}; // заполняется в hydrateData из RCAT
 // ручные/загруженные правки себестоимости (перекрывают каталог), хранятся в браузере
 const COST_OV_KEY="wb_cost_overrides_v1";
@@ -2746,7 +2761,13 @@ function setFocus(f){
   recFocus=f;
   if(f && f.tab==="turnover"){ turnColFilters={}; clearInput("turnSearch"); clearSel("turnCat"); clearSel("turnProduct"); }
   if(f && f.tab==="stockrate"){ srColFilters={}; clearInput("srSearch"); clearSel("srCat"); srAction="all";
-    document.querySelectorAll("#srActionSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.act==="all"?"true":"false")); }
+    document.querySelectorAll("#srActionSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.act==="all"?"true":"false"));
+    /* С 18.10.2026 у вкладки три вида. Правила «Цена и темп» — про Wildberries (их ключи — коды ВБ-плана),
+       поэтому переход открывает вид ВБ; правило другой площадки может передать `f.mp`. */
+    const want=(f.mp&&OZDATA)? f.mp : "wb";
+    if(activeMp!==want){ activeMp=want;
+      document.querySelectorAll("#mpSwitch .mp-btn").forEach(b=>b.classList.toggle("active",b.dataset.mp===want));
+      try{localStorage.setItem("wb_active_mp",want);}catch(e){} } }
   if(f && f.tab==="ads"){ adColFilters={}; clearInput("adSearch"); _ozAdTagFilter=null; }
   if(f && f.tab==="home"){ clearInput("homeSearch"); clearSel("homeCat"); }
   renderFocusBar();
@@ -2817,7 +2838,7 @@ function turnFilteredRows(all, exceptKey){
 const CF_CTX={
   turn:{ filters:()=>turnColFilters, defs:()=>turnColDefs(), base:()=>turnBaseRows(),
          filtered:(all,except)=>turnFilteredRows(all,except), render:()=>renderTurnoverSimple() },
-  sr:{   filters:()=>srColFilters,   defs:()=>srColDefs(),   base:()=>srDecorate(srRows()),
+  sr:{   filters:()=>srColFilters,   defs:()=>srColDefs(),   base:()=>srViewRows(),
          filtered:(all,except)=>srFilteredRows(all,except),  render:()=>renderStockRateTab() },
   ads:{  filters:()=>adColFilters,   defs:()=>adColDefs(),   base:()=>adBaseRows(),
          filtered:(all,except)=>adFilteredRows(all,except),  render:()=>renderAdsTab() }
@@ -7115,6 +7136,9 @@ function srRows(){
       category:(wbCard&&wbCard.category)||"",
       wbSku:wbCard? ""+wbCard.sku : null,
       stockWb, stockOz, whQty, whMsk, whNsk, whNsk1, whNsk2, whOther, total, ozReach,
+      /* Поля для видов «Ozon» и «Всего» (18.10.2026) — только справочные, в цель ВБ не идут:
+         остаток Ozon отдельно от «в пути» и признак, что код вообще есть на Ozon. */
+      whKlin, ozOnly:o.stock||0, ozTr:o.transit||0, onOz:!!O[sup],
       spdWb, spdOz, spd,
       days: spd>0? total/spd : (total>0? Infinity : 0),
       ordWb:ordW[sup]||0, ordOz:ordO[sup]||0,
@@ -7186,28 +7210,182 @@ function srDecorate(rows){
       gapOrders:(targetOrders!=null? r.ordWb-targetOrders : null), ozDays, shipIn};
   });
 }
-let srSortState={key:"days",dir:1};
+/* ===================== «ЗАПАС И ТЕМП» ПО ПЛОЩАДКАМ: Wildberries · Ozon · Всего =====================
+   Просьба продавца 18.10.2026: «в раздел запас и темп так же необходимо интегрировать озон, чтобы
+   я понимал какая у меня динамика у озона, у вб и всего. Чтобы в отдельных случаях я мог
+   декомпозировать бизнес остатки и понять, что мне лучше всего сделать в разрезе одного маркетплейса».
+   ТРИ ВИДА — ТРИ РАЗНЫХ ВОПРОСА:
+   · Wildberries — план для репрайсера (`srDecorate`). МАТЕМАТИКА НЕ МЕНЯЛАСЬ (правила 05.10.2026):
+     база = ВБ FBO + свои склады − недостача Ozon, остаток на Ozon в базу не входит.
+   · Ozon — цену здесь НЕ судим: репрайсера нет, Ozon идёт за ценой ВБ ради индекса. Вопрос один —
+     хватит ли запаса на площадке до партии и когда отгружать.
+   · Всего — бизнес по коду 1С: весь товар ОДИН раз (та же сумма, что «Всего товара» на «Остатках»)
+     против темпа двух площадок, плюс доли — где товар лежит и где продаётся.
+   `srExtend` только ДОБАВЛЯЕТ поля к строкам `srDecorate`, ни одно поле ВБ не пересчитывает. */
+function srMp(){ return (OZDATA && (_appliedMp==="ozon"||_appliedMp==="all"))? _appliedMp : "wb"; }
+/* НЕДЕЛЯ К НЕДЕЛЕ — ТОЛЬКО КАЛЕНДАРНЫЕ НЕДЕЛИ ПН–ВС (правило продавца 15.09 и 25.09.2026): последняя
+   ЗАКРЫТАЯ неделя против предыдущей закрытой, идущая неделя — отдельно и в сравнение не идёт.
+   НЕДЕЛЯ СВОЯ У КАЖДОГО ВИДА: Wildberries — по заказам ВБ, Ozon — по заказам Ozon, «Всего» — по
+   площадке, чьи заказы кончаются раньше (иначе ВБ + Ozon не сложились бы). Ряды площадок кончаются
+   в разные дни: общая неделя на всех видах прятала на ВБ уже закрытую неделю, пока Ozon отставал,
+   а «идущая неделя» выходила длиной 10 дней (поймано на ревью 18.10.2026).
+   Даты границ печатаются из этих данных, а не пишутся руками. */
+function srWeeks(mp){
+  const src = mp==="ozon"? [OZDATA] : mp==="wb"? [WBDATA] : [WBDATA,OZDATA];
+  const lasts=src.filter(d=>d&&d.dates&&d.dates.length).map(d=>d.dates[d.dates.length-1]).sort();
+  if(!lasts.length) return null;
+  const last=lasts[0];
+  const curTo = new Date(last+"T00:00:00Z").getUTCDay()===0 ? last : addDays(mondayOf(last),-1);
+  const curFrom=addDays(curTo,-6), prevTo=addDays(curFrom,-1), prevFrom=addDays(prevTo,-6);
+  return {curFrom,curTo,prevFrom,prevTo,openFrom:addDays(curTo,1),last};
+}
+// заказы (штуки, GROSS) по коду 1С за отрезок дат; full=false, если каких-то дней в ряду нет
+function srWeekSum(mp,from,to){
+  const ds=mp==="ozon"? OZDATA : WBDATA; const by={};
+  if(!ds||!from||!to||to<from) return {by,full:false,days:0};
+  const idx={}; ds.dates.forEach((d,i)=>idx[d]=i);
+  const ii=[]; let full=true;
+  for(let d=from; d<=to; d=addDays(d,1)){ if(idx[d]==null) full=false; else ii.push(idx[d]); }
+  ds.catalog.forEach(c=>{
+    const sup = mp==="ozon"? (""+c.sku) : (""+(c.supplierCode||"")).trim(); if(!sup) return;
+    const s=ds.bySku[c.sku]; if(!s) return; let q=0; ii.forEach(i=>{ q+=s[i]||0; });
+    if(q) by[sup]=(by[sup]||0)+q; });
+  return {by,full,days:ii.length};
+}
+function srWeekData(mp){
+  const w=srWeeks(mp); if(!w) return null;
+  /* Идущая неделя — не длиннее семи дней от понедельника: на «Всего» у площадки, которая опередила
+     другую, после общей закрытой недели может лежать больше недели заказов. */
+  const openEnd=addDays(w.openFrom,6);
+  const one=m=>{ const ds=m==="ozon"? OZDATA : WBDATA; if(!ds||!ds.dates.length) return null;
+    const lastMp=ds.dates[ds.dates.length-1], openTo=lastMp<openEnd? lastMp : openEnd;
+    return {cur:srWeekSum(m,w.curFrom,w.curTo), prev:srWeekSum(m,w.prevFrom,w.prevTo),
+      open:srWeekSum(m,w.openFrom,openTo), openTo}; };
+  return {...w, wb:one("wb"), oz:one("ozon")};
+}
+const SR_OZ_ST={
+  ship:{lbl:"Отгружать сейчас",cls:"critical",tip:"Запаса на Ozon вместе с тем, что уже едет, хватит меньше чем на "+OZ_LEAD_DAYS+" дн — а столько идёт поставка до продажи. Отгружать нужно сейчас, иначе аут."},
+  short:{lbl:"Кончится до партии",cls:"warning",tip:"Срок поставки запас перекрывает, но до выхода партии в продажу его не хватит — отгрузку надо запланировать (дата — в колонке «Отгрузить»)."},
+  ok:{lbl:"Хватит до партии",cls:"good",tip:"Запаса на Ozon вместе с тем, что едет, хватит до выхода партии в продажу."},
+  nohz:{lbl:"Горизонт не задан",cls:"nodata",tip:"У кода нет даты партии — не с чем сравнить."},
+  none:{lbl:"Нет продаж",cls:"nodata",tip:"За последние 7 дней заказов на Ozon не было."}};
+const SR_BIZ_ST={
+  short:{lbl:"Не хватит",cls:"critical",tip:"Всего товара (ВБ + Ozon + ваши склады) при нынешнем темпе не хватит до выхода партии в продажу."},
+  ok:{lbl:"Хватит",cls:"good",tip:"Товара хватает до выхода партии, и темп продаж не ниже нужного больше чем на 15%."},
+  over:{lbl:"Избыток",cls:"warning",tip:"Темп продаж ниже нужного больше чем на 15%: к выходу партии останется лишнее — деньги стоят в остатке."},
+  nohz:{lbl:"Горизонт не задан",cls:"nodata",tip:"У кода нет даты партии — не с чем сравнить."},
+  nosale:{lbl:"Нет продаж",cls:"nodata",tip:"За последние 7 дней заказов не было ни на ВБ, ни на Ozon."}};
+function srExtend(rows){
+  // неделя своя у каждого вида (см. srWeeks): ВБ, Ozon и общая для «Всего»
+  const WKw=srWeekData("wb"), WKo=srWeekData("ozon"), WKa=srWeekData("all");
+  const ozCard={}, ozWbCat={};
+  ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ const s=""+c.sku; ozCard[s]=c; if(c.wbCategory) ozWbCat[s]=c.wbCategory; });
+  const asg=ozAssignedBySup();
+  const ship={}; (RD.shipments||[]).forEach(s=>{ if(s.mp==="wb"&&s.left>0) ship[s.sup]=(ship[s.sup]||0)+s.left; });
+  const wk=(src,s)=>src? [src.cur.by[s]||0, src.prev.full? (src.prev.by[s]||0) : null, src.open.by[s]||0] : [0,null,0];
+  return rows.map(r=>{
+    const s=r.sup, hz=r.hz;
+    // ---- Wildberries: только производные для показа, сам план — из srDecorate ----
+    const wbBase=(r.stockWb||0)+(r.whQty||0);
+    const wbDays = r.wbAvail==null? null : (r.spdWb>0? r.wbAvail/r.spdWb : (r.wbAvail>0? Infinity : 0));
+    const wbLeft = (hz>0 && r.wbAvail!=null)? r.wbAvail-r.spdWb*hz : null;   // >0 — останется к партии
+    // ---- Ozon ----
+    const card=ozCard[s];
+    const split=card && card.ozReq!=null && card.ozWay!=null;
+    const ozWay=split? (card.ozWay||0) : 0;
+    const ozAsg=(asg[s]&&asg[s].all)||0;
+    const ozBo = r.ordOz>0 && r.spdOz>0 ? r.spdOz/r.ordOz : null;
+    const ozNeedHz = hz>0 ? Math.max(0, r.spdOz*hz - r.stockOz) : null;   // чего не хватит Ozon до партии
+    /* Что ваши склады могут дать Ozon — тот же свободный остаток, из которого отгружает подсорт
+       (resupplyRows): Москва + Нск-1 + Евросиб, на Евросибе позиции меньше NSK2_MIN_TAKE не берём,
+       розничный резерв RETAIL_RESERVE (с 18.10.2026 он 0). Клин и «Ozon СФО/ЦФО» сюда не входят:
+       их товар уже назначен площадке. Этот же склад кормит Wildberries (FBS и FBO). */
+    const holdN2=Math.min(r.whNsk2||0,RETAIL_RESERVE), holdN1=Math.min(r.whNsk1||0,Math.max(0,RETAIL_RESERVE-(r.whNsk2||0)));
+    const whFreeOz=((r.whNsk2||0)>=NSK2_MIN_TAKE? (r.whNsk2||0)-holdN2 : 0)+((r.whNsk1||0)-holdN1)+(r.whMsk||0);
+    let ozSt;
+    if(r.spdOz<=0) ozSt="none";
+    else if(hz>0 && r.ozDays>=hz) ozSt="ok";          // до партии хватит — гнать отгрузку незачем
+    else if(r.shipIn!=null && r.shipIn<=0) ozSt="ship";
+    else if(hz>0) ozSt="short";
+    else ozSt="nohz";
+    const ozRel=r.onOz && (r.ozOnly>0||r.ozTr>0||r.spdOz>0||r.ordOz>0||
+      (WKo&&WKo.oz&&((WKo.oz.cur.by[s]||0)+(WKo.oz.prev.by[s]||0))>0));
+    // ---- Всего: весь товар один раз ----
+    const wbShip=ship[s]||0;
+    const bizTotal=(r.total||0)+wbShip;               // = «Всего товара» на «Остатках» (+ отгрузки в пути на ВБ)
+    const bizDays = r.spd>0? bizTotal/r.spd : (bizTotal>0? Infinity : 0);
+    /* Стороны «где лежит»: Клин — сторона ВБ (собран и уезжает на ВБ), «Ozon СФО/ЦФО» — сторона Ozon
+       (они уже внутри `ozTr`, см. ozTransitEff), ваши склады — всё остальное. Сумма = bizTotal. */
+    const sideWb=(r.stockWb||0)+wbShip+(r.whKlin||0), sideOz=(r.stockOz||0), sideWh=(r.whQty||0)-(r.whKlin||0);
+    let bizSt;
+    if(r.spd<=0) bizSt="nosale";
+    else if(!(hz>0)) bizSt="nohz";
+    else if(bizDays<hz) bizSt="short";
+    else if(bizDays>hz/(1-SR_BAND)) bizSt="over";
+    else bizSt="ok";
+    const bizLeft = hz>0? bizTotal-r.spd*hz : null;
+    const acts=[];
+    if(r.verdict==="short") acts.push("ВБ: не хватит и Озону");
+    else if(r.verdict==="up") acts.push("ВБ: поднять цену");
+    else if(r.verdict==="down") acts.push("ВБ: разогнать");
+    if(ozSt==="ship") acts.push(whFreeOz>0? "Ozon: отгрузить сейчас" : "Ozon: отгружать нечем");
+    else if(ozSt==="short") acts.push("Ozon: отгрузка через "+Math.max(0,r.shipIn)+" дн");
+    const wkW=wk(WKw&&WKw.wb,s), wkO=wk(WKo&&WKo.oz,s), aW=wk(WKa&&WKa.wb,s), aO=wk(WKa&&WKa.oz,s);
+    return {...r, category:r.category||ozWbCat[s]||"",
+      wbBase, wbDays, wbLeft,
+      ozWay, ozAsg, ozReqEff:Math.max(0,(r.ozTr||0)-ozWay), ozBo, ozNeedHz, whFreeOz, ozSt, ozRel,
+      wbShip, bizTotal, bizDays, bizSt, bizLeft, sideWb, sideOz, sideWh,
+      act: acts.length? acts.join(" · ") : (!(r.spd>0)? "—" : (hz>0? "Держать" : "нет даты партии")),
+      wkWb:wkW, wkOz:wkO, wkAllWb:aW, wkAllOz:aO,
+      wkAll:[aW[0]+aO[0], (aW[1]==null||aO[1]==null)? null : aW[1]+aO[1], aW[2]+aO[2]]};
+  });
+}
+// строки текущего вида: ВБ и «Всего» — все коды, Ozon — только коды, которые на Ozon есть
+function srViewRows(){
+  const all=srExtend(srDecorate(srRows())), mp=srMp();
+  return mp==="ozon"? all.filter(r=>r.ozRel) : all;
+}
+// сегмент «Что показать» — свой набор у каждого вида; значение = статус строки этого вида
+const SR_ACTS={
+  wb:[["all","Все"],["short","Не хватит и Озону"],["up","Поднять цену"],["down","Разогнать"],["hold","Держать"]],
+  ozon:[["all","Все"],["ship","Отгружать сейчас"],["short","Кончится до партии"],["ok","Хватит до партии"],["none","Нет продаж"]],
+  all:[["all","Все"],["short","Не хватит до партии"],["ok","Хватит"],["over","Избыток"],["nosale","Нет продаж"]]};
+function srStatusOf(r,mp){ return mp==="ozon"? r.ozSt : mp==="all"? r.bizSt : r.verdict; }
+/* Сортировка по умолчанию — по объёму продаж, сверху самые ходовые: «всегда смотрим сначала туда,
+   где больше всего зарабатываем, там и теряем больше всего» (правило продавца по рекламе, 01.09.2026).
+   По «хватит дней» сверху вставали коды без остатка и почти без продаж — шум. */
+let srSortState={key:"ordWb",dir:-1};
+let _srSortMp=null;   // для какого вида выставлена сортировка (у видов разные колонки)
+const SR_SORT_DEF={wb:"ordWb", ozon:"ordOz", all:"spd"};
 /* Колоночные фильтры вкладки (Excel-стиль, та же механика, что в «Оборачиваемости»):
-   val(r) — каноничное значение колонки, оно же подпись в списке; sortVal — порядок списка. */
+   val(r) — каноничное значение колонки, оно же подпись в списке; sortVal — порядок списка.
+   Набор колонок свой у каждого вида; при смене площадки фильтры сбрасывает applyMpData. */
 let srColFilters={};
 function srColDefs(){
-  const pnum=v=>{const n=parseFloat((""+v).replace(/\s/g,"").replace(/[^\d.,-]/g,"").replace(",","."));return isNaN(n)?0:n;};
-  return [
-    {key:"category", val:r=>r.category||"—", sortVal:()=>0},
-    {key:"sup",      val:r=>r.sup,           sortVal:pnum},
-    {key:"verdict",  val:r=>SR_VERDICT[r.verdict].lbl,
-      sortVal:v=>({"Не хватит и Озону":0,"Поднять цену":1,"Разогнать":2,"Держать":3})[v]!=null
-        ?({"Не хватит и Озону":0,"Поднять цену":1,"Разогнать":2,"Держать":3})[v]:9},
-  ];
+  const ord=list=>v=>{ const i=list.indexOf(v); return i<0? 99 : i; };
+  const defs=[];
+  const mp=srMp();
+  if(mp==="ozon") defs.push({key:"ozSt", val:r=>SR_OZ_ST[r.ozSt].lbl,
+    sortVal:ord(["ship","short","ok","nohz","none"].map(k=>SR_OZ_ST[k].lbl))});
+  else if(mp==="all"){
+    defs.push({key:"bizSt", val:r=>SR_BIZ_ST[r.bizSt].lbl,
+      sortVal:ord(["short","ok","over","nohz","nosale"].map(k=>SR_BIZ_ST[k].lbl))});
+    /* В фильтр — без числа дней: «отгрузка через 9 дн» и «через 31 дн» иначе становились разными
+       значениями, и список дробился на позиции по одной строке. */
+    defs.push({key:"act", val:r=>(r.act||"—").replace(/Ozon: отгрузка через \d+ дн/,"Ozon: запланировать отгрузку"),
+      sortVal:v=>v==="Держать"? 90 : (v==="—"? 99 : 0)});
+  } else defs.push({key:"verdict",  val:r=>SR_VERDICT[r.verdict].lbl,
+    sortVal:ord(["Не хватит и Озону","Поднять цену","Разогнать","Держать"])});
+  return defs;
 }
 // строки с учётом панели (поиск/категории/сегмент) + всех колоночных фильтров, кроме exceptKey
-function srFilteredRows(all,exceptKey){
+function srFilteredRows(all,exceptKey,ignoreAct){
   const pred=catPred(selCats("srCat"));      // null = без фильтра категорий
   const q=(document.getElementById("srSearch").value||"").trim().toLowerCase();
+  const mp=srMp();
   let rows=all.filter(r=>{
     if(pred && !pred(r.category)) return false;
-    if(srAction==="ship"){ if(!(r.shipIn!=null && r.shipIn<=0)) return false; }
-    else if(srAction!=="all" && r.verdict!==srAction) return false;
+    if(!ignoreAct && srAction!=="all" && srStatusOf(r,mp)!==srAction) return false;
     if(q){ const hay=(r.sup+" "+(r.wbSku||"")+" "+(r.name||"")).toLowerCase();
       if(hay.indexOf(q)<0) return false; }
     return true;
@@ -7217,7 +7395,7 @@ function srFilteredRows(all,exceptKey){
     const set=srColFilters[def.key]; if(set&&set.size) rows=rows.filter(r=>set.has(def.val(r))); });
   return focusApply(rows);
 }
-function srFiltered(){ return srFilteredRows(srDecorate(srRows()),null); }
+function srFiltered(){ return srFilteredRows(srViewRows(),null); }
 /* ===================== РЕКЛАМА (Wildberries) =====================
    Повторяет ручной отбор продавца (согласовано 31.08.2026):
      1) выбираем ГРУППУ (Пушкары, Рули, Песок, Светофоры, Набор для бокса) — это его
@@ -8418,189 +8596,453 @@ function exportAdsXLSX(){
     [{name:"Как считается", rows:extra.map(x=>[x[0],x[1]]), widths:[30,80]},
      {name:"Кандидаты", rows:data, widths:cols.map(c=>c.w), bold:[0,data.length-1]}]);
 }
+// ключи сортировки всех трёх видов (у каждого вида свои колонки, ключи не пересекаются)
+const SR_SORT_ACC={
+  name:r=>r.name, category:r=>r.category||"", sup:r=>r.sup, etaLeft:r=>r.etaLeft==null?1e9:r.etaLeft,
+  wbAvail:r=>r.wbAvail!=null? r.wbAvail : r.wbBase, wbDays:r=>r.wbDays==null?1e14:r.wbDays,
+  ordWb:r=>r.ordWb, targetOrders:r=>r.targetOrders==null?-1:r.targetOrders,
+  verdict:r=>({short:0,up:1,down:2,hold:3,none:4})[r.verdict], wkWb:r=>r.wkWb[0],
+  stockOz:r=>r.stockOz, ordOz:r=>r.ordOz, wkOz:r=>r.wkOz[0],
+  ozDays:r=>r.spdOz>0? r.ozDays : 1e14, ozSt:r=>["ship","short","ok","nohz","none"].indexOf(r.ozSt),
+  shipIn:r=>(r.spdOz>0&&r.shipIn!=null)? r.shipIn : 1e9, whFreeOz:r=>r.whFreeOz,
+  bizTotal:r=>r.bizTotal, spd:r=>r.spd, wkAll:r=>r.wkAll[0], ozShare:r=>r.spd>0? r.spdOz/r.spd : -1,
+  bizDays:r=>r.spd>0? r.bizDays : 1e14,
+  bizSt:r=>(r.spd>0&&r.hz>0)? r.bizDays/r.hz : (r.spd>0? 1e6 : 1e7),   // запас в долях горизонта: меньше — срочнее
+  act:r=>r.act||""};
+/* ---- «Запас и темп»: мелкие форматтеры (десятичные с запятой, ∞ для «продаж нет») ---- */
+const srNum1=v=>v==null? "—" : (+v).toLocaleString("ru-RU",{maximumFractionDigits:1});
+const srDaysTxt=v=>v==null? "—" : (v===Infinity? "∞" : fmt(v));
+const srPctTxt=v=>v==null? "—" : Math.round(v*100)+"%";
+const srDow=d=>["вс","пн","вт","ср","чт","пт","сб"][new Date(d+"T00:00:00Z").getUTCDay()];
+const srWkRange=(a,b)=>fmtDate(a)+" ("+srDow(a)+") – "+fmtDate(b)+" ("+srDow(b)+")";
+const srWkHead=WK=>WK? "Неделя "+srWkShort(WK.curFrom,WK.curTo) : "Неделя";
+const srWkShort=(a,b)=>(a.slice(5,7)===b.slice(5,7)? a.slice(8,10) : a.slice(8,10)+"."+a.slice(5,7))+"–"+b.slice(8,10)+"."+b.slice(5,7);
+function srHzTxt(){ return srHorizonMode==="eta"? "до выхода партии в продажу — своя дата у каждого кода" : srHorizonMode+" дней"; }
+// ячейка «неделя к неделе»: [эта закрытая неделя, прошлая (null — нет в данных), идущая]
+function srWkCell(w,extra){
+  const cur=w[0], prev=w[1]; let d;
+  if(prev==null) d=`<span class="sub2 mut">прошлой недели нет в данных</span>`;
+  else if(prev>0){ const p=Math.round((cur-prev)/prev*100);
+    d=`<span class="sub2 ${p>=0?"delta-up":"delta-down"}">${p>=0?"+":"−"}${Math.abs(p)}% · было ${fmt(prev)}</span>`; }
+  else d= cur>0? `<span class="sub2 delta-up">было 0</span>` : `<span class="sub2 mut">заказов не было</span>`;
+  return `<td>${(cur||prev)? fmt(cur) : "—"}${d}${extra||""}</td>`;
+}
+function srBatchCell(r){
+  const tip="Дата, когда партия встанет в продажу"+(r.etaWh&&r.etaWh!==r.eta? "; на ваш склад приедет "+fmtDate(r.etaWh) : "")
+    +(r.etaOver? ". Срок задан вручную"+(r.etaNote? ": "+r.etaNote : "") : "")
+    +(r.noOwnBatch&&!r.etaOver? ". Своей партии у кода нет — горизонт до общей даты партии" : "");
+  return `<td class="${r.incoming?"":"d-zero"}">${r.incoming? fmt(r.incoming):"—"}`
+    +(r.eta? `<span class="sub2 mut" title="${esc(tip+(r.etaLeft!=null? ". До выхода в продажу "+r.etaLeft+" дн" : ""))}">в продажу ${fmtDate(r.eta)}</span>`
+      +(r.etaOver? `<span class="sub2 mut">срок вручную</span>` : (r.noOwnBatch? `<span class="sub2 mut">общая дата</span>` : ""))
+      : (r.incoming? `<span class="sub2 mut">дата не задана</span>`:""))+`</td>`;
+}
+function srHzSub(r){ return r.hz>0? `<span class="sub2 mut" title="${esc(r.hzSrc)}">горизонт ${fmt(r.hz)} дн</span>`
+  : `<span class="sub2 mut">${esc(r.hzSrc||"горизонта нет")}</span>`; }
+/* Категория и артикулы — строками под названием, а не отдельными колонками: колонок у видов много,
+   и с «Категорией» и «Артикулом» таблица уезжала за край экрана. Колонка закреплена слева (`metric`),
+   поэтому товар виден и при прокрутке вбок. Фильтр по категориям и поиск по артикулу — над таблицей.
+   На Ozon артикул — ссылка на карточку Ozon (он же код 1С), на ВБ и «Всего» — код 1С и артикул ВБ. */
+const srName=(r,mp)=>`<td class="metric name-cell" title="${esc(r.name)}${r.category? " · "+esc(r.category) : ""}">${esc(r.name)}`
+  +`<span class="sub2 mut">${esc(r.category||"без категории")}</span>`
+  +`<span class="sub2 mut">${mp==="ozon"? "арт. Ozon "+skuLink(r.sup) : "1С "+esc(r.sup)+(r.wbSku? " · ВБ "+esc(r.wbSku) : "")}</span></td>`;
+/* KPI «заказы за неделю»: последняя ЗАКРЫТАЯ календарная неделя против предыдущей, идущая — отдельно. */
+function srWeekTile(name,rows,key,WK,openTxt,openNote){
+  if(!WK) return {lbl:name+": заказы за неделю, шт", val:"—", tip:"Заказов в снимке нет — неделю не с чем считать."};
+  const cur=rows.reduce((a,r)=>a+r[key][0],0);
+  const prevOk=rows.every(r=>r[key][1]!=null), prev=prevOk? rows.reduce((a,r)=>a+r[key][1],0) : null;
+  const open=rows.reduce((a,r)=>a+r[key][2],0);
+  const p=(prev>0)? Math.round((cur-prev)/prev*100) : null;
+  return {lbl:`${name}: заказы ${srWkShort(WK.curFrom,WK.curTo)}, шт`, val:fmt(cur),
+    delta: p==null? `<div class="delta" style="background:var(--surface-2);color:var(--text-2)">${prev==null?"прошлой недели нет в данных":"на прошлой неделе 0"}</div>`
+      : `<div class="delta ${p>=0?"up":"down"}">${p>=0?"+":"−"}${Math.abs(p)}% к ${srWkShort(WK.prevFrom,WK.prevTo)}</div>`,
+    tip:`Последняя закрытая неделя: ${srWkRange(WK.curFrom,WK.curTo)} — ${fmt(cur)} шт.\n`
+      +`Предыдущая: ${srWkRange(WK.prevFrom,WK.prevTo)} — ${prev==null?"нет в данных":fmt(prev)+" шт"}.\n`
+      +(openTxt? `\nИдёт неделя с ${fmtDate(WK.openFrom)}: ${fmt(open)} шт ${openTxt} — в сравнение не входит`
+        +(openNote? `. ${openNote}.\n` : `, она закроется в воскресенье.\n`) : "")
+      +`\nСчитаем ЗАКАЗЫ в штуках, а не выкупы: выкуп свежей недели ещё не дозрел. Неделя всегда календарная, пн–вс. `
+      +`Сумма — по позициям таблицы (с учётом фильтров), поэтому может на несколько штук отличаться от «Динамики заказов»: туда попадают и коды без остатка и без продаж за последние 7 дней.`};
+}
+// «Всего»: одинаковые дни у площадок — одной фразой, разные — по каждой площадке
+function srAllOpenTxt(WK){ if(!WK) return "";
+  const a=srOpenDaysTxt(WK.wb), b=srOpenDaysTxt(WK.oz);
+  if(!a&&!b) return ""; if(a===b) return "за "+a;
+  const one=(nm,src)=>src&&src.open&&src.open.days? nm+" — "+src.open.days+" "+plural(src.open.days,"день","дня","дней")+" по "+fmtDate(src.openTo) : "";
+  return "за разные дни: "+[one("ВБ",WK.wb), one("Ozon",WK.oz)].filter(Boolean).join(", "); }
+function srOpenDaysTxt(src){ if(!src||!src.open||!src.open.days) return ""; const n=src.open.days;
+  return n+" "+plural(n,"день","дня","дней")+" (по "+fmtDate(src.openTo)+")"; }
+
 function renderStockRateTab(){
   const fresh=document.getElementById("srFreshness");
   if(!RD){ renderNoData("srTable"); fresh.innerHTML=""; document.getElementById("srKpis").innerHTML=""; return; }
-  const catSel=document.getElementById("srCat"); if(!catSel.options.length) fillCategorySelect(catSel);
-  const stockWbD=(RD.meta&&RD.meta.stockSnapshotDate)||null;
-  const stockOzD=(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||null;
+  const mp=srMp();
+  // у видов разные колонки и статусы — сортировка и сегмент свои у каждого (объект сортировки
+  // не пересоздаём: wireSortable держит на него ссылку)
+  // ключи сегмента у видов совпадают («short»), а смысл разный — при смене вида сегмент сбрасываем
+  if(_srSortMp!==mp){ _srSortMp=mp; srSortState.key=SR_SORT_DEF[mp]; srSortState.dir=-1; srAction="all"; }
+  if(!SR_ACTS[mp].some(a=>a[0]===srAction)) srAction="all";
+  const viewAll=srViewRows(), all=dropOut(viewAll);
+  /* Категории — ВБ-шные по коду 1С на всех трёх видах (сквозной вид, как подсорт), поэтому список
+     собирается из строк вкладки, а не из каталога активной площадки: у Ozon свои названия
+     («Каталка»), и фильтр по ним ни с чем бы не совпал. */
+  const catSel=document.getElementById("srCat");
+  if(!catSel.options.length){
+    const cats=[...new Set(all.map(r=>r.category).filter(Boolean))].sort((a,b)=>a.localeCompare(b,"ru"));
+    catSel.innerHTML=cats.map(c=>`<option value="${esc(c)}">${esc(c)}</option>`).join(""); }
+  const D=d=>d? fmtDateLong(d) : "—";
+  const stockWbD=(RD.meta&&RD.meta.stockSnapshotDate)||null, stockOzD=(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)||null;
   const whD=(RD.warehouse&&RD.warehouse.date)||null;
-  fresh.innerHTML=`<span class="dot"></span>Остатки: ВБ ${stockWbD?fmtDateLong(stockWbD):"—"} · Ozon ${stockOzD?fmtDateLong(stockOzD):"—"} · свой склад ${whD?fmtDateLong(whD):"—"} · заказы по ${fmtDateLong(RLAST)}`;
-  const rows=srFiltered();
-  const all=srDecorate(srRows());
-  // KPI по текущей выборке
-  const tot=rows.reduce((a,r)=>a+r.total,0);
-  const sWb=rows.reduce((a,r)=>a+r.spdWb,0), sOz=rows.reduce((a,r)=>a+r.spdOz,0);
-  const nUp=rows.filter(r=>r.verdict==="up").length, nDown=rows.filter(r=>r.verdict==="down").length;
-  const nShort=rows.filter(r=>r.verdict==="short").length;
-  const shipNow=rows.filter(r=>r.shipIn!=null && r.shipIn<=0).length;
-  const shipNoStock=rows.filter(r=>r.shipIn!=null && r.shipIn<=0 && !r.whQty).length;
-  const noEta=rows.filter(r=>r.incoming>0 && !r.eta).length;
-  document.getElementById("srKpis").innerHTML=[
-    {lbl:"Запас всего, шт",val:fmt(tot),
-      tip:"Весь товар по выбранным позициям: остаток на ВБ + остаток и поставки Ozon + ваш склад (включая FBS).\n"
-        +"ВБ: "+fmt(rows.reduce((a,r)=>a+r.stockWb,0))+" шт\nOzon: "+fmt(rows.reduce((a,r)=>a+r.stockOz,0))+" шт"
-        +"\nВаш склад: "+fmt(rows.reduce((a,r)=>a+r.whQty,0))+" шт"},
-    {lbl:"ВБ: заказов/дн сейчас → цель",
-      val:rows.reduce((a,r)=>a+r.ordWb,0).toFixed(0)+" → "+rows.reduce((a,r)=>a+(r.targetOrders||0),0).toFixed(0),
-      tip:"Слева — сколько заказов в день ВБ даёт сейчас, справа — сумма целей по выбранным позициям.\n\n"
-        +"Цель считается в ЗАКАЗАХ, потому что именно это число вы ставите в репрайсер.\n"
-        +"Продажи (выкупы): ВБ "+sWb.toFixed(1)+" · Ozon "+sOz.toFixed(1)+" шт/дн.\n\n"
-        +"Ozon следует за ценой ВБ, поэтому его спрос считается заданным и вычитается из запаса."},
-    {lbl:"ВБ: поднять цену",val:nUp+(nShort? " + "+nShort : ""),valColor:(nUp+nShort)?"var(--crit-txt)":"var(--text-1)",
-      tip:"«"+nUp+"» — темп на ВБ выше целевого: до выхода партии товар закончится. Поднять цену или снять рекламу.\n\n"
-        +(nShort? "«+"+nShort+"» — запаса не хватит даже одному Ozon, поднятие цены на ВБ спасёт лишь частично.\n\n":"")
-        +"Зависнет наоборот (темп ниже цели): "+nDown+" позиций."},
-    {lbl:"Ozon: пора отгружать",val:shipNow,valColor:shipNow?"var(--warn-txt)":"var(--text-1)",
-      tip:"По этим позициям запаса на Ozon хватит меньше, чем идёт поставка ("+OZ_LEAD_DAYS+" дн), — "
-        +"отгружать нужно уже сейчас, иначе аут.\n"
-        +(shipNoStock? "Из них "+shipNoStock+" нечем закрыть: на вашем складе пусто." : "По всем есть товар на складе.")},
-  ].map(kpiCard).join("");
+  const lastWb=WBDATA&&WBDATA.dates.length? WBDATA.dates[WBDATA.dates.length-1] : null;
+  const lastOz=OZDATA&&OZDATA.dates.length? OZDATA.dates[OZDATA.dates.length-1] : null;
+  fresh.innerHTML=`<span class="dot"></span>`+(mp==="ozon"
+      ? `<b>Ozon</b> · остатки Ozon ${D(stockOzD)} · ваши склады ${D(whD)} · заказы Ozon по ${D(lastOz)}`
+    : mp==="all"
+      ? `<b>Всего</b> · остатки: ВБ ${D(stockWbD)}, Ozon ${D(stockOzD)}, ваши склады ${D(whD)} · заказы: ВБ по ${D(lastWb)}, Ozon по ${D(lastOz)}`
+      : `<b>Wildberries</b> · остатки ВБ ${D(stockWbD)} · ваши склады ${D(whD)} · заказы ВБ по ${D(lastWb)}`
+        +(OZDATA? ` · Ozon (для вычета) ${D(stockOzD)}` : ""));
+  // сегмент: подписи со счётчиками по текущей выборке без учёта самого сегмента
+  const seg=document.getElementById("srActionSeg");
+  const cnt={}; srFilteredRows(all,null,true).forEach(r=>{ const k=srStatusOf(r,mp); cnt[k]=(cnt[k]||0)+1; });
+  seg.innerHTML=SR_ACTS[mp].map(([k,l])=>`<button data-act="${k}" aria-pressed="${k===srAction?"true":"false"}">`
+    +`${esc(l)}${k==="all"? "" : ` <span class="sr-n">${cnt[k]||0}</span>`}</button>`).join("");
+  const rows=srFilteredRows(all,null);
+  const WK=srWeekData(mp);
+  document.getElementById("srKpis").innerHTML=(mp==="ozon"? srKpisOz(rows,WK) : mp==="all"? srKpisAll(rows,WK) : srKpisWb(rows,WK))
+    .map(kpiCard).join("");
   wireKpiTips("srKpis");
-  document.getElementById("srCount").textContent=rows.length+" из "+all.length+" позиций"
-    +(noEta? " · у "+noEta+" партия без даты":"");
-  renderSrHowTo();
+  const noEta=rows.filter(r=>r.incoming>0 && !r.eta).length;
+  document.getElementById("srCount").textContent=rows.length+" из "+all.length+" "+plural(all.length,"позиции","позиций","позиций")
+    +(mp==="ozon"? " на Ozon" : "")+(noEta? " · у "+noEta+" партия без даты":"");
+  renderSrHowTo(mp);
   if(!rows.length){ document.getElementById("srTable").innerHTML=`<tbody><tr><td class="empty-hint">Ничего не найдено по текущим фильтрам</td></tr></tbody>`; return; }
-  const sorted=sortRows(rows,srSortState,{
-    name:r=>r.name, category:r=>r.category||"", sup:r=>r.sup,
-    total:r=>r.total, days:r=>r.days===Infinity?1e9:r.days,
-    ordWb:r=>r.ordWb, targetOrders:r=>r.targetOrders==null?-1:r.targetOrders,
-    verdict:r=>({short:0,up:1,down:2,hold:3,none:4})[r.verdict],
-    spdOz:r=>r.spdOz, ozDays:r=>r.ozDays===Infinity?1e9:r.ozDays,
-    shipIn:r=>r.shipIn==null?1e9:r.shipIn,
-    etaLeft:r=>r.etaLeft==null?1e9:r.etaLeft});
+  const sorted=sortRows(rows,srSortState,SR_SORT_ACC);
+  document.getElementById("srTable").innerHTML=(mp==="ozon"? srTableOz(sorted,WK) : mp==="all"? srTableAll(sorted,WK) : srTableWb(sorted,WK));
+}
+
+/* ---- Wildberries: план для репрайсера (арифметика — srDecorate, здесь только показ) ---- */
+function srKpisWb(rows,WK){
+  const sum=(a,f)=>a.reduce((x,r)=>x+(f(r)||0),0);
+  const up=rows.filter(r=>r.verdict==="up"), sh=rows.filter(r=>r.verdict==="short");
+  const dn=rows.filter(r=>r.verdict==="down"), hd=rows.filter(r=>r.verdict==="hold");
+  const noHz=rows.filter(r=>r.wbAvail==null).length;
+  const hot=up.concat(sh);
+  const ordHot=sum(hot,r=>r.ordWb), tgtHot=sum(hot,r=>r.targetOrders);
+  const leftDn=sum(dn,r=>r.wbLeft>0? r.wbLeft : 0);
+  /* ПОЧЕМУ БОЛЬШЕ НЕТ «СУММЫ ЦЕЛЕЙ» (было «ВБ: заказов/дн сейчас → цель 317 → 1 781»). Сумма целей
+     почти целиком состоит из позиций «Разогнать»: у товара с большим остатком и далёкой партией
+     цель в разы выше нынешнего темпа (на 18.10.2026 — 98% суммы). Такую цифру нельзя ни ввести
+     в репрайсер, ни выполнить, и она читалась как «можно продавать в 5,6 раза больше». Решение
+     принимается по позиции, поэтому KPI показывают две группы, где нужно действие: сколько
+     заказов в день срезать у «Поднять цену» и сколько штук зависнет у «Разогнать». */
+  const sumT=sum(rows,r=>r.targetOrders), sumTdn=sum(dn,r=>r.targetOrders);
+  return [
+    {lbl:"Wildberries: база плана, шт", val:fmt(sum(rows,r=>r.wbAvail!=null? r.wbAvail : r.wbBase)),
+      tip:"Сколько товара Wildberries может продать до партии:\n"
+        +"склады ВБ (FBO): "+fmt(sum(rows,r=>r.stockWb))+" шт\n"
+        +"+ ваши склады: "+fmt(sum(rows,r=>r.whQty))+" шт\n"
+        +"− заберёт Ozon с ваших складов до партии: "+fmt(sum(rows,r=>r.ozTake))+" шт\n\n"
+        +"Остаток на складах Ozon ("+fmt(sum(rows,r=>r.stockOz))+" шт вместе с тем, что едет) сюда не входит: Wildberries его не продаст."
+        +(noHz? "\n\nУ "+noHz+" "+plural(noHz,"позиции","позиций","позиций")+" нет даты партии — для них Ozon не вычитается и цели нет." : "")},
+    {lbl:"ВБ: поднять цену", val:up.length+(sh.length? " + "+sh.length : ""),
+      valColor:hot.length?"var(--crit-txt)":"var(--text-1)",
+      delta:hot.length? `<div class="delta down">заказов/дн: ${srNum1(ordHot)} → план ${srNum1(tgtHot)}</div>` : "",
+      tip:"«"+up.length+"» — на ВБ продаёте быстрее плана больше чем на "+Math.round(SR_BAND*100)+"%: товар кончится раньше, чем партия выйдет в продажу. Поднимите цену в репрайсере или снимите рекламу.\n"
+        +(sh.length? "\n«+"+sh.length+"» — запаса не хватит даже одному Ozon: поднятие цены на ВБ поможет лишь частично (Ozon следует за ценой ВБ).\n" : "")
+        +(hot.length? "\nПо этим позициям сейчас "+srNum1(ordHot)+" заказов в день, по плану — "+srNum1(tgtHot)+". Разницу и нужно срезать ценой." : "")},
+    {lbl:"ВБ: разогнать", val:dn.length, valColor:dn.length?"var(--warn-txt)":"var(--text-1)",
+      delta:dn.length? `<div class="delta" style="background:var(--surface-2);color:var(--text-2)">к партии останется ≈ ${fmt(leftDn)} шт</div>` : "",
+      tip:"На ВБ продаёте медленнее плана больше чем на "+Math.round(SR_BAND*100)+"%: при нынешнем темпе к выходу партии на ВБ и ваших складах останется ≈ "+fmt(leftDn)+" шт сверх продаж. Снижайте цену или включайте рекламу.\n\n"
+        +"«Держать» (темп в плане ±"+Math.round(SR_BAND*100)+"%): "+hd.length+" "+plural(hd.length,"позиция","позиции","позиций")+".\n\n"
+        +"Почему здесь нет суммы целей: по выборке она "+fmt(sumT)+" заказов в день при нынешних "+fmt(sum(rows,r=>r.ordWb))+", и "
+        +(sumT>0? Math.round(sumTdn/sumT*100) : 0)+"% её дают позиции «Разогнать» — товар с большим остатком, у которого цель в разы выше нынешнего темпа. Такую сумму нельзя ни ввести в репрайсер, ни выполнить: план ставится по каждой позиции."},
+    srWeekTile("ВБ",rows,"wkWb",WK,WK&&srOpenDaysTxt(WK.wb)&&"за "+srOpenDaysTxt(WK.wb))];
+}
+function srTableWb(rows,WK){
   let html=`<thead><tr>${thSort("Наименование","name",srSortState,"metric")}`
-    +`${thSortF("Категория","category",srSortState,null,"sr")}${thSortF("Артикул","sup",srSortState,null,"sr")}`
-    +`${thSort("Запас всего","total",srSortState)}${thSort("Хватит, дн","days",srSortState)}`
-    +`${thSort("ВБ: заказов/дн","ordWb",srSortState)}${thSort("ВБ: ЦЕЛЬ заказов/дн","targetOrders",srSortState)}`
+    +`${thSort("База ВБ, шт","wbAvail",srSortState)}${thSort("Хватит на ВБ, дн","wbDays",srSortState)}`
+    +`${thSort("Заказов/дн","ordWb",srSortState)}${thSort("ЦЕЛЬ заказов/дн","targetOrders",srSortState)}`
     +`${thSortF("Что делать на ВБ","verdict",srSortState,null,"sr")}`
-    +`${thSort("Ozon: продаж/дн","spdOz",srSortState)}${thSort("Ozon: хватит","ozDays",srSortState)}`
-    +`${thSort("Ozon: отгрузить","shipIn",srSortState)}${thSort("Партия","etaLeft",srSortState)}</tr></thead><tbody>`;
-  sorted.forEach(r=>{
+    +`${thSort(srWkHead(WK),"wkWb",srSortState)}${thSort("Партия","etaLeft",srSortState)}</tr></thead><tbody>`;
+  rows.forEach(r=>{
     const v=SR_VERDICT[r.verdict];
-    const dTxt = r.days===Infinity? "∞" : Math.round(r.days);
-    const ozTxt = r.ozDays===Infinity? "∞" : Math.round(r.ozDays);
-    const crit = r.verdict==="up" && r.days!==Infinity && r.days<30;
-    // «отгрузить через» имеет смысл, только если есть чем: пустой склад — это уже дефицит
-    const shipCell = r.spdOz<=0 ? `<span class="muted">—</span>`
-      : (r.shipIn==null? `<span class="muted">—</span>`
-        : (r.shipIn<=0
-          ? `<span class="delta-down" style="font-weight:700">срочно</span>`
-              +(r.whQty? `<span class="sub2 mut">на складе ${fmt(r.whQty)}</span>`
-                       : `<span class="sub2 delta-down">склад пуст</span>`)
-          : `через ${r.shipIn} дн`
-              +(r.whQty? `<span class="sub2 mut">на складе ${fmt(r.whQty)}</span>`
-                       : `<span class="sub2 delta-down">склад пуст</span>`)));
-    html+=`<tr class="${crit?"row-critical":""}">`
-      +`<td class="name-cell" title="${esc(r.name)}">${esc(r.name)}</td>`
-      +`<td class="sr-cat" title="${esc(r.category||"—")}">${esc(r.category||"—")}</td>`
-      +`<td class="sr-art">${esc(r.sup)}`
-        +`${r.wbSku?`<span class="sub2 mut" title="Артикул Wildberries">ВБ ${esc(r.wbSku)}</span>`:""}</td>`
-      +`<td style="font-weight:650">${fmt(r.total)}`
-        +`<span class="sub2 mut">ВБ ${fmt(r.stockWb)} · Оз ${fmt(r.stockOz)} · скл ${fmt(r.whQty)}</span></td>`
-      +`<td style="font-weight:650">${dTxt}</td>`
-      +`<td>${r.ordWb.toLocaleString("ru-RU",{maximumFractionDigits:1})}`
-        +`<span class="sub2 mut" title="Из заказов выкупается ${Math.round(r.boWb*100)}% — отсюда продажи">выкуп ${Math.round(r.boWb*100)}% · продаж ${r.spdWb.toFixed(1)}</span></td>`
+    const crit=r.verdict==="up" && r.wbDays!=null && r.wbDays<30;
+    const late=r.hz>0 && r.wbDays!=null && r.wbDays<r.hz;
+    html+=`<tr class="${crit?"row-critical":""}">`+srName(r,"wb")
+      +`<td style="font-weight:650" title="База = склады ВБ (FBO) + ваши склады − то, что Ozon заберёт с ваших складов до партии">`
+        +`${fmt(r.wbAvail!=null? r.wbAvail : r.wbBase)}`
+        +`<span class="sub2 mut">FBO ${fmt(r.stockWb)} · скл ${fmt(r.whQty)}</span>`
+        +`${r.ozTake>0? `<span class="sub2 mut">− заберёт Ozon ${fmt(r.ozTake)}</span>`:""}`
+        +`${r.wbAvail==null? `<span class="sub2 mut">без вычета Ozon</span>`:""}</td>`
+      +`<td style="font-weight:650${late?";color:var(--crit-txt)":""}" title="База ÷ нынешние продажи на ВБ в день">${srDaysTxt(r.wbDays)}${srHzSub(r)}</td>`
+      +`<td>${srNum1(r.ordWb)}`
+        +`<span class="sub2 mut" title="Из заказов выкупается ${Math.round(r.boWb*100)}% — отсюда продажи">выкуп ${Math.round(r.boWb*100)}%</span><span class="sub2 mut">продаж ${srNum1(r.spdWb)}</span></td>`
       +`<td style="font-weight:700;${r.targetOrders!=null&&r.targetOrders<=0?"color:var(--crit-txt)":""}" `
         +`title="Это число ставится в репрайсер: сколько заказов в день он должен набирать на ВБ.">`
-        +`${r.targetOrders!=null? r.targetOrders.toLocaleString("ru-RU",{maximumFractionDigits:1}) : "—"}`
-        +`${r.targetOrders!=null&&r.gapOrders!=null&&r.ordWb>0?`<span class="sub2 ${r.gapOrders>0?"delta-down":"delta-up"}">${r.gapOrders>0?"−":"+"}${Math.abs(r.gapOrders).toFixed(1)} к текущему</span>`:""}</td>`
+        +`${r.targetOrders!=null? srNum1(r.targetOrders) : "—"}`
+        +`${r.targetOrders!=null&&r.gapOrders!=null&&r.ordWb>0?`<span class="sub2 ${r.gapOrders>0?"delta-down":"delta-up"}">${r.gapOrders>0?"−":"+"}${srNum1(Math.abs(r.gapOrders))} к текущему</span>`:""}</td>`
       +`<td><span class="badge ${v.cls}" title="${esc(r.verdict==="none"? v.tip+"\n"+r.hzSrc : v.tip)}"><span class="d"></span>`
         +`${r.verdict==="none"? (r.incoming>0? "дата не задана" : "нет партии") : v.lbl}</span></td>`
-      +`<td class="${r.spdOz?"":"d-zero"}">${r.spdOz? r.spdOz.toLocaleString("ru-RU",{maximumFractionDigits:1}):"—"}</td>`
-      +`<td style="font-weight:650">${r.spdOz>0? ozTxt : "—"}`
-        +`${r.spdOz>0?`<span class="sub2 mut">на Ozon ${fmt(r.stockOz)}</span>`:""}</td>`
-      +`<td>${shipCell}</td>`
-      +`<td class="${r.incoming?"":"d-zero"}">${r.incoming? fmt(r.incoming):"—"}`
-        +`${r.eta?`<span class="sub2 mut" title="Дата, когда партия встанет в продажу${r.etaWh&&r.etaWh!==r.eta?`; на ваш склад приедет ${fmtDate(r.etaWh)}`:""}">в продажу ${fmtDate(r.eta)}${r.etaLeft!=null&&r.etaLeft>0?` · через ${r.etaLeft} дн`:""}</span>`
-              : (r.incoming? `<span class="sub2 mut">дата не задана</span>`:"")}</td></tr>`;
+      +srWkCell(r.wkWb)+srBatchCell(r)+`</tr>`;
   });
-  document.getElementById("srTable").innerHTML=html+"</tbody>";
+  return html+"</tbody>";
 }
-function renderSrHowTo(){
+
+/* ---- Ozon: запас на площадке, темп, когда отгружать. Цену не судим (репрайсера нет). ---- */
+function srKpisOz(rows,WK){
+  const sum=(a,f)=>a.reduce((x,r)=>x+(f(r)||0),0);
+  const st=sum(rows,r=>r.stockOz), sp=sum(rows,r=>r.spdOz), od=sum(rows,r=>r.ordOz);
+  const ship=rows.filter(r=>r.ozSt==="ship"), short=rows.filter(r=>r.ozSt==="short");
+  const shipEmpty=ship.filter(r=>!(r.whFreeOz>0)).length;
+  const bi=buyoutInfo("ozon")||{};
+  return [
+    {lbl:"Ozon: на складах и в пути, шт", val:fmt(st),
+      tip:"На складах Ozon: "+fmt(sum(rows,r=>r.ozOnly))+" шт\n"
+        +"В поставках в пути: "+fmt(sum(rows,r=>r.ozWay))+" шт\n"
+        +"В заявках или назначено у вас на «Ozon СФО/ЦФО»: "+fmt(sum(rows,r=>r.ozReqEff))+" шт — это одна партия в двух отчётах, берём большее из двух.\n\n"
+        +(sp>0? "Хватит в среднем: "+fmt(st/sp)+" дн при нынешнем темпе." : "")},
+    {lbl:"Ozon: продаж в день, шт", val:srNum1(sp),
+      delta:`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">заказов ${srNum1(od)} · выкуп ${od>0? Math.round(sp/od*100):"—"}%</div>`,
+      tip:"Продажи = заказы за последние 7 дней ÷ 7 × % выкупа Ozon.\n"
+        +(bi.all? "Выкуп — замер "+pct(bi.all)+" за "+fmtDate(bi.from)+"–"+fmtDate(bi.to)+" (у товара с 10+ закрытыми заказами — свой)." : "")},
+    srWeekTile("Ozon",rows,"wkOz",WK,WK&&srOpenDaysTxt(WK.oz)&&"за "+srOpenDaysTxt(WK.oz)),
+    {lbl:"Ozon: отгружать сейчас", val:ship.length, valColor:ship.length?"var(--crit-txt)":"var(--text-1)",
+      delta:`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">кончится до партии: ${short.length}</div>`,
+      tip:"«Отгружать сейчас» — запаса на Ozon вместе с тем, что едет, хватит меньше чем на "+OZ_LEAD_DAYS+" дн (столько идёт поставка до продажи), а до партии не дотянет.\n"
+        +(ship.length? (shipEmpty? "Из них "+shipEmpty+" нечем закрыть: свободного остатка на ваших складах нет.\n" : "По всем есть свободный остаток на ваших складах.\n") : "")
+        +"\n«Кончится до партии» — "+short.length+": срок поставки запас перекрывает, но отгрузку нужно запланировать."},
+  ];
+}
+function srTableOz(rows,WK){
+  let html=`<thead><tr>${thSort("Наименование","name",srSortState,"metric")}`
+    +`${thSort("Запас Ozon, шт","stockOz",srSortState)}`
+    +`${thSort("Заказов/дн","ordOz",srSortState)}${thSort(srWkHead(WK),"wkOz",srSortState)}`
+    +`${thSort("Хватит, дн","ozDays",srSortState)}${thSortF("Статус Ozon","ozSt",srSortState,null,"sr")}`
+    +`${thSort("Отгрузить","shipIn",srSortState)}${thSort("Склады дадут","whFreeOz",srSortState)}`
+    +`${thSort("Партия","etaLeft",srSortState)}</tr></thead><tbody>`;
+  rows.forEach(r=>{
+    const s=SR_OZ_ST[r.ozSt];
+    const trTip="В пути = «в поставках в пути» + большее из «в заявках» и назначенного у вас на «Ozon СФО/ЦФО» (одна партия в двух отчётах)."
+      +(r.ozAsg? " Назначено у вас: "+fmt(r.ozAsg)+" шт." : "");
+    const shipCell = r.ozSt==="none"? `<span class="muted">—</span>`
+      : r.ozSt==="ok"? `<span class="muted">не нужно</span>`
+      : r.ozSt==="ship"? `<span class="delta-down" style="font-weight:700">срочно</span>`
+      : `через ${fmt(Math.max(0,r.shipIn))} дн`;
+    html+=`<tr class="${r.ozSt==="ship"?"row-critical":""}">`+srName(r,"ozon")
+      +`<td style="font-weight:650" title="${esc("Запас Ozon = на складах Ozon + в пути. "+trTip)}">${r.stockOz? fmt(r.stockOz) : `<span class="muted">0</span>`}`
+        +`<span class="sub2 mut">на складах ${fmt(r.ozOnly)}</span>`
+        +`${r.ozTr? `<span class="sub2 mut">в пути ${fmt(r.ozTr)}</span>` : ""}</td>`
+      +`<td>${r.ordOz? srNum1(r.ordOz) : "—"}`
+        +`${r.ordOz? `<span class="sub2 mut" title="Продажи = заказы × % выкупа Ozon">выкуп ${srPctTxt(r.ozBo)}</span><span class="sub2 mut">продаж ${srNum1(r.spdOz)}</span>` : ""}</td>`
+      +srWkCell(r.wkOz)
+      +`<td style="font-weight:650${r.ozSt==="ship"||r.ozSt==="short"?";color:var(--crit-txt)":""}" title="(на Ozon + в пути) ÷ продаж в день">`
+        +`${r.spdOz>0? srDaysTxt(r.ozDays) : "—"}${r.spdOz>0? srHzSub(r) : `<span class="sub2 mut">продаж нет</span>`}</td>`
+      +`<td><span class="badge ${s.cls}" title="${esc(s.tip)}"><span class="d"></span>${s.lbl}</span></td>`
+      +`<td>${shipCell}${r.ozNeedHz>0? `<span class="sub2 mut" title="Сколько не хватит Ozon до выхода партии в продажу">нужно ${fmt(r.ozNeedHz)} шт</span>` : ""}</td>`
+      +`<td class="${r.whFreeOz?"":"d-zero"}" title="Свободный остаток Москвы, Нск-1 и Евросиба (на Евросибе позиции меньше ${NSK2_MIN_TAKE} шт не берём). Этот же склад кормит Wildberries.">`
+        +`${r.whFreeOz? fmt(r.whFreeOz) : "—"}`
+        +`${r.ozNeedHz>0? (r.whFreeOz>=r.ozNeedHz? `<span class="sub2 delta-up">закроют нужду</span>` : `<span class="sub2 delta-down">не хватит ${fmt(r.ozNeedHz-r.whFreeOz)}</span>`) : ""}</td>`
+      +srBatchCell(r)+`</tr>`;
+  });
+  return html+"</tbody>";
+}
+
+/* ---- Всего: бизнес по коду 1С — весь товар один раз против темпа двух площадок ---- */
+function srKpisAll(rows,WK){
+  const sum=(a,f)=>a.reduce((x,r)=>x+(f(r)||0),0);
+  const tot=sum(rows,r=>r.bizTotal), sp=sum(rows,r=>r.spd), sw=sum(rows,r=>r.spdWb), so=sum(rows,r=>r.spdOz);
+  const short=rows.filter(r=>r.bizSt==="short"), over=rows.filter(r=>r.bizSt==="over");
+  const lp=v=>sp>0? Math.round(v/sp*100) : 0;
+  return [
+    {lbl:"Всего: товар бизнеса, шт", val:fmt(tot),
+      tip:"Весь товар по выбранным позициям, каждая штука один раз:\n"
+        +"ВБ — склады FBO, в пути, собрано на Клину: "+fmt(sum(rows,r=>r.sideWb))+" шт\n"
+        +"Ozon — склады и в пути (с назначенным на «Ozon СФО/ЦФО»): "+fmt(sum(rows,r=>r.sideOz))+" шт\n"
+        +"Ваши склады: "+fmt(sum(rows,r=>r.sideWh))+" шт\n\n"
+        +"Это та же сумма, что «Всего товара» на вкладке «Остатки» по тем же позициям. Разбивка там другая: Клин и «Ozon СФО/ЦФО» "
+        +"показаны внутри ваших складов, а здесь отнесены к площадке, на которую товар уже назначен."},
+    {lbl:"Всего: продаж в день, шт", val:srNum1(sp),
+      delta:`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">ВБ ${lp(sw)}% · Ozon ${lp(so)}%</div>`,
+      tip:"Продажи в день = ВБ "+srNum1(sw)+" + Ozon "+srNum1(so)+" шт (заказы за 7 дней × % выкупа своей площадки).\n"
+        +(sp>0? "\nВсего товара хватит в среднем на "+fmt(tot/sp)+" дн." : "")},
+    srWeekTile("Всего",rows,"wkAll",WK,srAllOpenTxt(WK),
+      WK&&WK.wb&&WK.oz&&WK.wb.openTo!==WK.oz.openTo? "На «Всего» неделя закрывается, когда заказы обеих площадок дойдут до воскресенья" : ""),
+    {lbl:"Всего: не хватит до партии", val:short.length, valColor:short.length?"var(--crit-txt)":"var(--text-1)",
+      delta:`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">избыток: ${over.length}</div>`,
+      tip:"«Не хватит до партии» — всего товара (ВБ + Ozon + ваши склады) при нынешнем темпе не хватит до выхода партии в продажу: "+short.length+".\n"
+        +"«Избыток» — к партии останется заметно больше, чем продастся (темп ниже нужного больше чем на "+Math.round(SR_BAND*100)+"%): "+over.length
+        +(over.length? ", это ≈ "+fmt(sum(over,r=>r.bizLeft))+" шт сверх продаж" : "")+".\n\nГде действовать — колонка «Что делать»: цена только на ВБ, на Ozon — отгрузка."},
+  ];
+}
+function srSplitBar(parts){   // parts: [[доля 0..1, цвет]]
+  return `<div class="sr-split">${parts.map(([v,c])=>v>0? `<i style="width:${(v*100).toFixed(1)}%;background:${c}"></i>` : "").join("")}</div>`;
+}
+function srTableAll(rows,WK){
+  let html=`<thead><tr>${thSort("Наименование","name",srSortState,"metric")}`
+    +`${thSort("Товар бизнеса, шт","bizTotal",srSortState)}${thSort("Лежит / продаётся","ozShare",srSortState)}`
+    +`${thSort("Продаж/дн","spd",srSortState)}${thSort(srWkHead(WK),"wkAll",srSortState)}`
+    +`${thSortF("До партии","bizSt",srSortState,null,"sr")}`
+    +`${thSortF("Что делать","act",srSortState,null,"sr")}${thSort("Партия","etaLeft",srSortState)}</tr></thead><tbody>`;
+  const cW="var(--s1)", cO="var(--s2)", cH="var(--axis)";
+  rows.forEach(r=>{
+    const s=SR_BIZ_ST[r.bizSt], T=r.bizTotal||0, P=r.spd||0;
+    const lw=T? r.sideWb/T:0, lo=T? r.sideOz/T:0, lh=T? r.sideWh/T:0;
+    const pw=P? r.spdWb/P:0, po=P? r.spdOz/P:0;
+    const pc=v=>Math.round(v*100);
+    const days= P? `<span class="sub2 ${r.bizSt==="short"?"delta-down":"mut"}" title="Товар бизнеса ÷ продаж в день; горизонт — ${esc(r.hzSrc)}">хватит ${srDaysTxt(r.bizDays)} дн${r.hz>0? " из "+fmt(r.hz) : ""}</span>` : "";
+    const sub= r.bizSt==="short"? `<span class="sub2 delta-down">кончится раньше на ${fmt(r.hz-r.bizDays)} дн</span>`
+      : (r.bizSt==="over"||r.bizSt==="ok")&&r.bizLeft!=null? `<span class="sub2 mut">останется ≈ ${fmt(r.bizLeft)} шт</span>` : "";
+    const acts=(r.act||"—").split(" · ");
+    html+=`<tr class="${r.bizSt==="short"?"row-critical":""}">`+srName(r,"all")
+      +`<td style="font-weight:650">${fmt(T)}<span class="sub2 mut">ВБ ${fmt(r.sideWb)} · Oz ${fmt(r.sideOz)}</span><span class="sub2 mut">ваши склады ${fmt(r.sideWh)}</span></td>`
+      +`<td class="sr-dec" title="Где лежит: ВБ ${pc(lw)}% · Ozon ${pc(lo)}% · ваши склады ${pc(lh)}%&#10;Где продаётся: ВБ ${pc(pw)}% · Ozon ${pc(po)}%">`
+        +(T? srSplitBar([[lw,cW],[lo,cO],[lh,cH]])+`<span class="sub2 mut">ВБ ${pc(lw)} · Oz ${pc(lo)} · скл ${pc(lh)}%</span>` : `<span class="sub2 delta-down">товара нет нигде</span>`)
+        +(P? srSplitBar([[pw,cW],[po,cO]])+`<span class="sub2 mut">ВБ ${pc(pw)} · Oz ${pc(po)}%</span>` : `<span class="sub2 mut">продаж нет</span>`)+`</td>`
+      +`<td>${P? srNum1(P) : "—"}${P? `<span class="sub2 mut">ВБ ${srNum1(r.spdWb)} · Oz ${srNum1(r.spdOz)}</span>` : ""}</td>`
+      +srWkCell(r.wkAll,(r.wkAll[0]||r.wkAll[1])? `<span class="sub2 mut">ВБ ${fmt(r.wkAllWb[0])} · Oz ${fmt(r.wkAllOz[0])}</span>` : "")
+      +`<td><span class="badge ${s.cls}" title="${esc(s.tip)}"><span class="d"></span>${s.lbl}</span>${days}${sub}</td>`
+      +`<td class="sr-act">${acts.map((a,i)=>i? `<span class="sub2">${esc(a)}</span>` : esc(a)).join("")}</td>`
+      +srBatchCell(r)+`</tr>`;
+  });
+  return html+"</tbody>";
+}
+
+/* «КАК СЧИТАЕТСЯ» — СВОЙ ТЕКСТ У КАЖДОГО ВИДА, КОРОТКИМИ ШАГАМИ (просьба продавца 18.10.2026: прежний
+   блок был стеной текста через стрелки). Один источник и для экрана, и для листа «Как считается»
+   в выгрузке — так файл описывает ровно тот вид, который скачан. */
+function srHowTo(mp){
+  const band=Math.round(SR_BAND*100), hz=srHzTxt(), WK=srWeeks(mp);
+  const wk=WK? "«Неделя "+srWkShort(WK.curFrom,WK.curTo)+"» — заказы в штуках за последнюю закрытую неделю ("+srWkRange(WK.curFrom,WK.curTo)+") против предыдущей ("+srWkRange(WK.prevFrom,WK.prevTo)+"). Идущая неделя в сравнение не входит." : "";
+  if(mp==="ozon"){
+    const bi=buyoutInfo("ozon")||{};
+    return {title:"Как считается — Ozon", steps:[
+      "Запас на Ozon = остаток на складах Ozon + в пути. В пути = «в поставках в пути» + большее из «в заявках» и назначенного у вас на «Ozon СФО/ЦФО»: это одна партия в двух отчётах, считаем её один раз.",
+      "Продаж в день = заказы за 7 дней ÷ 7 × % выкупа Ozon"+(bi.all? " (замер "+pct(bi.all)+" за "+fmtDate(bi.from)+"–"+fmtDate(bi.to)+"; у товара с 10+ закрытыми заказами — свой)." : "."),
+      "Хватит дней = запас на Ozon ÷ продаж в день.",
+      "Сравниваем с горизонтом ("+hz+"). Хватает — «Хватит до партии». Не хватает и запаса меньше чем на "+OZ_LEAD_DAYS+" дн (столько идёт поставка до продажи) — «Отгружать сейчас». Не хватает, но срок поставки перекрыт — «Кончится до партии», отгрузить через «хватит дней − "+OZ_LEAD_DAYS+"».",
+      "«Склады дадут» — свободный остаток Москвы, Нск-1 и Евросиба (на Евросибе позиции меньше "+NSK2_MIN_TAKE+" шт не берём). Этот же склад кормит и Wildberries."],
+      notes:["Цену на Ozon здесь не оцениваем: репрайсера там нет — Ozon следует за ценой ВБ ради индекса, поэтому рычаг один: когда и сколько отгрузить.",
+        "Сколько везти машинами и с какого склада — вид «Подсорт со склада» на вкладке «Оборачиваемость».", wk].filter(Boolean)};
+  }
+  if(mp==="all") return {title:"Как считается — Всего (бизнес по коду 1С)", steps:[
+      "Товар бизнеса = склады ВБ (FBO) + в пути на ВБ + Ozon (остаток и в пути) + ваши склады. Каждая штука один раз: Клин и «Ozon СФО/ЦФО» не задваиваются — та же сумма, что «Всего товара» на вкладке «Остатки».",
+      "Продаж в день = продажи ВБ + продажи Ozon (заказы за 7 дней × % выкупа своей площадки).",
+      "Хватит дней = товар бизнеса ÷ продаж в день.",
+      "«До партии»: хватит дней сравниваем с горизонтом ("+hz+"). Меньше — «Не хватит»; заметно больше (темп ниже нужного больше чем на "+band+"%, та же граница, что «Разогнать» на ВБ) — «Избыток»; между — «Хватит».",
+      "«Лежит / продаётся»: верхняя полоска — где лежит товар (ВБ вместе с Клином · Ozon вместе с назначенным · ваши склады), нижняя — где он продаётся (ВБ · Ozon). Перекос показывает, на какой площадке действовать."],
+      notes:["«Что делать» собран из двух других видов: цена — только на ВБ (вид «Wildberries»), на Ozon — отгрузка (вид «Ozon»).", wk].filter(Boolean)};
+  return {title:"Как считается — Wildberries (план продаж для репрайсера)", steps:[
+      "База — то, что Wildberries может продать до партии: склады ВБ (FBO) + ваши склады.",
+      "Из базы вычитаем, что Ozon заберёт с ваших складов до партии: его продажи за горизонт минус то, что у него уже лежит и едет. Остаток на складах Ozon в базу не входит — Wildberries его не продаст.",
+      "Цель продаж в день = база ÷ горизонт ("+hz+").",
+      "Цель заказов в день = цель продаж ÷ % выкупа товара на ВБ. Это число ставится в репрайсер.",
+      "Сравниваем с заказами за последние 7 дней: выше цели больше чем на "+band+"% — «Поднять цену», ниже больше чем на "+band+"% — «Разогнать», между — «Держать»."],
+    notes:["План только для Wildberries: ценой вы управляете на ВБ, Ozon следует за ней ради индекса.",
+      "«Не хватит и Озону» — Ozon один выберет весь ваш склад до партии: даже без продаж на ВБ товара не хватит. Поднятие цены поможет лишь частично.",
+      "«Хватит на ВБ» = база ÷ нынешние продажи в день; меньше горизонта — товар кончится раньше партии.", wk].filter(Boolean)};
+}
+function renderSrHowTo(mp){
   const el=document.getElementById("srHowTo"); if(!el) return;
-  const hz = srHorizonMode==="eta" ? "до даты прихода партии по этому товару" : srHorizonMode+" дней";
-  el.innerHTML=`<div class="howto-t">КАК СЧИТАЕТСЯ ЗАПАС И ТЕМП</div>`
-    +`<div class="howto-s">`
-    +[`База для цели = остаток на складах ВБ (FBO) + все ваши склады. Остаток, лежащий на Ozon, в базу НЕ входит: его Wildberries не продаст`,
-      `Продаж/дн = заказы за 7 дней ÷ 7 × % выкупа — отдельно по ВБ и по Ozon`,
-      `Ozon доберёт со склада за горизонт (${hz}) = его продаж/дн × дни МИНУС то, что у него уже лежит; больше свободного склада взять не может`,
-      `ВБ доступно = ВБ FBO + склад − то, что доберёт Ozon; делим на горизонт → цель ПРОДАЖ в день`,
-      `ВБ: ЦЕЛЬ ЗАКАЗОВ/ДН = цель продаж ÷ % выкупа товара — вот это число ставится в репрайсер`,
-      `Темп ВБ выше цели на 15% — «поднять цену», ниже на 15% — «разогнать», в пределах — «держать»`,
-      `Ozon: отгрузить через = на сколько хватит того, что уже на площадке, минус ${OZ_LEAD_DAYS} дн поставки`]
-      .map(s=>`<span>${esc(s)}</span>`).join('<i>→</i>')+`</div>`
-    +`<div class="howto-n">`
-    +[`ЭТОТ ПЛАН — ТОЛЬКО ДЛЯ WILDBERRIES, под стратегию «план продаж» в репрайсере. Ценой вы управляете лишь на ВБ: Ozon следует за его ценой ради индекса, поэтому продажами на Ozon вы не управляете, и ставить по нему план смысла нет.`,
-      `ОСТАТОК НА СКЛАДАХ OZON В БАЗУ НЕ ВХОДИТ — этот товар уже на другой витрине, Wildberries его не продаст. В базе только склады ВБ (FBO) и ваши склады.`,
-      `Ключ строки — код 1С: товар физически один, и ваш склад кормит обе площадки. Поэтому из базы вычитается то, что Ozon доберёт со склада, — но только его НЕДОСТАЧА (спрос минус то, что у него уже лежит), а не весь спрос: иначе склад урезался бы дважды.`,
-      `Wildberries считается ЦЕЛИКОМ: и остаток на складах WB (FBO), и ваш склад (FBS) — это один и тот же товар, которым вы торгуете на ВБ. Поэтому цель по темпу держит вас и от аута, и от залежавшегося остатка к приходу партии.`,
-      `Склад Озону доступен весь (Москва, Нск-1, Евросиб) — с 21.09.2026 на Ozon возит и Москва. Не входит только РВБ Клин: его товар уже собран и назначен на Wildberries.`,
-      `«Ozon: отгрузить» — единственный рычаг по Ozon: цена не управляется, поэтому вопрос только в том, когда отправить товар, чтобы не уйти в аут. Срок доставки принят ${OZ_LEAD_DAYS} дней — скажите, если у вас другой, поправлю.`,
-      `Горизонт — до даты, когда партия ВСТАНЕТ В ПРОДАЖУ (а не приедет к вам на склад): пока она лежит непринятой, продажи она не закрывает.`,
-      `Цель «0/дн» на ВБ означает, что весь свободный склад заберёт Ozon и на ВБ не остаётся ничего — продавать нечего, цену надо поднимать сильно.`,
-      `Цель дана в ЗАКАЗАХ, потому что репрайсер стремится именно к числу заказов в день: не добирает — снижает цену до вашего минимума, перебирает — поднимает. Выкупы получатся меньше на процент выкупа товара (он показан мелким под текущим числом заказов).`,
-      `Если у товара нет своей партии, горизонт всё равно берётся до общей даты заказа производству — иначе цель не с чем сравнить. В колонке «Партия» у таких прочерк.`]
-      .map(s=>`<div>${esc(s)}</div>`).join("")+`</div>`;
+  const h=srHowTo(mp||srMp());
+  el.innerHTML=`<span class="ht-t">${esc(h.title)}</span>`
+    +`<ol class="sr-steps">${h.steps.map(s=>`<li>${esc(s)}</li>`).join("")}</ol>`
+    +(h.notes.length? `<div class="sr-notes">${h.notes.map(s=>`<div>${esc(s)}</div>`).join("")}</div>` : "");
 }
-// Выгрузка «Запаса и темпа»: лист с объяснением + сами цифры. Файл уходит без дашборда,
-// поэтому объяснение обязано ехать вместе с числами (как у остальных выгрузок).
+// Выгрузка «Запаса и темпа»: что видишь — то и качаешь (вид, фильтры, сортировка). Лист «Как
+// считается» описывает ТОЛЬКО выбранный вид — файл уходит без дашборда.
 function exportStockRateXLSX(){
+  const mp=srMp();
   const rows=srFiltered();
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
   const inf=v=>v===Infinity?"∞":(v==null?"":Math.round(v));
-  const cols=[
-    {h:"Наименование",v:r=>r.name||"",w:44},{h:"Категория",v:r=>r.category||"",w:20},
-    {h:"Артикул (код 1С)",v:r=>r.sup,w:17},{h:"Артикул ВБ",v:r=>r.wbSku||"",w:13},
-    {h:"Остаток ВБ (FBO), шт",v:r=>r.stockWb,w:20},
-    {h:"Остаток Ozon (+в пути), шт",v:r=>r.stockOz,w:24},
-    {h:"Свой склад Нск, шт",v:r=>r.whNsk,w:18},
-    {h:"Свой склад Мск, шт",v:r=>r.whMsk,w:18},
-    {h:"ЗАПАС ВСЕГО, шт",v:r=>r.total,w:18},
-    {h:"Хватит дней (общий запас)",v:r=>inf(r.days),w:24},
-    {h:"ВБ: заказов/дн сейчас",v:r=>+r.ordWb.toFixed(2),w:22},
-    {h:"ВБ: % выкупа",v:r=>Math.round(r.boWb*100),w:13},
-    {h:"ВБ: продаж/дн сейчас",v:r=>+r.spdWb.toFixed(2),w:21},
-    {h:"Ozon съест за горизонт, шт",v:r=>r.ozTake!=null? Math.round(r.ozTake):"",w:26},
-    {h:"ВБ: доступно, шт",v:r=>r.wbAvail!=null? Math.round(r.wbAvail):"",w:17},
-    {h:"ВБ: ЦЕЛЬ ЗАКАЗОВ/ДН (в репрайсер)",v:r=>r.targetOrders!=null? +r.targetOrders.toFixed(2):"",w:32},
-    {h:"ВБ: цель продаж/дн",v:r=>r.target!=null? +r.target.toFixed(2):"",w:19},
-    {h:"ВБ: разница заказов с текущим",v:r=>r.gapOrders!=null? +r.gapOrders.toFixed(2):"",w:29},
-    {h:"ЧТО ДЕЛАТЬ НА ВБ",v:r=>SR_VERDICT[r.verdict].lbl,w:20},
-    {h:"Ozon: продаж/дн",v:r=>+r.spdOz.toFixed(2),w:16},
-    {h:"Ozon: хватит дней",v:r=>r.spdOz>0? inf(r.ozDays):"",w:18},
-    {h:"Ozon: отгрузить через, дн",v:r=>r.shipIn==null? "" : (r.shipIn<=0? "СРОЧНО" : r.shipIn),w:25},
+  const n2=v=>v==null? "" : +(+v).toFixed(2);
+  const WK=srWeeks(mp);
+  const wkH=WK? srWkShort(WK.curFrom,WK.curTo) : "", wkP=WK? srWkShort(WK.prevFrom,WK.prevTo) : "";
+  const wkPct=w=>(w[1]>0)? Math.round((w[0]-w[1])/w[1]*100) : "";
+  const batch=[
     {h:"Приедет, шт",v:r=>r.incoming||"",w:13},
     {h:"Партия в продажу",v:r=>r.eta? fmtDate(r.eta):"не задана",w:18},
     {h:"Партия на склад",v:r=>r.etaWh? fmtDate(r.etaWh):"",w:17},
-    {h:"Дней до продажи партии",v:r=>r.etaLeft!=null? r.etaLeft:"",w:23}];
+    {h:"Дней до продажи партии",v:r=>r.etaLeft!=null? r.etaLeft:"",w:23},
+    {h:"Срок партии",v:r=>r.etaOver? "задан вручную" : (r.noOwnBatch? "общая дата (своей партии нет)" : (r.eta? "из партии" : "")),w:28}];
+  const head=[{h:"Наименование",v:r=>r.name||"",w:44},{h:"Категория",v:r=>r.category||"",w:20}];
+  let cols, name, file;
+  if(mp==="ozon"){ name="Ozon"; file="запас-и-темп-ozon.xlsx";
+    cols=head.concat([
+      {h:"Артикул Ozon (код 1С)",v:r=>r.sup,w:20},
+      {h:"На складах Ozon, шт",v:r=>r.ozOnly,w:19},
+      {h:"В поставках в пути, шт",v:r=>r.ozWay,w:21},
+      {h:"В заявках / назначено у вас (большее), шт",v:r=>r.ozReqEff,w:38},
+      {h:"ЗАПАС OZON (на складах + в пути), шт",v:r=>r.stockOz,w:34},
+      {h:"Заказов/дн (7 дн)",v:r=>n2(r.ordOz),w:17},
+      {h:"% выкупа Ozon",v:r=>r.ozBo!=null? Math.round(r.ozBo*100):"",w:14},
+      {h:"Продаж/дн",v:r=>n2(r.spdOz),w:11},
+      {h:"Хватит дней",v:r=>r.spdOz>0? inf(r.ozDays):"",w:12},
+      {h:"Горизонт, дн",v:r=>r.hz||"",w:12},
+      {h:"СТАТУС OZON",v:r=>SR_OZ_ST[r.ozSt].lbl,w:20},
+      {h:"Отгрузить через, дн",v:r=>r.ozSt==="ship"? "СРОЧНО" : (r.ozSt==="short"||r.ozSt==="nohz")? Math.max(0,r.shipIn) : "",w:19},
+      {h:"Не хватит до партии, шт",v:r=>r.ozNeedHz!=null? Math.round(r.ozNeedHz):"",w:22},
+      {h:"Склады дадут (Мск + Нск-1 + Евросиб), шт",v:r=>r.whFreeOz,w:38},
+      {h:"Заказы Ozon "+wkH+", шт",v:r=>r.wkOz[0],w:22},{h:"Заказы Ozon "+wkP+", шт",v:r=>r.wkOz[1]==null?"":r.wkOz[1],w:22},
+      {h:"Изменение, %",v:r=>wkPct(r.wkOz),w:13}]).concat(batch);
+  } else if(mp==="all"){ name="Всего"; file="запас-и-темп-всего.xlsx";
+    const sh=(a,b)=>b? Math.round(a/b*100) : "";
+    cols=head.concat([
+      {h:"Код 1С",v:r=>r.sup,w:12},{h:"Артикул ВБ",v:r=>r.wbSku||"",w:13},
+      {h:"ТОВАР БИЗНЕСА, шт",v:r=>r.bizTotal,w:18},
+      {h:"ВБ: FBO + в пути + Клин, шт",v:r=>r.sideWb,w:26},
+      {h:"Ozon: склады + в пути, шт",v:r=>r.sideOz,w:24},
+      {h:"Ваши склады, шт",v:r=>r.sideWh,w:16},
+      {h:"Лежит на ВБ, %",v:r=>sh(r.sideWb,r.bizTotal),w:14},{h:"Лежит на Ozon, %",v:r=>sh(r.sideOz,r.bizTotal),w:16},
+      {h:"Лежит у вас, %",v:r=>sh(r.sideWh,r.bizTotal),w:14},
+      {h:"Продаж/дн всего",v:r=>n2(r.spd),w:16},{h:"Продаж/дн ВБ",v:r=>n2(r.spdWb),w:14},{h:"Продаж/дн Ozon",v:r=>n2(r.spdOz),w:15},
+      {h:"Продаётся на ВБ, %",v:r=>sh(r.spdWb,r.spd),w:18},{h:"Продаётся на Ozon, %",v:r=>sh(r.spdOz,r.spd),w:19},
+      {h:"Хватит дней",v:r=>r.spd>0? inf(r.bizDays):"",w:12},{h:"Горизонт, дн",v:r=>r.hz||"",w:12},
+      {h:"ДО ПАРТИИ",v:r=>SR_BIZ_ST[r.bizSt].lbl,w:20},
+      {h:"Останется к партии (минус — не хватит), шт",v:r=>r.bizLeft!=null&&r.spd>0? Math.round(r.bizLeft):"",w:40},
+      {h:"ЧТО ДЕЛАТЬ",v:r=>r.act||"",w:40},
+      {h:"Заказы "+wkH+" всего, шт",v:r=>r.wkAll[0],w:22},{h:"Заказы "+wkP+" всего, шт",v:r=>r.wkAll[1]==null?"":r.wkAll[1],w:22},
+      {h:"Изменение, %",v:r=>wkPct(r.wkAll),w:13},
+      {h:"Заказы "+wkH+" ВБ",v:r=>r.wkAllWb[0],w:17},{h:"Заказы "+wkH+" Ozon",v:r=>r.wkAllOz[0],w:19}]).concat(batch);
+  } else { name="Wildberries"; file="запас-и-темп-вб.xlsx";
+    cols=head.concat([
+      {h:"Код 1С",v:r=>r.sup,w:12},{h:"Артикул ВБ",v:r=>r.wbSku||"",w:13},
+      {h:"Остаток ВБ (FBO), шт",v:r=>r.stockWb,w:20},
+      {h:"Ваши склады, шт",v:r=>r.whQty,w:16},
+      {h:"Ozon заберёт со складов до партии, шт",v:r=>r.ozTake!=null? Math.round(r.ozTake):"",w:36},
+      {h:"БАЗА ВБ, шт",v:r=>r.wbAvail!=null? Math.round(r.wbAvail) : r.wbBase,w:13},
+      {h:"Хватит на ВБ, дн",v:r=>inf(r.wbDays),w:16},{h:"Горизонт, дн",v:r=>r.hz||"",w:12},
+      {h:"ВБ: заказов/дн сейчас",v:r=>n2(r.ordWb),w:21},
+      {h:"ВБ: % выкупа",v:r=>Math.round(r.boWb*100),w:13},
+      {h:"ВБ: продаж/дн сейчас",v:r=>n2(r.spdWb),w:20},
+      {h:"ВБ: ЦЕЛЬ ЗАКАЗОВ/ДН (в репрайсер)",v:r=>r.targetOrders!=null? n2(r.targetOrders):"",w:32},
+      {h:"ВБ: цель продаж/дн",v:r=>r.target!=null? n2(r.target):"",w:18},
+      {h:"ВБ: разница заказов с текущим",v:r=>r.gapOrders!=null? n2(r.gapOrders):"",w:28},
+      {h:"ЧТО ДЕЛАТЬ НА ВБ",v:r=>SR_VERDICT[r.verdict].lbl,w:19},
+      {h:"Заказы ВБ "+wkH+", шт",v:r=>r.wkWb[0],w:20},{h:"Заказы ВБ "+wkP+", шт",v:r=>r.wkWb[1]==null?"":r.wkWb[1],w:20},
+      {h:"Изменение, %",v:r=>wkPct(r.wkWb),w:13}]).concat(batch);
+  }
+  const sorted=sortRows(rows,srSortState,SR_SORT_ACC);   // порядок строк — как на экране
   const data=[cols.map(c=>c.h)];
-  rows.forEach(r=>data.push(cols.map(c=>c.v(r))));
-  const hz = srHorizonMode==="eta" ? "до даты прихода партии по каждому товару" : srHorizonMode+" дней";
-  const how={name:"Как считается",widths:[34,80],headerRows:1,rows:[
+  sorted.forEach(r=>data.push(cols.map(c=>c.v(r))));
+  const h=srHowTo(mp);
+  const actLbl=(SR_ACTS[mp].find(a=>a[0]===srAction)||["","Все"])[1];
+  const cats=selCats("srCat"), q=(document.getElementById("srSearch").value||"").trim();
+  const filt=[actLbl!=="Все"? "показано: «"+actLbl+"»" : "", cats.length? "категории: "+cats.join(", ") : "",
+    q? "поиск: «"+q+"»" : "", Object.values(srColFilters).some(x=>x&&x.size)? "фильтры по колонкам" : "", recFocus? "только позиции из рекомендации" : ""].filter(Boolean).join("; ");
+  const how={name:"Как считается",widths:[26,100],headerRows:1,rows:[
     ["Показатель","Как получен"],
-    ["Запас всего","остаток на складах ВБ (FBO) + остаток и поставки Ozon + ваш склад (он же FBS) — справочная колонка"],
-    ["Ключ строки","код 1С — товар физически один, и ваш склад кормит обе площадки"],
-    ["Продаж/дн","заказы за 7 дней ÷ 7 × % выкупа площадки; ВБ и Ozon считаются отдельно"],
-    ["ЭТОТ ПЛАН — ТОЛЬКО ДЛЯ ВБ","под стратегию «план продаж» в репрайсере. Ценой вы управляете лишь на ВБ: Ozon следует за его ценой ради индекса, поэтому продажами на Ozon вы не управляете и план по нему не ставится"],
-    ["База цели","остаток ВБ (FBO) + ваш склад. Остаток, лежащий на складах Ozon, в базу НЕ входит: Wildberries его не продаст"],
-    ["Ozon съест за горизонт","только НЕДОСТАЧА Озона (его продажи за горизонт минус то, что у него уже лежит), и не больше свободного склада. Склад один на две площадки, поэтому эту часть ВБ не получит"],
-    ["ВБ: цель продаж/дн","(ВБ FBO + ваш склад − недостача Ozon) ÷ горизонт"],
-    ["ВБ: ЦЕЛЬ ЗАКАЗОВ/ДН","цель продаж ÷ % выкупа товара — ЭТО ЧИСЛО СТАВИТСЯ В РЕПРАЙСЕР"],
-    ["Ozon: отгрузить через","хватит дней на Ozon − "+OZ_LEAD_DAYS+" дн (поставка на Ozon идёт около месяца); «СРОЧНО» — отгружать уже сейчас"],
-    ["% выкупа ВБ",(RD&&RD.meta&&RD.meta.buyoutWin)? (Math.round(RD.meta.buyoutWin.all*100)+"% за "+RD.meta.buyoutWin.from+"…"+RD.meta.buyoutWin.to):"—"],
-    ["Хватит дней","запас ÷ продаж в день"],
-    ["Горизонт",hz],
-    ["Что делать на ВБ","темп ВБ выше цели на 15% — «Поднять цену»; ниже на 15% — «Разогнать»; между — «Держать»"],
-    ["Горизонт — до продажи","считаем до даты, когда партия ВСТАНЕТ В ПРОДАЖУ, а не приедет на склад"],
-    ["Дата прихода","конкретная дата из снимка; дни до неё считаются от сегодня и меняются каждый день"],
-    ["Остатки ВБ на дату",(RD&&RD.meta&&RD.meta.stockSnapshotDate)? fmtDateLong(RD.meta.stockSnapshotDate):"—"],
-    ["Остатки Ozon на дату",(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)? fmtDateLong(RD.ozon.meta.stockDate):"—"],
-    ["Свой склад на дату",(RD&&RD.warehouse)? fmtDateLong(RD.warehouse.date):"—"],
-    ["Заказы по дату",RLAST? fmtDateLong(RLAST):"—"],
-    ["Файл сформирован",fmtDateLong(new Date().toISOString().slice(0,10))]]};
-  xlsxDownload("запас-и-темп.xlsx",[how,
-    {name:"Запас и темп",rows:data,widths:cols.map(c=>c.w),headerRows:1}]);
+    ["Вид", h.title.replace(/^Как считается — /,"")]]
+    .concat(h.steps.map((s,i)=>["Шаг "+(i+1),s]))
+    .concat(h.notes.map(s=>["Примечание",s]))
+    .concat([["Горизонт",srHzTxt()],
+      ["Позиций в файле",String(sorted.length)],
+      ["Фильтры",filt||"без фильтров"]])
+    .concat(mp==="ozon"? [] : [["Остатки ВБ на дату",(RD&&RD.meta&&RD.meta.stockSnapshotDate)? fmtDateLong(RD.meta.stockSnapshotDate):"—"]])
+    .concat(mp==="wb"&&!OZDATA? [] : [["Остатки Ozon на дату",(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)? fmtDateLong(RD.ozon.meta.stockDate):"—"]])
+    .concat([["Ваши склады на дату",(RD&&RD.warehouse)? fmtDateLong(RD.warehouse.date):"—"]])
+    .concat(mp!=="ozon"&&WBDATA? [["Заказы ВБ по дату",fmtDateLong(WBDATA.dates[WBDATA.dates.length-1])]] : [])
+    .concat(mp!=="wb"&&OZDATA? [["Заказы Ozon по дату",fmtDateLong(OZDATA.dates[OZDATA.dates.length-1])]] : [])
+    .concat([["Файл сформирован",fmtDateLong(new Date().toISOString().slice(0,10))]])};
+  xlsxDownload(file,[how,{name:"Запас и темп — "+name,rows:data,widths:cols.map(c=>c.w),headerRows:1}]);
 }
 
 /* Выгрузка «Остатков»: что видишь — то и качаешь (те же фильтры и период, что на экране).
@@ -8661,10 +9103,12 @@ function exportStockXLSX(){
   xlsxDownload("остатки.xlsx",[how,
     {name:"Остатки",rows:data,widths:cols.map(c=>c.w),headerRows:1}]);
 }
+/* Классы бейджей — те, что есть в CSS (`critical`/`warning`/`good`/`nodata`). До 18.10.2026 тут стояли
+   «crit»/«warn», которых в стилях нет: «Поднять цену» и «Разогнать» рисовались бесцветными. */
 const SR_VERDICT={
-  short:{lbl:"Не хватит и Озону",cls:"crit",tip:"Даже если на ВБ не продавать вообще, запаса не хватит: один Ozon выберет его до выхода партии.\nПоднятие цены на ВБ притормозит и Ozon (он следует за ценой), но одного этого может не хватить — смотрите, можно ли ускорить партию."},
-  up:{lbl:"Поднять цену",cls:"crit",tip:"На ВБ продаёте быстрее целевого темпа: запаса не хватит до выхода партии в продажу. Поднимите цену в репрайсере или снимите рекламу."},
-  down:{lbl:"Разогнать",cls:"warn",tip:"На ВБ продаёте медленнее целевого: к выходу партии останется лишнее. Снижайте цену или включайте рекламу."},
+  short:{lbl:"Не хватит и Озону",cls:"critical",tip:"Даже если на ВБ не продавать вообще, запаса не хватит: один Ozon выберет его до выхода партии.\nПоднятие цены на ВБ притормозит и Ozon (он следует за ценой), но одного этого может не хватить — смотрите, можно ли ускорить партию."},
+  up:{lbl:"Поднять цену",cls:"critical",tip:"На ВБ продаёте быстрее целевого темпа: запаса не хватит до выхода партии в продажу. Поднимите цену в репрайсере или снимите рекламу."},
+  down:{lbl:"Разогнать",cls:"warning",tip:"На ВБ продаёте медленнее целевого: к выходу партии останется лишнее. Снижайте цену или включайте рекламу."},
   hold:{lbl:"Держать",cls:"good",tip:"Темп на ВБ совпадает с целевым (±15%) — менять ничего не нужно."},
   none:{lbl:"—",cls:"nodata",tip:"Горизонт не задан: неизвестно, когда партия выйдет в продажу."}};
 
