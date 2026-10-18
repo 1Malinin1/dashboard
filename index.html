@@ -8484,7 +8484,7 @@ function exportStockXLSX(){
   const data=[cols.map(c=>c.h)];
   rows.slice().sort((a,b)=>b.total-a.total).forEach(r=>data.push(cols.map(c=>c.v(r))));
   const {srcDays}=stockSeries();
-  const lastD=a=>a.length? fmtDateLong(a[a.length-1]) : "—";
+  const layerAt=k=>{ const d=stkLayerAt(k,W.to); return d? fmtDateLong(d) : "на "+fmtDateLong(W.to)+" замеров ещё не было"; };
   const how={name:"Как считается",widths:[34,80],headerRows:1,rows:[
     ["Показатель","Как получен"],
     ["Зачем эта таблица","видеть, где лежит товар и как он движется: после отгрузки со склада он пропадает из виду до самого прихода на площадку"],
@@ -8506,9 +8506,11 @@ function exportStockXLSX(){
     ["История Ozon",srcDays.oz.length+" замеров — только из отчётов «Остатки на складах», сколько прислали, столько и точек"],
     ["История своего склада",srcDays.wh.length+" замеров — из ведомостей 1С"],
     ["Между замерами","значение держится прежним: это «нового замера не было», а не «ничего не менялось»"],
-    ["Остатки ВБ на дату",lastD(srcDays.fbo)],
-    ["Остатки Ozon на дату",lastD(srcDays.oz)],
-    ["Свой склад на дату",lastD(srcDays.wh)],
+    /* Замер, по которому взят остаток НА КОНЕЦ периода, а не последний вообще: для прошлой даты
+       «15 окт» здесь противоречило бы цифрам листа. */
+    ["Остатки ВБ — замер",layerAt("fbo")],
+    ["Остатки Ozon — замер",layerAt("oz")],
+    ["Свой склад — замер",layerAt("wh")],
     ["Фильтры",(selCats("stkCat").join(", ")||"все категории")
       +((document.getElementById("stkSearch").value||"").trim()? " · поиск: "+document.getElementById("stkSearch").value.trim():"")],
     ["Файл сформирован",fmtDateLong(new Date().toISOString().slice(0,10))]]};
@@ -11321,6 +11323,11 @@ function renderStockTab(){
   const sh=v=>nf.format(v)+" шт";
   const dTxt=v=>v==null? "не сравнивается" : stkSigned(v)+" шт";
   const dChip=v=>v==null? "" : `<div class="delta ${v>=0?"up":"down"}">${v>=0?"▲":"▼"} ${stkSigned(v)} шт <span class="muted" style="font-weight:400">${W.same?"":"с "+stkDM(W.start.date)}</span></div>`;
+  /* Плашка изменения на плитке, где сравниваются НЕ ВСЕ места: на «Всей истории» в «Всего товара»
+     сравниваются только склады ВБ (у Ozon и ваших складов на 14.07 замеров не было), и «−41 329 с
+     14.07» под итогом 135 757 читалось как падение всего товара. Подписываем, что вошло. */
+  const dPart=keys=>{ const on=keys.filter(k=>cmp[k]), off=keys.filter(k=>!cmp[k]&&W.end.has[k]);
+    return (!W.same&&on.length&&off.length)? `<div class="stk-kpi-note">считаются только ${on.map(k=>LN[k]).join(" и ")}</div>` : ""; };
   const chgBlock=(rowsHtml,total)=>W.same
     ? `<div class="t-note">${W.sameTxt[0].toUpperCase()+W.sameTxt.slice(1)} — изменение не считается.</div>`
     : `<div class="t-hd">Изменение ${pTxt}</div>`+rowsHtml+(total!==undefined? R("= Изменение",total==null?"не с чем сравнить":stkSigned(total)+" шт","t-sep"):"");
@@ -11355,11 +11362,12 @@ function renderStockTab(){
       : `<div class="t-p">Истории у «в пути» нет: ни ВБ, ни 1С не показывают товар между отправкой и приёмкой. Цифра есть только на последний день данных — ${fmtDateLong(W.last)}.</div>`
         +`<div class="t-note">Выберите период, который кончается ${fmtDate(W.last)}, — она появится.</div>`);
   document.getElementById("stkKpis").innerHTML=[
-    {lbl:"Всего товара, шт", val:nf.format(sTot), hero:true, tip:tipAll, delta:dChip(dAll)},
+    {lbl:"Всего товара, шт", val:nf.format(sTot), hero:true, tip:tipAll, delta:dChip(dAll)+(dAll==null?"":dPart(["fbo","oz","wh"]))},
     {lbl:"На площадках, шт", val:nf.format(sFbo+sOz), tip:tipSite,
-      delta:(dF==null&&dO==null)? "" : dChip((dF||0)+(dO||0))},
+      delta:(dF==null&&dO==null)? "" : dChip((dF||0)+(dO||0))+dPart(["fbo","oz"])},
     {lbl:"На ваших складах, шт", val:whAt? nf.format(sWh) : "—", tip:tipWh,
-      delta: whAt? dChip(dW) : `<div class="stk-kpi-note">ведомостей ещё не было</div>`},
+      delta: whAt? (dW==null&&!W.same? `<div class="stk-kpi-note">изменение не считается: на ${stkDM(W.start.date)} ведомостей ещё не было</div>` : dChip(dW))
+        : `<div class="stk-kpi-note">ведомостей ещё не было</div>`},
     {lbl:"В пути на площадки, шт", val:live? nf.format(sWbT+sOzT) : "—",
       valColor:(live&&(sWbT+sOzT))?"var(--warn-txt)":"var(--text-1)", tip:tipWay,
       delta: live? "" : `<div class="stk-kpi-note">только на ${fmtDate(W.last)}</div>`}
@@ -11406,7 +11414,7 @@ function renderStockTab(){
   const wayS=live? "" : `<span class="th-sub">только ${stkDM(W.last)}</span>`;
   const dHead=W.same? `Δ<span class="th-sub">не считается</span>` : `Δ<span class="th-sub">с ${stkDM(W.start.date)}</span>`;
   const dTitle=W.same? ` title="${W.sameTxt[0].toUpperCase()+W.sameTxt.slice(1)} — изменение не считается"`
-    : ` title="Изменение остатка с ${fmtDate(W.start.date)} по ${fmtDate(W.end.date)}, без «в пути»"`;
+    : ` title="Изменение остатка с ${fmtDate(W.start.date)} по ${fmtDate(W.end.date)}, без «в пути»${cmpOff.length&&cmpOn.length? "; сравниваются только "+cmpOn.join(", ") : ""}"`;
   const th=(h,extra)=>`<th${extra||""}>${h}</th>`;
   let html=`<thead><tr><th class="metric">Категория / товар<span class="th-sub">остаток на ${fmtDate(W.to)}</span></th>`
     +th("Склады ВБ")+th("В пути ВБ"+wayS,wayT)+th("Москва")+th("Нск-1")+th("Евросиб")+th("Клин")
@@ -11620,7 +11628,7 @@ function renderStockMove(rows,W){
         +`<td>${r.toWb>0? '<span style="color:var(--good-txt);font-weight:650">+'+nf.format(r.toWb)+'</span>':'<span class="muted">—</span>'}</td>`
         +`<td>${r.toOz>0? '<span style="color:var(--good-txt);font-weight:650">+'+nf.format(r.toOz)+'</span>':'<span class="muted">—</span>'}`
           +cluTxt(r)+`</td>`
-        +`<td>${waitQ? '<b>'+nf.format(waitQ)+'</b>'+(r.wbTransit? '<br><span class="sub">в пути отмечено '+nf.format(r.wbTransit)+'</span>':'<br><span class="sub">не отмечено</span>') : '<span class="muted">—</span>'}</td></tr>`;
+        +`<td>${waitQ? '<b>'+nf.format(waitQ)+'</b>'+(!W.isNow? '' : r.wbTransit? '<br><span class="sub">в пути отмечено '+nf.format(r.wbTransit)+'</span>':'<br><span class="sub">не отмечено</span>') : '<span class="muted">—</span>'}</td></tr>`;
     }).join("")
     +`</tbody></table></div>`;
 }
