@@ -475,6 +475,14 @@
   .rec-item .ri-n{flex:0 0 auto;font-variant-numeric:tabular-nums;font-weight:650;color:var(--text-1);min-width:96px}
   .rec-item .ri-x{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .rec-item .ri-w{flex:0 0 auto;color:var(--muted)}
+  /* узкий экран: пояснение уходит второй строкой под название — иначе длинное «безубыточный …
+     · склейка … · минус …» съедало название целиком и само обрезалось справа */
+  @media (max-width:600px){
+    .rec-item{flex-wrap:wrap;row-gap:0}
+    .rec-item .ri-n{min-width:64px}
+    .rec-item .ri-x{flex:1 1 0}
+    .rec-item .ri-w{flex:1 0 100%;padding-left:74px}
+  }
   .rec-go{margin-top:9px;display:inline-flex;align-items:center;gap:6px;font-size:12px;
     font-weight:600;color:var(--accent);background:none;border:1px solid var(--border-2);
     border-radius:7px;padding:5px 10px;cursor:pointer}
@@ -482,6 +490,40 @@
   .rec-sec{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
     color:var(--muted);margin:16px 0 8px}
   .rec-empty{padding:22px;text-align:center;color:var(--muted);font-size:13px}
+  /* ---- «Всего»: куда дать фокус + карточки площадок ---- */
+  .rec-focus{background:var(--surface);border:1px solid var(--border);border-left:3px solid var(--accent);
+    border-radius:var(--r-lg);padding:12px 15px;margin-bottom:12px;font-size:13px;line-height:1.55;color:var(--text-2)}
+  .rec-focus .rf-t{font-size:11.5px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  .rec-focus .rf-row b{color:var(--text-1)}
+  .rec-focus .rf-n{margin-top:5px;font-size:11.5px;color:var(--muted)}
+  .rmc-wrap{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(330px,100%),1fr));gap:12px;margin-bottom:14px}
+  .rmc{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);padding:13px 15px;
+    position:relative;overflow:hidden;min-width:0}
+  .rmc::before{content:"";position:absolute;left:0;top:0;right:0;height:3px;background:var(--mpc,var(--accent))}
+  .rmc.first{border-color:color-mix(in srgb,var(--mpc,var(--accent)) 45%,var(--border))}
+  .rmc-h{display:flex;align-items:baseline;gap:8px;flex-wrap:wrap;margin-bottom:9px}
+  .rmc-nm{font-size:16px;font-weight:720;color:var(--text-1);letter-spacing:-.01em}
+  .rmc-pri{font-size:11px;font-weight:650;padding:1px 7px;border-radius:999px;color:var(--text-1);
+    background:color-mix(in srgb,var(--mpc,var(--accent)) 22%,transparent)}
+  .rmc-d{margin-left:auto;font-size:11.5px;color:var(--muted)}
+  .rmc-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 14px}
+  @media (max-width:520px){ .rmc-grid{grid-template-columns:minmax(0,1fr)} }
+  .rmc-k{min-width:0}
+  .rmc-k .k{display:block;font-size:11.5px;color:var(--muted)}
+  .rmc-k .k small{font-size:10.5px}
+  .rmc-k .v{display:block;font-size:18px;font-weight:700;font-variant-numeric:tabular-nums;color:var(--text-1);line-height:1.3}
+  .rmc-k .v.good{color:var(--good-txt)} .rmc-k .v.crit{color:var(--crit-txt)}
+  .rmc-k>small{display:block;font-size:11px;line-height:1.4;color:var(--text-2)}
+  .rmc-k small .good{color:var(--good-txt)} .rmc-k small .crit{color:var(--crit-txt)}
+  .rmc-top{margin-top:10px;border-top:1px dashed var(--border);padding-top:8px}
+  .rmc-tt{font-size:11px;font-weight:700;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);margin-bottom:4px}
+  .rmc-ti{display:flex;align-items:baseline;gap:8px;font-size:12.5px;line-height:1.45;color:var(--text-1);padding:2px 0}
+  .rmc-ti i{flex:0 0 auto;width:7px;height:7px;border-radius:50%;background:var(--muted);transform:translateY(-1px)}
+  .rmc-ti.crit i{background:var(--crit-txt)} .rmc-ti.warn i{background:var(--warn-txt)}
+  .rmc-ti.good i{background:var(--good-txt)} .rmc-ti.info i{background:var(--accent)}
+  .rmc-ti span{flex:1 1 auto;min-width:0}
+  .rmc-ti b{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--crit-txt);font-weight:650}
+  .rmc-go{margin-top:10px}
   /* ---- План по чистой прибыли (карточка на «Рекомендациях») ---- */
   .pl-tbl{width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:13px}
   .pl-tbl th,.pl-tbl td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line)}
@@ -1067,14 +1109,15 @@
   <section id="tab-recs" class="tab-panel">
     <div class="freshness" id="recFreshness"></div>
     <div class="kpis4" id="recKpis"></div>
+    <div id="recOverview" hidden></div>
     <div class="card" id="recPlanCard" hidden style="margin-bottom:14px">
       <h3 id="recPlanH">План по чистой прибыли</h3>
       <div class="cap" id="recPlanCap"></div>
       <div id="recPlan"></div>
     </div>
-    <div class="card" style="margin-bottom:14px">
-      <h3>Что изменилось за неделю и почему</h3>
-      <div class="cap" id="recChangedCap">Сравнение последних 7 дней с предыдущими 7 по заказам.</div>
+    <div class="card" id="recChgCard" style="margin-bottom:14px">
+      <h3 id="recChgH">Что изменилось за неделю и почему</h3>
+      <div class="cap" id="recChangedCap">Последняя закрытая календарная неделя (пн–вс) против предыдущей.</div>
       <div class="seg" id="recChgSeg" role="group" aria-label="Что показать" style="margin:10px 0 4px">
         <button data-f="down" aria-pressed="true">Просело</button>
         <button data-f="up">Выросло</button>
@@ -1082,14 +1125,15 @@
       </div>
       <div id="recChanged"></div>
     </div>
+    <div class="rec-sec" id="recListH">Что делать</div>
     <div class="seg" id="recFilterSeg" role="group" aria-label="Что показать" style="margin-bottom:12px">
       <button data-f="all" aria-pressed="true">Всё</button>
       <button data-f="crit">Только срочное</button>
       <button data-f="money">По деньгам</button>
     </div>
     <div id="recList"></div>
-    <div class="card" style="margin:16px 0 0">
-      <h3>Гипотезы по рекламе: категория → склейка → товар</h3>
+    <div class="card" id="recAdTreeCard" style="margin:16px 0 0">
+      <h3>Гипотезы по рекламе Wildberries: категория → склейка → товар</h3>
       <div class="cap">На каждом уровне свой вердикт и почему. Потолок CPO считается по данным
         этого же уровня — у склейки свой чек и свой % выкупа. Клик по строке разворачивает уровень ниже.</div>
       <div id="recAdTree"></div>
@@ -1834,7 +1878,7 @@ let WBDATA = null, OZDATA = null, activeMp = "wb", _appliedMp = null;
    появился тариф ИУ и стало из чего считать прибыль. «Финансы» и «Аналитика» намеренно НЕ
    здесь: «Финансы» — сверка с кабинетом ВБ (у Озона такого источника нет, там оценка по
    тарифу), «Аналитика» построена на строках отчёта о реализации. */
-const MP_TABS = { dynamics: true, turnover: true, product: true, home: true, ads: true };
+const MP_TABS = { dynamics: true, turnover: true, product: true, home: true, ads: true, recs: true };
 const catalogCostBySku = {}; // заполняется в hydrateData из RCAT
 // ручные/загруженные правки себестоимости (перекрывают каталог), хранятся в браузере
 const COST_OV_KEY="wb_cost_overrides_v1";
@@ -2500,6 +2544,7 @@ function renderFocusBar(){
   el.hidden=false;
   el.innerHTML=`<span class="fb-t">Показаны только позиции из рекомендации:</span>`
     +`<b>${esc(recFocus.label)}</b><span class="fb-n">${recFocus.n||recFocus.keys.size} поз.</span>`
+    +(recFocus.dates&&recFocus.dates.length? `<span class="fb-n">период ${fmtDate(recFocus.dates[0])} – ${fmtDate(recFocus.dates[recFocus.dates.length-1])}</span>` : "")
     +`<button class="fb-x" id="focusClear">показать все</button>`;
 }
 /* Ставя фокус, СНИМАЕМ собственные фильтры целевой вкладки. Иначе получается то, на что
@@ -2515,7 +2560,8 @@ function setFocus(f){
   if(f && f.tab==="turnover"){ turnColFilters={}; clearInput("turnSearch"); clearSel("turnCat"); clearSel("turnProduct"); }
   if(f && f.tab==="stockrate"){ srColFilters={}; clearInput("srSearch"); clearSel("srCat"); srAction="all";
     document.querySelectorAll("#srActionSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.act==="all"?"true":"false")); }
-  if(f && f.tab==="ads"){ adColFilters={}; clearInput("adSearch"); }
+  if(f && f.tab==="ads"){ adColFilters={}; clearInput("adSearch"); _ozAdTagFilter=null; }
+  if(f && f.tab==="home"){ clearInput("homeSearch"); clearSel("homeCat"); }
   renderFocusBar();
 }
 function clearFocus(rerender){ recFocus=null; renderFocusBar(); if(rerender) renderActiveTab(); }
@@ -7816,13 +7862,16 @@ function renderAdsOzon(){
     +`</div>`;
   // ---- таблица товаров
   let list=rows.filter(r=>r.spend>0 || r.ordRub>0);
-  if(_ozAdTagFilter) list=list.filter(r=>r.tag===_ozAdTagFilter);
+  // фокус из «Рекомендаций» (ключ — код 1С): показываем ровно позиции правила
+  const ozFocused=!!(recFocus && recFocus.tab==="ads" && recFocus.keys.size);
+  if(ozFocused) list=focusApply(list);
+  else if(_ozAdTagFilter) list=list.filter(r=>r.tag===_ozAdTagFilter);
   if(q) list=list.filter(r=>matchQ(r.sup,r.name,q) || (""+(r.ozonSku||"")).includes(q));
   const tagAgg={}; L.tags.forEach(t=>tagAgg[t.key]=t);
   list.sort((a,b)=>(b.spend-a.spend)||(b.rev-a.rev));
   const cnt=document.getElementById("adCount");
   if(cnt) cnt.textContent=list.length+" "+plural(list.length,"товар","товара","товаров")
-    +(_ozAdTagFilter? " · склейка «"+_ozAdTagFilter+"»":"");
+    +(ozFocused? " · по рекомендации" : (_ozAdTagFilter? " · склейка «"+_ozAdTagFilter+"»":""));
   howto.innerHTML=`<b>Как считается — Ozon.</b> ДРР = расход ÷ выручка в выкупе. `
     +`<b>Расход складывается из двух частей.</b> Первая — выгрузка XWAY целиком (клики и оплата за заказ в кампаниях, `
     +`которые вы запускали сами). Вторая — кабинетное продвижение «оплата за заказ», которое Ozon списывает `
@@ -8407,6 +8456,12 @@ function renderHomeOzon(){
     const i=ozMs.findIndex(m=>m.key===homeMonth);
     prevDates=ozMs[i+1]? ozMonthDatesOf(ozMs[i+1].key) : [];
   } else ({dates,prevDates}=dateRangeFromCache(rows,homePeriodN));
+  /* ФОКУС ИЗ «РЕКОМЕНДАЦИЙ» НЕСЁТ СВОЙ ПЕРИОД — календарную неделю (пн–вс), за которую
+     правило насчитало убыток. Кнопки периода её дать не могут («1 нед» — последние 7 дней),
+     поэтому берём даты фокуса и гасим кнопки: иначе сумма в правиле и в таблице разъехались бы. */
+  const hf=(recFocus && recFocus.tab==="home" && recFocus.dates && recFocus.dates.length)? recFocus : null;
+  if(hf){ dates=hf.dates.filter(d=>allDates.includes(d)); prevDates=(hf.prevDates||[]).filter(d=>allDates.includes(d));
+    document.querySelectorAll("#homePeriodSeg button").forEach(b=>b.setAttribute("aria-pressed","false")); }
   const now=ozFinAggregate(dates,cat,q);
   const prev=prevDates.length? ozFinAggregate(prevDates,cat,q) : null;
 
@@ -8499,9 +8554,10 @@ function renderHomeOzon(){
   renderHomeWeeksOz(cat,q);
   let list=sortRows(prod,homeSortState,{ name:r=>r.name, category:r=>r.category, qty:r=>r.qty,
     revenue:r=>r.revenue, cogs:r=>r.cogs, wbHold:r=>r.mpFee, ad:r=>r.ad, profit:r=>r.profit, margin:r=>r.margin });
+  if(hf) list=focusApply(list);                        // только позиции из рекомендации
   const maxAbsP=list.reduce((m,r)=>Math.max(m,Math.abs(r.profit)),0);
-  document.getElementById("homeCount").textContent=list.length+" товаров";
-  document.getElementById("homeTblNote").textContent=`Ozon · период: ${dates.length} дн. · оценка: тариф ИУ ${fxTxt} + реклама по факту (XWAY, отчёт «Оплата за заказ») или ставке`;
+  document.getElementById("homeCount").textContent=list.length+" товаров"+(hf? " · по рекомендации" : "");
+  document.getElementById("homeTblNote").textContent=`Ozon · период: ${hf? fmtDate(dates[0])+" – "+fmtDate(dates[dates.length-1])+", " : ""}${dates.length} дн. · оценка: тариф ИУ ${fxTxt} + реклама по факту (XWAY, отчёт «Оплата за заказ») или ставке`;
   if(!list.length){ document.getElementById("homeTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар","name",homeSortState,"metric")}${thSort("Категория","category",homeSortState)}
     ${thSort("Продано","qty",homeSortState)}${thSort("Выручка, ₽","revenue",homeSortState)}${thSort("Себест., ₽","cogs",homeSortState)}${thSort("Забирает Ozon, ₽","wbHold",homeSortState)}${thSort("Реклама","ad",homeSortState)}${thSort("Прибыль, ₽","profit",homeSortState)}${thSort("Маржа","margin",homeSortState)}</tr></thead><tbody>`;
@@ -9708,9 +9764,10 @@ function renderProductPeriods(){
    совпадать с той вкладкой, куда она отправляет.
 
    ДВА БЛОКА:
-   · «Что изменилось» — причинно-следственные связи: заказы за последние 7 дней
-     против предыдущих 7, и ПОЧЕМУ они изменились (цена, показы, конверсия,
-     остаток, реклама). Продавец просил именно связи, а не голые дельты.
+   · «Что изменилось» — причинно-следственные связи: заказы последней закрытой
+     календарной недели (пн–вс) против предыдущей закрытой, и ПОЧЕМУ они изменились
+     (цена, показы, конверсия, остаток, реклама). Продавец просил именно связи, а не
+     голые дельты. С 18.10.2026 — по каждой площадке своей воронкой (ВБ и Ozon).
    · «Что делать» — действия, отсортированные по деньгам и срочности.
 
    ЧЕГО ЗДЕСЬ СОЗНАТЕЛЬНО НЕТ: выдумывания причин. Если ни один признак не сработал,
@@ -9745,31 +9802,92 @@ const REC_CR_D=0.20;                // ±20% по конверсии
 let recFilter="all";
 let recChgFilter="down", _recChgCat=null, _recChgTag=null;   // дерево «что изменилось»
 const recPct = (a,b) => b>0? (a/b-1) : (a>0? Infinity : 0);
-const recPctTxt = v => (v>0?"+":"")+Math.round(v*100)+"%";
+const recPctTxt = v => (v>0?"+":(v<0?"−":""))+Math.abs(Math.round(v*100))+"%";
 
-/* Сводка по окну: заказы, деньги, воронка и остаток на конец окна — по каждому sku ВБ. */
-function recWindowAgg(dates){
-  const S=(RD&&RD.orderSeries)||{}, M=S.money||{}, idx={};
-  (S.dates||[]).forEach((d,i)=>idx[d]=i);
+/* ===== ПЛОЩАДКА В РЕКОМЕНДАЦИЯХ (просьба продавца 18.10.2026) =====
+   «Захожу в раздел рекомендации, вижу общую инфу, далее смотрю, на что лучше дать фокус —
+   на какой маркетплейс, и там уже проваливаюсь». Поэтому у вкладки три вида: Wildberries,
+   Ozon и «Всего» — сводка приоритетов. Каждое правило помечено площадкой (`mp`), а цифры
+   по-прежнему берутся из функций целевых вкладок, своих расчётов здесь нет.
+
+   ИСТОЧНИК ДАННЫХ ПЛОЩАДКИ для разбора «что изменилось»: ряд заказов, деньги, воронка и
+   каталог. У Ozon артикул = код 1С, категория — родная Озона (как на «Динамике» и «Товаре»),
+   склейка — ВБ-шная по коду 1С (на Ozon склейки те же, см. ozAdMap). */
+function recSrc(mp){
+  if(mp==="ozon"){
+    const O=(RD&&RD.ozon)||{}, S=O.orderSeries||{}, M=ozAdMap(), byS={};
+    (O.catalog||[]).forEach(c=>{ const s=""+c.sku, e=M[s]||{};
+      byS[s]={sku:s, name:c.name||s, category:c.category||"", adTag:e.tag||"", supplierCode:s}; });
+    return {mp:"ozon", dates:S.dates||[], bySku:S.byArt||{}, money:S.money||{},
+      funnel:(typeof OZ_FUNNEL!=="undefined"&&OZ_FUNNEL)||[], byS};
+  }
+  const S=(RD&&RD.orderSeries)||{}, byS={};
+  ((RD&&RD.catalog)||[]).forEach(c=>byS[""+c.sku]=c);
+  return {mp:"wb", dates:S.dates||[], bySku:S.bySku||{}, money:S.money||{},
+    funnel:(typeof FUNNEL_CACHE!=="undefined"? FUNNEL_CACHE:[]), byS};
+}
+/* НЕДЕЛИ — ТОЛЬКО КАЛЕНДАРНЫЕ, ПН–ВС (правило продавца 15.09 и 25.09.2026: «неделя у тебя
+   только календарная, а не 7 последних дней»). Раньше здесь сравнивались «последние 7 дней
+   против предыдущих 7» — и границы ездили вместе с последним загруженным днём.
+   Последняя ЗАКРЫТАЯ неделя (все 7 дней есть в ряду заказов) сравнивается с предыдущей
+   закрытой; идущая неделя в сравнение не идёт и печатается отдельно («неполная, N дн»). */
+function recAddDay(iso,n){ const t=new Date(iso+"T00:00:00Z"); t.setUTCDate(t.getUTCDate()+n); return t.toISOString().slice(0,10); }
+function recWeeks(dates){
+  if(!dates||!dates.length) return null;
+  const set=new Set(dates), last=dates[dates.length-1];
+  const wk=mon=>Array.from({length:7},(_,i)=>recAddDay(mon,i));
+  let mon=mondayOf(last); if(recAddDay(mon,6)>last) mon=recAddDay(mon,-7);
+  for(let k=0;k<8;k++){                      // дыра в ряду — шагаем на неделю назад, а не склеиваем
+    const a=wk(mon), b=wk(recAddDay(mon,-7));
+    if(a.every(d=>set.has(d)) && b.every(d=>set.has(d))) return {w1:a, w0:b, open:dates.filter(d=>d>a[6])};
+    mon=recAddDay(mon,-7);
+  }
+  return null;
+}
+// границы недели — из данных и с днём недели у обеих (правило 25.09.2026)
+const recWkTxt = w => w&&w.length? "пн "+fmtDateLong(w[0])+" – вс "+fmtDateLong(w[w.length-1]) : "—";
+const recWkShort = w => w&&w.length? fmtDate(w[0])+"–"+fmtDate(w[w.length-1]) : "—";
+/* Сводка по окну: заказы, деньги, воронка и остаток на конец окна — по каждому артикулу площадки. */
+function recWindowAgg(dates, src){
+  src=src||recSrc("wb");
+  const M=src.money||{}, idx={};
+  (src.dates||[]).forEach((d,i)=>idx[d]=i);
   const set=new Set(dates), out={};
   const get=s=>out[s]||(out[s]={qty:0,rub:0,imp:0,cv:0,cart:0,ord:0,buy:0,cancel:0,stock:null,zeroDays:0});
   dates.forEach(d=>{ const i=idx[d]; if(i==null) return;
-    Object.entries(S.bySku||{}).forEach(([sku,arr])=>{ const q=arr[i]||0; if(q) get(sku).qty+=q; });
+    Object.entries(src.bySku||{}).forEach(([sku,arr])=>{ const q=arr[i]||0; if(q) get(sku).qty+=q; });
     const m=M[d]||{}; Object.entries(m).forEach(([sku,v])=>{ get(sku).rub+=(v&&v[0])||0; });
   });
-  (typeof FUNNEL_CACHE!=="undefined"? FUNNEL_CACHE:[]).forEach(r=>{ if(!set.has(r.date)) return;
+  (src.funnel||[]).forEach(r=>{ if(!set.has(r.date)) return;
     const e=get(""+r.sku);
     e.imp+=r.impressions||0; e.cv+=r.cardViews||0; e.cart+=r.addCart||0;
     e.ord+=r.ordersQty||0; e.buy+=r.buyoutQty||0; e.cancel+=r.cancelQty||0;
-    if(r.wbStock!=null){ if((r.wbStock||0)<=0) e.zeroDays++; e.stock=r.wbStock; }   // последний день окна
+    // остаток ВБ лежит в воронке ВБ; у воронки Ozon поле wbStock есть, но всегда 0 — его не берём
+    if(src.mp!=="ozon" && r.wbStock!=null){ if((r.wbStock||0)<=0) e.zeroDays++; e.stock=r.wbStock; }   // последний день окна
   });
+  /* Остаток Ozon — из истории отчётов «Остатки» (`ozon.stockHistory`): на каждый день окна
+     берём последний замер не позже дня. Артикула нет в замере — не знаем, день не считаем. */
+  if(src.mp==="ozon"){
+    const H=(RD&&RD.ozon&&RD.ozon.stockHistory)||{}, hd=Object.keys(H).sort();
+    if(hd.length) dates.forEach(d=>{ let pick=null; for(const h of hd){ if(h<=d) pick=h; else break; }
+      if(!pick) return;
+      Object.entries(H[pick]||{}).forEach(([sku,q])=>{ const e=get(""+sku); if(!(q>0)) e.zeroDays++; e.stock=q||0; }); });
+  }
   return out;
 }
 /* Расход рекламы по окну — из накопленных частей выгрузки. Часть засчитывается,
-   только если её период ЦЕЛИКОМ внутри окна: иначе сравнивали бы разные отрезки. */
-function recAdsInWindow(dates){
-  const P=(RD&&RD.adPerf)||null; if(!P) return null;
-  const parts=P.parts||[{from:P.from,to:P.to,bySku:P.bySku}];
+   только если её период ЦЕЛИКОМ внутри окна: иначе сравнивали бы разные отрезки.
+   У Ozon — выгрузки XWAY (`ozon.meta.adSpend.parts`, ключ — код 1С): именно они
+   меняются от решений продавца; базовая оплата за заказ идёт от выручки и причиной не бывает. */
+function recAdsInWindow(dates, mp){
+  let parts;
+  if(mp==="ozon"){
+    const P=ozAdSpendParts(); if(!P.length) return null;
+    parts=P.map(p=>({from:p.from, to:p.to, bySku:Object.fromEntries(Object.entries(p.bySup||{}).map(([s,v])=>[s,{spend:+v||0}]))}));
+  } else {
+    const P=(RD&&RD.adPerf)||null; if(!P) return null;
+    parts=P.parts||[{from:P.from,to:P.to,bySku:P.bySku}];
+  }
   const lo=dates[0], hi=dates[dates.length-1];
   const inside=parts.filter(p=>p.from>=lo && p.to<=hi);
   if(!inside.length) return null;
@@ -9824,19 +9942,36 @@ function recFactors(a,b){
   return out;
 }
 const recZ=(a,b)=>(a+b)>0? Math.abs(a-b)/Math.sqrt(a+b) : 0;
-function recChanges(){
-  const S=(RD&&RD.orderSeries)||null;
-  if(!S||!S.dates||S.dates.length<REC_WIN*2) return {rows:[],w1:null,w0:null,adNote:""};
-  const d=S.dates, n=d.length;
-  const w1=d.slice(n-REC_WIN), w0=d.slice(n-REC_WIN*2,n-REC_WIN);
-  const A=recWindowAgg(w1), B=recWindowAgg(w0);
-  const ad1=recAdsInWindow(w1), ad0=recAdsInWindow(w0);
-  const byS={}; (RD.catalog||[]).forEach(c=>byS[""+c.sku]=c);
+/* ВОРОНКА БЫВАЕТ НЕПОЛНОЙ — ТОГДА РАЗЛОЖЕНИЕ ПО ЕЁ ШАГАМ ВРЁТ. День, где заказов в воронке
+   меньше 80% от ряда заказов (при 20+ заказах), значит, выгружен не целиком (у Ozon воронка и
+   заказы — разные отчёты, у ВБ воронка просто могла не прийти). На таком дне показы «падают»
+   вдвое, и разбор выдаёт «проседают показы — дайте рекламный импульс» там, где заказы почти
+   не изменились (замер 18.10.2026: воронка Ozon за 07–09.10 — 43%, 32% и 0% от заказов).
+   На всех остальных днях истории обеих площадок доля 0,9–1,1, ложных срабатываний нет. */
+const REC_FUN_MIN=0.8;
+function recFunnelGaps(dates, src){
+  const idx={}; (src.dates||[]).forEach((d,i)=>idx[d]=i);
+  const f={}; (src.funnel||[]).forEach(r=>{ f[r.date]=(f[r.date]||0)+(r.ordersQty||0); });
+  return (dates||[]).filter(d=>{ const i=idx[d]; if(i==null) return false;
+    let q=0; Object.values(src.bySku||{}).forEach(a=>{ q+=a[i]||0; });
+    return q>=20 && (f[d]||0) < q*REC_FUN_MIN; });
+}
+function recChanges(mp){
+  mp = mp==="ozon"? "ozon" : "wb";
+  const src=recSrc(mp), WK=recWeeks(src.dates);
+  if(!WK) return {rows:[],w1:null,w0:null,open:[],adNote:"",mp,byS:src.byS};
+  const w1=WK.w1, w0=WK.w0;
+  const A=recWindowAgg(w1,src), B=recWindowAgg(w0,src);
+  const ad1=recAdsInWindow(w1,mp), ad0=recAdsInWindow(w0,mp);
+  const byS=src.byS;
+  // воронка неполная — шаги воронки не раскладываем, сегмент и соседей судим по ряду заказов
+  const fGap=recFunnelGaps([...w0,...w1],src), fOk=!fGap.length;
+  const oq=e=>fOk? (e.ord||0) : (e.qty||0);
   // сегменты: как изменилась склейка и категория целиком — упал он один или все
   const seg={tag:{},cat:{}};
   const bump=(o,k,a,b)=>{ const e=o[k]||(o[k]={a:0,b:0}); e.a+=a; e.b+=b; };
   Object.keys({...A,...B}).forEach(sku=>{ const c=byS[sku]; if(!c) return;
-    const a=(A[sku]||{}).ord||0, b=(B[sku]||{}).ord||0;
+    const a=oq(A[sku]||{}), b=oq(B[sku]||{});
     if(c.adTag) bump(seg.tag,c.adTag,a,b);
     if(c.category) bump(seg.cat,c.category,a,b); });
   // кто вырос внутри склейки — кандидат на «спрос перетёк к соседу»
@@ -9844,7 +9979,7 @@ function recChanges(){
   Object.keys({...A,...B}).forEach(sku=>{ const c=byS[sku]; if(!c||!c.adTag) return;
     const a=(A[sku]||{}), b=(B[sku]||{});
     (inTag[c.adTag]||(inTag[c.adTag]=[])).push({sku, name:c.name||sku,
-      d:(a.ord||0)-(b.ord||0), price: a.qty>0? a.rub/a.qty : 0}); });
+      d:oq(a)-oq(b), price: a.qty>0? a.rub/a.qty : 0}); });
 
   const rows=Object.keys({...A,...B}).map(sku=>{
     const a=A[sku]||{qty:0,rub:0,imp:0,cv:0,cart:0,ord:0,cancel:0,zeroDays:0};
@@ -9852,16 +9987,16 @@ function recChanges(){
     const c=byS[sku]||{};
     const s1=ad1? (ad1.bySku[sku]||0):null, s0=ad0? (ad0.bySku[sku]||0):null;
     const p1=a.qty>0? a.rub/a.qty:0, p0=b.qty>0? b.rub/b.qty:0;
-    const r={sku, name:c.name||sku, category:c.category||"", tag:c.adTag||"",
+    const r={sku, mp, name:c.name||sku, category:c.category||"", tag:c.adTag||"",
       sup:(""+(c.supplierCode||"")).trim(),
       q1:a.qty, q0:b.qty, dq:a.qty-b.qty, r1:a.rub, r0:b.rub, dr:a.rub-b.rub,
       p1, p0, dPrice: p0>0? p1/p0-1 : 0,
       z: recZ(a.qty,b.qty), zeroDays:a.zeroDays, cancel1:a.cancel, cancel0:b.cancel,
-      ad1:s1, ad0:s0, factors:recFactors(a,b)};
+      ad1:s1, ad0:s0, factors:fOk? recFactors(a,b) : null};
     /* СЕГМЕНТ СЧИТАЕМ БЕЗ САМОГО ТОВАРА. Иначе крупная карточка тянет свою склейку вниз,
        и про неё же делается вывод «падает весь сегмент — дело не в карточке». */
     const st=seg.tag[c.adTag], sc=seg.cat[c.category];
-    const ex=(o)=>{ if(!o) return null; const bb=o.b-b.ord, aa=o.a-a.ord;
+    const ex=(o)=>{ if(!o) return null; const bb=o.b-oq(b), aa=o.a-oq(a);
       return bb>0? aa/bb-1 : null; };
     r.segTag = ex(st); r.segCat = ex(sc);
     // сосед по склейке, который забрал спрос
@@ -9878,8 +10013,8 @@ function recChanges(){
     return r;
   }).filter(r=>(r.q1>0||r.q0>0) && !recIsOut(r));
   rows.sort((x,y)=>Math.abs(y.dr)-Math.abs(x.dr));
-  return {rows, w1, w0, A, B, ad1, ad0,
-    adNote: (ad1&&ad0)? "" : "расход на рекламу за прошлую неделю не загружен — как причину не проверяю"};
+  return {rows, w1, w0, open:WK.open, A, B, ad1, ad0, mp, byS, fGap,
+    adNote: (ad1&&ad0)? "" : "расход на рекламу"+(mp==="ozon"? " (выгрузки XWAY)" : "")+" за одну из недель не загружен — как причину не проверяю"};
 }
 /* ===== ДЕРЕВО «РОСТ И ПАДЕНИЕ»: КАТЕГОРИЯ → СКЛЕЙКА → ТОВАР =====
    Просьба продавца 01.09.2026: разбор просадки по товару ему понятен, нужен такой же
@@ -9898,17 +10033,17 @@ function recSum(list, W){
 function recNode(name, skus, ch, extra){
   const a=recSum(skus,ch.A), b=recSum(skus,ch.B);
   const p1=a.qty>0? a.rub/a.qty:0, p0=b.qty>0? b.rub/b.qty:0;
-  const r={name, skus, q1:a.qty, q0:b.qty, dq:a.qty-b.qty, r1:a.rub, r0:b.rub, dr:a.rub-b.rub,
+  const r={name, skus, mp:ch.mp, q1:a.qty, q0:b.qty, dq:a.qty-b.qty, r1:a.rub, r0:b.rub, dr:a.rub-b.rub,
     p1, p0, dPrice: p0>0? p1/p0-1 : 0, z:recZ(a.qty,b.qty), zeroDays:0,
     cancel1:a.cancel, cancel0:b.cancel, ad1:null, ad0:null,
-    factors:recFactors(a,b), segTag:null, segCat:null, ...(extra||{})};
+    factors:(ch.fGap&&ch.fGap.length)? null : recFactors(a,b), segTag:null, segCat:null, ...(extra||{})};
   if(ch.ad1&&ch.ad0){ r.ad1=skus.reduce((x,s)=>x+(ch.ad1.bySku[s]||0),0);
     r.ad0=skus.reduce((x,s)=>x+(ch.ad0.bySku[s]||0),0); }
   r.diag=recDiag(r);
   return r;
 }
 function recTree(ch){
-  const byS={}; (RD.catalog||[]).forEach(c=>byS[""+c.sku]=c);
+  const byS=ch.byS||{};
   const live=ch.rows.map(r=>r.sku);                 // выводимый товар сюда уже не попал
   const cats={};
   live.forEach(sku=>{ const c=byS[sku]; if(!c) return;
@@ -9933,7 +10068,7 @@ function recDiag(r){
   const down=r.dq<0, out=[];
   const pcs=v=>(v>0?"+":"−")+Math.abs(Math.round(v*100))+"%";
   // 1. жёсткие физические причины — они старше любой воронки
-  if(down && r.zeroDays>=2) out.push({k:"stock",t:`товара не было на ВБ <b class="num">${r.zeroDays}</b> дн из ${REC_WIN} — заказы просто некому было отдать`});
+  if(down && r.zeroDays>=2) out.push({k:"stock",t:`товара не было на ${r.mp==="ozon"?"Ozon":"ВБ"} <b class="num">${r.zeroDays}</b> дн из ${REC_WIN} — заказы просто некому было отдать`});
   if(!down && r.zeroDays===0 && r.q0>0 && r.dq>0 && r.q0<r.q1*0.5) {}
   // 2. факторное разложение
   let lead=null, steps=null;
@@ -9965,8 +10100,13 @@ function recDiag(r){
     if(r.segCat!=null) seg.push(`категория ${pcs(r.segCat)}`);
     const alone = down && ((r.segTag!=null&&r.segTag>0.05)||(r.segCat!=null&&r.segCat>0.05));
     const withAll = down && ((r.segTag!=null&&r.segTag<-0.05)||(r.segCat!=null&&r.segCat<-0.05));
+    /* «Весь сегмент вниз» НЕ оправдывает карточку, если у неё самой выросла цена: когда цену
+       подняли всей склейке разом (замер Ozon 05–11.10: светофоры +17…21%), сегмент падает
+       именно от этого, и вывод «дело не в карточке» уводил бы от настоящей причины. */
+    const priceUp = r.dPrice>0.03 && r.p0>0;
     out.push({k:"seg", t:seg.join(", ")+(alone? " — падает он один, спрос в сегменте есть"
-      : (withAll? " — падает весь сегмент, дело не в карточке" : ""))});
+      : (withAll? (priceUp? " — падает весь сегмент, но и цена выросла: если подняли её всей склейке, падение может быть от этого"
+                           : " — падает весь сегмент, дело не в карточке") : ""))});
   }
   // 5. сосед забрал спрос
   if(r.rival) out.push({k:"rival",
@@ -9986,6 +10126,8 @@ function recDiag(r){
   let act=null;
   const withAll = down && ((r.segTag!=null&&r.segTag<-0.05)||(r.segCat!=null&&r.segCat<-0.05));
   if(down && r.zeroDays>=2) act="Вернуть товар в наличие — остальное вторично.";
+  else if(withAll && r.dPrice>0.03 && r.p0>0)
+    act=`Падает весь сегмент, но и цена выросла на ${Math.round(r.dPrice*100)}% — если цену подняли всей склейке, проверьте, окупил ли подъём потерю заказов: судите по прибыли недели, а не по штукам.`;
   else if(withAll) act="Падает весь сегмент — карточку не трогаем, смотрим спрос и цены по категории целиком.";
   else if(down && r.rival && r.rivalNear && r.dPrice>0.03)
     act=`Вернуть цену: подняли на ${Math.round(r.dPrice*100)}%, и покупатель ушёл на соседнюю карточку склейки. Сравните цену с ${r.rival.sku} и решите, кого продвигать.`;
@@ -9997,6 +10139,11 @@ function recDiag(r){
     act="Проседает CTR: показы дают, а кликать перестали. Главное фото и первый экран выдачи — либо у соседа появилось предложение выгоднее.";
   else if(down && lead && lead.k==="imp")
     act="Проседают показы — это выдача, а не карточка. Проверьте позиции по ключам и дайте рекламный импульс, чтобы вернуть охват.";
+  /* разложения нет (воронка за эти дни неполная или её нет) — действие всё равно нужно:
+     первым проверяем цену (памятка 02.10.2026), иначе честно говорим, что по воронке не разложить */
+  else if(down && !lead && r.dPrice>0.03)
+    act=`Цена выросла на ${Math.round(r.dPrice*100)}% — проверьте, окупил ли подъём потерю заказов: судите по прибыли недели, а не по штукам.`;
+  else if(down && !lead) act="По воронке за эти недели причину не разложить — смотрите цену, остаток и рекламу выше.";
   else if(!down) act="Рост держится на "+(lead? lead.n : "объёме")+" — закрепите: следите за остатком и не трогайте цену.";
   if(noise && down) act=(act? act+" ":"")+"Важно: падение в пределах статистического шума, решение можно отложить на неделю.";
   return {items:out, steps, noise, lead, act};
@@ -10184,6 +10331,38 @@ function planDaysOfMonth(key){
   for(let d=1;d<=n;d++) out.push(key+"-"+String(d).padStart(2,"0"));
   return out;
 }
+/* ПРИБЫЛЬ ПЛОЩАДКИ ЗА НАБОР ДАТ — одна функция на план, карточки «Всего» и неделю.
+   ВБ — та же формула, что «Каждая неделя отдельно» на «Главной» (finAggregate − себестоимость
+   − реклама). Считается В КАРТАХ ВБ (`recWithMp`): `costAt` смотрит в карты активной площадки,
+   и на «Всего» себестоимость ВБ взялась бы из другой карты (см. капкан на 7,3 млн в памятке).
+   Ozon — ozFinAggregate, как «Главная» Ozon. */
+function recProfitWb(ds){ return recWithMp("wb",()=>{ const a=finAggregate(ds), ad=adAggregate(ds);
+  return a.net-a.cogs-ad.total; }); }
+function recProfitOz(ds){ try{ return ozFinAggregate(ds).profit; }catch(e){ return 0; } }
+/* Временно навести глобальные ряды/каталог на площадку и выполнить fn. В отличие от
+   applyMpData НИЧЕГО не сбрасывает (выбор категорий, фильтры колонок других вкладок) и
+   возвращает всё как было — нужно, чтобы на «Всего» посчитать ВБ и Ozon их же функциями. */
+function recWithMp(mp, fn){
+  if(_appliedMp===mp) return fn();
+  const sv={RCAT,RSERIES,RDATES,RLAST,ap:_appliedMp};
+  const ds = mp==="ozon"? OZDATA : (mp==="all"? combinedDataset() : WBDATA);
+  RCAT=ds? ds.catalog : []; RSERIES=ds? ds.bySku : {}; RDATES=ds? ds.dates : [];
+  RLAST=RDATES.length? RDATES[RDATES.length-1] : null;
+  _appliedMp=mp; rebuildCatalogMaps();
+  try{ return fn(); }
+  finally{ RCAT=sv.RCAT; RSERIES=sv.RSERIES; RDATES=sv.RDATES; RLAST=sv.RLAST; _appliedMp=sv.ap; rebuildCatalogMaps(); }
+}
+/* Месяц площадки по сегодняшний день данных: факт, темп, линейный прогноз. Календарный
+   месяц на обеих площадках — как в плане (у ВБ «свой» месяц по четвергу живёт на «Главной»). */
+function recMonthLeg(mp, key){
+  key=key||planMonthKey(); if(!key) return null;
+  const S = mp==="ozon"? (RD&&RD.ozon&&RD.ozon.orderSeries) : (RD&&RD.orderSeries);
+  const last=((S&&S.dates)||[]).slice(-1)[0]||"";
+  const all=planDaysOfMonth(key), done=all.filter(d=>d<=last);
+  if(!done.length) return null;
+  const fact=(mp==="ozon"? recProfitOz : recProfitWb)(done), left=all.length-done.length, rate=fact/done.length;
+  return {key, all, days:done.length, left, fact, rate, fcast:fact+rate*left, last, from:done[0]};
+}
 function recPlanCalc(){
   const P=(RD&&RD.meta&&RD.meta.plan)||null; if(!P) return null;
   const key=planMonthKey(); if(!key||!P[key]) return null;
@@ -10199,27 +10378,33 @@ function recPlanCalc(){
       gap:fcast-target, need: left>0? (target-fact)/left : 0,
       pct: fact/target, last};
   }
-  const wb=leg(plan.wb, wbLast, ds=>{ const a=finAggregate(ds), ad=adAggregate(ds);
-    return a.net-a.cogs-ad.total; });
-  const oz=leg(plan.oz, ozLast, ds=>{ try{ return ozFinAggregate(ds).profit; }catch(e){ return 0; } });
+  const wb=leg(plan.wb, wbLast, recProfitWb);
+  const oz=leg(plan.oz, ozLast, recProfitOz);
   const both=(wb&&oz)? {target:wb.target+oz.target, fact:wb.fact+oz.fact,
     fcast:wb.fcast+oz.fcast, gap:(wb.fcast+oz.fcast)-(wb.target+oz.target),
     pct:(wb.fact+oz.fact)/(wb.target+oz.target)} : null;
   return {key, all, wb, oz, both};
 }
-function renderRecPlan(){
+/* План показывается ПО ВИДУ: на «Wildberries» и «Ozon» — строка своей площадки, на «Всего» —
+   обе и строка «вместе». Цифры одни и те же (recPlanCalc), меняется только набор строк. */
+function renderRecPlan(view){
   const card=document.getElementById("recPlanCard"); if(!card) return;
-  const p=recPlanCalc();
+  view=view||"all";
+  const p0=recPlanCalc();
+  const p=p0? {...p0, wb: view==="ozon"? null : p0.wb, oz: view==="wb"? null : p0.oz,
+    both: view==="all"? p0.both : null} : null;
   if(!p||(!p.wb&&!p.oz)){ card.hidden=true; return; }
   card.hidden=false;
   const [y,m]=p.key.split("-");
   const MON=["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
-  document.getElementById("recPlanH").textContent="План по чистой прибыли — "+MON[+m-1]+" "+y;
+  document.getElementById("recPlanH").textContent="План по чистой прибыли — "+MON[+m-1]+" "+y
+    +(view==="wb"? " · Wildberries" : (view==="ozon"? " · Ozon" : " · обе площадки"));
   const cap=document.getElementById("recPlanCap");
   const days=(p.wb||p.oz).days, left=(p.wb||p.oz).left;
   cap.innerHTML="Календарный месяц, "+p.all.length+" "+plural(p.all.length,"день","дня","дней")
     +". Прошло "+days+", осталось "+left+". Прогноз — линейный, по фактическому темпу с начала месяца."
-    +" <span class=\"mut\">Прибыль ВБ с 03.08 — оценка по заказам, не отчёт. Прибыль Ozon считается по «Предельной цене».</span>";
+    +" <span class=\"mut\">"+(p.wb? "Прибыль ВБ с 03.08 — оценка по заказам, не отчёт. " : "")
+    +(p.oz? "Прибыль Ozon считается по «Предельной цене»." : "")+"</span>";
   const bar=(pctFact,pctFc)=>{
     const a=Math.max(0,Math.min(100,pctFact*100)), b=Math.max(0,Math.min(100,pctFc*100));
     return `<div class="pl-bar"><i class="pl-fc" style="width:${b.toFixed(1)}%"></i>`
@@ -10252,26 +10437,32 @@ function renderRecPlan(){
   if(miss.length){
     html+=`<div class="pl-note warn">Чтобы выйти на план, надо поднять темп: `
       +miss.map((x,i)=>`<b>${x===p.wb?"Wildberries":"Ozon"}</b> с ${fmt(Math.round(x.rate))} до ${fmt(Math.round(x.need))} ₽/день`
-        +` (×${(x.need/x.rate).toFixed(2)})`).join(", ")
+        +` (×${(x.need/x.rate).toFixed(2).replace(".",",")})`).join(", ")
       +`. Это и есть цена невыполненных рекомендаций ниже.</div>`;
   } else {
-    html+=`<div class="pl-note good">Текущего темпа хватает на обе площадки. Задача — не потерять его: рекомендации ниже про то, что может его сбить.</div>`;
+    html+=`<div class="pl-note good">Текущего темпа хватает${p.wb&&p.oz? " на обе площадки" : ""}. Задача — не потерять его: рекомендации ниже про то, что может его сбить.</div>`;
   }
   document.getElementById("recPlan").innerHTML=html;
 }
+/* ВСЕ ПРАВИЛА ОБЕИХ ПЛОЩАДОК. У каждого поле `mp`: "wb" — Wildberries, "ozon" — Ozon,
+   "all" — общее для бизнеса (труба закупа и себестоимость одни на две площадки, поэтому
+   дозаказ на фабрике живёт на «Всего», а не дублируется в двух видах — иначе срочные задачи
+   и деньги на кону посчитались бы дважды). Логика ВБ-правил не менялась: «Нечем закрыть»
+   и «Не едет» лишь разнесены по площадкам, чтобы «Открыть →» вёл на ту площадку, где
+   строки этой рекомендации реально видны. */
 function recBuild(){
-  const R=[], bo=adBuyout();
+  const R=[];
   const add=o=>{ if(o) R.push(o); };
-  const money=v=>fmt(Math.round(v));
-  // ---- 1. Подсорт со склада ----
   let rs=[]; try{ rs=resupplyRows(); }catch(e){ rs=[]; }
-  const shipO=recAlive(rs.filter(r=>r.shipO>0)).sort((a,b)=>a.oDays-b.oDays);
-  const qO=shipO.reduce((a,r)=>a+r.shipO,0);
-  if(qO>0) add({sev: shipO.some(r=>r.oDays<10)?"crit":"warn", key:"shipO",
-    title:"Отгрузить на Ozon "+fmt(qO)+" шт со своего склада",
-    why:`Считаю по правилу «держать на площадке 30 дней запаса». Срочных (покрытие меньше 10 дней) — <b class="num">${shipO.filter(r=>r.oDays<10).length}</b> из ${shipO.length}. Товар есть на складе, отгрузка не требует ничего, кроме поставки.`,
-    items: shipO.slice(0,6).map(r=>({n:fmt(r.shipO)+" шт", x:r.name, w:(r.oDays===Infinity?"∞":Math.round(r.oDays))+" дн на Озоне"})),
-    keys: shipO.flatMap(r=>[r.sup,r.skuWb]), n: shipO.length, tab:"turnover", view:"resupply", rank: 3});
+  recWithMp("wb", ()=>recRulesWb(add, rs));
+  if(OZDATA) recWithMp("ozon", ()=>recRulesOz(add, rs));
+  recRulesBiz(add, rs);
+  return R.sort((a,b)=>(a.rank-b.rank));
+}
+function recRulesWb(addAny, rs){
+  const add=o=>{ if(o){ o.mp="wb"; addAny(o); } };
+  const bo=adBuyout();
+  const money=v=>fmt(Math.round(v));
   // ---- 1б. Отгрузка на ВБ FBO (с 21.09.2026, WB_FBO_SUPPLY) — раньше этого правила не было,
   //          и отгрузка на ВБ жила только в плане машин ----
   const shipW=WB_FBO_SUPPLY? recAlive(rs.filter(r=>r.shipW>0)).sort((a,b)=>a.wDays-b.wDays) : [];
@@ -10289,27 +10480,27 @@ function recBuild(){
     why:`FBS на Wildberries уходит со склада Нск-1. По <b class="num">${mv.length}</b> кодам там осталось меньше ${NSK1_MIN_DAYS} дней продаж, а на Евросибе товар есть. Пока не перевезёте — эти заказы просто не будут выкупаться.`,
     items: mv.slice(0,6).map(r=>({n:fmt(r.move)+" шт", x:r.name, w:"на Нск-1 "+fmt(r.nsk1Free)+" шт"})),
     keys: mv.flatMap(r=>[r.sup,r.skuWb]), n: mv.length, tab:"turnover", view:"resupply", rank: 4});
-  // ---- 3. Нечем закрыть ----
-  /* «Нечем закрыть» — по ОБЕИМ площадкам и по отгружаемому запасу (`haveShip`): товар,
-     который целиком лежит в розничном резерве, Клине или назначен на Ozon, отгрузить нельзя. */
-  const cantQ=r=>Math.max(0,r.needO-r.shipO)+(WB_FBO_SUPPLY? Math.max(0,r.needW-r.shipW) : 0);
+  // ---- 3. Нечем закрыть — Wildberries ----
+  /* «Нечем закрыть» — по отгружаемому запасу (`haveShip`): товар, который целиком лежит
+     в розничном резерве, Клине или назначен на Ozon, отгрузить нельзя. Часть Ozon — в recRulesOz. */
+  const cantQ=r=>(WB_FBO_SUPPLY? Math.max(0,r.needW-r.shipW) : 0);
   const cant=recAlive(rs.filter(r=>cantQ(r)>0 && r.haveShip<=0));
   if(cant.length) add({sev:"crit", key:"cant",
-    title:"Нечем закрыть: "+cant.length+" позиций",
-    why:`Товар кончается на площадке (Ozon или ВБ FBO), а отгружать нечего: на складе пусто${RETAIL_RESERVE>0? ` или весь остаток — розничный резерв ${RETAIL_RESERVE} шт` : ``}. Здесь помогает только производство или закуп — чем раньше поставите в план, тем короче простой.`,
+    title:"Нечем закрыть на ВБ FBO: "+cant.length+" "+plural(cant.length,"позиция","позиции","позиций"),
+    why:`Товар кончается на складах Wildberries, а отгружать нечего: на складе пусто${RETAIL_RESERVE>0? ` или весь остаток — розничный резерв ${RETAIL_RESERVE} шт` : ``}. Здесь помогает только производство или закуп — чем раньше поставите в план, тем короче простой.`,
     items: cant.slice(0,6).map(r=>({n:fmt(cantQ(r))+" шт", x:r.name,
       w:(r.china+r.onOrder>0? "едет "+fmt(r.china+r.onOrder)+" шт" : "ничего не едет")})),
     keys: cant.flatMap(r=>[r.sup,r.skuWb]), n: cant.length, tab:"turnover", view:"resupply", rank: 1});
-  // ---- 3б. Не едет: машину не собрать (неполных машин не бывает, ЗАП-03) ----
+  // ---- 3б. Не едет: машину не собрать (неполных машин не бывает, ЗАП-03) — часть ВБ FBO ----
   /* Нужда есть и товар на складе есть, но машину с этого склада до PALLETS_PER_TRUCK паллет добить
      нечем — по правилу она не едет. Молчать нельзя: иначе срочная позиция выпала бы из всех списков
      (в «Отгрузить» её нет — отгрузка ноль, в «Нечем закрыть» нет — склад не пуст). */
-  const roll=recAlive(rs.filter(r=>(r.rollO||0)+(r.rollW||0)>0)).sort((a,b)=>a.minDays-b.minDays);
+  const roll=recAlive(rs.filter(r=>(r.rollW||0)>0)).sort((a,b)=>a.wDays-b.wDays);
   if(roll.length) add({sev:"warn", key:"roll",
-    title:"Не едет — машину не собрать: "+roll.length+" "+plural(roll.length,"позиция","позиции","позиций"),
+    title:"Не едет на ВБ FBO — машину не собрать: "+roll.length+" "+plural(roll.length,"позиция","позиции","позиций"),
     why:`Неполных машин не бывает: машину с этого склада до ${PALLETS_PER_TRUCK} паллет добить нечем (свободного товара, который продаётся на этой площадке, не хватает), поэтому она не едет. Решение за вами: подождать, пока наберётся, или отправить исключением.`,
-    items: roll.slice(0,6).map(r=>({n:fmt((r.rollO||0)+(r.rollW||0))+" шт", x:r.name,
-      w:(r.rollO? "на Ozon, "+(r.oDays===Infinity?"∞":Math.round(r.oDays))+" дн запаса" : "на ВБ FBO, "+(r.wDays===Infinity?"∞":Math.round(r.wDays))+" дн запаса")})),
+    items: roll.slice(0,6).map(r=>({n:fmt(r.rollW||0)+" шт", x:r.name,
+      w:"на ВБ FBO, "+(r.wDays===Infinity?"∞":Math.round(r.wDays))+" дн запаса"})),
     keys: roll.flatMap(r=>[r.sup,r.skuWb]), n: roll.length, tab:"turnover", view:"resupply", rank: 2});
   /* ---- 4. Реклама на товар без запаса на ВБ ----
      ВСЕГДА по всему ассортименту: `adRows()` фильтрует по выбранной на «Рекламе»
@@ -10356,9 +10547,9 @@ function recBuild(){
     }).filter(x=>x.sp>=AD_MIN_SPEND && x.drr>AD_DRR_GOAL).sort((a,b)=>b.over-a.over);
     const overSum=over.reduce((a,x)=>a+x.over,0);
     if(over.length) add({sev:"warn", key:"drr", money:overSum,
-      title:"Снизить ставки: "+over.length+" склеек выше цели по ДРР",
+      title:"Снизить ставки: "+over.length+" "+plural(over.length,"склейка","склейки","склеек")+" выше цели по ДРР",
       why:`Цель — ДРР не выше ${AD_DRR_GOAL}% в выкупе. Перерасход против цели — <b class="num">${money(overSum)} ₽</b>. Считаю по всей склейке: выручка всех её карточек, включая нерекламируемые, потому что «лошадка» тянет продажи соседям.`,
-      items: over.slice(0,6).map(x=>({n:x.drr===Infinity?"нет продаж":x.drr.toFixed(1)+"%", x:"Склейка «"+x.tag+"» · "+x.n+" кампаний",
+      items: over.slice(0,6).map(x=>({n:x.drr===Infinity?"нет продаж":x.drr.toFixed(1).replace(".",",")+"%", x:"Склейка «"+x.tag+"» · "+x.n+" "+plural(x.n,"кампания","кампании","кампаний"),
         w:"перерасход "+money(x.over)+" ₽"})),
       keys: over.flatMap(x=>(byTag[x.tag]||[]).filter(r=>r.spend>0).map(r=>r.sku)),
       n: over.reduce((a,x)=>a+(byTag[x.tag]||[]).filter(r=>r.spend>0).length,0),
@@ -10369,12 +10560,12 @@ function recBuild(){
   // назад и уже выключена, сейчас именно что без рекламы
   const idle=recAlive(ar.filter(r=>r.ok && r.adSpendNow/(r.adNowDays||1)<AD_NOW_MIN_DAY)).sort((a,b)=>b.rub-a.rub);
   if(idle.length) add({sev:"info", key:"idle",
-    title:"Можно запускать: "+idle.length+" кандидатов без рекламы",
+    title:"Можно запускать: "+idle.length+" "+plural(idle.length,"кандидат","кандидата","кандидатов")+" без рекламы",
     why:`Категория A внутри своей склейки, и запаса на ВБ (FBO + Москва) хватает минимум на ${AD_MIN_STOCK_DAYS} дней. Это те позиции, на которых реклама не встанет посреди кампании.`,
     items: idle.slice(0,6).map(r=>({n:money(r.rub)+" ₽", x:r.name,
       w:adCoverParts(r)+" · "+adFmtD(r.coverDays)+" дн"})),
     keys: idle.map(r=>r.sku), n: idle.length, tab:"ads", view:"cand", rank: 7});
-  // ---- 7. Цена и темп ----
+  // ---- 7. Цена и темп (план продаж в репрайсере — только Wildberries) ----
   let sr=[]; try{ sr=srRows(); }catch(e){ sr=[]; }
   const shortSr=recAlive(sr.filter(r=>r.verdict==="short"));
   const upSr=recAlive(sr.filter(r=>r.verdict==="up")).sort((a,b)=>(b.ratio||0)-(a.ratio||0));
@@ -10389,6 +10580,194 @@ function recBuild(){
     items: upSr.slice(0,6).map(r=>({n:(r.targetOrders!=null? Math.round(r.targetOrders):"—")+" заказов в день", x:r.name,
       w:"сейчас "+Math.round(r.ordWb||0)+" в день"})),
     keys: upSr.flatMap(r=>[r.sup,r.wbSku]), n: upSr.length, tab:"stockrate", rank: 6});
+  // ---- 9. Чего не хватает в данных — Wildberries ----
+  const gaps=[];
+  const ordGap=recOrdersGap(RD.orderSeries&&RD.orderSeries.dates, "Wildberries", "подённые отчёты ВБ «Воронка продаж»");
+  if(ordGap) gaps.push(ordGap);
+  const fgW=recFunnelGapItem(recSrc("wb"), "Wildberries", "подённые отчёты ВБ «Воронка продаж» за эти дни");
+  if(fgW) gaps.push(fgW);
+  const noTag=(RD.catalog||[]).filter(c=>!c.adGroup).length;
+  if(noTag) gaps.push({n:noTag+" карточек", x:"нет склейки — Парето считается по всей категории, это грубее",
+    w:"выгрузка XWAY с «Группа» и «Теги»"});
+  const bw=RD.meta&&RD.meta.buyoutWin;
+  if(bw&&bw.to&&RLAST){ const days=Math.round((new Date(RLAST)-new Date(bw.to))/864e5);
+    if(days>21) gaps.push({n:days+" дн", x:"столько прошло с окна замера % выкупа ("+fmt2(bw.to)+")",
+      w:"сводный отчёт аналитики за дозревший период"}); }
+  if(gaps.length) add({sev:"info", key:"gaps",
+    title:"Wildberries: чего не хватает, чтобы считать точнее",
+    why:`Это не ошибки — это места, где я работаю на допущениях. Каждый пункт закрывается одним файлом.`,
+    items:gaps, rank: 9});
+}
+/* Сколько дней заказов площадки ещё не загружено (до вчерашнего дня). Сегодняшний день
+   не считаем: он не закрыт, и отчёт за него грузить нельзя (неполный день роняет окна). */
+function recOrdersGap(dates, mpName, what){
+  const last=(dates||[]).slice(-1)[0]; if(!last) return null;
+  const t=new Date(); const y=new Date(Date.UTC(t.getFullYear(),t.getMonth(),t.getDate()-1)).toISOString().slice(0,10);
+  if(last>=y) return null;
+  const n=Math.round((new Date(y)-new Date(last))/864e5);
+  return {n:n+" "+plural(n,"день","дня","дней"), x:"заказы "+mpName+" загружены по "+fmtDateLong(last)
+    +" — "+(n===1? "нет "+fmtDateLong(y) : "нет "+fmtDate(recAddDay(last,1))+" – "+fmtDate(y)), w:what};
+}
+/* Неполная воронка в двух сравниваемых неделях и в идущей — пункт «чего не хватает». */
+function recFunnelGapItem(src, mpName, what){
+  const WK=recWeeks(src.dates); if(!WK) return null;
+  const miss=recFunnelGaps([...WK.w0,...WK.w1,...WK.open], src); if(!miss.length) return null;
+  return {n:miss.length+" "+plural(miss.length,"день","дня","дней"),
+    x:"воронка "+mpName+" за "+recRangesTxt(miss)+" выгружена не целиком — заказов в ней заметно меньше, чем в ряду заказов; разбор «что изменилось» по шагам воронки за эти недели не делаю",
+    w:what};
+}
+// «01.10–03.10, 07.10» — подряд идущие дни сворачиваем в отрезки
+function recRangesTxt(days){
+  const out=[]; let a=null, b=null;
+  days.slice().sort().forEach(d=>{ if(b && recAddDay(b,1)===d){ b=d; return; }
+    if(a) out.push(a===b? fmtDate(a) : fmtDate(a)+"–"+fmtDate(b)); a=b=d; });
+  if(a) out.push(a===b? fmtDate(a) : fmtDate(a)+"–"+fmtDate(b));
+  return out.join(", ");
+}
+// деньги со знаком: минус — настоящий «−», а не дефис (fmt отдаёт дефис)
+const recRub = v => (v<0?"−":"")+fmt(Math.abs(Math.round(v||0)));
+const REC_OZ_LOSS_MIN=100;   // убыток меньше 100 ₽ за неделю — шум округлений, не задача
+const recPc = (v,d) => v===Infinity? "нет продаж" : (v==null? "—" : v.toFixed(d==null?1:d).replace(".",",")+"%");
+/* ПРАВИЛА OZON. Ничего не считают сами: подсорт — resupplyRows (поля shipO/oDays/rollO),
+   реклама — ozAdRows/ozAdLevels (те же числа, что на «Рекламе» Ozon), прибыль — ozFinRows/
+   ozFinAggregate/ozFinBySku (те же, что на «Главной» Ozon). */
+function recRulesOz(addAny, rs){
+  const add=o=>{ if(o){ o.mp="ozon"; addAny(o); } };
+  const money=v=>fmt(Math.round(v));
+  const dTxt=v=>v===Infinity? "∞" : Math.round(v);
+  const FX=ozFixedRate();
+  // артикул Ozon (= код 1С) впереди названия: одинаковых названий у разных карточек много,
+  // а на узком экране конец строки обрезается
+  const artNm=(a,n)=>(a? a+" · " : "")+(n||"");
+  // ---- 1. Нечем закрыть — Ozon ----
+  const cantQ=r=>Math.max(0,r.needO-r.shipO);
+  const cant=recAlive(rs.filter(r=>cantQ(r)>0 && r.haveShip<=0)).sort((a,b)=>a.oDays-b.oDays);
+  if(cant.length) add({sev:"crit", key:"cantO",
+    title:"Ozon: нечем закрыть — "+cant.length+" "+plural(cant.length,"позиция","позиции","позиций"),
+    why:`Товар кончается на Ozon, а отгружать нечего: на складе пусто${RETAIL_RESERVE>0? ` или весь остаток — розничный резерв ${RETAIL_RESERVE} шт` : ``} (Клин и уже назначенное на Ozon в отгрузку не идут). Помогает только производство или закуп — чем раньше поставите в план, тем короче простой.`,
+    items: cant.slice(0,6).map(r=>({n:fmt(cantQ(r))+" шт", x:artNm(r.sup,r.name),
+      w:dTxt(r.oDays)+" дн на Ozon · "+(r.china+r.onOrder>0? "едет "+fmt(r.china+r.onOrder)+" шт" : "ничего не едет")})),
+    keys: cant.flatMap(r=>[r.sup,r.skuWb]), n: cant.length, tab:"turnover", view:"resupply", rank: 1});
+  // ---- 2. Не едет на Ozon — машину не собрать ----
+  const roll=recAlive(rs.filter(r=>(r.rollO||0)>0)).sort((a,b)=>a.oDays-b.oDays);
+  if(roll.length) add({sev:"warn", key:"rollO",
+    title:"Ozon: не едет — машину не собрать: "+roll.length+" "+plural(roll.length,"позиция","позиции","позиций"),
+    why:`Неполных машин не бывает: машину с этого склада до ${PALLETS_PER_TRUCK} паллет добить нечем (свободного товара, который продаётся на Ozon, не хватает), поэтому она не едет. Решение за вами: подождать, пока наберётся, или отправить исключением.`,
+    items: roll.slice(0,6).map(r=>({n:fmt(r.rollO)+" шт", x:artNm(r.sup,r.name), w:dTxt(r.oDays)+" дн запаса на Ozon"})),
+    keys: roll.flatMap(r=>[r.sup,r.skuWb]), n: roll.length, tab:"turnover", view:"resupply", rank: 2});
+  // ---- 3. Отгрузить на Ozon (правило прежнее, 30 дней запаса) ----
+  const shipO=recAlive(rs.filter(r=>r.shipO>0)).sort((a,b)=>a.oDays-b.oDays);
+  const qO=shipO.reduce((a,r)=>a+r.shipO,0);
+  if(qO>0) add({sev: shipO.some(r=>r.oDays<10)?"crit":"warn", key:"shipO",
+    title:"Отгрузить на Ozon "+fmt(qO)+" шт со своего склада",
+    why:`Считаю по правилу «держать на площадке 30 дней запаса». Срочных (покрытие меньше 10 дней) — <b class="num">${shipO.filter(r=>r.oDays<10).length}</b> из ${shipO.length}. Товар есть на складе, отгрузка не требует ничего, кроме поставки.`,
+    items: shipO.slice(0,6).map(r=>({n:fmt(r.shipO)+" шт", x:artNm(r.sup,r.name), w:dTxt(r.oDays)+" дн на Ozon"})),
+    keys: shipO.flatMap(r=>[r.sup,r.skuWb]), n: shipO.length, tab:"turnover", view:"resupply", rank: 3});
+  // ---- 4–5. Реклама Ozon: убыточные кампании и ДРР кабинета ниже минимума ----
+  let oa=[]; try{ oa=ozAdRows(); }catch(e){ oa=[]; }
+  const W=ozAdWindow();
+  if(oa.length && W){
+    const per=fmtDateLong(W.from)+(W.from!==W.to? " – "+fmtDateLong(W.to) : "");
+    const L=ozAdLevels(oa);
+    // себестоимость — из тех же строк ozFinRows и за те же дни, что расход и выручка в ozAdRows
+    const cg={}; ozFinRows().forEach(r=>{ if(r.date<W.from||r.date>W.to) return; cg[r.sku]=(cg[r.sku]||0)+(r.cogs||0); });
+    /* БЕЗУБЫТОЧНЫЙ ДРР = 100% − фиксированный тариф Ozon − доля себестоимости в выручке
+       (памятка 29.09.2026; остаток ПОСЛЕ тарифа, а не сама ставка). ДРР выше него ⇔ прибыль
+       товара за эти дни ниже нуля, поэтому «перерасход сверх безубыточного» = минус прибыли. */
+    const be=(rev,cogs)=> rev>0? 100-FX-cogs/rev*100 : null;
+    const tagA={}; oa.forEach(r=>{ const t=tagA[r.tag]||(tagA[r.tag]={sp:0,rev:0,cogs:0});
+      t.sp+=r.spend; t.rev+=r.rev; t.cogs+=cg[r.sup]||0; });
+    const loss=recAlive(oa.filter(r=>r.isFact && r.spend>=AD_MIN_SPEND)).map(r=>{
+        const b=be(r.rev,cg[r.sup]||0), t=tagA[r.tag]||{sp:0,rev:0,cogs:0};
+        return {...r, be:b, over: r.spend-(b!=null? r.rev*b/100 : 0),
+          tagDrr: t.rev>0? t.sp/t.rev*100 : Infinity, tagBe: be(t.rev,t.cogs)}; })
+      .filter(r=>r.be==null || r.drr>r.be).sort((a,b)=>b.over-a.over);
+    const lossSum=loss.reduce((a,r)=>a+r.over,0);
+    const tagLoss=new Set(loss.filter(r=>r.tagBe!=null && r.tagDrr>r.tagBe).map(r=>r.tag));
+    if(loss.length) add({sev:"warn", key:"ozAdLoss", money:lossSum,
+      title:"Ozon: реклама в убыток — "+loss.length+" "+plural(loss.length,"товар","товара","товаров")+" с кампанией XWAY",
+      why:`Безубыточный ДРР товара = 100% − ${recPc(FX)} тариф Ozon − доля себестоимости в выручке. Выше него каждый рубль рекламы уводит товар в минус. Перерасход сверх безубыточного — <b class="num">${money(lossSum)} ₽</b> за ${per} (дни выгрузок XWAY — те же цифры, что на «Рекламе» Ozon). `
+        +(tagLoss.size? `У <b class="num">${tagLoss.size}</b> ${plural(tagLoss.size,"склейки","склеек","склеек")} из них в минусе и вся склейка. ` : `Склейки этих товаров целиком в плюсе. `)
+        +`<span class="mut">Судим по экономике самого товара: «реклама тянет соседей по склейке» на Ozon не подтвердилась (замер 17–28.09).</span>`,
+      items: loss.slice(0,6).map(r=>({n:recPc(r.drr), x:artNm(r.sup,r.name),
+        w:"безубыточный "+recPc(r.be)+" · склейка "+recPc(r.tagDrr)+" · минус "+money(r.over)+" ₽"})),
+      keys: loss.map(r=>r.sup), n: loss.length, tab:"ads", rank: 4});
+    /* НА OZON 10% — МИНИМУМ, А НЕ ПОТОЛОК (продавец 18.09.2026: «задача держать минимум 10% дрр
+       для поддержания соинвеста»). Смысл обратный ВБ-шному. Недобор — это не «деньги на кону»
+       (не расход, который можно вернуть), поэтому в сумму денег не идёт. */
+    if(L.all.sp>0 && L.all.drr<OZ_DRR_GOAL){
+      const short=L.all.rev*OZ_DRR_GOAL/100-L.all.sp;
+      const lowG=L.groups.filter(g=>g.rev>0 && g.drr<OZ_DRR_GOAL).sort((a,b)=>b.rev-a.rev);
+      add({sev:"warn", key:"ozDrrLow",
+        title:"Ozon: ДРР кабинета "+recPc(L.all.drr)+" — ниже минимума "+OZ_DRR_GOAL+"%",
+        why:`На Ozon ${OZ_DRR_GOAL}% в выкупе — МИНИМУМ для поддержания соинвеста по ИУ, а не потолок: ниже — риск потерять соинвест. За ${per} расход <b class="num">${money(L.all.sp)} ₽</b> при выручке в выкупе <b class="num">${money(L.all.rev)} ₽</b>; до минимума не хватает <b class="num">${money(short)} ₽</b> рекламы. Добирать — на товарах с остатком в ЦФО/ПФО/ЮФО и запасом от 30 дней, и не выше безубыточного ДРР товара.`,
+        items: lowG.slice(0,6).map(g=>({n:recPc(g.drr), x:"Категория «"+g.key+"» · "+g.n+" "+plural(g.n,"карточка","карточки","карточек"),
+          w:"недобор "+money(g.rev*OZ_DRR_GOAL/100-g.sp)+" ₽"})),
+        tab:"ads", rank: 5});
+    }
+  }
+  // ---- 6. Товары в убытке за последнюю закрытую неделю (пн–вс) ----
+  const ozDates=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[];
+  const WK=recWeeks(ozDates);
+  if(WK){
+    const now=ozFinAggregate(WK.w1);                       // живой ассортимент, как на «Главной»
+    const prod=ozFinBySku(now.rows).filter(r=>r.profit<=-REC_OZ_LOSS_MIN).sort((a,b)=>a.profit-b.profit);
+    const lossW=prod.reduce((a,r)=>a+r.profit,0);
+    if(prod.length) add({sev:"warn", key:"ozLoss",
+      title:"Ozon: "+prod.length+" "+plural(prod.length,"товар","товара","товаров")+" в убытке за неделю "+recWkShort(WK.w1),
+      why:`Неделя календарная: ${recWkTxt(WK.w1)}. Прибыль — как на «Главной» Ozon: выручка в выкупе − тариф ${recPc(FX)} − реклама − себестоимость. Вместе эти товары дали <b class="num">${recRub(lossW)} ₽</b>; прибыль всего живого ассортимента Ozon за неделю — <b class="num">${recRub(now.profit)} ₽</b>. Минус меньше ${REC_OZ_LOSS_MIN} ₽ не показываю — это округления.`,
+      items: prod.slice(0,6).map(r=>({n:recRub(r.profit)+" ₽", x:artNm(r.sku,r.name),
+        w:"выручка "+money(r.revenue)+" ₽ · реклама "+money(r.ad)+" ₽"+(r.hasCost? "" : " · нет себестоимости")})),
+      keys: prod.map(r=>r.sku), n: prod.length, tab:"home", dates:WK.w1, prevDates:WK.w0, rank: 4});
+  }
+  // ---- 9. Чего не хватает в данных — Ozon ----
+  const g=[], lastOz=ozDates[ozDates.length-1];
+  const og=recOrdersGap(ozDates, "Ozon", "отчёт Ozon «Заказы»"); if(og) g.push(og);
+  const fgO=recFunnelGapItem(recSrc("ozon"), "Ozon", "«Аналитика → По товарам» Ozon, подённо, за эти дни"); if(fgO) g.push(fgO);
+  const P=ozAdSpendParts();
+  if(P.length && lastOz){
+    const miss=ozDates.filter(d=>d>=P[0].from && d<=lastOz && ozAdSpendPartIdx(d)<0);
+    if(miss.length) g.push({n:miss.length+" "+plural(miss.length,"день","дня","дней"),
+      x:"нет выгрузки XWAY за "+recRangesTxt(miss)+" — расход кампаний за эти дни в прибыль не попал",
+      w:"выгрузка XWAY по Ozon"});
+  }
+  const F=ozOrderFee();
+  if(F && lastOz){
+    const first=F.periods.reduce((m,p)=>(!m||p.from<m)? p.from : m, "");
+    const miss=ozDates.filter(d=>d>=first && d<=lastOz && !ozOrderFeeOn(d));
+    if(miss.length) g.push({n:miss.length+" "+plural(miss.length,"день","дня","дней"),
+      x:"нет отчёта «Оплата за заказ» за "+recRangesTxt(miss)+" — списание за эти дни считается по ставке "+recPc(ozAdRateFor(miss[miss.length-1]),2),
+      w:"отчёт Ozon «Оплата за заказ (все товары)»"});
+  }
+  // юнит-экономика — раз в месяц, лучшая проверка модели; ручные ставки отчётом не считаются
+  const UR=ozUnitReports().filter(r=>r.src!=="manual");
+  if(UR.length && lastOz){
+    const lastM=UR.reduce((m,r)=>r.to>m? r.to : m, "").slice(0,7), curM=lastOz.slice(0,7);
+    const RU=["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+    const need=[]; let k=lastM;
+    for(let i=0;i<12;i++){ const [y,m]=k.split("-").map(Number); k=m===12? (y+1)+"-01" : y+"-"+String(m+1).padStart(2,"0");
+      if(k>=curM) break; need.push(RU[+k.slice(5)-1]+" "+k.slice(0,4)); }
+    if(need.length) g.push({n:need.length+" мес.", x:"нет отчёта «Юнит-экономика» за "+need.join(", ")+" — по нему сверяется модель прибыли и ставка рекламы",
+      w:"отчёт Ozon «Юнит-экономика» за закрытый месяц"});
+  }
+  const AS=RD.ozon&&RD.ozon.meta&&RD.ozon.meta.adSpend, watch=(AS&&AS.watch&&AS.watch.sups)||[];
+  if(watch.length){ const have=new Set(); P.forEach(p=>Object.keys(p.bySup||{}).forEach(s=>have.add(s)));
+    const wait=watch.filter(s=>!have.has(s));
+    if(wait.length) g.push({n:wait.length+" "+plural(wait.length,"товар","товара","товаров"),
+      x:"реклама запущена, а выгрузки XWAY по ним нет — пока считаются по ставке", w:"выгрузка XWAY по этим товарам"}); }
+  const H=ozBuyoutHist();
+  if(H && lastOz){ const hl=H[H.length-1]; const days=hl&&hl.to? Math.round((new Date(lastOz)-new Date(hl.to))/864e5) : 0;
+    if(days>21) g.push({n:days+" "+plural(days,"день","дня","дней"), x:"столько прошло с окна замера % выкупа Ozon ("+fmt2(hl.to)+")",
+      w:"«Аналитика → По товарам» Ozon за дозревший период"}); }
+  if(g.length) add({sev:"info", key:"gapsO",
+    title:"Ozon: чего не хватает, чтобы считать точнее",
+    why:`Это не ошибки — это места, где я работаю на допущениях или по модельной ставке. Каждый пункт закрывается одним файлом.`,
+    items:g, rank: 9});
+}
+/* ОБЩЕЕ ДЛЯ БИЗНЕСА — живёт на «Всего». Труба закупа (склад, Китай, заказанное производству)
+   одна на обе площадки, себестоимость тоже ведётся одна (в каталоге ВБ, Ozon берёт её по коду 1С). */
+function recRulesBiz(addAny, rs){
+  const add=o=>{ if(o){ o.mp="all"; addAny(o); } };
   // ---- 8. Дозаказ на фабрику ----
   const reorder=recAlive(rs).filter(r=>{ const spd=(r.wSpd||0)+(r.oSpd||0); if(spd<=0) return false;
       /* ВБ — только FBO и едущее (wCov), а НЕ wCovAll: FBS-запас Москвы и Нск-1 уже сидит в r.have
@@ -10397,129 +10776,296 @@ function recBuild(){
       r._days=have/spd; return r._days<TURN_MIN_DAYS; })
     .sort((a,b)=>a._days-b._days);
   if(reorder.length) add({sev:"warn", key:"reorder",
-    title:"Дозаказать на фабрике: "+reorder.length+" позиций",
-    why:`Считаю всю трубу — остаток на площадках, свой склад, то что едет из Китая и уже заказано производству. Если этого меньше чем на ${TURN_MIN_DAYS} дней продаж, партию пора ставить в план: до полки товар идёт около 4 месяцев.`,
+    title:"Дозаказать на фабрике: "+reorder.length+" "+plural(reorder.length,"позиция","позиции","позиций"),
+    why:`Считаю всю трубу — остаток на обеих площадках, свой склад, то что едет из Китая и уже заказано производству. Если этого меньше чем на ${TURN_MIN_DAYS} дней продаж (Wildberries + Ozon вместе), партию пора ставить в план: до полки товар идёт около 4 месяцев.`,
     items: reorder.slice(0,6).map(r=>({n:Math.round(r._days)+" дн", x:r.name,
       w:"нужно ~"+fmt(Math.ceil(((r.wSpd||0)+(r.oSpd||0))*TURN_COVER_DAYS))+" шт"})),
-    keys: reorder.flatMap(r=>[r.sup,r.skuWb]), n: reorder.length, tab:"turnover", view:"buyAvg", rank: 8});
-  // ---- 9. Чего не хватает в данных ----
+    keys: reorder.flatMap(r=>[r.sup,r.skuWb]), n: reorder.length, tab:"turnover", view:"buyAvg", goMp:"wb", rank: 8});
+  // ---- 9. Чего не хватает — общее ----
   const gaps=[];
-  const noTag=(RD.catalog||[]).filter(c=>!c.adGroup).length;
-  if(noTag) gaps.push({n:noTag+" карточек", x:"нет склейки — Парето считается по всей категории, это грубее",
-    w:"выгрузка XWAY с «Группа» и «Теги»"});
-  const bw=RD.meta&&RD.meta.buyoutWin;
-  if(bw&&bw.to&&RLAST){ const days=Math.round((new Date(RLAST)-new Date(bw.to))/864e5);
-    if(days>21) gaps.push({n:days+" дн", x:"столько прошло с окна замера % выкупа ("+fmt2(bw.to)+")",
-      w:"сводный отчёт аналитики за дозревший период"}); }
   const noCost=(RD.catalog||[]).filter(c=>c.costPrice==null).length;
-  if(noCost) gaps.push({n:noCost+" товаров", x:"без себестоимости — прибыль и безубыточность по ним не считаются", w:"файл себестоимости"});
-  if(gaps.length) add({sev:"info", key:"gaps",
-    title:"Чего не хватает, чтобы считать точнее",
-    why:`Это не ошибки — это места, где я работаю на допущениях. Каждый пункт закрывается одним файлом.`,
+  if(noCost) gaps.push({n:noCost+" товаров", x:"без себестоимости — прибыль и безубыточность по ним не считаются (на обеих площадках)", w:"файл себестоимости"});
+  if(gaps.length) add({sev:"info", key:"gapsAll",
+    title:"Общее: чего не хватает, чтобы считать точнее",
+    why:`Себестоимость одна на обе площадки — пробел здесь искажает прибыль и Wildberries, и Ozon.`,
     items:gaps, rank: 9});
-  return R.sort((a,b)=>(a.rank-b.rank));
 }
 const fmt2 = iso => { try{ return fmtDateLong(iso); }catch(e){ return iso; } };
 
-function renderRecsTab(){
-  const list=document.getElementById("recList"); if(!list) return;
-  const fresh=document.getElementById("recFreshness");
-  if(fresh){ const P=(RD&&RD.adPerf)||null;
-    fresh.innerHTML=`Заказы по ${RLAST? fmtDateLong(RLAST):"—"} · остатки ВБ на ${(RD.meta&&RD.meta.stockSnapshotDate)? fmtDateLong(RD.meta.stockSnapshotDate):"—"}`
-      +` · Ozon на ${(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)? fmtDateLong(RD.ozon.meta.stockDate):"—"}`
-      +` · склад на ${(RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date):"—"}`
-      +(P? ` · реклама ${fmtDateLong(P.from)} – ${fmtDateLong(P.to)}`:` · реклама не загружена`); }
-  const recs=recBuild();
-  const totalMoney=recs.reduce((a,r)=>a+(r.money||0),0);
-  const crit=recs.filter(r=>r.sev==="crit");
-  const ch=recChanges();
-  const drop=ch.rows.filter(r=>r.dr<0), up=ch.rows.filter(r=>r.dr>0);
+/* Вид вкладки = площадка, наведённая переключателем: «wb», «ozon» или «all» (сводка). */
+function recView(){ return _appliedMp==="ozon"? "ozon" : (_appliedMp==="all"? "all" : "wb"); }
+const REC_MP_NM={wb:"Wildberries", ozon:"Ozon", all:"Всего"};
+const REC_SEV_RANK={crit:0, warn:1, good:2, info:3};
+/* Сводка площадки — одна на KPI вида и на карточку «Всего», поэтому цифры там и там совпадают:
+   срочное и деньги на кону — из правил площадки, заказы — из разбора «что изменилось» (закрытые
+   календарные недели), прибыль — те же функции, что «Главная» и план. */
+function recMpSummary(mp, rules){
+  const ch=recWithMp(mp, ()=>recChanges(mp));
+  const sum=(k)=>ch.rows.reduce((s,r)=>s+(r[k]||0),0);
+  const f = mp==="ozon"? recProfitOz : recProfitWb;
+  const p1 = ch.w1? f(ch.w1) : null, p0 = ch.w0? f(ch.w0) : null;
+  const plan=recPlanCalc(), leg=plan? plan[mp==="ozon"?"oz":"wb"] : null;
+  const S = mp==="ozon"? (RD.ozon&&RD.ozon.orderSeries) : RD.orderSeries;
+  const q1=sum("q1"), q0=sum("q0");
+  return {mp, rules, crit:rules.filter(r=>r.sev==="crit"), money:rules.reduce((a,r)=>a+(r.money||0),0),
+    ch, q1, q0, r1:sum("r1"), r0:sum("r0"), ordPct: q0>0? q1/q0-1 : null,
+    drop:ch.rows.filter(r=>r.dr<0), up:ch.rows.filter(r=>r.dr>0),
+    p1, p0, est: mp==="wb" && !!financeEstFrom && !!ch.w1 && ch.w1.some(d=>d>=financeEstFrom),
+    month: recMonthLeg(mp), leg, planKey: plan? plan.key : planMonthKey(),
+    last: ((S&&S.dates)||[]).slice(-1)[0]||null,
+    top: rules.slice().sort((a,b)=>(REC_SEV_RANK[a.sev]-REC_SEV_RANK[b.sev])||(a.rank-b.rank)).slice(0,3)};
+}
+/* КУДА ДАТЬ ФОКУС. Порядок признаков — от того, что горит, к тому, что просто хуже:
+   1) больше срочных задач (товар кончается, деньги уходят прямо сейчас);
+   2) отстаёт от плана месяца только одна площадка;
+   3) больше денег на кону (расход, который можно вернуть);
+   4) хуже динамика заказов последней закрытой недели к предыдущей.
+   Решает первый признак, по которому площадки различаются; он и печатается причиной. */
+function recFocusOrder(a, b){
+  const nc=x=>x.crit.length, nm=x=>REC_MP_NM[x.mp];
+  const behind=x=>!!(x.leg && x.leg.gap<0);
+  const ordTxt=x=>x.ordPct==null? "заказы недели сравнить не с чем"
+    : "заказы "+(x.ordPct>=0?"+":"−")+Math.abs(Math.round(x.ordPct*100))+"% к прошлой неделе";
+  let first, why;
+  if(nc(a)!==nc(b)){ first=nc(a)>nc(b)? a : b; const o=first===a? b : a;
+    why=`срочных задач больше — ${nc(first)} против ${nc(o)}`; }
+  else if(behind(a)!==behind(b)){ first=behind(a)? a : b;
+    why=`срочных поровну, но только она отстаёт от плана месяца — не хватает ${fmt(Math.abs(first.leg.gap))} ₽ по прогнозу`; }
+  else if(Math.abs(a.money-b.money)>=Math.max(5000, 0.1*Math.max(a.money,b.money))){
+    first=a.money>b.money? a : b; const o=first===a? b : a;
+    why=`срочных поровну, но денег на кону больше — ${fmt(first.money)} ₽ против ${fmt(o.money)} ₽`; }
+  else { const pa=a.ordPct==null? 0 : a.ordPct, pb=b.ordPct==null? 0 : b.ordPct;
+    first=pa<=pb? a : b; const o=first===a? b : a;
+    why=`срочного и денег на кону поровну, но динамика заказов хуже, чем у ${nm(o)} (там ${ordTxt(o).replace("заказы ","")})`; }
+  const second=first===a? b : a;
+  return {first, second, why};
+}
+function recMpCard(x, prio){
+  const nm=REC_MP_NM[x.mp], col=x.mp==="ozon"? "#f59e0b" : "#a78bfa";
+  const sgn=v=>(v>=0?"+":"−")+fmt(Math.abs(Math.round(v)));
+  const MON=["январь","февраль","март","апрель","май","июнь","июль","август","сентябрь","октябрь","ноябрь","декабрь"];
+  const ch=x.ch;
+  const wk = ch.w1? `<div class="rmc-k"><span class="k">Прибыль за неделю <small>${recWkShort(ch.w1)}, пн–вс</small></span>`
+      +`<b class="v ${x.p1>=0?"good":"crit"}">${recRub(x.p1)} ₽</b>`
+      +`<small>прошлая неделя ${recWkShort(ch.w0)}: ${recRub(x.p0)} ₽ · ${sgn(x.p1-x.p0)} ₽${x.est? " · оценка по заказам" : ""}</small></div>`
+    : `<div class="rmc-k"><span class="k">Прибыль за неделю</span><b class="v">—</b><small>нет двух закрытых недель</small></div>`;
+  const m=x.month, mName=m? MON[+m.key.slice(5)-1] : "";
+  const mo = m? `<div class="rmc-k"><span class="k">${mName[0].toUpperCase()+mName.slice(1)} <small>${fmtDate(m.from)}–${fmtDate(m.last)}, календарный</small></span>`
+      +`<b class="v ${m.fact>=0?"good":"crit"}">${recRub(m.fact)} ₽</b>`
+      +(x.leg? `<small>план ${fmt(Math.round(x.leg.target))} ₽ · сделано ${Math.round(x.leg.pct*100)}% · прогноз ${recRub(x.leg.fcast)} ₽ · `
+          +`<span class="${x.leg.gap>=0?"good":"crit"}">${x.leg.gap>=0? "с опережением "+fmt(Math.round(x.leg.gap)) : "не хватает "+fmt(Math.round(-x.leg.gap))} ₽</span></small>`
+        : `<small>план на ${mName} не задан · прогноз на месяц ${recRub(m.fcast)} ₽ по темпу ${recRub(m.rate)} ₽/день</small>`)+`</div>`
+    : `<div class="rmc-k"><span class="k">Месяц</span><b class="v">—</b><small>нет данных за месяц</small></div>`;
+  const ord = `<div class="rmc-k"><span class="k">Заказы за неделю, шт</span>`
+    +`<b class="v">${fmt(x.q1)}</b><small>прошлая неделя ${fmt(x.q0)}`
+    +(x.ordPct!=null? ` · <span class="${x.ordPct>=0?"good":"crit"}">${recPctTxt(x.ordPct)}</span>` : "")
+    +` · просело ${x.drop.length} ${plural(x.drop.length,"товар","товара","товаров")}</small></div>`;
+  const urg = `<div class="rmc-k"><span class="k">Срочных задач</span>`
+    +`<b class="v ${x.crit.length?"crit":"good"}">${x.crit.length}</b>`
+    +`<small>денег на кону ${fmt(Math.round(x.money))} ₽ · всего задач ${x.rules.length}</small></div>`;
+  const top = x.top.length? `<div class="rmc-top"><div class="rmc-tt">Главное сейчас</div>`
+      +x.top.map(r=>`<div class="rmc-ti ${r.sev}"><i></i><span>${esc(r.title)}</span>`
+        +(r.money? `<b>${fmt(Math.round(r.money))} ₽</b>` : "")+`</div>`).join("")+`</div>`
+    : `<div class="rmc-top"><div class="rmc-tt">Главное сейчас</div><div class="rmc-ti good"><i></i><span>Задач нет</span></div></div>`;
+  return `<div class="rmc ${prio===1?"first":""}" style="--mpc:${col}">`
+    +`<div class="rmc-h"><span class="rmc-nm">${nm}</span><span class="rmc-pri">${prio===1? "фокус №1" : "№"+prio}</span>`
+    +`<span class="rmc-d">данные по ${fmtDateLong(x.last)}</span></div>`
+    +`<div class="rmc-grid">${wk}${mo}${ord}${urg}</div>${top}`
+    +`<button class="rec-go rmc-go" data-mp="${x.mp}">Открыть ${nm} — разобрать задачи →</button></div>`;
+}
+function renderRecOverview(S){
+  const el=document.getElementById("recOverview"); if(!el) return;
+  if(!S.ozon){ el.innerHTML=`<div class="rec-empty">Данных Ozon нет — сводка по одной площадке не нужна.</div>`; return; }
+  const F=recFocusOrder(S.wb, S.ozon);
+  const nm=x=>REC_MP_NM[x.mp];
+  const firstTask=F.first.top[0];
+  // факты недели рядом с причиной — чтобы порядок можно было проверить глазами, а не верить на слово
+  const facts=x=>(x.ordPct==null? "заказы недели сравнить не с чем" : "заказы "+recPctTxt(x.ordPct)+" к прошлой неделе")
+    +(x.p1!=null? `, прибыль недели ${recRub(x.p1)} ₽`
+      +(x.p0!=null? ` (${x.p1>=x.p0?"+":"−"}${fmt(Math.abs(Math.round(x.p1-x.p0)))} ₽ к прошлой)` : "") : "");
+  const st=x=>`${x.crit.length} ${plural(x.crit.length,"срочная задача","срочные задачи","срочных задач")}, `+facts(x);
+  el.innerHTML=`<div class="rec-focus"><div class="rf-t">Куда сейчас дать фокус</div>`
+    +`<div class="rf-row"><b>1. ${nm(F.first)}</b> — ${esc(F.why)}; ${esc(facts(F.first))}.`
+      +(firstTask? ` Начните с задачи «${esc(firstTask.title)}».` : "")+`</div>`
+    +`<div class="rf-row"><b>2. ${nm(F.second)}</b> — ${esc(st(F.second))}.</div>`
+    +`<div class="rf-n">Неделя — календарная (пн–вс): последняя закрытая против предыдущей закрытой. Прибыль ВБ с 03.08 — оценка по заказам.</div></div>`
+    +`<div class="rmc-wrap">`+[F.first,F.second].map((x,i)=>recMpCard(x,i+1)).join("")+`</div>`;
+}
+function renderRecKpis(view, S, rulesShown){
   const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
-  document.getElementById("recKpis").innerHTML=[
-    {lbl:"Срочных задач", val:crit.length, valColor:crit.length?"var(--crit-txt)":"var(--good-txt)",
-     tip:`<div class="t-hd">Что считается срочным</div>`+crit.map(r=>tr2(r.title)).join("")
-       +(crit.length?"":tr2("Ничего срочного — можно заниматься ростом"))},
-    {lbl:"Денег на кону, ₽", val:fmt(Math.round(totalMoney)), valColor:totalMoney?"var(--crit-txt)":"var(--text-1)",
-     tip:`<div class="t-hd">Из чего складывается</div>`
-       +recs.filter(r=>r.money).map(r=>tr2(r.title,fmt(Math.round(r.money))+" ₽")).join("")
-       +tr2("Это расход, который можно перенаправить или вернуть, а не убыток")},
-    {lbl:"Заказы: неделя к неделе", val:(()=>{const a=ch.rows.reduce((s,r)=>s+r.q1,0),b=ch.rows.reduce((s,r)=>s+r.q0,0);
-        return b>0? recPctTxt(a/b-1) : "—";})(),
-     valColor:(()=>{const a=ch.rows.reduce((s,r)=>s+r.q1,0),b=ch.rows.reduce((s,r)=>s+r.q0,0);
-        return a>=b?"var(--good-txt)":"var(--crit-txt)";})(),
-     tip:`<div class="t-hd">Окна сравнения</div>`
-       +(ch.w1? tr2("Последние 7 дней",fmtDateLong(ch.w1[0])+" – "+fmtDateLong(ch.w1[6])):"")
-       +(ch.w0? tr2("Предыдущие 7 дней",fmtDateLong(ch.w0[0])+" – "+fmtDateLong(ch.w0[6])):"")
-       +tr2("Заказано, шт",fmt(ch.rows.reduce((s,r)=>s+r.q1,0))+" против "+fmt(ch.rows.reduce((s,r)=>s+r.q0,0)))
-       +tr2("Заказано, ₽",fmt(Math.round(ch.rows.reduce((s,r)=>s+r.r1,0)))+" против "+fmt(Math.round(ch.rows.reduce((s,r)=>s+r.r0,0))))},
-    {lbl:"Просело товаров", val:drop.length, valColor:drop.length?"var(--warn-txt)":"var(--text-1)",
-     tip:`<div class="t-hd">Падение выручки за неделю</div>`
-       +tr2("Просели",drop.length)+tr2("Выросли",up.length)
-       +tr2("Суммарно",fmt(Math.round(drop.reduce((a,r)=>a+r.dr,0)))+" ₽ против +"+fmt(Math.round(up.reduce((a,r)=>a+r.dr,0)))+" ₽")},
-  ].map(kpiCard).join("");
+  const wkRows=(x)=>{ const ch=x.ch; if(!ch.w1) return tr2("Нет двух закрытых недель в ряду заказов");
+    return tr2("Закрытая неделя",recWkTxt(ch.w1))+tr2("Предыдущая",recWkTxt(ch.w0))
+      +(ch.open&&ch.open.length? tr2("Идущая неделя",fmtDate(ch.open[0])+(ch.open.length>1? "–"+fmtDate(ch.open[ch.open.length-1]) : "")
+        +" — неполная, "+ch.open.length+" дн, в сравнение не идёт") : "")
+      +tr2("Заказано, шт",fmt(x.q1)+" против "+fmt(x.q0))
+      +tr2("Заказано, ₽",fmt(Math.round(x.r1))+" против "+fmt(Math.round(x.r0))); };
+  let cards;
+  if(view==="all"){
+    const L=[S.wb,S.ozon].filter(Boolean), biz=rulesShown;
+    /* «Всего» = сумма того, что показано на видах площадок, ПОСЛЕ округления каждого слагаемого:
+       иначе 766 053 + 77 610 выходило бы 843 664 и продавец увидел бы рубль из воздуха. */
+    const R=v=>Math.round(v||0);
+    const crit=L.reduce((a,x)=>a+x.crit.length,0)+biz.filter(r=>r.sev==="crit").length;
+    const money=L.reduce((a,x)=>a+R(x.money),0)+R(biz.reduce((a,r)=>a+(r.money||0),0));
+    const q1=L.reduce((a,x)=>a+x.q1,0), q0=L.reduce((a,x)=>a+x.q0,0);
+    const p1=L.reduce((a,x)=>a+R(x.p1),0), p0=L.reduce((a,x)=>a+R(x.p0),0);
+    // у правил Ozon площадка уже в названии («Ozon: …») — второй раз её не приписываем
+    const nmT=(x,t)=>t.startsWith(REC_MP_NM[x.mp])? t : REC_MP_NM[x.mp]+": "+t;
+    // закрытые недели площадок могут разойтись, если данные одной отстают, — тогда сумма из разных недель
+    const wk0=L.map(x=>x.ch.w1? x.ch.w1[0] : ""), wkDiff=new Set(wk0).size>1;
+    const wkWarn=wkDiff? tr2("Недели площадок разные: данные одной отстают — сумма из разных недель") : "";
+    cards=[
+      {lbl:"Срочных задач — всего", val:crit, valColor:crit?"var(--crit-txt)":"var(--good-txt)",
+       tip:`<div class="t-hd">По площадкам</div>`+L.map(x=>tr2(REC_MP_NM[x.mp],x.crit.length)).join("")
+         +L.map(x=>x.crit.map(r=>tr2(nmT(x,r.title))).join("")).join("")},
+      {lbl:"Денег на кону, ₽", val:fmt(Math.round(money)), valColor:money?"var(--crit-txt)":"var(--text-1)",
+       tip:`<div class="t-hd">По площадкам</div>`+L.map(x=>tr2(REC_MP_NM[x.mp],fmt(Math.round(x.money))+" ₽")).join("")
+         +L.map(x=>x.rules.filter(r=>r.money).map(r=>tr2(nmT(x,r.title),fmt(Math.round(r.money))+" ₽")).join("")).join("")
+         +tr2("Это расход, который можно перенаправить или вернуть, а не убыток")},
+      {lbl:"Заказы: неделя к неделе", val:q0>0? recPctTxt(q1/q0-1) : "—",
+       valColor:q1>=q0?"var(--good-txt)":"var(--crit-txt)",
+       tip:L.map(x=>`<div class="t-hd">${REC_MP_NM[x.mp]}</div>`+wkRows(x)).join("")
+         +`<div class="t-hd">Вместе</div>`+tr2("Заказано, шт",fmt(q1)+" против "+fmt(q0))+wkWarn},
+      {lbl:"Прибыль за неделю, ₽", val:recRub(p1), valColor:p1>=0?"var(--good-txt)":"var(--crit-txt)",
+       tip:`<div class="t-hd">Последняя закрытая неделя (пн–вс)</div>`
+         +L.map(x=>tr2(REC_MP_NM[x.mp]+(x.ch.w1? " · "+recWkShort(x.ch.w1) : ""),recRub(x.p1)+" ₽"+(x.est?" (оценка)":""))).join("")
+         +tr2("Вместе",recRub(p1)+" ₽")
+         +tr2("Прошлая неделя вместе",recRub(p0)+" ₽")+wkWarn},
+    ];
+  } else {
+    const x=S[view], recs=x.rules;
+    const totalMoney=x.money, crit=x.crit;
+    cards=[
+      {lbl:"Срочных задач — "+REC_MP_NM[view], val:crit.length, valColor:crit.length?"var(--crit-txt)":"var(--good-txt)",
+       tip:`<div class="t-hd">Что считается срочным</div>`+crit.map(r=>tr2(r.title)).join("")
+         +(crit.length?"":tr2("Ничего срочного — можно заниматься ростом"))},
+      {lbl:"Денег на кону, ₽", val:fmt(Math.round(totalMoney)), valColor:totalMoney?"var(--crit-txt)":"var(--text-1)",
+       tip:`<div class="t-hd">Из чего складывается</div>`
+         +recs.filter(r=>r.money).map(r=>tr2(r.title,fmt(Math.round(r.money))+" ₽")).join("")
+         +tr2("Это расход, который можно перенаправить или вернуть, а не убыток")},
+      {lbl:"Заказы: неделя к неделе", val:x.q0>0? recPctTxt(x.q1/x.q0-1) : "—",
+       valColor:x.q1>=x.q0?"var(--good-txt)":"var(--crit-txt)",
+       tip:`<div class="t-hd">${REC_MP_NM[view]} · календарные недели</div>`+wkRows(x)},
+      {lbl:"Просело товаров", val:x.drop.length, valColor:x.drop.length?"var(--warn-txt)":"var(--text-1)",
+       tip:`<div class="t-hd">Падение выручки за неделю</div>`
+         +tr2("Просели",x.drop.length)+tr2("Выросли",x.up.length)
+         +tr2("Суммарно",recRub(x.drop.reduce((a,r)=>a+r.dr,0))+" ₽ против +"+fmt(Math.round(x.up.reduce((a,r)=>a+r.dr,0)))+" ₽")},
+    ];
+  }
+  document.getElementById("recKpis").innerHTML=cards.map(kpiCard).join("");
   wireKpiTips("recKpis");
-  renderRecPlan();
-  // ---- что изменилось: дерево категория → склейка → товар ----
+}
+function renderRecChanged(ch, view){
   const el=document.getElementById("recChanged");
   const cap=document.getElementById("recChangedCap");
-  if(cap&&ch.w1) cap.textContent="Последние 7 дней ("+fmtDateLong(ch.w1[0])+" – "+fmtDateLong(ch.w1[6])
-    +") против предыдущих 7. Клик по строке разворачивает уровень ниже: категория → склейка → товар."
-    +(ch.adNote? " "+ch.adNote.charAt(0).toUpperCase()+ch.adNote.slice(1)+"." : "");
-  if(!ch.rows.length){ el.innerHTML=`<div class="rec-empty">Мало истории заказов, чтобы сравнивать недели.</div>`; }
-  else {
-    const tree=recTree(ch).filter(n=> recChgFilter==="all" ? true : (recChgFilter==="down"? n.dr<0 : n.dr>0));
-    /* Разложение и факты — общий блок для любого уровня: и категория, и склейка, и товар
-       разбираются одинаково, меняется только набор карточек. */
-    const body=r=>{
-      const st=(r.diag&&r.diag.steps)||[];
-      const mx=Math.max(1,...st.map(x=>Math.abs(x.eff)));
-      const bars=st.length? `<div class="chg-steps"><div class="cs-t">Из чего сложилось изменение заказов</div>`
-        +st.map(x=>`<div class="cs-row"><span class="cs-n">${esc(x.n)}</span>`
-          +`<span class="cs-v">${x.val}<small>${x.d}${x.rel? " "+x.rel:""}</small></span>`
-          +`<span class="cs-bar"><i class="${x.eff>=0?"up":"down"}" style="width:${Math.round(Math.abs(x.eff)/mx*100)}%"></i></span>`
-          +`<span class="cs-e ${Math.abs(x.eff)<0.5?"nil":(x.eff>=0?"up":"down")}">${
-              Math.abs(x.eff)<0.5? "почти не повлияло"
-              : `${x.eff>=0?"+":"−"}${Math.abs(x.eff).toFixed(0)} ${plural(Math.round(Math.abs(x.eff)),"заказ","заказа","заказов")}`}</span>`
-          +`</div>`).join("")+`</div>` : "";
-      const facts=((r.diag&&r.diag.items)||[]).filter(x=>x.k!=="factors");
-      return bars
-        +(facts.length? `<div class="chg-why">`+facts.map(x=>`<div class="cw ${x.k}">${x.t}</div>`).join("")+`</div>`:"")
-        +((r.diag&&r.diag.act)? `<div class="chg-act">${esc(r.diag.act)}</div>`:"");
-    };
-    const head=(r,lvl,sub,open)=>`<div class="chg-h">`
-      // sub уже готовый HTML (в строке товара — ссылка на карточку), экранируем на месте вызова
-      +`<span class="chg-nm">${lvl<3? `<i class="tw ${open?"o":""}"></i>`:""}${esc(r.name)}<small>${sub}</small></span>`
-      +`<span class="chg-d ${r.dr>=0?"up":"down"}">${r.dr>=0?"+":"−"}${fmt(Math.abs(Math.round(r.dr)))} ₽`
-        +`<small>${r.q0} → ${r.q1} шт${r.diag&&r.diag.noise? ` · <span class="chg-noise">на грани шума</span>`:""}</small></span></div>`;
-    let html="";
-    tree.forEach(cat=>{
-      const openC=_recChgCat===cat.cat;
-      html+=`<div class="chg-card lvl1 ${cat.dr>=0?"up":"down"}" data-cat="${esc(cat.cat)}">`
-        +head(cat,1,esc(cat.tags.length+" склеек · "+cat.skus.length+" карточек"),openC)
-        +(openC? body(cat):"")+`</div>`;
-      if(!openC) return;
-      cat.tags.forEach(t=>{
-        const key=cat.cat+"|"+t.tag, openT=_recChgTag===key;
-        html+=`<div class="chg-card lvl2 ${t.dr>=0?"up":"down"}" data-cat="${esc(cat.cat)}" data-tag="${esc(t.tag)}">`
-          +head(t,2,esc(t.items.length+" карточек"),openT)
-          +(openT? body(t):"")+`</div>`;
-        if(!openT) return;
-        t.items.forEach(r=>{
-          html+=`<div class="chg-card lvl3 ${r.dr>=0?"up":"down"}">`
-            +head(r,3,`${skuLink(r.sku)}${r.sup?" · 1С "+esc(r.sup):""}`,false)
-            +body(r)+`</div>`;
-        });
+  const h=document.getElementById("recChgH"); if(h) h.textContent="Что изменилось за неделю и почему — "+REC_MP_NM[view];
+  if(cap) cap.textContent = ch.w1
+    ? REC_MP_NM[view]+": закрытая неделя "+recWkTxt(ch.w1)+" против предыдущей, "+recWkTxt(ch.w0)+"."
+      +(ch.open&&ch.open.length? " Идущая неделя ("+fmtDate(ch.open[0])+(ch.open.length>1? "–"+fmtDate(ch.open[ch.open.length-1]) : "")
+        +", "+ch.open.length+" дн) неполная — в сравнение не идёт." : "")
+      +" Клик по строке разворачивает уровень ниже: категория → склейка → товар."
+      +(view==="ozon"? " Категории — родные Ozon, склейки — те же, что на Wildberries (по коду 1С)." : "")
+      +(ch.fGap&&ch.fGap.length? " Воронка "+REC_MP_NM[view]+" за "+recRangesTxt(ch.fGap)+" выгружена не целиком (заказов в ней заметно меньше, чем в ряду заказов) — "
+        +"поэтому разложение по шагам воронки (показы, CTR, корзина) здесь не показываю, причины — по цене, остатку и рекламе." : "")
+      +(ch.adNote? " "+ch.adNote.charAt(0).toUpperCase()+ch.adNote.slice(1)+"." : "")
+    : REC_MP_NM[view]+": в ряду заказов нет двух закрытых календарных недель подряд.";
+  if(!ch.rows.length){ el.innerHTML=`<div class="rec-empty">Мало истории заказов, чтобы сравнивать недели.</div>`; return; }
+  const tree=recTree(ch).filter(n=> recChgFilter==="all" ? true : (recChgFilter==="down"? n.dr<0 : n.dr>0));
+  /* Разложение и факты — общий блок для любого уровня: и категория, и склейка, и товар
+     разбираются одинаково, меняется только набор карточек. */
+  const body=r=>{
+    const st=(r.diag&&r.diag.steps)||[];
+    const mx=Math.max(1,...st.map(x=>Math.abs(x.eff)));
+    const bars=st.length? `<div class="chg-steps"><div class="cs-t">Из чего сложилось изменение заказов</div>`
+      +st.map(x=>`<div class="cs-row"><span class="cs-n">${esc(x.n)}</span>`
+        +`<span class="cs-v">${x.val}<small>${x.d}${x.rel? " "+x.rel:""}</small></span>`
+        +`<span class="cs-bar"><i class="${x.eff>=0?"up":"down"}" style="width:${Math.round(Math.abs(x.eff)/mx*100)}%"></i></span>`
+        +`<span class="cs-e ${Math.abs(x.eff)<0.5?"nil":(x.eff>=0?"up":"down")}">${
+            Math.abs(x.eff)<0.5? "почти не повлияло"
+            : `${x.eff>=0?"+":"−"}${Math.abs(x.eff).toFixed(0)} ${plural(Math.round(Math.abs(x.eff)),"заказ","заказа","заказов")}`}</span>`
+        +`</div>`).join("")+`</div>` : "";
+    const facts=((r.diag&&r.diag.items)||[]).filter(x=>x.k!=="factors");
+    return bars
+      +(facts.length? `<div class="chg-why">`+facts.map(x=>`<div class="cw ${x.k}">${x.t}</div>`).join("")+`</div>`:"")
+      +((r.diag&&r.diag.act)? `<div class="chg-act">${esc(r.diag.act)}</div>`:"");
+  };
+  const head=(r,lvl,sub,open)=>`<div class="chg-h">`
+    // sub уже готовый HTML (в строке товара — ссылка на карточку), экранируем на месте вызова
+    +`<span class="chg-nm">${lvl<3? `<i class="tw ${open?"o":""}"></i>`:""}${esc(r.name)}<small>${sub}</small></span>`
+    +`<span class="chg-d ${r.dr>=0?"up":"down"}">${r.dr>=0?"+":"−"}${fmt(Math.abs(Math.round(r.dr)))} ₽`
+      +`<small>${r.q0} → ${r.q1} шт${r.diag&&r.diag.noise? ` · <span class="chg-noise">на грани шума</span>`:""}</small></span></div>`;
+  let html="";
+  tree.forEach(cat=>{
+    const openC=_recChgCat===cat.cat;
+    html+=`<div class="chg-card lvl1 ${cat.dr>=0?"up":"down"}" data-cat="${esc(cat.cat)}">`
+      +head(cat,1,esc(cat.tags.length+" "+plural(cat.tags.length,"склейка","склейки","склеек")+" · "+cat.skus.length+" "+plural(cat.skus.length,"карточка","карточки","карточек")),openC)
+      +(openC? body(cat):"")+`</div>`;
+    if(!openC) return;
+    cat.tags.forEach(t=>{
+      const key=cat.cat+"|"+t.tag, openT=_recChgTag===key;
+      html+=`<div class="chg-card lvl2 ${t.dr>=0?"up":"down"}" data-cat="${esc(cat.cat)}" data-tag="${esc(t.tag)}">`
+        +head(t,2,esc(t.items.length+" "+plural(t.items.length,"карточка","карточки","карточек")),openT)
+        +(openT? body(t):"")+`</div>`;
+      if(!openT) return;
+      t.items.forEach(r=>{
+        html+=`<div class="chg-card lvl3 ${r.dr>=0?"up":"down"}">`
+          +head(r,3,`${skuLink(r.sku)}${r.sup&&r.sup!==r.sku?" · 1С "+esc(r.sup):""}`,false)
+          +body(r)+`</div>`;
       });
     });
-    el.innerHTML=html || `<div class="rec-empty">По этому фильтру изменений нет.</div>`;
+  });
+  el.innerHTML=html || `<div class="rec-empty">По этому фильтру изменений нет.</div>`;
+}
+let _recLastView=null;
+function renderRecsTab(){
+  const list=document.getElementById("recList"); if(!list) return;
+  const view=recView();
+  // дерево «что изменилось» раскрыто на одной площадке — на другой те же названия не совпадут
+  if(_recLastView!==view){ _recChgCat=null; _recChgTag=null; _recLastView=view; }
+  const fresh=document.getElementById("recFreshness");
+  if(fresh){ const P=(RD&&RD.adPerf)||null, O=RD.ozon||{}, P2=ozAdSpendParts();
+    const sOz=O.orderSeries&&O.orderSeries.dates, lastOz=sOz&&sOz.length? sOz[sOz.length-1] : null;
+    const FS=ozOrderFeeSpan(lastOz);
+    const wbTxt=`<b>Wildberries</b>: заказы по ${fmtDateLong((RD.orderSeries.dates||[]).slice(-1)[0])}`
+      +` · остатки ВБ на ${(RD.meta&&RD.meta.stockSnapshotDate)? fmtDateLong(RD.meta.stockSnapshotDate):"—"}`
+      +(P? ` · реклама ${fmtDateLong(P.from)} – ${fmtDateLong(P.to)}`:` · реклама не загружена`);
+    const ozTxt=`<b>Ozon</b>: заказы по ${fmtDateLong(lastOz)}`
+      +` · остатки на ${(O.meta&&O.meta.stockDate)? fmtDateLong(O.meta.stockDate):"—"}`
+      +(P2.length? ` · XWAY ${fmtDateLong(P2[0].from)} – ${fmtDateLong(P2[P2.length-1].to)}` : ` · выгрузок XWAY нет`)
+      +(FS? ` · оплата за заказ по ${fmtDateLong(FS.to)}` : "");
+    const whTxt=` · свой склад на ${(RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date):"—"}`;
+    // .freshness — flex-строка: каждую площадку кладём одним элементом, иначе подписи рвутся на куски
+    const ln=t=>`<span style="flex-basis:100%">${t}</span>`;
+    fresh.innerHTML = view==="wb"? ln(wbTxt+whTxt) : (view==="ozon"? ln(ozTxt+whTxt) : ln(wbTxt)+ln(ozTxt+whTxt));
   }
+  const all=recBuild();
+  const by={wb:all.filter(r=>r.mp==="wb"), ozon:all.filter(r=>r.mp==="ozon"), all:all.filter(r=>r.mp==="all")};
+  const recs=by[view];
+  const S={};
+  if(view==="all"){ S.wb=recMpSummary("wb",by.wb); if(OZDATA) S.ozon=recMpSummary("ozon",by.ozon); }
+  else S[view]=recMpSummary(view,by[view]);
+  renderRecKpis(view, S, recs);
+  const ov=document.getElementById("recOverview");
+  if(ov){ ov.hidden = view!=="all"; if(view==="all") renderRecOverview(S); else ov.innerHTML=""; }
+  renderRecPlan(view);
+  // «что изменилось» — по площадке; на «Всего» его заменяет сводка выше
+  const chgCard=document.getElementById("recChgCard");
+  if(chgCard) chgCard.hidden = view==="all";
+  if(view!=="all") renderRecChanged(S[view].ch, view);
+  // гипотезы по рекламе построены на выгрузке XWAY по ВБ — только на виде Wildberries
+  const adCard=document.getElementById("recAdTreeCard");
+  if(adCard) adCard.hidden = view!=="wb";
+  if(view==="wb") renderRecAdTree();
+  const lh=document.getElementById("recListH");
+  if(lh) lh.textContent = view==="all"? "Общее для бизнеса — обе площадки" : "Что делать — "+REC_MP_NM[view];
   // ---- список действий ----
   let show=recs;
   if(recFilter==="crit") show=recs.filter(r=>r.sev==="crit");
   if(recFilter==="money") show=recs.filter(r=>r.money).sort((a,b)=>(b.money||0)-(a.money||0));
   if(!show.length){ list.innerHTML=`<div class="rec-empty">Здесь пусто — по этому фильтру задач нет.</div>`; return; }
-  renderRecAdTree();
-  list.innerHTML=show.map(r=>`<div class="rec ${r.sev}">`
+  list.innerHTML=show.map(r=>{
+    const goMp=r.mp==="all"? (r.goMp||"") : r.mp;
+    return `<div class="rec ${r.sev}">`
     +`<div class="rec-hd"><span class="rec-t">${r.title}</span>`
     +(r.money? `<span class="rec-money ${r.sev==="crit"?"crit":""}">${fmt(Math.round(r.money))} ₽</span>`:"")
     +`</div><div class="rec-why">${r.why}</div>`
@@ -10527,10 +11073,11 @@ function renderRecsTab(){
       +r.items.map(i=>`<div class="rec-item"><span class="ri-n">${i.n}</span>`
         +`<span class="ri-x">${esc(i.x)}</span><span class="ri-w">${esc(i.w||"")}</span></div>`).join("")
       +`</div>`:"")
-    +(r.tab? `<button class="rec-go" data-tab="${r.tab}"${r.view?` data-view="${r.view}"`:""}`
+    +(r.tab? `<button class="rec-go" data-tab="${r.tab}"${r.view?` data-view="${r.view}"`:""}${goMp?` data-mp="${goMp}"`:""}${r.mp==="all"?` data-biz="1"`:""}`
+        +`${r.dates?` data-dates="${r.dates.join("|")}" data-prev="${(r.prevDates||[]).join("|")}"`:""}`
         +`${r.keys&&r.keys.length?` data-keys="${esc([...new Set(r.keys.filter(Boolean).map(String))].join("|"))}" data-n="${r.n||0}" data-label="${esc(r.title)}"`:""}>`
-        +`Открыть${r.n? " "+r.n+" поз." : ""} →</button>`:"")
-    +`</div>`).join("");
+        +`Открыть${r.n? " "+r.n+" поз." : ""}${goMp&&goMp!=="all"? " · "+REC_MP_NM[goMp] : ""} →</button>`:"")
+    +`</div>`; }).join("");
 }
 let _recOpenG=null, _recOpenT=null;      // какой уровень дерева раскрыт
 function renderRecAdTree(){
@@ -11303,7 +11850,10 @@ function switchTab(name){
   // площадка: на вкладках без поддержки Озона данные всегда ВБ; переключатель виден только где есть выбор
   const supportsMp = !!MP_TABS[name] && !!OZDATA;
   const sw=document.getElementById("mpSwitch"); if(sw) sw.hidden=!supportsMp;
-  applyMpData(supportsMp ? activeMp : "wb");
+  // «Рекомендации» до первого явного выбора площадки открываются на «Всего» (см. recEffMp)
+  const mpNow = supportsMp ? (name==="recs"? recEffMp() : activeMp) : "wb";
+  if(supportsMp) document.querySelectorAll("#mpSwitch .mp-btn").forEach(b=>b.classList.toggle("active",b.dataset.mp===mpNow));
+  applyMpData(mpNow, name==="recs");        // «Рекомендации» не сбрасывают выбор других вкладок
   if(name==="recs") renderRecsTab();
   if(name==="home") renderHomeTab();
   if(name==="dynamics") renderDynamicsTab();
@@ -11367,8 +11917,24 @@ document.getElementById("tabs").addEventListener("click",e=>{
   switchTab(b.dataset.tab);
 });
 // переключатель площадки ВБ / Озон / Всего
+/* «РЕКОМЕНДАЦИИ» ОТКРЫВАЮТСЯ НА «ВСЕГО», ПОКА В ЭТОЙ СЕССИИ ПЛОЩАДКУ НЕ ВЫБРАЛИ ЯВНО
+   (просьба продавца 18.10.2026: «захожу в раздел рекомендации, вижу общую инфу, далее смотрю,
+   на что лучше дать фокус»). Глобальную `activeMp` при этом НЕ трогаем: остальные вкладки
+   по-прежнему открываются на площадке, запомненной в localStorage, — меняется только то,
+   что показывает «Рекомендации». Любой клик по переключателю (или по кнопке площадки в
+   сводке) — явный выбор, дальше вкладка слушает `activeMp`, как остальные. */
+let _recMpChosen=false;
+function recEffMp(){ return (!_recMpChosen && OZDATA)? "all" : activeMp; }
+// выбрать площадку без перерисовки (для «Открыть →» из рекомендации — дальше switchTab сам)
+function recGoMp(mp){
+  activeMp=mp; _recMpChosen=true;
+  document.querySelectorAll("#mpSwitch .mp-btn").forEach(b=>b.classList.toggle("active",b.dataset.mp===mp));
+  try{localStorage.setItem("wb_active_mp",mp);}catch(e){}
+}
 function setMp(mp){
-  activeMp=mp;
+  activeMp=mp; _recMpChosen=true;
+  // фокус из рекомендации привязан к площадке: на другой те же строки не совпадут
+  if(recFocus && recFocus.mp && recFocus.mp!==mp){ recFocus=null; renderFocusBar(); }
   document.querySelectorAll("#mpSwitch .mp-btn").forEach(b=>b.classList.toggle("active",b.dataset.mp===mp));
   try{localStorage.setItem("wb_active_mp",mp);}catch(e){}
   const active=TABS.find(t=>!document.getElementById("tab-"+t).hidden)||"home";
@@ -11492,18 +12058,30 @@ document.getElementById("recFilterSeg").addEventListener("click",e=>{
 });
 document.getElementById("recList").addEventListener("click",e=>{
   const b=e.target.closest(".rec-go"); if(!b) return;
-  const tab=b.dataset.tab, view=b.dataset.view;
+  const tab=b.dataset.tab, view=b.dataset.view, mp=b.dataset.mp||"";
+  /* Рекомендация открывает целевую вкладку НА СВОЕЙ ПЛОЩАДКЕ: правило Ozon — на Ozon, ВБ — на ВБ.
+     Только для вкладок с выбором площадки; остальные (Запас и темп) и так всегда ВБ. */
+  /* Общее для бизнеса (дозаказ на фабрике) открывается на ВБ, но выбором площадки для
+     «Рекомендаций» это не считается: вернувшись, продавец снова видит сводку «Всего». */
+  if(mp && MP_TABS[tab] && OZDATA){ const was=_recMpChosen; recGoMp(mp); if(b.dataset.biz) _recMpChosen=was; }
   /* Переход ФИЛЬТРУЕТ целевую таблицу под эту рекомендацию: продавец должен увидеть
      ровно те позиции, о которых речь, а не весь раздел. Ключи лежат в data-keys. */
   const keys=(b.dataset.keys||"").split("|").filter(Boolean);
+  const dates=(b.dataset.dates||"").split("|").filter(Boolean), prev=(b.dataset.prev||"").split("|").filter(Boolean);
   if(keys.length) setFocus({keys:new Set(keys.filter(Boolean)), n:+(b.dataset.n||0)||keys.length,
-    label:b.dataset.label||"", tab, view});
+    label:b.dataset.label||"", tab, view, mp:(mp&&MP_TABS[tab]&&OZDATA)? mp : null,
+    dates:dates.length? dates : null, prevDates:prev});
   else clearFocus(false);
   if(view && tab==="turnover"){ turnView=view; turnColFilters={};
     document.querySelectorAll("#turnViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.view===view?"true":"false")); }
   if(view && tab==="ads"){ adView=view; adColFilters={};
     document.querySelectorAll("#adViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v===view?"true":"false")); }
   switchTab(tab); window.scrollTo({top:0,behavior:"smooth"});
+});
+// «Всего»: кнопка карточки площадки — переключиться на неё, оставаясь на «Рекомендациях»
+document.getElementById("recOverview").addEventListener("click",e=>{
+  const b=e.target.closest(".rmc-go"); if(!b) return;
+  setMp(b.dataset.mp); window.scrollTo({top:0,behavior:"smooth"});
 });
 document.getElementById("adDrrLevels").addEventListener("click",e=>{
   const r=e.target.closest(".lv.clickable"); if(!r) return;
@@ -11572,6 +12150,7 @@ document.getElementById("homePeriodSeg").addEventListener("click",e=>{
   // кнопка месяца несёт data-m, кнопки окон — data-n; выбор одного снимает другой
   if(b.dataset.m){ homeMonth=b.dataset.m; }
   else { homeMonth=null; homePeriodN=+b.dataset.n; }
+  if(recFocus && recFocus.tab==="home") clearFocus(false);   // фокус задавал свой период — выбор снимает его
   renderHomeTab();
 });
 document.getElementById("homeSearch").addEventListener("input",renderHomeTab);
@@ -11644,12 +12223,20 @@ function combinedDataset(){
   return {catalog,bySku,dates};
 }
 // «перенавести» активные ряды/каталог на выбранную площадку
-function applyMpData(mp){
+/* soft=true — «Рекомендации»: они показывают свою площадку (до явного выбора — «Всего»),
+   и выбор категорий, фильтры колонок, свой период «Динамики» и выбранный товар остальных
+   вкладок от этого сбрасываться НЕ должны. Сброс — только когда площадка остальных вкладок
+   действительно сменилась (`_mpHard` — под какую площадку они сейчас настроены). Без этого
+   один заход на «Рекомендации» стирал фильтры «Оборачиваемости» и период «Динамики». */
+let _mpHard=null;
+function applyMpData(mp, soft){
   const ds = mp==="ozon"? OZDATA : mp==="all"? combinedDataset() : WBDATA;
   RCAT = ds? ds.catalog : []; RSERIES = ds? ds.bySku : {}; RDATES = ds? ds.dates : [];
   RLAST = RDATES.length ? RDATES[RDATES.length-1] : null;
   rebuildCatalogMaps();
-  if(_appliedMp!==mp){ _appliedMp=mp; dynCustom=null;
+  if(_appliedMp==null) _mpHard=null;        // hydrateData: всё собирается заново
+  _appliedMp=mp;
+  if(!soft && _mpHard!==mp){ _mpHard=mp; dynCustom=null;
     if(typeof selectedSku!=="undefined") selectedSku=null;   // выбор товара/периодов свой на каждой площадке
     _prodPeriodsMp=null;
     if(typeof turnColFilters!=="undefined"){ turnColFilters={}; closeColFilter(); }   // фильтры колонок — свои на каждой площадке
