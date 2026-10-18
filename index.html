@@ -11106,19 +11106,25 @@ function recRulesWb(addAny, rs){
       w:adCoverParts(r)+" · "+adFmtD(r.coverDays)+" дн"})),
     keys: idle.map(r=>r.sku), n: idle.length, tab:"ads", view:"cand", rank: 7});
   // ---- 7. Цена и темп (план продаж в репрайсере — только Wildberries) ----
-  let sr=[]; try{ sr=srRows(); }catch(e){ sr=[]; }
-  const shortSr=recAlive(sr.filter(r=>r.verdict==="short"));
-  const upSr=recAlive(sr.filter(r=>r.verdict==="up")).sort((a,b)=>(b.ratio||0)-(a.ratio||0));
+  /* Вердикт (verdict/ratio/hz/targetOrders) ставит srDecorate — без него оба правила ниже были
+     пустыми ВСЕГДА (найдено 18.10.2026). Запас — r.total (поля stock у строки нет). */
+  let sr=[]; try{ sr=srDecorate(srRows()); }catch(e){ sr=[]; }
+  /* «Не хватит даже Ozon» — только где запас ЕСТЬ, но весь уходит Ozon; при нуле на складах это не про цену.
+     «Поднять цену» — сверху те, где лишних заказов в день больше всего (а не по отношению: у почти нулевой
+     цели отношение огромное при копеечном эффекте). */
+  const shortSr=recAlive(sr.filter(r=>r.verdict==="short" && (r.total||0)>0));
+  const upSr=recAlive(sr.filter(r=>r.verdict==="up")).sort((a,b)=>(b.gapOrders||0)-(a.gapOrders||0));
+  const srOrd=v=>v==null? "—" : (v<10? (Math.round(v*10)/10).toString().replace(".",",") : fmt(Math.round(v)));
   if(shortSr.length) add({sev:"crit", key:"srShort",
-    title:"Не хватит даже Озону: "+shortSr.length+" позиций",
+    title:"Не хватит даже Ozon: "+shortSr.length+" "+plural(shortSr.length,"позиция","позиции","позиций"),
     why:`По этим кодам весь запас выбирает Ozon — на Wildberries не остаётся ничего даже при нулевых продажах. Поднимать цену тут помогает лишь частично: цена общая, она притормозит и Ozon.`,
-    items: shortSr.slice(0,6).map(r=>({n:fmt(Math.round(r.stock||0))+" шт", x:r.name, w:"до партии "+(r.hz||"?")+" дн"})),
+    items: shortSr.slice(0,6).map(r=>({n:fmt(Math.round(r.total||0))+" шт", x:r.name, w:"до партии "+(r.hz||"?")+" дн"})),
     keys: shortSr.flatMap(r=>[r.sup,r.wbSku]), n: shortSr.length, tab:"stockrate", rank: 2});
   if(upSr.length) add({sev:"warn", key:"srUp",
-    title:"Поднять цену: "+upSr.length+" позиций продаются быстрее, чем нужно",
+    title:"Поднять цену на ВБ: "+upSr.length+" "+plural(upSr.length,"позиция продаётся","позиции продаются","позиций продаются")+" быстрее, чем нужно",
     why:`Темп выше цели больше чем на ${Math.round(SR_BAND*100)}% — товар кончится раньше, чем придёт партия. Цель в таблице дана в ЗАКАЗАХ в день, её и вводите в репрайсер.`,
-    items: upSr.slice(0,6).map(r=>({n:(r.targetOrders!=null? Math.round(r.targetOrders):"—")+" заказов в день", x:r.name,
-      w:"сейчас "+Math.round(r.ordWb||0)+" в день"})),
+    items: upSr.slice(0,6).map(r=>({n:"план "+srOrd(r.targetOrders)+" в день", x:r.name,
+      w:"сейчас "+srOrd(r.ordWb||0)+" в день"})),
     keys: upSr.flatMap(r=>[r.sup,r.wbSku]), n: upSr.length, tab:"stockrate", rank: 6});
   // ---- 9. Чего не хватает в данных — Wildberries ----
   const gaps=[];
