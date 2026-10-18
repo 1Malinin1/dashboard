@@ -159,7 +159,8 @@ const WB_FBO_SUPPLY=true, NSK1_MIN_DAYS=14, NSK2_MIN_TAKE=100;
    своб.Евросиб = max(0, Евросиб − 250); держим на FBS = max(0, 250 − Евросиб);
    своб.FBS = max(0, FBS − держим). НЕ БОЛЬШЕ 6 КОДОВ В МАШИНЕ (он же, тогда же).
    До 15.10.2026 оба правила жили только в памятке. Держи синхронно с index.html. */
-const RETAIL_RESERVE=250, MAX_CODES_PER_TRUCK=6;
+// Розничный резерв ОТМЕНЁН 18.10.2026 (ЗАП-04): выгрузка складов — уже свободный остаток. Держи синхронно с index.html.
+const RETAIL_RESERVE=0, MAX_CODES_PER_TRUCK=6;
 const SRC_WB=['nsk2','nsk1','msk'], SRC_OZ=['nsk2','nsk1','msk'];
 function klinBySup(){ const wh=(RD.warehouse&&RD.warehouse.bySup)||{}, out={};
   Object.keys(wh).forEach(s=>{ let q=0;
@@ -298,6 +299,35 @@ function packTrucks(items){
     trucks.push(t); }
   return trucks;
 }
+/* КОНСОЛИДАЦИЯ СЛОТОВ (18.10.2026). Неполная машина упёрлась в лимит кодов, а её мелкие коды уже
+   едут в полных машинах того же направления: код целиком перекладываем в полную машину, а обратно
+   забираем столько же паллет кодов, которые и так есть в неполной. Паллеты машин и состав
+   направления не меняются, у неполной освобождается слот под добор. Без этого после отмены
+   розничного резерва машина «Евросиб → ВБ» не ехала (6 мелких кодов, добить новым кодом нельзя).
+   Держи синхронно с index.html. */
+function truckConsolidate(t,full){
+  let moved=true;
+  while(moved && t.items.length>=MAX_CODES_PER_TRUCK){
+    moved=false;
+    const order=t.items.slice().sort((a,b)=>a.pal-b.pal || (a.sup<b.sup?-1:(a.sup>b.sup?1:0)));
+    for(const c of order){
+      for(const T of full){
+        const tc=T.items.find(x=>x.sup===c.sup); if(!tc) continue;
+        const inT=new Set(t.items.map(x=>x.sup));
+        const shared=T.items.filter(x=>x.sup!==c.sup && inT.has(x.sup))
+          .sort((a,b)=>a.pal-b.pal || (a.sup<b.sup?-1:(a.sup>b.sup?1:0)));
+        if(shared.reduce((a,x)=>a+x.pal,0)<c.pal) continue;
+        let need=c.pal; tc.pal+=c.pal;
+        for(const x of shared){ if(need<=0) break; const k=Math.min(x.pal,need);
+          x.pal-=k; need-=k; t.items.find(y=>y.sup===x.sup).pal+=k; }
+        T.items=T.items.filter(x=>x.pal>0);
+        t.items=t.items.filter(x=>x.sup!==c.sup);
+        moved=true; break;
+      }
+      if(moved) break;
+    }
+  }
+}
 const plan=[];
 // добор одной неполной машины: Map(строка → паллет) или null — см. truckFill в index.html
 function truckFill(free,d,t){
@@ -348,9 +378,32 @@ function truckFill(free,d,t){
   dirs.sort((a,b)=>(a.mp===b.mp? 0 : (a.mp==='ozon'? -1 : 1)) || (b.total-a.total) || (a.i-b.i));
   dirs.forEach(d=>{ if(d.total<=0) return;
     const trucks=packTrucks(truckItems(d.wh,d.mp)), kept=[], dropped=[];
-    trucks.forEach(t=>{
+    trucks.forEach((t,ti)=>{
       if(t.pallets>=PALLETS_PER_TRUCK){ kept.push(t); return; }
-      const add=truckFill(free,d,t);
+      truckConsolidate(t,kept);
+      let add=truckFill(free,d,t), cut=[];
+      // не добить и после консолидации — снимаем самые мелкие коды (см. index.html)
+      if(!add){
+        const small=t.items.slice().sort((a,b)=>a.pal-b.pal || (a.sup<b.sup?-1:(a.sup>b.sup?1:0)));
+        for(let k=1;k<small.length && !add;k++){
+          const off=new Set(small.slice(0,k).map(x=>x.sup));
+          const items=t.items.filter(x=>!off.has(x.sup));
+          const a2=truckFill(free,d,{items,pallets:items.reduce((s,x)=>s+x.pal,0)});
+          if(a2){ add=a2; cut=small.slice(0,k); }
+        }
+        if(add){ const off=new Set(cut.map(x=>x.sup));
+          t.items=t.items.filter(x=>!off.has(x.sup));
+          t.pallets=t.items.reduce((s,x)=>s+x.pal,0); t.free=PALLETS_PER_TRUCK-t.pallets;
+          /* снятые коды сначала пробуем пересадить в СЛЕДУЮЩУЮ неполную машину этого же направления
+             (если в ней хватает слотов и места) — тогда они едут как нужда, а не «не едет + добор» */
+          const u=trucks.slice(ti+1).find(u=>u.pallets<PALLETS_PER_TRUCK
+            && new Set(u.items.map(x=>x.sup).concat(cut.map(x=>x.sup))).size<=MAX_CODES_PER_TRUCK
+            && u.pallets+cut.reduce((s,x)=>s+x.pal,0)<=PALLETS_PER_TRUCK);
+          if(u){ cut.forEach(x=>{ const ex=u.items.find(y=>y.sup===x.sup); if(ex) ex.pal+=x.pal; else u.items.push(x);
+              u.pallets+=x.pal; u.free-=x.pal; }); }
+          else { cut.forEach(x=>shift(bySup[x.sup],d,-x.pal,false));
+            dropped.push({pallets:cut.reduce((s,x)=>s+x.pal,0),free:0,items:cut}); } }
+      }
       if(add){ add.forEach((pals,r)=>{ shift(r,d,pals,true);
           const ex=t.items.find(x=>x.sup===r.sup); if(ex) ex.pal+=pals; else t.items.push({sup:r.sup,pal:pals});
           t.pallets+=pals; t.free-=pals; });
