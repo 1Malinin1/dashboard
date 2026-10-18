@@ -10332,7 +10332,9 @@ function recBuild(){
     keys: upSr.flatMap(r=>[r.sup,r.wbSku]), n: upSr.length, tab:"stockrate", rank: 6});
   // ---- 8. Дозаказ на фабрику ----
   const reorder=recAlive(rs).filter(r=>{ const spd=(r.wSpd||0)+(r.oSpd||0); if(spd<=0) return false;
-      const have=(r.wCovAll||0)+(r.oCov||0)+(r.have||0)+(r.china||0)+(r.onOrder||0);
+      /* ВБ — только FBO и едущее (wCov), а НЕ wCovAll: FBS-запас Москвы и Нск-1 уже сидит в r.have
+         (свой склад целиком), wCovAll посчитал бы его второй раз — 30 172 шт на 18.10.2026. */
+      const have=(r.wCov||0)+(r.oCov||0)+(r.have||0)+(r.china||0)+(r.onOrder||0);
       r._days=have/spd; return r._days<TURN_MIN_DAYS; })
     .sort((a,b)=>a._days-b._days);
   if(reorder.length) add({sev:"warn", key:"reorder",
