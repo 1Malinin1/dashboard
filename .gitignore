@@ -5,4 +5,7 @@ wb-reports.js
 /decrypted/
 
 # зависимости офлайн-скриптов (scripts/package.json) — ставятся через npm install
-scripts/node_modules/
+scripts/node_modules
+
+# временный файл проверки scripts/check/full-trucks.cjs (удаляется сам)
+scripts/.ft-dump-tmp.cjs
