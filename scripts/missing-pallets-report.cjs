@@ -12,13 +12,17 @@
 // Требует запущенного локального сервера дашборда (данные подсорта берутся из него,
 // чтобы цифры совпадали один в один):  http-server . -p 8123
 //
-// Использование: node scripts/missing-pallets-report.cjs [--all]
+// Использование: WB_CODE=<код доступа> node scripts/missing-pallets-report.cjs [--all]
+// Код доступа берётся ТОЛЬКО из переменной окружения WB_CODE: в репозитории его быть не должно
+// (репозиторий публичный, 18.10.2026 код нашёлся здесь вписанным в текст скрипта).
 const {chromium}=require('/opt/node22/lib/node_modules/playwright');
 const XLSX=require('./node_modules/xlsx');
 const fs=require('fs'),vm=require('vm');
 const path=require('path');
 const DEC=path.join(__dirname,'..','decrypted');
 const OUT=path.join(DEC,'паллеты-заполнить.xlsx');
+const CODE=process.env.WB_CODE;
+if(!CODE){ console.error('Нужен код доступа: WB_CODE=<код> node scripts/missing-pallets-report.cjs'); process.exit(2); }
 (async()=>{
   const c={};vm.createContext(c);
   vm.runInContext(fs.readFileSync(path.join(DEC,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',c);
@@ -30,7 +34,7 @@ const OUT=path.join(DEC,'паллеты-заполнить.xlsx');
   // данные подсорта и продаж — из дашборда, чтобы совпадало один в один
   const br=await chromium.launch(); const p=await br.newPage();
   await p.goto('http://127.0.0.1:8123/index.html',{waitUntil:'networkidle'});
-  await p.fill('#lockInput',process.env.WB_CODE||''); await p.click('.lock-btn');
+  await p.fill('#lockInput',CODE); await p.click('.lock-btn');
   await p.waitForFunction(()=>typeof FINANCE_CACHE!=='undefined'&&FINANCE_CACHE.length>0,{timeout:60000});
   await p.waitForTimeout(1500);
   const R=await p.evaluate(()=>{
