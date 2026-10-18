@@ -1310,7 +1310,7 @@
       <input type="search" id="srSearch" placeholder="Поиск: артикул, код 1С или название…">
       <select id="srCat" multiple></select>
       <select id="srHorizon">
-        <option value="eta" selected>Горизонт: до прихода партии</option>
+        <option value="eta" selected>Горизонт: до выхода партии в продажу</option>
         <option value="60">Горизонт: 60 дней</option>
         <option value="90">Горизонт: 90 дней</option>
         <option value="120">Горизонт: 120 дней</option>
@@ -6923,10 +6923,14 @@ function srDecorate(rows){
 function srMp(){ return (OZDATA && (_appliedMp==="ozon"||_appliedMp==="all"))? _appliedMp : "wb"; }
 /* НЕДЕЛЯ К НЕДЕЛЕ — ТОЛЬКО КАЛЕНДАРНЫЕ НЕДЕЛИ ПН–ВС (правило продавца 15.09 и 25.09.2026): последняя
    ЗАКРЫТАЯ неделя против предыдущей закрытой, идущая неделя — отдельно и в сравнение не идёт.
-   Неделя ОДНА на все три вида (по площадке, чьи заказы кончаются раньше) — иначе ВБ + Ozon
-   не сложились бы во «Всего». Даты границ печатаются из этих данных, а не пишутся руками. */
-function srWeeks(){
-  const lasts=[WBDATA,OZDATA].filter(d=>d&&d.dates&&d.dates.length).map(d=>d.dates[d.dates.length-1]).sort();
+   НЕДЕЛЯ СВОЯ У КАЖДОГО ВИДА: Wildberries — по заказам ВБ, Ozon — по заказам Ozon, «Всего» — по
+   площадке, чьи заказы кончаются раньше (иначе ВБ + Ozon не сложились бы). Ряды площадок кончаются
+   в разные дни: общая неделя на всех видах прятала на ВБ уже закрытую неделю, пока Ozon отставал,
+   а «идущая неделя» выходила длиной 10 дней (поймано на ревью 18.10.2026).
+   Даты границ печатаются из этих данных, а не пишутся руками. */
+function srWeeks(mp){
+  const src = mp==="ozon"? [OZDATA] : mp==="wb"? [WBDATA] : [WBDATA,OZDATA];
+  const lasts=src.filter(d=>d&&d.dates&&d.dates.length).map(d=>d.dates[d.dates.length-1]).sort();
   if(!lasts.length) return null;
   const last=lasts[0];
   const curTo = new Date(last+"T00:00:00Z").getUTCDay()===0 ? last : addDays(mondayOf(last),-1);
@@ -6946,12 +6950,15 @@ function srWeekSum(mp,from,to){
     if(q) by[sup]=(by[sup]||0)+q; });
   return {by,full,days:ii.length};
 }
-function srWeekData(){
-  const w=srWeeks(); if(!w) return null;
-  const one=mp=>{ const ds=mp==="ozon"? OZDATA : WBDATA; if(!ds) return null;
-    const lastMp=ds.dates[ds.dates.length-1];
-    return {cur:srWeekSum(mp,w.curFrom,w.curTo), prev:srWeekSum(mp,w.prevFrom,w.prevTo),
-      open:srWeekSum(mp,w.openFrom,lastMp), openTo:lastMp}; };
+function srWeekData(mp){
+  const w=srWeeks(mp); if(!w) return null;
+  /* Идущая неделя — не длиннее семи дней от понедельника: на «Всего» у площадки, которая опередила
+     другую, после общей закрытой недели может лежать больше недели заказов. */
+  const openEnd=addDays(w.openFrom,6);
+  const one=m=>{ const ds=m==="ozon"? OZDATA : WBDATA; if(!ds||!ds.dates.length) return null;
+    const lastMp=ds.dates[ds.dates.length-1], openTo=lastMp<openEnd? lastMp : openEnd;
+    return {cur:srWeekSum(m,w.curFrom,w.curTo), prev:srWeekSum(m,w.prevFrom,w.prevTo),
+      open:srWeekSum(m,w.openFrom,openTo), openTo}; };
   return {...w, wb:one("wb"), oz:one("ozon")};
 }
 const SR_OZ_ST={
@@ -6962,12 +6969,13 @@ const SR_OZ_ST={
   none:{lbl:"Нет продаж",cls:"nodata",tip:"За последние 7 дней заказов на Ozon не было."}};
 const SR_BIZ_ST={
   short:{lbl:"Не хватит",cls:"critical",tip:"Всего товара (ВБ + Ozon + ваши склады) при нынешнем темпе не хватит до выхода партии в продажу."},
-  ok:{lbl:"Хватит",cls:"good",tip:"Товара хватает до выхода партии, лишнего — не больше 15%."},
-  over:{lbl:"Избыток",cls:"warning",tip:"К выходу партии останется больше чем 15% сверх продаж: деньги стоят в остатке."},
+  ok:{lbl:"Хватит",cls:"good",tip:"Товара хватает до выхода партии, и темп продаж не ниже нужного больше чем на 15%."},
+  over:{lbl:"Избыток",cls:"warning",tip:"Темп продаж ниже нужного больше чем на 15%: к выходу партии останется лишнее — деньги стоят в остатке."},
   nohz:{lbl:"Горизонт не задан",cls:"nodata",tip:"У кода нет даты партии — не с чем сравнить."},
   nosale:{lbl:"Нет продаж",cls:"nodata",tip:"За последние 7 дней заказов не было ни на ВБ, ни на Ozon."}};
 function srExtend(rows){
-  const WK=srWeekData();
+  // неделя своя у каждого вида (см. srWeeks): ВБ, Ozon и общая для «Всего»
+  const WKw=srWeekData("wb"), WKo=srWeekData("ozon"), WKa=srWeekData("all");
   const ozCard={}, ozWbCat={};
   ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ const s=""+c.sku; ozCard[s]=c; if(c.wbCategory) ozWbCat[s]=c.wbCategory; });
   const asg=ozAssignedBySup();
@@ -6999,7 +7007,7 @@ function srExtend(rows){
     else if(hz>0) ozSt="short";
     else ozSt="nohz";
     const ozRel=r.onOz && (r.ozOnly>0||r.ozTr>0||r.spdOz>0||r.ordOz>0||
-      (WK&&WK.oz&&((WK.oz.cur.by[s]||0)+(WK.oz.prev.by[s]||0))>0));
+      (WKo&&WKo.oz&&((WKo.oz.cur.by[s]||0)+(WKo.oz.prev.by[s]||0))>0));
     // ---- Всего: весь товар один раз ----
     const wbShip=ship[s]||0;
     const bizTotal=(r.total||0)+wbShip;               // = «Всего товара» на «Остатках» (+ отгрузки в пути на ВБ)
@@ -7020,14 +7028,14 @@ function srExtend(rows){
     else if(r.verdict==="down") acts.push("ВБ: разогнать");
     if(ozSt==="ship") acts.push(whFreeOz>0? "Ozon: отгрузить сейчас" : "Ozon: отгружать нечем");
     else if(ozSt==="short") acts.push("Ozon: отгрузка через "+Math.max(0,r.shipIn)+" дн");
-    const wkW=wk(WK&&WK.wb,s), wkO=wk(WK&&WK.oz,s);
+    const wkW=wk(WKw&&WKw.wb,s), wkO=wk(WKo&&WKo.oz,s), aW=wk(WKa&&WKa.wb,s), aO=wk(WKa&&WKa.oz,s);
     return {...r, category:r.category||ozWbCat[s]||"",
       wbBase, wbDays, wbLeft,
       ozWay, ozAsg, ozReqEff:Math.max(0,(r.ozTr||0)-ozWay), ozBo, ozNeedHz, whFreeOz, ozSt, ozRel,
       wbShip, bizTotal, bizDays, bizSt, bizLeft, sideWb, sideOz, sideWh,
       act: acts.length? acts.join(" · ") : (!(r.spd>0)? "—" : (hz>0? "Держать" : "нет даты партии")),
-      wkWb:wkW, wkOz:wkO,
-      wkAll:[wkW[0]+wkO[0], (wkW[1]==null||wkO[1]==null)? null : wkW[1]+wkO[1], wkW[2]+wkO[2]]};
+      wkWb:wkW, wkOz:wkO, wkAllWb:aW, wkAllOz:aO,
+      wkAll:[aW[0]+aO[0], (aW[1]==null||aO[1]==null)? null : aW[1]+aO[1], aW[2]+aO[2]]};
   });
 }
 // строки текущего вида: ВБ и «Всего» — все коды, Ozon — только коды, которые на Ozon есть
@@ -7060,7 +7068,10 @@ function srColDefs(){
   else if(mp==="all"){
     defs.push({key:"bizSt", val:r=>SR_BIZ_ST[r.bizSt].lbl,
       sortVal:ord(["short","ok","over","nohz","nosale"].map(k=>SR_BIZ_ST[k].lbl))});
-    defs.push({key:"act", val:r=>r.act||"—", sortVal:v=>v==="Держать"? 90 : (v==="—"? 99 : 0)});
+    /* В фильтр — без числа дней: «отгрузка через 9 дн» и «через 31 дн» иначе становились разными
+       значениями, и список дробился на позиции по одной строке. */
+    defs.push({key:"act", val:r=>(r.act||"—").replace(/Ozon: отгрузка через \d+ дн/,"Ozon: запланировать отгрузку"),
+      sortVal:v=>v==="Держать"? 90 : (v==="—"? 99 : 0)});
   } else defs.push({key:"verdict",  val:r=>SR_VERDICT[r.verdict].lbl,
     sortVal:ord(["Не хватит и Озону","Поднять цену","Разогнать","Держать"])});
   return defs;
@@ -8330,7 +8341,7 @@ const srName=(r,mp)=>`<td class="metric name-cell" title="${esc(r.name)}${r.cate
   +`<span class="sub2 mut">${esc(r.category||"без категории")}</span>`
   +`<span class="sub2 mut">${mp==="ozon"? "арт. Ozon "+skuLink(r.sup) : "1С "+esc(r.sup)+(r.wbSku? " · ВБ "+esc(r.wbSku) : "")}</span></td>`;
 /* KPI «заказы за неделю»: последняя ЗАКРЫТАЯ календарная неделя против предыдущей, идущая — отдельно. */
-function srWeekTile(name,rows,key,WK,openDays){
+function srWeekTile(name,rows,key,WK,openTxt,openNote){
   if(!WK) return {lbl:name+": заказы за неделю, шт", val:"—", tip:"Заказов в снимке нет — неделю не с чем считать."};
   const cur=rows.reduce((a,r)=>a+r[key][0],0);
   const prevOk=rows.every(r=>r[key][1]!=null), prev=prevOk? rows.reduce((a,r)=>a+r[key][1],0) : null;
@@ -8341,10 +8352,17 @@ function srWeekTile(name,rows,key,WK,openDays){
       : `<div class="delta ${p>=0?"up":"down"}">${p>=0?"+":"−"}${Math.abs(p)}% к ${srWkShort(WK.prevFrom,WK.prevTo)}</div>`,
     tip:`Последняя закрытая неделя: ${srWkRange(WK.curFrom,WK.curTo)} — ${fmt(cur)} шт.\n`
       +`Предыдущая: ${srWkRange(WK.prevFrom,WK.prevTo)} — ${prev==null?"нет в данных":fmt(prev)+" шт"}.\n`
-      +(openDays? `\nИдёт неделя с ${fmtDate(WK.openFrom)}: ${fmt(open)} шт за ${openDays} — в сравнение не входит, она закроется в воскресенье.\n` : "")
+      +(openTxt? `\nИдёт неделя с ${fmtDate(WK.openFrom)}: ${fmt(open)} шт ${openTxt} — в сравнение не входит`
+        +(openNote? `. ${openNote}.\n` : `, она закроется в воскресенье.\n`) : "")
       +`\nСчитаем ЗАКАЗЫ в штуках, а не выкупы: выкуп свежей недели ещё не дозрел. Неделя всегда календарная, пн–вс. `
       +`Сумма — по позициям таблицы (с учётом фильтров), поэтому может на несколько штук отличаться от «Динамики заказов»: туда попадают и коды без остатка и без продаж за последние 7 дней.`};
 }
+// «Всего»: одинаковые дни у площадок — одной фразой, разные — по каждой площадке
+function srAllOpenTxt(WK){ if(!WK) return "";
+  const a=srOpenDaysTxt(WK.wb), b=srOpenDaysTxt(WK.oz);
+  if(!a&&!b) return ""; if(a===b) return "за "+a;
+  const one=(nm,src)=>src&&src.open&&src.open.days? nm+" — "+src.open.days+" "+plural(src.open.days,"день","дня","дней")+" по "+fmtDate(src.openTo) : "";
+  return "за разные дни: "+[one("ВБ",WK.wb), one("Ozon",WK.oz)].filter(Boolean).join(", "); }
 function srOpenDaysTxt(src){ if(!src||!src.open||!src.open.days) return ""; const n=src.open.days;
   return n+" "+plural(n,"день","дня","дней")+" (по "+fmtDate(src.openTo)+")"; }
 
@@ -8382,7 +8400,7 @@ function renderStockRateTab(){
   seg.innerHTML=SR_ACTS[mp].map(([k,l])=>`<button data-act="${k}" aria-pressed="${k===srAction?"true":"false"}">`
     +`${esc(l)}${k==="all"? "" : ` <span class="sr-n">${cnt[k]||0}</span>`}</button>`).join("");
   const rows=srFilteredRows(all,null);
-  const WK=srWeekData();
+  const WK=srWeekData(mp);
   document.getElementById("srKpis").innerHTML=(mp==="ozon"? srKpisOz(rows,WK) : mp==="all"? srKpisAll(rows,WK) : srKpisWb(rows,WK))
     .map(kpiCard).join("");
   wireKpiTips("srKpis");
@@ -8431,7 +8449,7 @@ function srKpisWb(rows,WK){
         +"«Держать» (темп в плане ±"+Math.round(SR_BAND*100)+"%): "+hd.length+" "+plural(hd.length,"позиция","позиции","позиций")+".\n\n"
         +"Почему здесь нет суммы целей: по выборке она "+fmt(sumT)+" заказов в день при нынешних "+fmt(sum(rows,r=>r.ordWb))+", и "
         +(sumT>0? Math.round(sumTdn/sumT*100) : 0)+"% её дают позиции «Разогнать» — товар с большим остатком, у которого цель в разы выше нынешнего темпа. Такую сумму нельзя ни ввести в репрайсер, ни выполнить: план ставится по каждой позиции."},
-    srWeekTile("ВБ",rows,"wkWb",WK,WK&&srOpenDaysTxt(WK.wb))];
+    srWeekTile("ВБ",rows,"wkWb",WK,WK&&srOpenDaysTxt(WK.wb)&&"за "+srOpenDaysTxt(WK.wb))];
 }
 function srTableWb(rows,WK){
   let html=`<thead><tr>${thSort("Наименование","name",srSortState,"metric")}`
@@ -8480,7 +8498,7 @@ function srKpisOz(rows,WK){
       delta:`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">заказов ${srNum1(od)} · выкуп ${od>0? Math.round(sp/od*100):"—"}%</div>`,
       tip:"Продажи = заказы за последние 7 дней ÷ 7 × % выкупа Ozon.\n"
         +(bi.all? "Выкуп — замер "+pct(bi.all)+" за "+fmtDate(bi.from)+"–"+fmtDate(bi.to)+" (у товара с 10+ закрытыми заказами — свой)." : "")},
-    srWeekTile("Ozon",rows,"wkOz",WK,WK&&srOpenDaysTxt(WK.oz)),
+    srWeekTile("Ozon",rows,"wkOz",WK,WK&&srOpenDaysTxt(WK.oz)&&"за "+srOpenDaysTxt(WK.oz)),
     {lbl:"Ozon: отгружать сейчас", val:ship.length, valColor:ship.length?"var(--crit-txt)":"var(--text-1)",
       delta:`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">кончится до партии: ${short.length}</div>`,
       tip:"«Отгружать сейчас» — запаса на Ozon вместе с тем, что едет, хватит меньше чем на "+OZ_LEAD_DAYS+" дн (столько идёт поставка до продажи), а до партии не дотянет.\n"
@@ -8534,12 +8552,14 @@ function srKpisAll(rows,WK){
         +"ВБ — склады FBO, в пути, собрано на Клину: "+fmt(sum(rows,r=>r.sideWb))+" шт\n"
         +"Ozon — склады и в пути (с назначенным на «Ozon СФО/ЦФО»): "+fmt(sum(rows,r=>r.sideOz))+" шт\n"
         +"Ваши склады: "+fmt(sum(rows,r=>r.sideWh))+" шт\n\n"
-        +"Это та же сумма, что «Всего товара» на вкладке «Остатки» по тем же позициям."},
+        +"Это та же сумма, что «Всего товара» на вкладке «Остатки» по тем же позициям. Разбивка там другая: Клин и «Ozon СФО/ЦФО» "
+        +"показаны внутри ваших складов, а здесь отнесены к площадке, на которую товар уже назначен."},
     {lbl:"Всего: продаж в день, шт", val:srNum1(sp),
       delta:`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">ВБ ${lp(sw)}% · Ozon ${lp(so)}%</div>`,
       tip:"Продажи в день = ВБ "+srNum1(sw)+" + Ozon "+srNum1(so)+" шт (заказы за 7 дней × % выкупа своей площадки).\n"
         +(sp>0? "\nВсего товара хватит в среднем на "+fmt(tot/sp)+" дн." : "")},
-    srWeekTile("Всего",rows,"wkAll",WK,WK&&[srOpenDaysTxt(WK.wb)&&"ВБ "+srOpenDaysTxt(WK.wb), srOpenDaysTxt(WK.oz)&&"Ozon "+srOpenDaysTxt(WK.oz)].filter(Boolean).join(", ")),
+    srWeekTile("Всего",rows,"wkAll",WK,srAllOpenTxt(WK),
+      WK&&WK.wb&&WK.oz&&WK.wb.openTo!==WK.oz.openTo? "На «Всего» неделя закрывается, когда заказы обеих площадок дойдут до воскресенья" : ""),
     {lbl:"Всего: не хватит до партии", val:short.length, valColor:short.length?"var(--crit-txt)":"var(--text-1)",
       delta:`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">избыток: ${over.length}</div>`,
       tip:"«Не хватит до партии» — всего товара (ВБ + Ozon + ваши склады) при нынешнем темпе не хватит до выхода партии в продажу: "+short.length+".\n"
@@ -8572,7 +8592,7 @@ function srTableAll(rows,WK){
         +(T? srSplitBar([[lw,cW],[lo,cO],[lh,cH]])+`<span class="sub2 mut">ВБ ${pc(lw)} · Oz ${pc(lo)} · скл ${pc(lh)}%</span>` : `<span class="sub2 delta-down">товара нет нигде</span>`)
         +(P? srSplitBar([[pw,cW],[po,cO]])+`<span class="sub2 mut">ВБ ${pc(pw)} · Oz ${pc(po)}%</span>` : `<span class="sub2 mut">продаж нет</span>`)+`</td>`
       +`<td>${P? srNum1(P) : "—"}${P? `<span class="sub2 mut">ВБ ${srNum1(r.spdWb)} · Oz ${srNum1(r.spdOz)}</span>` : ""}</td>`
-      +srWkCell(r.wkAll,(r.wkAll[0]||r.wkAll[1])? `<span class="sub2 mut">ВБ ${fmt(r.wkWb[0])} · Oz ${fmt(r.wkOz[0])}</span>` : "")
+      +srWkCell(r.wkAll,(r.wkAll[0]||r.wkAll[1])? `<span class="sub2 mut">ВБ ${fmt(r.wkAllWb[0])} · Oz ${fmt(r.wkAllOz[0])}</span>` : "")
       +`<td><span class="badge ${s.cls}" title="${esc(s.tip)}"><span class="d"></span>${s.lbl}</span>${days}${sub}</td>`
       +`<td class="sr-act">${acts.map((a,i)=>i? `<span class="sub2">${esc(a)}</span>` : esc(a)).join("")}</td>`
       +srBatchCell(r)+`</tr>`;
@@ -8584,7 +8604,7 @@ function srTableAll(rows,WK){
    блок был стеной текста через стрелки). Один источник и для экрана, и для листа «Как считается»
    в выгрузке — так файл описывает ровно тот вид, который скачан. */
 function srHowTo(mp){
-  const band=Math.round(SR_BAND*100), hz=srHzTxt(), WK=srWeeks();
+  const band=Math.round(SR_BAND*100), hz=srHzTxt(), WK=srWeeks(mp);
   const wk=WK? "«Неделя "+srWkShort(WK.curFrom,WK.curTo)+"» — заказы в штуках за последнюю закрытую неделю ("+srWkRange(WK.curFrom,WK.curTo)+") против предыдущей ("+srWkRange(WK.prevFrom,WK.prevTo)+"). Идущая неделя в сравнение не входит." : "";
   if(mp==="ozon"){
     const bi=buyoutInfo("ozon")||{};
@@ -8629,7 +8649,7 @@ function exportStockRateXLSX(){
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
   const inf=v=>v===Infinity?"∞":(v==null?"":Math.round(v));
   const n2=v=>v==null? "" : +(+v).toFixed(2);
-  const WK=srWeeks();
+  const WK=srWeeks(mp);
   const wkH=WK? srWkShort(WK.curFrom,WK.curTo) : "", wkP=WK? srWkShort(WK.prevFrom,WK.prevTo) : "";
   const wkPct=w=>(w[1]>0)? Math.round((w[0]-w[1])/w[1]*100) : "";
   const batch=[
@@ -8656,7 +8676,7 @@ function exportStockRateXLSX(){
       {h:"Отгрузить через, дн",v:r=>r.ozSt==="ship"? "СРОЧНО" : (r.ozSt==="short"||r.ozSt==="nohz")? Math.max(0,r.shipIn) : "",w:19},
       {h:"Не хватит до партии, шт",v:r=>r.ozNeedHz!=null? Math.round(r.ozNeedHz):"",w:22},
       {h:"Склады дадут (Мск + Нск-1 + Евросиб), шт",v:r=>r.whFreeOz,w:38},
-      {h:"Заказы "+wkH+", шт",v:r=>r.wkOz[0],w:18},{h:"Заказы "+wkP+", шт",v:r=>r.wkOz[1]==null?"":r.wkOz[1],w:18},
+      {h:"Заказы Ozon "+wkH+", шт",v:r=>r.wkOz[0],w:22},{h:"Заказы Ozon "+wkP+", шт",v:r=>r.wkOz[1]==null?"":r.wkOz[1],w:22},
       {h:"Изменение, %",v:r=>wkPct(r.wkOz),w:13}]).concat(batch);
   } else if(mp==="all"){ name="Всего"; file="запас-и-темп-всего.xlsx";
     const sh=(a,b)=>b? Math.round(a/b*100) : "";
@@ -8676,7 +8696,7 @@ function exportStockRateXLSX(){
       {h:"ЧТО ДЕЛАТЬ",v:r=>r.act||"",w:40},
       {h:"Заказы "+wkH+" всего, шт",v:r=>r.wkAll[0],w:22},{h:"Заказы "+wkP+" всего, шт",v:r=>r.wkAll[1]==null?"":r.wkAll[1],w:22},
       {h:"Изменение, %",v:r=>wkPct(r.wkAll),w:13},
-      {h:"Заказы "+wkH+" ВБ",v:r=>r.wkWb[0],w:17},{h:"Заказы "+wkH+" Ozon",v:r=>r.wkOz[0],w:19}]).concat(batch);
+      {h:"Заказы "+wkH+" ВБ",v:r=>r.wkAllWb[0],w:17},{h:"Заказы "+wkH+" Ozon",v:r=>r.wkAllOz[0],w:19}]).concat(batch);
   } else { name="Wildberries"; file="запас-и-темп-вб.xlsx";
     cols=head.concat([
       {h:"Код 1С",v:r=>r.sup,w:12},{h:"Артикул ВБ",v:r=>r.wbSku||"",w:13},
@@ -8702,7 +8722,7 @@ function exportStockRateXLSX(){
   const actLbl=(SR_ACTS[mp].find(a=>a[0]===srAction)||["","Все"])[1];
   const cats=selCats("srCat"), q=(document.getElementById("srSearch").value||"").trim();
   const filt=[actLbl!=="Все"? "показано: «"+actLbl+"»" : "", cats.length? "категории: "+cats.join(", ") : "",
-    q? "поиск: «"+q+"»" : "", Object.keys(srColFilters).length? "фильтры по колонкам" : "", recFocus? "только позиции из рекомендации" : ""].filter(Boolean).join("; ");
+    q? "поиск: «"+q+"»" : "", Object.values(srColFilters).some(x=>x&&x.size)? "фильтры по колонкам" : "", recFocus? "только позиции из рекомендации" : ""].filter(Boolean).join("; ");
   const how={name:"Как считается",widths:[26,100],headerRows:1,rows:[
     ["Показатель","Как получен"],
     ["Вид", h.title.replace(/^Как считается — /,"")]]
