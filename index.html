@@ -324,6 +324,10 @@
   .stk-asof b{color:var(--text-1);font-weight:640}
   .stk-asof[hidden]{display:none}
   .kpi .stk-kpi-note{font-size:11.5px;color:var(--muted);margin-top:9px}
+  /* подпись «N товаров» второй строкой — иначе первая колонка раздувала таблицу шире экрана */
+  #stkTable td.metric .sub.blk{display:block;margin:1px 0 0 15px}
+  #stkTable tr.in-grp td.metric{white-space:normal;min-width:230px;max-width:280px;line-height:1.35}
+  #stkTable tr.stk-total td.metric .sub.blk{margin-left:0}
   #stkTable th .th-sub{display:block;font-size:10.5px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
   .stk-caret{display:inline-block;color:var(--accent);font-size:11px;
     transition:transform .14s ease;transform-origin:50% 50%}
@@ -8462,7 +8466,7 @@ function exportStockXLSX(){
     {h:"Ozon, шт",v:r=>r.oz,w:12},{h:"В пути на Ozon, шт"+wayH,v:r=>r.ozTransit==null? "" : r.ozTransit,w:live?19:31},
     {h:"Из ВСЕГО вычтено (та же партия в двух отчётах), шт",v:r=>r.ozDup||"",w:48},
     {h:"ВСЕГО, шт",v:r=>r.total,w:13},
-    {h:W.same? "Изменение (один день — не считается)" : "Изменение "+fmtDate(W.start.date)+" → "+fmtDate(W.end.date)+", шт",v:r=>r.dTotal==null? "" : r.dTotal,w:30},
+    {h:W.same? "Изменение ("+W.sameTxt+" — не считается)" : "Изменение "+fmtDate(W.start.date)+" → "+fmtDate(W.end.date)+", шт",v:r=>r.dTotal==null? "" : r.dTotal,w:30},
     {h:"из них ВБ",v:r=>r.dFbo==null? "" : r.dFbo,w:12},
     {h:"из них Ozon",v:r=>r.dOz==null? "" : r.dOz,w:13},
     {h:"из них свой склад",v:r=>r.dWh==null? "" : r.dWh,w:19}];
@@ -8481,7 +8485,7 @@ function exportStockXLSX(){
     ["В пути на Ozon","заявки на поставку + партии в пути, их показывает сам Ozon"],
     ["Почему из ВСЕГО вычитается","«Назначено на Ozon» и заявка Ozon — это ОДНА партия, увиденная двумя отчётами: сначала она появляется у вас в ведомости, потом Ozon создаёт поставку и показывает её у себя, а товар всё ещё на складе. Складывать их нельзя, поэтому в «ВСЕГО» пересечение считается один раз"],
     ["Остаток на дату",fmtDateLong(W.to)+(live? " — последний день данных" : " — значения перенесены от последнего замера не позже этой даты; последний замер вообще — "+fmtDateLong(W.last))],
-    ["Изменение за период",W.same? "выбран один день — изменение не считается"
+    ["Изменение за период",W.same? W.sameTxt+" — изменение не считается"
       : "остаток на "+fmtDateLong(W.end.date)+" минус остаток на "+fmtDateLong(W.start.date)+"; только по местам, у которых есть замер на обоих концах"
         +" (сейчас: "+["fbo","oz","wh"].filter(k=>stkCmpLayers(W)[k]).map(k=>({fbo:"склады ВБ",oz:"склады Ozon",wh:"ваши склады"})[k]).join(", ")+")"
         +"; то, что в пути, в него не входит"],
@@ -9612,11 +9616,15 @@ document.querySelectorAll("select").forEach(enhanceSelect);
                        и закрывает. Чип подсвечен, если active:true или его from/to = текущему выбору.
        opts.title    — заголовок панели (по умолчанию «Период»)
        opts.months   — сколько месяцев рядом (по умолчанию 2; на экране уже 640px — 1)
+       opts.dayCount — как считать длину в подписях: 'inclusive' (по умолчанию, «01.10–07.10 · 7 дней»),
+                       'span' (разница дат, «08.10–15.10 · за 7 дней» — когда сравниваются два среза),
+                       'none' (без числа дней)
        opts.onApply(from, to, preset) — выбран диапазон; preset — объект чипа или null
        opts.onClose()                 — панель закрыта (любым способом)
      closeDateRangePicker()           — закрыть открытый календарь, если он есть
      drpRangeText(from, to, mode)     — подпись для кнопки: «08.10 – 15.10.2026 · 8 дней»;
-                                        mode='arrow' → «08.10 → 15.10.2026» (сравнение двух срезов)
+                                        mode='arrow' → «08.10 → 15.10.2026» (сравнение двух срезов),
+                                        mode='span' → «08.10 – 15.10.2026 · за 7 дней», mode='none' — без дней
      DRP_ICON                         — SVG-иконка календаря для кнопки .drp-trigger
 
    Поведение: первый клик — начало, второй — конец (раньше начала — меняются местами), до
@@ -9632,6 +9640,8 @@ let _drp=null;
 function _drpIso(y,m,d){ return new Date(Date.UTC(y,m,d)).toISOString().slice(0,10); }   // переполнение дня/месяца — норма
 function _drpToday(){ const t=new Date(); return _drpIso(t.getFullYear(),t.getMonth(),t.getDate()); }
 function _drpDiff(a,b){ return Math.round((Date.parse(b+"T00:00:00Z")-Date.parse(a+"T00:00:00Z"))/864e5); }
+function _drpCount(a,b,mode){ const n=_drpDiff(a,b)+(mode==="span"? 0 : 1);
+  return (mode==="span"? "за " : "")+n+" "+plural(n,"день","дня","дней"); }
 function drpRangeText(from,to,mode){
   if(!from&&!to) return "Выбрать даты";
   from=from||to; to=to||from;
@@ -9639,8 +9649,8 @@ function drpRangeText(from,to,mode){
   if(from===to) return dm(to)+"."+to.slice(0,4);
   const f=from.slice(0,4)===to.slice(0,4)? dm(from) : dm(from)+"."+from.slice(0,4);
   if(mode==="arrow") return `${f} → ${dm(to)}.${to.slice(0,4)}`;
-  const n=_drpDiff(from,to)+1;
-  return `${f} – ${dm(to)}.${to.slice(0,4)} · ${n} ${plural(n,"день","дня","дней")}`;
+  if(mode==="none") return `${f} – ${dm(to)}.${to.slice(0,4)}`;
+  return `${f} – ${dm(to)}.${to.slice(0,4)} · `+_drpCount(from,to,mode);
 }
 function closeDateRangePicker(){
   if(!_drp) return; const d=_drp; _drp=null;
@@ -9732,9 +9742,10 @@ function openDateRangePicker(anchor,opts){
     const hint=panel.querySelector("[data-hint]"), cur=panel.querySelector("[data-cur]");
     if(!st.a) hint.innerHTML="Нажмите на первый день периода";
     else if(!st.b) hint.innerHTML=`С <b>${fmtDateLong(st.a)}</b> — теперь последний день (или «Применить» для одного дня)`;
-    else { const n=_drpDiff(st.a,st.b)+1;
-      hint.innerHTML=`С <b>${fmtDateLong(st.a)}</b> по <b>${fmtDateLong(st.b)}</b> · ${n} ${plural(n,"день","дня","дней")}`; }
-    if(cur) cur.textContent=(opts.from||opts.to)? "сейчас: "+drpRangeText(opts.from,opts.to) : "";
+    else if(st.a===st.b) hint.innerHTML=`Один день: <b>${fmtDateLong(st.a)}</b>`;
+    else hint.innerHTML=`С <b>${fmtDateLong(st.a)}</b> по <b>${fmtDateLong(st.b)}</b>`
+      +(opts.dayCount==="none"? "" : " · "+_drpCount(st.a,st.b,opts.dayCount));
+    if(cur) cur.textContent=(opts.from||opts.to)? "сейчас: "+drpRangeText(opts.from,opts.to,opts.dayCount==="span"||opts.dayCount==="none"? opts.dayCount : undefined) : "";
     const ap=panel.querySelector('[data-act="apply"]'); if(ap) ap.disabled=!st.a;
   };
   const pick=iso=>{
@@ -11087,7 +11098,8 @@ function stkSnapAt(d){
 /* Окно периода: даты, срезы на концах и признаки. Единственный источник для таблицы, плиток,
    графика, блоков движения и выгрузки — иначе они разъедутся по датам.
    · `isNow` — конец = последний день данных: только тогда есть «в пути»;
-   · `same`  — оба конца попали в один срез (выбран один день): изменение не считается. */
+   · `same`  — оба конца попали в один срез (выбран один день): изменение не считается,
+               `sameTxt` — как это сказать продавцу. */
 function stkWin(){
   const {snaps}=stockSeries(); if(!snaps.length) return null;
   const first=snaps[0].date, last=snaps[snaps.length-1].date;
@@ -11098,7 +11110,11 @@ function stkWin(){
   if(to>last) to=last; if(to<first) to=first;
   if(from<first) from=first; if(from>to) from=to;
   const end=stkSnapAt(to), start=stkSnapAt(from);
-  return {from,to,first,last,start,end,custom,isNow:end===snaps[snaps.length-1],same:start===end};
+  const same=start===end;
+  /* Подпись для «сравнивать не с чем»: обычно это выбран один день, но в дыре между
+     замерами оба конца тоже падают в один срез — тогда говорим как есть. */
+  const sameTxt=!same? "" : (from===to? "выбран один день" : "за эти дни новых замеров не было");
+  return {from,to,first,last,start,end,custom,isNow:end===snaps[snaps.length-1],same,sameTxt};
 }
 /* Последний СОБСТВЕННЫЙ замер слоя не позже даты (для подписей «на дату»). */
 function stkLayerAt(k,d){ const ds=(stockSeries().srcDays||{})[k]||[]; let r=null; ds.forEach(x=>{ if(x<=d) r=x; }); return r; }
@@ -11220,6 +11236,7 @@ function stkOpenCalendar(btn){
     from:n? (addDays(last,-n)<first? first : addDays(last,-n)) : first, to:last, active:stkPeriod===n}));
   openDateRangePicker(btn,{
     from:W.from, to:W.to, min:first, max:last, title:"Период — остатки Wildberries, Ozon и ваших складов",
+    dayCount:"span",   // сравниваются два среза: «08.10 → 15.10» — это изменение за 7 дней, как у чипа
     presets:pre,
     note:`Данные есть: `+L.map(x=>`<b>${esc(x.l.replace(/ \(.*\)$/,""))}</b> — с ${fmtDateLong(x.first)}`).join(" · ")
       +`. Последний замер — <b>${fmtDateLong(last)}</b>. Остаток показывается на последний день периода, `
@@ -11258,7 +11275,7 @@ function renderStockTab(){
   const LN={fbo:"склады ВБ",oz:"склады Ozon",wh:"ваши склады"};
   const cmpOn=["fbo","oz","wh"].filter(k=>cmp[k]).map(k=>LN[k]);
   const cmpOff=["fbo","oz","wh"].filter(k=>!cmp[k]).map(k=>LN[k]);
-  const cmpTxt=W.same? "ничего — выбран один день"
+  const cmpTxt=W.same? "ничего — "+W.sameTxt
     : (cmpOn.length? cmpOn.join(", ") : "ничего — сравнивать не с чем")
       +(cmpOff.length&&cmpOn.length? ` (не участвуют: ${cmpOff.join(", ")} — на ${fmtDate(W.start.date)} замеров ещё не было)` : "");
 
@@ -11294,7 +11311,7 @@ function renderStockTab(){
   const dTxt=v=>v==null? "не сравнивается" : stkSigned(v)+" шт";
   const dChip=v=>v==null? "" : `<div class="delta ${v>=0?"up":"down"}">${v>=0?"▲":"▼"} ${stkSigned(v)} шт <span class="muted" style="font-weight:400">${W.same?"":"с "+stkDM(W.start.date)}</span></div>`;
   const chgBlock=(rowsHtml,total)=>W.same
-    ? `<div class="t-note">Выбран один день — изменение не считается.</div>`
+    ? `<div class="t-note">${W.sameTxt[0].toUpperCase()+W.sameTxt.slice(1)} — изменение не считается.</div>`
     : `<div class="t-hd">Изменение ${pTxt}</div>`+rowsHtml+(total!==undefined? R("= Изменение",total==null?"не с чем сравнить":stkSigned(total)+" шт","t-sep"):"");
   const whAt=stkLayerAt("wh",W.to), fboAt=stkLayerAt("fbo",W.to), ozAt=stkLayerAt("oz",W.to);
 
@@ -11376,8 +11393,8 @@ function renderStockTab(){
 
   const wayT=live? "" : ` title="«В пути» истории не имеет — заполняется только на последний день (${fmtDate(W.last)})"`;
   const wayS=live? "" : `<span class="th-sub">только ${stkDM(W.last)}</span>`;
-  const dHead=W.same? `Δ<span class="th-sub">один день</span>` : `Δ<span class="th-sub">с ${stkDM(W.start.date)}</span>`;
-  const dTitle=W.same? ` title="Выбран один день — изменение не считается"`
+  const dHead=W.same? `Δ<span class="th-sub">не считается</span>` : `Δ<span class="th-sub">с ${stkDM(W.start.date)}</span>`;
+  const dTitle=W.same? ` title="${W.sameTxt[0].toUpperCase()+W.sameTxt.slice(1)} — изменение не считается"`
     : ` title="Изменение остатка с ${fmtDate(W.start.date)} по ${fmtDate(W.end.date)}, без «в пути»"`;
   const th=(h,extra)=>`<th${extra||""}>${h}</th>`;
   let html=`<thead><tr><th class="metric">Категория / товар<span class="th-sub">остаток на ${fmtDate(W.to)}</span></th>`
@@ -11396,7 +11413,7 @@ function renderStockTab(){
       +` с остатком на ${fmtDateLong(W.to)}. Очистите поиск или выберите «Все категории».</div></td></tr></tbody>`;
   } else {
     html+=`<tr class="stk-total"><td class="metric"><b>ИТОГО</b> `
-      +`<span class="sub">${cats.length} ${plural(cats.length,"категория","категории","категорий")} · `
+      +`<span class="sub blk">${cats.length} ${plural(cats.length,"категория","категории","категорий")} · `
       +`${rows.length} ${plural(rows.length,"товар","товара","товаров")}</span></td>`
       +`<td><b>${stkNum(T.fbo)}</b></td><td><b>${way(T.wbTransit)}</b></td><td><b>${stkNum(T.msk)}</b></td>`
       +`<td><b>${stkNum(T.nsk1)}</b></td><td><b>${stkNum(T.nsk2)}</b></td><td><b>${stkNum(T.klin)}</b></td>`
@@ -11407,7 +11424,7 @@ function renderStockTab(){
       const open=stkOpenCat===c.cat;
       html+=`<tr class="row-group stk-cat" data-cat="${esc(c.cat)}" style="cursor:pointer" title="${open?"Свернуть":"Показать товары категории"}">`
         +`<td class="metric"><span class="stk-caret${open?" open":""}">▸</span> <b>${esc(c.cat)}</b> `
-        +`<span class="sub">${c.n} ${plural(c.n,"товар","товара","товаров")}</span></td>`
+        +`<span class="sub blk">${c.n} ${plural(c.n,"товар","товара","товаров")}</span></td>`
         +`<td>${stkNum(c.fbo)}</td><td>${way(c.wbTransit)}</td><td>${stkNum(c.msk)}</td>`
         +`<td>${stkNum(c.nsk1)}</td><td>${stkNum(c.nsk2)}</td><td>${stkNum(c.klin)}</td>`
         +`<td class="${c.ozAsg?"":"d-zero"}">${stkNum(c.ozAsg)}</td><td>${stkNum(c.oz)}</td><td>${way(c.ozTransit)}</td>`
@@ -11523,7 +11540,7 @@ function renderStockMove(rows,W){
     box.innerHTML=`<div class="empty-hint">На ${fmtDateLong(W.to)} ваш склад ещё не замеряли: первая ведомость 1С — ${fmtDateLong(whDays[0])}. `
       +`Выберите период после этой даты, чтобы увидеть, что ушло со склада и куда приехало.</div>`; return; }
   if(!from || from>=to){ cap.textContent="";
-    box.innerHTML=`<div class="empty-hint">${W.same? "Выбран один день" : `За период ${fmtDate(W.from)} – ${fmtDate(W.to)} был один замер склада (${fmtDate(to)})`} — сравнивать не с чем. `
+    box.innerHTML=`<div class="empty-hint">${W.same&&W.from===W.to? "Выбран один день" : `За период ${fmtDate(W.from)} – ${fmtDate(W.to)} был один замер склада (${fmtDate(to)})`} — сравнивать не с чем. `
       +`Замеры склада есть с ${fmtDate(whDays[0])} по ${fmtDate(whDays[whDays.length-1])}: расширьте период.</div>`; return; }
   const byDate={}; stockSeries().snaps.forEach(s=>byDate[s.date]=s);
   const A=byDate[to], B=byDate[from];
@@ -11629,7 +11646,7 @@ function renderStockChart(codes,W){
   if(stkChartMode==="delta" && dates.length<2){
     document.getElementById("stkChartCap").textContent=per;
     document.getElementById("stkChartLegend").innerHTML="";
-    document.getElementById("stkChart").innerHTML=`<div class="empty-hint">Выбран один день — изменений показать нечего. `
+    document.getElementById("stkChart").innerHTML=`<div class="empty-hint">${W&&W.from!==W.to? "За эти дни новых замеров не было" : "Выбран один день"} — изменений показать нечего. `
       +`Расширьте период или переключите график на «Остаток».</div>`;
     return;
   }
@@ -11716,7 +11733,7 @@ function renderStockEvents(codes,W){
   const set=new Set(codes);
   if(snaps.length<2 || !set.size){ card.hidden=false; document.getElementById("stkArrCap").textContent="";
     box.innerHTML=`<div class="empty-hint">${!set.size? "Под текущий поиск и категории не попал ни один товар."
-      : "Выбран один день — событий между замерами нет. Расширьте период."}</div>`; return; }
+      : (W&&W.from!==W.to? "За эти дни новых замеров не было" : "Выбран один день")+" — событий между замерами нет. Расширьте период."}</div>`; return; }
   /* ПРОДАЖИ ПО ДНЯМ НУЖНЫ ДВАЖДЫ, И ЭТО КЛЮЧЕВОЕ.
      1) Приход: остаток площадки одновременно падает от продаж, поэтому «пришло» ≈ Δ + продано.
         Без поправки машина 900 шт выглядит как +650 и читается как «пришло меньше».
