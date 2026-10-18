@@ -160,7 +160,7 @@
   .drp-trigger svg{width:15px;height:15px;color:var(--accent);flex:none}
   .drp-panel{position:fixed;z-index:45;background:var(--surface);border:1px solid var(--border-2);
     border-radius:var(--r);box-shadow:var(--shadow-lg);padding:14px 14px 12px;color:var(--text-1);font-size:13px;
-    overflow:auto;max-width:calc(100vw - 16px);outline:none}
+    overflow:auto;width:min-content;min-width:280px;max-width:calc(100vw - 16px);outline:none}
   .drp-head{display:flex;align-items:baseline;justify-content:space-between;gap:4px 14px;margin-bottom:10px;flex-wrap:wrap}
   .drp-head b{font-size:14px;font-weight:650;letter-spacing:-.01em}
   .drp-head .drp-cur{font-size:12px;color:var(--muted)}
@@ -188,7 +188,8 @@
     font-variant-numeric:tabular-nums;cursor:pointer;border-radius:8px;padding:0 0 3px}
   .drp-d:hover:not(:disabled){box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 65%,transparent)}
   .drp-d:focus-visible{box-shadow:var(--ring);z-index:1}
-  .drp-d.drp-partial{background:color-mix(in srgb,var(--warn) 20%,transparent)}
+  .drp-d.drp-partial{background:color-mix(in srgb,var(--warn) 13%,transparent)}
+  .drp-d.drp-low{background:color-mix(in srgb,var(--warn) 30%,transparent)}
   .drp-d.drp-none{color:var(--muted);
     background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 26%,transparent) 0 2px,transparent 2px 6px)}
   .drp-d:disabled{cursor:not-allowed;opacity:.55}
@@ -204,7 +205,8 @@
   .drp-legend .lg{display:inline-flex;align-items:center;gap:6px}
   .drp-legend .sw{width:18px;height:13px;border-radius:3px;border:1px solid var(--border-2);flex:none}
   .drp-legend .sw-full{background:var(--surface)}
-  .drp-legend .sw-partial{background:color-mix(in srgb,var(--warn) 20%,var(--surface))}
+  .drp-legend .sw-partial{background:color-mix(in srgb,var(--warn) 13%,var(--surface))}
+  .drp-legend .sw-low{background:color-mix(in srgb,var(--warn) 30%,var(--surface))}
   .drp-legend .sw-none{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 34%,transparent) 0 2px,transparent 2px 6px)}
   .drp-legend .dt{width:6px;height:6px;border-radius:50%;flex:none}
   .drp-foot{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--grid);flex-wrap:wrap}
@@ -314,6 +316,15 @@
     background:color-mix(in srgb,var(--accent) 16%,var(--surface))}
   #stkTable tbody tr.in-grp > td.metric{
     padding-left:26px;border-left:3px solid color-mix(in srgb,var(--accent) 22%,transparent)}
+  .stk-period{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap}
+  /* «Остаток на дату» — когда период кончается раньше последнего замера */
+  .stk-asof{background:color-mix(in srgb,var(--accent) 9%,var(--surface));color:var(--text-2);
+    border:1px solid color-mix(in srgb,var(--accent) 28%,transparent);border-radius:var(--r);
+    padding:9px 13px;font-size:12.5px;margin:0 0 12px;line-height:1.5}
+  .stk-asof b{color:var(--text-1);font-weight:640}
+  .stk-asof[hidden]{display:none}
+  .kpi .stk-kpi-note{font-size:11.5px;color:var(--muted);margin-top:9px}
+  #stkTable th .th-sub{display:block;font-size:10.5px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
   .stk-caret{display:inline-block;color:var(--accent);font-size:11px;
     transition:transform .14s ease;transform-origin:50% 50%}
   .stk-caret.open{transform:rotate(90deg)}
@@ -584,6 +595,25 @@
   .howto .ht-step{display:inline-block;margin:1px 0}
   .howto .ht-arrow{color:var(--accent);font-weight:700;margin:0 5px}
   .howto .ht-note{display:block;margin-top:5px;font-size:11.5px;color:var(--muted)}
+  /* Сворачиваемое «Как читать»: по умолчанию свёрнуто, внутри — нумерованные шаги, а не стена текста */
+  .howto-fold{padding:0}
+  .howto-fold>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding:10px 14px;user-select:none;border-radius:var(--r-lg)}
+  .howto-fold>summary::-webkit-details-marker{display:none}
+  .howto-fold>summary::before{content:"▸";color:var(--accent);font-size:11px;transition:transform .14s ease}
+  .howto-fold[open]>summary::before{transform:rotate(90deg)}
+  .howto-fold>summary:hover .ht-t{color:var(--accent)}
+  .howto-fold>summary .ht-t{display:inline;margin:0}
+  .howto-fold .hf-hint{font-size:12px;color:var(--muted)}
+  .howto-fold[open] .hf-hint{display:none}
+  .howto-fold .hf-body{padding:2px 14px 13px 35px}
+  .hf-steps{margin:0;padding:0;list-style:none;counter-reset:hf;display:grid;gap:9px}
+  .hf-steps li{counter-increment:hf;position:relative;padding-left:2px;color:var(--text-2)}
+  .hf-steps li::before{content:counter(hf);position:absolute;left:-26px;top:0;width:19px;height:19px;border-radius:50%;
+    background:var(--accent-weak);color:var(--accent);font-weight:700;font-size:11px;display:grid;place-items:center}
+  .hf-notes{margin:11px 0 0;padding:9px 0 0 16px;border-top:1px dashed var(--border-2);font-size:11.5px;color:var(--muted);
+    display:grid;gap:4px}
+  .hf-notes b{color:var(--text-2);font-weight:620}
   .table-card{background:var(--surface);border:1px solid var(--border);
     border-radius:var(--r-lg);box-shadow:var(--shadow),inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent);
     overflow:hidden;margin-bottom:16px}
@@ -631,14 +661,23 @@
   .muted{color:var(--muted)}
 
   /* ===== Тултип ===== */
-  #tip{position:fixed;pointer-events:none;z-index:50;background:var(--surface);
+  /* max-width ОБЯЗАТЕЛЕН: без него подсказка растягивалась одной строкой во весь экран и уезжала
+     за левый край (скриншот продавца 18.10.2026, «Остатки»). Позицию держит showTip(). */
+  #tip{position:fixed;left:0;top:0;pointer-events:none;z-index:50;background:var(--surface);
     border:1px solid var(--border-2);border-radius:var(--r);box-shadow:var(--shadow-lg);
-    padding:10px 12px;font-size:12.5px;min-width:158px;opacity:0;transition:opacity .1s;color:var(--text-1)}
+    padding:10px 12px;font-size:12.5px;line-height:1.4;min-width:158px;
+    max-width:min(400px,calc(100vw - 16px));max-height:calc(100vh - 16px);overflow:hidden;
+    overflow-wrap:break-word;opacity:0;transition:opacity .1s;color:var(--text-1)}
   #tip .t-hd{font-weight:640;margin-bottom:7px;font-size:12px;color:var(--text-2)}
-  #tip .t-row{display:flex;align-items:center;gap:8px;margin-top:4px;justify-content:space-between}
-  #tip .t-row .k{display:inline-flex;align-items:center;gap:6px;color:var(--text-2)}
-  #tip .t-row .k i{width:14px;height:3px;border-radius:2px;display:inline-block}
-  #tip .t-row .v{font-weight:680;font-variant-numeric:tabular-nums}
+  #tip .t-hd ~ .t-hd{margin-top:9px}
+  #tip .t-row{display:flex;align-items:baseline;gap:12px;margin-top:4px;justify-content:space-between}
+  #tip .t-row .k{display:inline-flex;align-items:center;gap:6px;color:var(--text-2);min-width:0}
+  #tip .t-row .k i{width:14px;height:3px;border-radius:2px;display:inline-block;flex:none}
+  #tip .t-row .v{font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
+  #tip .t-sep{border-top:1px solid var(--grid);margin-top:6px;padding-top:6px}
+  #tip .t-p{margin-top:6px;color:var(--text-2);font-size:12px}
+  #tip .t-note{margin-top:6px;color:var(--muted);font-size:11.5px}
+  #tip .t-gap{height:4px}
 
   /* ===== Зона перетаскивания файлов (Товар/Финансы) ===== */
   .drop{border:1.5px dashed var(--border-2);border-radius:var(--r);padding:32px 20px;text-align:center;
@@ -1397,16 +1436,24 @@
     <div class="toolbar">
       <input type="search" id="stkSearch" placeholder="Поиск: артикул, код 1С или название…">
       <select id="stkCat" multiple data-all="Все категории" data-plural="категорий"></select>
-      <div class="seg" id="stkPeriodSeg" role="group" aria-label="Период сравнения">
-        <button data-n="7" aria-pressed="true">7 дней</button>
-        <button data-n="14" aria-pressed="false">14 дней</button>
-        <button data-n="30" aria-pressed="false">30 дней</button>
-        <button data-n="0" aria-pressed="false">Вся история</button>
+      <div class="stk-period">
+        <div class="seg" id="stkPeriodSeg" role="group" aria-label="Период: быстрый выбор">
+          <button data-n="7" aria-pressed="true">7 дней</button>
+          <button data-n="14" aria-pressed="false">14 дней</button>
+          <button data-n="30" aria-pressed="false">30 дней</button>
+          <button data-n="0" aria-pressed="false">Вся история</button>
+        </div>
+        <button type="button" class="drp-trigger" id="stkRangeBtn" aria-haspopup="dialog" aria-expanded="false"
+          title="Выбрать даты в календаре: дни без данных в нём заштрихованы"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span id="stkRangeLbl">Даты</span></button>
       </div>
-      <span class="count" id="stkCount"></span>
-      <button class="btn" id="stkExportBtn">Скачать Excel</button>
+      <span class="count" id="stkCount" hidden></span>
+      <button class="btn" id="stkExportBtn" style="margin-left:auto">Скачать Excel</button>
     </div>
-    <div class="howto" id="stkHowTo"></div>
+    <div class="stk-asof" id="stkAsOf" hidden></div>
+    <details class="howto howto-fold" id="stkHowToBox">
+      <summary><span class="ht-t">Как читать «Остатки»</span><span class="hf-hint">4 шага — нажмите, чтобы развернуть</span></summary>
+      <div class="hf-body" id="stkHowTo"></div>
+    </details>
     <div class="card" id="stkMoveCard" hidden>
       <h3>Движение товара — откуда ушло и куда приехало</h3>
       <div class="cap" id="stkMoveCap"></div>
@@ -1687,11 +1734,35 @@ function el(t,a){const e=document.createElementNS(SVGNS,t);for(const k in a)e.se
 function cssv(name){return getComputedStyle(document.documentElement).getPropertyValue(name).trim();}
 
 const tip=document.getElementById("tip");
-function showTip(html,x,y){tip.innerHTML=html;tip.style.opacity=1;
-  const r=tip.getBoundingClientRect();let nx=x+14,ny=y+14;
-  if(nx+r.width>innerWidth-8)nx=x-r.width-14; if(ny+r.height>innerHeight-8)ny=y-r.height-14;
-  tip.style.left=nx+"px";tip.style.top=ny+"px";}
+/* Позиция подсказки. ДВЕ ПРИЧИНЫ, ПО КОТОРЫМ ОНА УЕЗЖАЛА ЗА КРАЙ (18.10.2026):
+   1) ширину мерили на СТАРОМ месте — у fixed-блока ширина «по содержимому» зажата расстоянием
+      до правого края, и у правого края она одна, а после переноса влево — другая;
+   2) перенос влево (x − ширина) ничем не ограничивался и давал отрицательный left.
+   Теперь: сначала ставим в (0,0) и меряем настоящий размер, потом справа/снизу от курсора,
+   не влезает — слева/сверху, и в конце жёстко зажимаем в окно с отступом 8px. */
+function showTip(html,x,y){tip.innerHTML=html;
+  tip.style.left="0px";tip.style.top="0px";
+  const r=tip.getBoundingClientRect(), W=innerWidth, H=innerHeight, pad=8;
+  let nx=x+14, ny=y+14;
+  if(nx+r.width>W-pad) nx=x-r.width-14;
+  if(ny+r.height>H-pad) ny=y-r.height-14;
+  nx=Math.max(pad,Math.min(nx,W-r.width-pad)); ny=Math.max(pad,Math.min(ny,H-r.height-pad));
+  tip.style.left=nx+"px";tip.style.top=ny+"px";tip.style.opacity=1;}
 function hideTip(){tip.style.opacity=0;}
+/* Подсказка простым текстом (переносы «\n») → те же блоки, что у остальных (t-hd / t-row / t-p).
+   В HTML переносы схлопывались, и подсказка шла одной строкой во всю ширину. Первая строка —
+   заголовок, «Подпись: число» — строка с числом справа, прочее — абзац, пустая строка — отбивка. */
+function tipTextToHtml(s){
+  let out="", first=true, gap=false;
+  String(s).split("\n").forEach(line=>{ const t=line.trim();
+    if(!t){ gap=!first; return; }
+    if(first){ out+=`<div class="t-hd">${esc(t)}</div>`; first=false; gap=false; return; }
+    const m=t.match(/^([^:]{2,70}):\s+(.{1,48})$/);
+    if(m && /\d/.test(m[2]) && !/[.!?]$/.test(m[2])) out+=`<div class="t-row${gap?" t-sep":""}"><span class="k">${esc(m[1])}</span><span class="v">${esc(m[2])}</span></div>`;
+    else out+=`<div class="t-p">${esc(t)}</div>`;
+    gap=false; });
+  return out;
+}
 
 /* ---- стек одной колонки: структура выручки за период ---- */
 function unitStack(mount,parts){
@@ -1758,12 +1829,20 @@ function kpiCard(k){
     `<div class="val"${style}>${k.val}</div>${k.delta||""}${k.spark||""}</div>`;
 }
 // подсказки на KPI-плитках: показываем плавающий #tip при наведении
+/* Текст без разметки прогоняется через tipTextToHtml — иначе переносы теряются.
+   На сенсорном экране наведения нет: подсказка открывается касанием и закрывается касанием
+   в любом другом месте или прокруткой (pointerleave у касания приходит сразу — его не слушаем). */
+let _tipTouchOwner=null;
 function wireKpiTips(containerId){
   document.getElementById(containerId).querySelectorAll(".kpi.has-tip").forEach(t=>{
-    t.addEventListener("pointermove",e=>showTip(decodeURIComponent(t.dataset.tip),e.clientX,e.clientY));
-    t.addEventListener("pointerleave",hideTip);
+    const html=()=>{ const raw=decodeURIComponent(t.dataset.tip); return /^\s*</.test(raw)? raw : tipTextToHtml(raw); };
+    t.addEventListener("pointermove",e=>{ if(e.pointerType!=="touch") showTip(html(),e.clientX,e.clientY); });
+    t.addEventListener("pointerleave",e=>{ if(e.pointerType!=="touch") hideTip(); });
+    t.addEventListener("pointerdown",e=>{ if(e.pointerType==="touch"){ _tipTouchOwner=t; showTip(html(),e.clientX,e.clientY); } });
   });
 }
+document.addEventListener("pointerdown",e=>{ if(_tipTouchOwner && !_tipTouchOwner.contains(e.target)){ _tipTouchOwner=null; hideTip(); } },true);
+window.addEventListener("scroll",()=>{ if(_tipTouchOwner){ _tipTouchOwner=null; hideTip(); } },{passive:true});
 function downloadCSV(filename,text){
   const blob=new Blob(["﻿"+text],{type:"text/csv;charset=utf-8"});
   downloadBlob(filename,blob);
@@ -8368,20 +8447,22 @@ function exportStockRateXLSX(){
 /* Выгрузка «Остатков»: что видишь — то и качаешь (те же фильтры и период, что на экране).
    Лист «Как считается» едет вместе с цифрами — файл уходит без дашборда. */
 function exportStockXLSX(){
-  const rows=stkFiltered(stkRows());
+  const W=stkWin(); if(!W){ alert("Истории остатков пока нет."); return; }
+  const rows=stkFiltered(stkRows(W)), live=W.isNow;
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
+  const wayH=live? "" : " (только на "+fmtDate(W.last)+")";
   const cols=[
     {h:"Наименование",v:r=>r.name||"",w:44},{h:"Категория",v:r=>r.cat||"",w:20},
     {h:"Код 1С",v:r=>r.sup,w:14},{h:"Артикул ВБ",v:r=>r.sku||"",w:13},
     {h:"Склады ВБ (FBO), шт",v:r=>r.fbo,w:20},
-    {h:"В пути на ВБ, шт",v:r=>r.wbTransit,w:18},
+    {h:"В пути на ВБ, шт"+wayH,v:r=>r.wbTransit==null? "" : r.wbTransit,w:live?18:30},
     {h:"Москва, шт",v:r=>r.msk,w:12},{h:"Нск-1 (FBS), шт",v:r=>r.nsk1,w:16},
     {h:"Евросиб, шт",v:r=>r.nsk2,w:13},{h:"РВБ Клин, шт",v:r=>r.klin,w:14},
     {h:"Назначено на Ozon (СФО/ЦФО), шт",v:r=>r.ozAsg,w:32},
-    {h:"Ozon, шт",v:r=>r.oz,w:12},{h:"В пути на Ozon, шт",v:r=>r.ozTransit,w:19},
+    {h:"Ozon, шт",v:r=>r.oz,w:12},{h:"В пути на Ozon, шт"+wayH,v:r=>r.ozTransit==null? "" : r.ozTransit,w:live?19:31},
     {h:"Из ВСЕГО вычтено (та же партия в двух отчётах), шт",v:r=>r.ozDup||"",w:48},
     {h:"ВСЕГО, шт",v:r=>r.total,w:13},
-    {h:"Изменение за период, шт",v:r=>r.dTotal==null? "" : r.dTotal,w:24},
+    {h:W.same? "Изменение (один день — не считается)" : "Изменение "+fmtDate(W.start.date)+" → "+fmtDate(W.end.date)+", шт",v:r=>r.dTotal==null? "" : r.dTotal,w:30},
     {h:"из них ВБ",v:r=>r.dFbo==null? "" : r.dFbo,w:12},
     {h:"из них Ozon",v:r=>r.dOz==null? "" : r.dOz,w:13},
     {h:"из них свой склад",v:r=>r.dWh==null? "" : r.dWh,w:19}];
@@ -8399,7 +8480,13 @@ function exportStockXLSX(){
     ["Назначено на Ozon (СФО/ЦФО)","виртуальные склады ведомости 1С: контейнер уже распределён по направлениям и ждёт машины. Товар лежит у вас, поэтому входит в «Ваши склады»"],
     ["В пути на Ozon","заявки на поставку + партии в пути, их показывает сам Ozon"],
     ["Почему из ВСЕГО вычитается","«Назначено на Ozon» и заявка Ozon — это ОДНА партия, увиденная двумя отчётами: сначала она появляется у вас в ведомости, потом Ozon создаёт поставку и показывает её у себя, а товар всё ещё на складе. Складывать их нельзя, поэтому в «ВСЕГО» пересечение считается один раз"],
-    ["Изменение за период",(stkPeriod? "за "+stkPeriod+" дн":"за всю историю")+"; считается по остаткам, то, что в пути, в него не входит"],
+    ["Остаток на дату",fmtDateLong(W.to)+(live? " — последний день данных" : " — значения перенесены от последнего замера не позже этой даты; последний замер вообще — "+fmtDateLong(W.last))],
+    ["Изменение за период",W.same? "выбран один день — изменение не считается"
+      : "остаток на "+fmtDateLong(W.end.date)+" минус остаток на "+fmtDateLong(W.start.date)+"; только по местам, у которых есть замер на обоих концах"
+        +" (сейчас: "+["fbo","oz","wh"].filter(k=>stkCmpLayers(W)[k]).map(k=>({fbo:"склады ВБ",oz:"склады Ozon",wh:"ваши склады"})[k]).join(", ")+")"
+        +"; то, что в пути, в него не входит"],
+    ["В пути",live? "текущее значение: журнал отгрузок на ВБ и поставки Ozon"
+      : "истории нет — на прошлую дату колонки пустые, они заполняются только на последний день данных ("+fmtDateLong(W.last)+")"],
     ["История ВБ",srcDays.fbo.length+" замеров — из подённого отчёта аналитики; отчёт подённый, но ВБ переносит последний замер вперёд, поэтому новая цифра приходит раз в 2–3 дня"],
     ["История Ozon",srcDays.oz.length+" замеров — только из отчётов «Остатки на складах», сколько прислали, столько и точек"],
     ["История своего склада",srcDays.wh.length+" замеров — из ведомостей 1С"],
@@ -9511,9 +9598,10 @@ document.querySelectorAll("select").forEach(enhanceSelect);
        opts.min, opts.max — ISO, крайние дни, которые можно выбрать. Дни вне — недоступны.
                            max не может быть позже СЕГОДНЯ: будущие дни недоступны всегда.
        opts.dayInfo(iso)  — необязательный классификатор дня → {cls, title, dots, disabled} | null
-                           cls: 'full' | 'partial' | 'none' (встроенные стили: full — обычный,
-                                partial — жёлтая подложка «есть часть данных», none — штриховка
-                                «данных нет»); любой другой cls даёт класс drp-<cls> для своих стилей
+                           cls: 'full' | 'partial' | 'low' | 'none' (встроенные стили: full — обычный,
+                                partial — светло-жёлтая подложка «есть часть данных», low — жёлтая
+                                «данных мало», none — штриховка «данных нет»); любой другой cls даёт
+                                класс drp-<cls> для своих стилей; в легенде — {cls, label}
                            title: подсказка на дне (нативный title)
                            dots: массив CSS-цветов — точки под числом (напр. «в этот день был замер»)
                            disabled: true — день нельзя выбрать
@@ -10890,7 +10978,15 @@ function renderRecAdTree(){
    линия сплошная… задача в моменте понять, когда зайдут поставки, поставка заходит машинами,
    в машине около 900 шт»). На графике УРОВНЕЙ приход машины — 2,4% высоты при остатке 36 807 шт,
    то есть не виден в принципе. На графике ИЗМЕНЕНИЙ он столбик в полшкалы. */
-let stkPeriod=7, stkOpenCat=null, _stkSeries=null, stkChartMode="delta";
+/* ПЕРИОД ВКЛАДКИ (18.10.2026: «добавь календарь, чтобы я мог выбирать конкретный диапазон дат,
+   а не только 7–14 дней»). Два режима:
+   · пресет — stkPeriod = 7/14/30 дней или 0 («вся история»), конец всегда последний замер;
+   · свой диапазон из календаря — stkPeriod = null, даты в stkFrom/stkTo.
+   СМЫСЛ ДИАПАЗОНА: плитки и таблица показывают остаток НА КОНЕЦ периода (значение переносится
+   вперёд от последнего замера, до первого замера слоя — пусто), «Изменение» = остаток(конец) −
+   остаток(начало) только по слоям, которые есть на ОБОИХ концах (`stkCmpLayers`). «В пути»
+   истории не имеет — показывается, только когда конец периода = последний день данных. */
+let stkPeriod=7, stkFrom=null, stkTo=null, stkOpenCat=null, _stkSeries=null, stkChartMode="delta";
 
 function stockSeries(){
   if(_stkSeries) return _stkSeries;
@@ -10982,32 +11078,50 @@ function stkBreaks(by,days){
   return bad;
 }
 
-/* Срез «период назад» для колонки Δ. При «вся история» — самый первый. */
-function stkPrevSnap(){
-  const {snaps}=stockSeries(); if(snaps.length<2) return null;
-  if(!stkPeriod) return snaps[0];
-  const want=addDays(snaps[snaps.length-1].date,-stkPeriod);
-  for(let i=snaps.length-1;i>=0;i--) if(snaps[i].date<=want) return snaps[i];
-  return snaps[0];
+/* Срез на дату: последний срез НЕ ПОЗЖЕ даты (значения в нём уже перенесены вперёд). */
+function stkSnapAt(d){
+  const {snaps}=stockSeries(); let r=null;
+  for(const s of snaps){ if(s.date<=d) r=s; else break; }
+  return r||snaps[0]||null;
 }
+/* Окно периода: даты, срезы на концах и признаки. Единственный источник для таблицы, плиток,
+   графика, блоков движения и выгрузки — иначе они разъедутся по датам.
+   · `isNow` — конец = последний день данных: только тогда есть «в пути»;
+   · `same`  — оба конца попали в один срез (выбран один день): изменение не считается. */
+function stkWin(){
+  const {snaps}=stockSeries(); if(!snaps.length) return null;
+  const first=snaps[0].date, last=snaps[snaps.length-1].date;
+  let from, to;
+  const custom=stkPeriod===null && !!stkFrom && !!stkTo;
+  if(custom){ from=stkFrom; to=stkTo; }
+  else { to=last; from=stkPeriod? addDays(last,-stkPeriod) : first; }
+  if(to>last) to=last; if(to<first) to=first;
+  if(from<first) from=first; if(from>to) from=to;
+  const end=stkSnapAt(to), start=stkSnapAt(from);
+  return {from,to,first,last,start,end,custom,isNow:end===snaps[snaps.length-1],same:start===end};
+}
+/* Последний СОБСТВЕННЫЙ замер слоя не позже даты (для подписей «на дату»). */
+function stkLayerAt(k,d){ const ds=(stockSeries().srcDays||{})[k]||[]; let r=null; ds.forEach(x=>{ if(x<=d) r=x; }); return r; }
 
-/* Строки по коду 1С: товар физически один, а витрин две.
+/* Строки по коду 1С: товар физически один, а витрин две. Состояние — НА КОНЕЦ периода.
    «В пути» истории не имеет вовсе (ВБ путь от отправки до приёмки не показывает, у Озона это
-   заявки на поставку), поэтому берётся ТЕКУЩЕЕ значение и в график не кладётся. */
-function stkRows(){
-  const {snaps}=stockSeries();
-  if(!snaps.length) return [];
-  const now=snaps[snaps.length-1], prev=stkPrevSnap();
-  const ship={}; (RD.shipments||[]).forEach(s=>{ if(s.mp==="wb"&&s.left>0) ship[s.sup]=(ship[s.sup]||0)+s.left; });
-  const klin=klinBySup(), asg=ozAssignedBySup();
-  /* «В пути Ozon» и виртуальные склады «Ozon СФО/ЦФО» описывают ОДНУ партию (см.
-     `ozTransitEff`): виртуальный склад сидит внутри `wh` (это ведомость 1С), а заявка Озона —
-     в `ozT`. Поэтому из «ВСЕГО» вычитается пересечение `min(заявки, виртуальный склад)`,
-     иначе товар считается дважды. Сами колонки остаются как есть: это таблица про МЕСТА,
-     и видеть надо оба отчёта. */
-  const ozT={}, ozR={}; ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ const s=(""+(c.sku||"")).trim();
-    if(!s) return; ozT[s]=(ozT[s]||0)+(c.ozTransit||0);
-    ozR[s]=(ozR[s]||0)+(c.ozReq!=null? (c.ozReq||0) : (c.ozTransit||0)); });
+   заявки на поставку), поэтому берётся ТЕКУЩЕЕ значение и только при конце = последний день;
+   для прошлой даты — null («истории нет»), а не ноль. */
+function stkRows(W){
+  W=W||stkWin(); if(!W) return [];
+  const now=W.end, prev=W.same? null : W.start, live=W.isNow;
+  const ship={}, ozT={}, ozR={};
+  if(live){
+    (RD.shipments||[]).forEach(s=>{ if(s.mp==="wb"&&s.left>0) ship[s.sup]=(ship[s.sup]||0)+s.left; });
+    /* «В пути Ozon» и виртуальные склады «Ozon СФО/ЦФО» описывают ОДНУ партию (см.
+       `ozTransitEff`): виртуальный склад сидит внутри `wh` (это ведомость 1С), а заявка Озона —
+       в `ozT`. Поэтому из «ВСЕГО» вычитается пересечение `min(заявки, виртуальный склад)`,
+       иначе товар считается дважды. Сами колонки остаются как есть: это таблица про МЕСТА,
+       и видеть надо оба отчёта. */
+    ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ const s=(""+(c.sku||"")).trim();
+      if(!s) return; ozT[s]=(ozT[s]||0)+(c.ozTransit||0);
+      ozR[s]=(ozR[s]||0)+(c.ozReq!=null? (c.ozReq||0) : (c.ozTransit||0)); });
+  }
   const meta={};
   (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim();
     if(s&&!meta[s]) meta[s]={name:c.name||"",cat:c.category||"—",sku:""+c.sku}; });
@@ -11020,20 +11134,25 @@ function stkRows(){
      его из сегодняшнего, где он есть, получится приход на весь склад: на замере 05.10 Пушкары
      показывали «+42 898 шт за 30 дней» при реальном падении. Поэтому слой, начавшийся позже
      базовой даты, из Δ исключается целиком, а не считается с нуля. */
-  const cmp={}; ["fbo","oz","wh"].forEach(k=>cmp[k]=!!(prev&&prev.has[k]&&now.has[k]));
+  const cmp=stkCmpLayers(W);
   const anyCmp=cmp.fbo||cmp.oz||cmp.wh;
-  const codes=[...new Set([...Object.keys(now.sup),...Object.keys(ship),...Object.keys(ozT)])];
+  /* Коды — с ОБОИХ концов: товар, который кончился к концу периода, в срезе конца уже не лежит,
+     а его минус обязан попасть в «Изменение» (иначе сумма Δ расходилась с расчётом по рядам). */
+  const codes=[...new Set([...Object.keys(now.sup),...(prev? Object.keys(prev.sup):[]),...Object.keys(ship),...Object.keys(ozT)])];
   return codes.map(s=>{
     const a=now.sup[s]||{fbo:0,oz:0,wh:0,whBy:{}}, b=(prev&&prev.sup[s])||{fbo:0,oz:0,wh:0}, w=a.whBy||{};
     const dOf=k=>cmp[k]? a[k]-b[k] : null;
-    const wbT=ship[s]||0, oT=ozT[s]||0;
-    const ozA=(asg[s]&&asg[s].all)||0, dup=Math.min(ozR[s]||0, ozA);
+    const wbT=live? (ship[s]||0) : null, oT=live? (ozT[s]||0) : null;
+    /* Клин и «→Ozon» — из того же среза ведомости, что и остальные склады (раньше брались из
+       текущей ведомости: на прошлую дату колонки разъехались бы с «Ваши склады»). На последний
+       день это ровно `klinBySup()` / `ozAssignedBySup()` — сверено при правке. */
+    const ozA=(w.ozsfo||0)+(w.ozcfo||0), dup=live? Math.min(ozR[s]||0, ozA) : 0;
     const m=meta[s]||{name:s,cat:"—",sku:null};
     return {sup:s, name:m.name, cat:m.cat, sku:m.sku,
       fbo:a.fbo, oz:a.oz, wh:a.wh,
-      msk:w.msk||0, nsk1:w.nsk1||0, nsk2:w.nsk2||0, klin:klin[s]||0, ozAsg:ozA, ozDup:dup,
+      msk:w.msk||0, nsk1:w.nsk1||0, nsk2:w.nsk2||0, klin:w.klin||0, whOther:w.other||0, ozAsg:ozA, ozDup:dup,
       wbTransit:wbT, ozTransit:oT,
-      total:a.fbo+a.oz+a.wh+wbT+oT-dup,
+      total:a.fbo+a.oz+a.wh+(wbT||0)+(oT||0)-dup,
       dFbo:dOf("fbo"), dOz:dOf("oz"), dWh:dOf("wh"),
       dTotal:anyCmp? ["fbo","oz","wh"].reduce((x,k)=>cmp[k]? x+(a[k]-b[k]) : x, 0) : null};
   }).filter(r=>r.total>0 || (r.dTotal!=null && r.dTotal!==0));
@@ -11041,11 +11160,10 @@ function stkRows(){
 
 /* Какие слои вообще участвуют в Δ при текущем периоде — нужно и для расчёта, и для подписи:
    молча не сравнивать слой нельзя, иначе продавец решит, что по складу движения не было. */
-function stkCmpLayers(){
-  const {snaps}=stockSeries(); const prev=stkPrevSnap();
-  if(!snaps.length||!prev) return {fbo:false,oz:false,wh:false};
-  const now=snaps[snaps.length-1], o={};
-  ["fbo","oz","wh"].forEach(k=>o[k]=!!(prev.has[k]&&now.has[k]));
+function stkCmpLayers(W){
+  W=W||stkWin(); const o={fbo:false,oz:false,wh:false};
+  if(!W||W.same) return o;
+  ["fbo","oz","wh"].forEach(k=>o[k]=!!(W.start.has[k]&&W.end.has[k]));
   return o;
 }
 function stkFiltered(all){
@@ -11063,126 +11181,249 @@ function stkDelta(v){
   if(!v) return `<span class="muted">0</span>`;
   return `<span style="color:${v>0?"var(--good-txt)":"var(--crit-txt)"}">${v>0?"+":"−"}${nf.format(Math.abs(v))}</span>`;
 }
+const stkSigned=v=>(v>0?"+":v<0?"−":"")+nf.format(Math.abs(v));
+const stkDM=d=>d? d.slice(8,10)+"."+d.slice(5,7) : "—";
+
+/* Классификатор дня для календаря: сколько слоёв уже ведётся на эту дату и был ли в этот день
+   СВОЙ замер у слоя. Цвет — по наличию слоёв (все три / часть / ни одного), точки — новые замеры.
+   Дни после последнего замера и до первого — «нет данных», выбрать их нельзя (просьба продавца:
+   «чтобы я понимал, с какого числа могу смотреть, и не выбирал периоды, когда данных нет»). */
+function stkLayersInfo(){
+  const S=stockSeries(), last=S.dates[S.dates.length-1];
+  const L=[{k:"fbo",l:"Склады ВБ (Wildberries)",c:cssv("--s1")},
+           {k:"oz",l:"Склады Ozon",c:cssv("--s2")},
+           {k:"wh",l:"Ваши склады (1С)",c:cssv("--s3")}];
+  L.forEach(x=>{ const ds=S.srcDays[x.k]||[]; x.first=ds[0]||null; x.lastM=ds[ds.length-1]||null; x.set=new Set(ds); x.n=ds.length; });
+  return {L,first:S.dates[0],last};
+}
+function stkDayInfo(){
+  const {L,first,last}=stkLayersInfo();
+  return iso=>{
+    if(iso>last) return {cls:"none",disabled:true,title:`${fmtDateLong(iso)}: данных ещё нет — последний замер ${fmtDateLong(last)}`};
+    const on=L.filter(x=>x.first&&iso>=x.first);
+    if(!on.length) return {cls:"none",disabled:true,title:`${fmtDateLong(iso)}: раздел тогда ещё не вёлся — первые данные ${fmtDateLong(first)}`};
+    const lines=L.map(x=>{
+      if(!x.first||iso<x.first) return `${x.l} — нет (данные с ${fmtDate(x.first)})`;
+      if(x.set.has(iso)) return `${x.l} — новый замер`;
+      let p=null; x.set.forEach(d=>{ if(d<=iso&&(!p||d>p)) p=d; });
+      return `${x.l} — по замеру ${fmtDate(p)}`; });
+    return {cls:on.length===L.length?"full":(on.length>1?"partial":"low"),
+      title:fmtDateLong(iso)+"\n"+lines.join("\n"),
+      dots:L.filter(x=>x.set.has(iso)).map(x=>x.c)};
+  };
+}
+function stkSetPeriod(n){ stkPeriod=n; stkFrom=null; stkTo=null; renderStockTab(); }
+function stkOpenCalendar(btn){
+  const W=stkWin(); if(!W) return;
+  const {L,first,last}=stkLayersInfo();
+  const pre=[7,14,30,0].map(n=>({label:n? n+" дней":"Вся история", n,
+    from:n? (addDays(last,-n)<first? first : addDays(last,-n)) : first, to:last, active:stkPeriod===n}));
+  openDateRangePicker(btn,{
+    from:W.from, to:W.to, min:first, max:last, title:"Период — остатки Wildberries, Ozon и ваших складов",
+    presets:pre,
+    note:`Данные есть: `+L.map(x=>`<b>${esc(x.l.replace(/ \(.*\)$/,""))}</b> — с ${fmtDateLong(x.first)}`).join(" · ")
+      +`. Последний замер — <b>${fmtDateLong(last)}</b>. Остаток показывается на последний день периода, `
+      +`изменение — между первым и последним днём.`,
+    legend:[{cls:"full",label:"все три места"},{cls:"partial",label:"два из трёх"},{cls:"low",label:"одно из трёх"},{cls:"none",label:"данных нет — выбрать нельзя"},
+      ...L.map(x=>({dot:x.c,label:"замер: "+x.l.replace(/ \(.*\)$/,"").replace(/^Склады /,"склады ").replace(/^Ваши/,"ваши")}))],
+    dayInfo:stkDayInfo(),
+    onApply:(f,t,p)=>{
+      if(p){ stkSetPeriod(p.n); return; }
+      // диапазон совпал с пресетом — подсвечиваем чип, а не «свой период»
+      const hit=t===last? pre.find(x=>x.from===f) : null;
+      if(hit){ stkSetPeriod(hit.n); return; }
+      stkPeriod=null; stkFrom=f; stkTo=t; renderStockTab();
+    }});
+}
 
 function renderStockTab(){
   const fresh=document.getElementById("stkFreshness");
-  if(!RD){ renderNoData("stkTable"); fresh.innerHTML=""; document.getElementById("stkKpis").innerHTML=""; return; }
+  const asOfBox=document.getElementById("stkAsOf");
+  if(!RD){ renderNoData("stkTable"); fresh.innerHTML=""; document.getElementById("stkKpis").innerHTML=""; asOfBox.hidden=true; return; }
   const catSel=document.getElementById("stkCat"); if(!catSel.options.length) fillCategorySelect(catSel);
   const {snaps,srcDays}=stockSeries();
-  if(!snaps.length){ renderNoData("stkTable"); fresh.innerHTML="Истории остатков пока нет"; return; }
-  const prev=stkPrevSnap();
-  const all=stkRows(), rows=stkFiltered(all);
-  const pTxt=stkPeriod? `за ${stkPeriod} ${plural(stkPeriod,"день","дня","дней")}` : "за всю историю";
-  const cmp=stkCmpLayers();
-  const cmpOn=[cmp.fbo&&"склады ВБ",cmp.oz&&"Ozon",cmp.wh&&"ваши склады"].filter(Boolean);
-  const cmpOff=[!cmp.fbo&&"склады ВБ",!cmp.oz&&"Ozon",!cmp.wh&&"ваши склады"].filter(Boolean);
-  const cmpTxt=(cmpOn.length? cmpOn.join(", ") : "ничего — сравнивать не с чем")
-    +(cmpOff.length? ` (не участвуют: ${cmpOff.join(", ")} — на начало периода замера ещё не было)` : "");
+  if(!snaps.length){ renderNoData("stkTable"); fresh.innerHTML="Истории остатков пока нет: пришлите отчёт остатков Wildberries, Ozon или ведомость 1С."; asOfBox.hidden=true; return; }
+  const W=stkWin(), live=W.isNow;
+  const all=stkRows(W), rows=stkFiltered(all);
+  const cmp=stkCmpLayers(W);
+
+  // ---- период: чипы, кнопка календаря, подпись
+  document.querySelectorAll("#stkPeriodSeg button").forEach(b=>
+    b.setAttribute("aria-pressed", (stkPeriod!==null && +b.dataset.n===stkPeriod)? "true":"false"));
+  const rb=document.getElementById("stkRangeBtn");
+  rb.classList.toggle("active", stkPeriod===null);
+  document.getElementById("stkRangeLbl").textContent=W.same? "на "+drpRangeText(W.to,W.to) : drpRangeText(W.from,W.to,"arrow");
+  const pTxt=W.same? `на ${fmtDate(W.to)}` : `с ${fmtDate(W.start.date)} по ${fmtDate(W.end.date)}`;
+
+  const LN={fbo:"склады ВБ",oz:"склады Ozon",wh:"ваши склады"};
+  const cmpOn=["fbo","oz","wh"].filter(k=>cmp[k]).map(k=>LN[k]);
+  const cmpOff=["fbo","oz","wh"].filter(k=>!cmp[k]).map(k=>LN[k]);
+  const cmpTxt=W.same? "ничего — выбран один день"
+    : (cmpOn.length? cmpOn.join(", ") : "ничего — сравнивать не с чем")
+      +(cmpOff.length&&cmpOn.length? ` (не участвуют: ${cmpOff.join(", ")} — на ${fmtDate(W.start.date)} замеров ещё не было)` : "");
 
   const lastD=a=>a.length? a[a.length-1] : null;
+  const nZ=n=>`${n} ${plural(n,"замер","замера","замеров")}`;
   fresh.innerHTML=`<span class="dot"></span>`
-    +`Остатки ВБ ${fmtDateLong(lastD(srcDays.fbo))} · ${srcDays.fbo.length} ${plural(srcDays.fbo.length,"замер","замера","замеров")} &nbsp;|&nbsp; `
-    +`Ozon ${fmtDateLong(lastD(srcDays.oz))} · ${srcDays.oz.length} ${plural(srcDays.oz.length,"замер","замера","замеров")} &nbsp;|&nbsp; `
-    +`свой склад ${fmtDateLong(lastD(srcDays.wh))} · ${srcDays.wh.length} ${plural(srcDays.wh.length,"замер","замера","замеров")}`;
+    +`Склады ВБ: ${fmtDateLong(lastD(srcDays.fbo))} · ${nZ(srcDays.fbo.length)} &nbsp;|&nbsp; `
+    +`Склады Ozon: ${fmtDateLong(lastD(srcDays.oz))} · ${nZ(srcDays.oz.length)} &nbsp;|&nbsp; `
+    +`Ваши склады (1С): ${fmtDateLong(lastD(srcDays.wh))} · ${nZ(srcDays.wh.length)}`;
 
-  const sum=f=>rows.reduce((a,r)=>a+f(r),0);
+  // ---- «остаток на дату»: период кончается раньше последнего замера
+  if(!live){
+    const miss=["fbo","oz","wh"].filter(k=>!W.end.has[k]).map(k=>LN[k]);
+    asOfBox.hidden=false;
+    asOfBox.innerHTML=`Показан остаток <b>на ${fmtDateLong(W.to)}</b>, последний замер — ${fmtDateLong(W.last)}. `
+      +`«В пути» истории не имеет, поэтому эти колонки пустые: они заполняются только на последний день.`
+      +(miss.length? ` На эту дату ещё не было данных: ${miss.join(", ")}.` : "");
+  } else asOfBox.hidden=true;
+
+  // ---- плитки: те же суммы, что строка «ИТОГО» в таблице (по строкам после фильтров)
+  const sum=f=>rows.reduce((a,r)=>a+(f(r)||0),0);
   const sFbo=sum(r=>r.fbo), sOz=sum(r=>r.oz), sWh=sum(r=>r.wh);
   const sWbT=sum(r=>r.wbTransit), sOzT=sum(r=>r.ozTransit), sDup=sum(r=>r.ozDup), sAsg=sum(r=>r.ozAsg);
-  const dAll=prev? sum(r=>r.dTotal||0) : null;
+  const sMsk=sum(r=>r.msk), sN1=sum(r=>r.nsk1), sN2=sum(r=>r.nsk2), sKl=sum(r=>r.klin), sOth=sum(r=>r.whOther);
+  const sTot=sum(r=>r.total);
+  const anyD=rows.some(r=>r.dTotal!=null);
+  const dAll=anyD? sum(r=>r.dTotal) : null;
+  const dF=cmp.fbo? sum(r=>r.dFbo) : null, dO=cmp.oz? sum(r=>r.dOz) : null, dW=cmp.wh? sum(r=>r.dWh) : null;
+  const R=(k,v,cls)=>`<div class="t-row${cls?" "+cls:""}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
+  const sw=c=>`<i style="background:${c}"></i>`;
+  const c1=cssv("--s1"), c2=cssv("--s2"), c3=cssv("--s3");
+  const sh=v=>nf.format(v)+" шт";
+  const dTxt=v=>v==null? "не сравнивается" : stkSigned(v)+" шт";
+  const dChip=v=>v==null? "" : `<div class="delta ${v>=0?"up":"down"}">${v>=0?"▲":"▼"} ${stkSigned(v)} шт <span class="muted" style="font-weight:400">${W.same?"":"с "+stkDM(W.start.date)}</span></div>`;
+  const chgBlock=(rowsHtml,total)=>W.same
+    ? `<div class="t-note">Выбран один день — изменение не считается.</div>`
+    : `<div class="t-hd">Изменение ${pTxt}</div>`+rowsHtml+(total!==undefined? R("= Изменение",total==null?"не с чем сравнить":stkSigned(total)+" шт","t-sep"):"");
+  const whAt=stkLayerAt("wh",W.to), fboAt=stkLayerAt("fbo",W.to), ozAt=stkLayerAt("oz",W.to);
+
+  const tipAll=`<div class="t-hd">Весь товар на ${fmtDateLong(W.to)} — Wildberries, Ozon и ваши склады</div>`
+    +R(sw(c1)+"Склады ВБ (FBO)",sh(sFbo))+R(sw(c2)+"Склады Ozon",sh(sOz))+R(sw(c3)+"Ваши склады (1С)",sh(sWh))
+    +R("В пути на площадки", live? sh(sWbT+sOzT) : "нет истории")
+    +(sDup? R("минус та же партия в двух отчётах","−"+sh(sDup)) : "")
+    +R("= Всего товара",sh(sTot),"t-sep")
+    +(sDup? `<div class="t-note">${nf.format(sDup)} шт стоят у вас на «Ozon СФО/ЦФО», и на них Ozon уже создал заявку — это один товар, он посчитан один раз.</div>` : "")
+    +chgBlock(R(sw(c1)+"Склады ВБ",dTxt(dF))+R(sw(c2)+"Склады Ozon",dTxt(dO))+R(sw(c3)+"Ваши склады",dTxt(dW)), dAll)
+    +(W.same? "" : `<div class="t-note">«В пути» в изменение не входит. Слой без замера на ${fmtDate(W.start.date)} не сравнивается — иначе весь его остаток выглядел бы приходом.</div>`);
+  const tipSite=`<div class="t-hd">Уже на площадках — продаётся (на ${fmtDateLong(W.to)})</div>`
+    +R(sw(c1)+"Wildberries — склады ВБ (FBO)",sh(sFbo))+R(sw(c2)+"Ozon — склады Ozon",sh(sOz))
+    +R("= На площадках",sh(sFbo+sOz),"t-sep")
+    +chgBlock(R(sw(c1)+"Wildberries",dTxt(dF))+R(sw(c2)+"Ozon",dTxt(dO)), (dF==null&&dO==null)? null : (dF||0)+(dO||0))
+    +`<div class="t-note">Остаток падает от продаж и растёт от приёмки поставки. Замер: ВБ — ${fmtDate(fboAt)}, Ozon — ${fmtDate(ozAt)}.</div>`;
+  const tipWh=`<div class="t-hd">Ваши склады по ведомости 1С${whAt? " на "+fmtDateLong(whAt) : ""}</div>`
+    +(whAt? R("Москва (Солнечногорск)",sh(sMsk))+R("Нск-1 (FBS)",sh(sN1))+R("Евросиб",sh(sN2))
+      +R("РВБ Клин — собран, уезжает на ВБ",sh(sKl))+R("Назначено на Ozon (СФО/ЦФО)",sh(sAsg))
+      +(sOth? R("Прочие склады",sh(sOth)) : "")
+      +R("= Ваши склады",sh(sWh),"t-sep")
+      +chgBlock("", dW)
+      +`<div class="t-note">Клин и «Ozon СФО/ЦФО» уже назначены площадкам: товар лежит у вас, но в отгрузку не идёт.</div>`
+    : `<div class="t-p">На ${fmtDateLong(W.to)} ведомостей 1С ещё не было: первая — ${fmtDateLong(srcDays.wh[0]||null)}.</div>`);
+  const tipWay=`<div class="t-hd">Отправлено, но на площадке ещё не появилось</div>`
+    +(live? R("На Wildberries — журнал отгрузок",sh(sWbT))+R("На Ozon — заявки и партии в пути",sh(sOzT))
+        +R("= В пути",sh(sWbT+sOzT),"t-sep")
+        +`<div class="t-note">ВБ путь от отправки до приёмки не показывает: отгрузка отмечается в журнале, приёмка засчитывается по росту остатка. Ozon показывает поставки сам.</div>`
+        +(sDup? `<div class="t-note">Из «Всего товара» вычтено ${nf.format(sDup)} шт: на эту партию заявка Ozon уже создана, а в ведомости она ещё стоит на «Ozon СФО/ЦФО».</div>` : "")
+      : `<div class="t-p">Истории у «в пути» нет: ни ВБ, ни 1С не показывают товар между отправкой и приёмкой. Цифра есть только на последний день данных — ${fmtDateLong(W.last)}.</div>`
+        +`<div class="t-note">Выберите период, который кончается ${fmtDate(W.last)}, — она появится.</div>`);
   document.getElementById("stkKpis").innerHTML=[
-    {lbl:"Всего товара, шт", val:nf.format(sFbo+sOz+sWh+sWbT+sOzT-sDup), hero:true,
-      tip:"Весь товар по выбранным позициям, во всех местах сразу.\n\n"
-        +"Склады ВБ (FBO): "+nf.format(sFbo)+" шт\nOzon: "+nf.format(sOz)+" шт\n"
-        +"Ваши склады: "+nf.format(sWh)+" шт\nВ пути на площадки: "+nf.format(sWbT+sOzT)+" шт\n"
-        +(sDup? "минус "+nf.format(sDup)+" шт — заявки Ozon на товар, который ещё стоит у вас на «Ozon СФО/ЦФО»: один и тот же товар в двух отчётах\n":"")+"\n"
-        +(dAll==null? "Сравнить не с чем: по этому срезу пока один замер."
-          : "Изменение "+pTxt+": "+(dAll>=0?"+":"−")+nf.format(Math.abs(dAll))+" шт (без учёта того, что в пути)")},
-    {lbl:"На площадках, шт", val:nf.format(sFbo+sOz),
-      tip:"Товар, который уже продаётся.\n\nВБ (FBO): "+nf.format(sFbo)+" шт\nOzon: "+nf.format(sOz)+" шт\n\n"
-        +"Остаток падает от продаж и растёт от приёмки поставки."},
-    {lbl:"На ваших складах, шт", val:nf.format(sWh),
-      tip:"Ведомость 1С по вашим складам.\n\n"
-        +"Москва: "+nf.format(sum(r=>r.msk))+" шт\nНск-1 (FBS): "+nf.format(sum(r=>r.nsk1))+" шт\n"
-        +"Евросиб: "+nf.format(sum(r=>r.nsk2))+" шт\nРВБ Клин: "+nf.format(sum(r=>r.klin))+" шт\n"
-        +"Назначено на Ozon (СФО/ЦФО): "+nf.format(sAsg)+" шт\n\n"
-        +"Клин и «Ozon СФО/ЦФО» показаны отдельно: этот товар уже назначен площадке, в отгрузку он не идёт."},
-    {lbl:"В пути на площадки, шт", val:nf.format(sWbT+sOzT),
-      valColor:(sWbT+sOzT)?"var(--warn-txt)":"var(--text-1)",
-      tip:"Товар отправлен, но на площадке ещё не появился.\n\n"
-        +"На ВБ: "+nf.format(sWbT)+" шт — журнал отгрузок. ВБ путь от отправки до приёмки не показывает вовсе, "
-        +"поэтому отгрузка отмечается отдельно, а приёмка засчитывается по росту остатка.\n"
-        +"На Ozon: "+nf.format(sOzT)+" шт — заявки на поставку и партии в пути, их показывает сам Ozon."
-        +(sDup? "\n\nИз «Всего товара» вычтено "+nf.format(sDup)+" шт: на эту партию заявка Ozon уже создана, "
-          +"а в вашей ведомости она ещё стоит на «Ozon СФО/ЦФО». Это один и тот же товар." : "")}
+    {lbl:"Всего товара, шт", val:nf.format(sTot), hero:true, tip:tipAll, delta:dChip(dAll)},
+    {lbl:"На площадках, шт", val:nf.format(sFbo+sOz), tip:tipSite,
+      delta:(dF==null&&dO==null)? "" : dChip((dF||0)+(dO||0))},
+    {lbl:"На ваших складах, шт", val:whAt? nf.format(sWh) : "—", tip:tipWh,
+      delta: whAt? dChip(dW) : `<div class="stk-kpi-note">ведомостей ещё не было</div>`},
+    {lbl:"В пути на площадки, шт", val:live? nf.format(sWbT+sOzT) : "—",
+      valColor:(live&&(sWbT+sOzT))?"var(--warn-txt)":"var(--text-1)", tip:tipWay,
+      delta: live? "" : `<div class="stk-kpi-note">только на ${fmtDate(W.last)}</div>`}
   ].map(kpiCard).join("");
   wireKpiTips("stkKpis");
 
-  renderStockEvents(rows.map(r=>r.sup));
-  renderStockChart(rows.map(r=>r.sup));
-  renderStockMove(rows,pTxt);
+  // ---- блоки движения и график — по тем же строкам и тому же окну
+  const codes=rows.map(r=>r.sup);
+  renderStockMove(rows,W);
+  renderStockEvents(codes,W);
+  renderStockChart(codes,W);
 
-  document.getElementById("stkHowTo").innerHTML=
-    `<div class="howto-t">КАК ЧИТАТЬ ОСТАТКИ</div><div class="howto-n">`
-    +[`Строка — код 1С: товар физически один, а витрин две, поэтому ВБ и Ozon показаны рядом. Клик по категории разворачивает товары внутри.`,
-      `Колонки — МЕСТА, где может лежать товар: склады ВБ (FBO) · в пути на ВБ · ваши склады (Москва, Нск-1, Евросиб, РВБ Клин, «→Ozon» — назначенное на Ozon СФО/ЦФО) · Ozon · в пути на Ozon.`,
-      `«→Ozon» и «В пути Ozon» могут описывать ОДНУ партию: вы распределили контейнер — он встал на «Ozon СФО/ЦФО», потом Ozon создал заявку и показал её у себя, а товар всё ещё у вас. Поэтому в «ВСЕГО» такая партия считается ОДИН раз (вычитается пересечение), хотя в обеих колонках видна.`,
-      `«Δ» — насколько изменился остаток ${pTxt}, без учёта того, что в пути. Минус на складе при плюсе на площадке — это приёмка поставки. Минус на складе БЕЗ плюса на площадке — товар уехал и ещё не принят: такие позиции собраны в блоке выше.`,
-      `Сейчас в «Δ» участвуют: ${cmpTxt}. Слой, у которого на начало периода замера ещё не было, в сравнение не берётся вовсе — иначе его остаток целиком показался бы приходом.`,
-      `У каждого слоя своя глубина истории. ВБ — ${srcDays.fbo.length} ${plural(srcDays.fbo.length,"замер","замера","замеров")} из подённого отчёта аналитики (сам отчёт подённый, но ВБ переносит последний замер вперёд, поэтому новых цифр меньше, чем дней), Ozon — ${srcDays.oz.length}, свой склад — ${srcDays.wh.length}: сколько выгрузок прислали, столько и точек. Между замерами линия ровная — это «нового замера не было», а не «ничего не менялось».`,
-      `«В пути» истории не имеет: ни ВБ, ни 1С не показывают товар между отправкой и приёмкой. На ВБ это журнал отгрузок, на Ozon — заявки на поставку, которые Ozon показывает сам.`,
-      `Если отчёт площадки разом обнулил или разом показал четверть артикулов — это смена методики, а не движение товара (так ВБ 07.08 скрыл остатки сгоревших складов, −61 522 шт за сутки). Такие дни помечены и в приходы не считаются, но из списка не убраны.`,
-      `Чем чаще присылаете ведомость 1С и отчёт остатков Ozon, тем точнее картина движения: по ВБ новый замер приходит сам, раз в 2–3 дня.`]
-      .map(s=>`<div>${esc(s)}</div>`).join("")+`</div>`;
+  // ---- «Как читать»: коротко, шагами; детали — в сноске
+  const howBox=document.getElementById("stkHowToBox");
+  if(!howBox.dataset.wired){ howBox.dataset.wired="1";
+    try{ if(localStorage.getItem("wb_stk_howto")==="1") howBox.open=true; }catch(e){}
+    howBox.addEventListener("toggle",()=>{ try{ localStorage.setItem("wb_stk_howto",howBox.open?"1":"0"); }catch(e){} }); }
+  document.getElementById("stkHowTo").innerHTML=`<ol class="hf-steps">`
+    +[`<b>Период.</b> Чипы 7 / 14 / 30 дней или календарь. Плитки и таблица — остаток на последний день периода, «Изменение» (колонка Δ) — насколько он сдвинулся с первого дня. Дни без данных в календаре заштрихованы.`,
+      `<b>Где лежит товар.</b> Строка — код 1С: товар один, витрин две. Колонки — места: склады ВБ · ваши склады (Москва, Нск-1, Евросиб, Клин, «→Ozon») · склады Ozon · в пути. Клик по категории раскрывает товары.`,
+      `<b>Куда уехало.</b> Блок «Движение товара»: минус на вашем складе и плюс на площадке — поставку приняли; минус без плюса — товар едет и ещё не принят (колонка «Ждём»).`,
+      `<b>Когда заходили машины.</b> «Приходы и отгрузки» и график «Движение»: столбик вверх — приёмка (машина ≈ 900 шт), вниз — отгрузка со склада.`]
+      .map(s=>`<li>${s}</li>`).join("")+`</ol>`
+    +`<div class="hf-notes">`
+    +[`<b>Сейчас в «Изменении»:</b> ${esc(cmpTxt)}.`,
+      `<b>«→Ozon» и «В пути Ozon»</b> бывают одной партией (контейнер распределён, Ozon создал заявку) — во «ВСЕГО» она считается один раз.`,
+      `<b>«В пути»</b> истории не имеет: колонки заполнены только на последний день данных (${fmtDate(W.last)}).`,
+      `<b>Замеров:</b> склады ВБ — ${srcDays.fbo.length}, Ozon — ${srcDays.oz.length}, ваши склады — ${srcDays.wh.length}. Между замерами значение держится прежним: «нового замера не было», а не «ничего не менялось».`,
+      `<b>Смена состава отчёта</b> (площадка разом обнулила или показала четверть артикулов) — это методика, а не движение товара: такие дни помечены и в приходы не идут.`]
+      .map(s=>`<div>${s}</div>`).join("")+`</div>`;
 
-  // ---- таблица: категория → товары
+  // ---- таблица: ИТОГО → категория → товары
   const byCat={};
   rows.forEach(r=>{ (byCat[r.cat]||(byCat[r.cat]=[])).push(r); });
+  const KEYS=["fbo","oz","wh","msk","nsk1","nsk2","klin","ozAsg","wbTransit","ozTransit","total"];
   const cats=Object.entries(byCat).map(([cat,list])=>{
     const a={cat,n:list.length,list};
-    ["fbo","oz","wh","msk","nsk1","nsk2","klin","ozAsg","wbTransit","ozTransit","total"].forEach(k=>
-      a[k]=list.reduce((x,r)=>x+(r[k]||0),0));
+    KEYS.forEach(k=>a[k]=list.reduce((x,r)=>x+(r[k]||0),0));
     a.dTotal=list.some(r=>r.dTotal!=null)? list.reduce((x,r)=>x+(r.dTotal||0),0) : null;
     return a;
   }).sort((a,b)=>b.total-a.total);
 
-  const H=["Категория / товар","Склады ВБ","В пути ВБ","Москва","Нск-1","Евросиб","Клин","→Ozon","Ozon","В пути Ozon","ВСЕГО",`Δ ${stkPeriod||"всё"}`];
-  const maxTot=Math.max(...cats.map(c=>c.total),1);
-  let html=`<thead><tr>${H.map((h,i)=>`<th${i===0?' class="metric"':''}>${esc(h)}</th>`).join("")}</tr></thead><tbody>`;
+  const wayT=live? "" : ` title="«В пути» истории не имеет — заполняется только на последний день (${fmtDate(W.last)})"`;
+  const wayS=live? "" : `<span class="th-sub">только ${stkDM(W.last)}</span>`;
+  const dHead=W.same? `Δ<span class="th-sub">один день</span>` : `Δ<span class="th-sub">с ${stkDM(W.start.date)}</span>`;
+  const dTitle=W.same? ` title="Выбран один день — изменение не считается"`
+    : ` title="Изменение остатка с ${fmtDate(W.start.date)} по ${fmtDate(W.end.date)}, без «в пути»"`;
+  const th=(h,extra)=>`<th${extra||""}>${h}</th>`;
+  let html=`<thead><tr><th class="metric">Категория / товар<span class="th-sub">остаток на ${fmtDate(W.to)}</span></th>`
+    +th("Склады ВБ")+th("В пути ВБ"+wayS,wayT)+th("Москва")+th("Нск-1")+th("Евросиб")+th("Клин")
+    +th("→Ozon",` title="Назначено на Ozon: лежит у вас на виртуальных складах «Ozon СФО/ЦФО» и ждёт машины. Входит в ваши склады."`)
+    +th("Ozon")+th("В пути Ozon"+wayS,wayT)+th("ВСЕГО")+th(dHead,dTitle)+`</tr></thead><tbody>`;
+  const way=v=>live? stkNum(v) : `<span class="muted" title="«В пути» истории не имеет">—</span>`;
   /* СТРОКА «ИТОГО» ПЕРВОЙ И ЗАКРЕПЛЁННОЙ. Без неё продавец сопоставил KPI «Всего товара»
      (116 970) с первой строкой таблицы — «Пушкары» 80 942 — и решил, что цифры разъехались
-     (05.10.2026). Сумма 13 категорий ровно равна KPI, но увидеть это было негде: итога
-     в таблице не было вовсе, а первая категория даёт 69% объёма и читается как общий итог.
+     (05.10.2026). Сумма категорий ровно равна KPI, но увидеть это было негде.
      Строка липнет под шапкой, поэтому видна и после прокрутки. */
-  const T={}; ["fbo","oz","wh","msk","nsk1","nsk2","klin","ozAsg","wbTransit","ozTransit","total"].forEach(k=>
-    T[k]=cats.reduce((a,c)=>a+(c[k]||0),0));
+  const T={}; KEYS.forEach(k=>T[k]=cats.reduce((a,c)=>a+(c[k]||0),0));
   T.dTotal=cats.some(c=>c.dTotal!=null)? cats.reduce((a,c)=>a+(c.dTotal||0),0) : null;
-  html+=`<tr class="stk-total"><td class="metric"><b>ИТОГО</b> `
-    +`<span class="sub">${cats.length} ${plural(cats.length,"категория","категории","категорий")} · `
-    +`${rows.length} ${plural(rows.length,"товар","товара","товаров")}</span></td>`
-    +`<td><b>${stkNum(T.fbo)}</b></td><td><b>${stkNum(T.wbTransit)}</b></td><td><b>${stkNum(T.msk)}</b></td>`
-    +`<td><b>${stkNum(T.nsk1)}</b></td><td><b>${stkNum(T.nsk2)}</b></td><td><b>${stkNum(T.klin)}</b></td>`
-    +`<td><b>${stkNum(T.ozAsg)}</b></td><td><b>${stkNum(T.oz)}</b></td><td><b>${stkNum(T.ozTransit)}</b></td>`
-    +`<td><b>${nf.format(T.total)}</b></td><td><b>${stkDelta(T.dTotal)}</b></td></tr>`;
-  cats.forEach(c=>{
-    const open=stkOpenCat===c.cat;
-    html+=`<tr class="row-group stk-cat" data-cat="${esc(c.cat)}" style="cursor:pointer">`
-      +`<td class="metric"><span class="stk-caret${open?" open":""}">▸</span> <b>${esc(c.cat)}</b> `
-      +`<span class="sub">${c.n} ${plural(c.n,"товар","товара","товаров")}</span></td>`
-      +`<td>${stkNum(c.fbo)}</td><td>${stkNum(c.wbTransit)}</td><td>${stkNum(c.msk)}</td>`
-      +`<td>${stkNum(c.nsk1)}</td><td>${stkNum(c.nsk2)}</td><td>${stkNum(c.klin)}</td>`
-      +`<td class="${c.ozAsg?"":"d-zero"}" title="Назначено на Ozon: лежит у вас на виртуальных складах «Ozon СФО/ЦФО» и ждёт машины. Входит в «Ваши склады».">${stkNum(c.ozAsg)}</td><td>${stkNum(c.oz)}</td><td>${stkNum(c.ozTransit)}</td>`
-      +`<td style="background:${heatBg(c.total,maxTot)}"><b>${nf.format(c.total)}</b></td>`
-      +`<td>${stkDelta(c.dTotal)}</td></tr>`;
-    if(open) c.list.slice().sort((a,b)=>b.total-a.total).forEach(r=>{
-      html+=`<tr class="in-grp"><td class="metric">${r.sku? skuLink(r.sku) : esc(r.sup)} `
-        +`<span class="sub">${esc((r.name||"").slice(0,44))}</span><br><span class="sub">1С ${esc(r.sup)}</span></td>`
-        +`<td>${stkNum(r.fbo)}</td><td>${stkNum(r.wbTransit)}</td><td>${stkNum(r.msk)}</td>`
-        +`<td>${stkNum(r.nsk1)}</td><td>${stkNum(r.nsk2)}</td><td>${stkNum(r.klin)}</td>`
-        +`<td class="${r.ozAsg?"":"d-zero"}"${r.ozDup?` title="Из «ВСЕГО» вычтено ${r.ozDup} шт: на эту партию Ozon уже создал заявку, а в ведомости она ещё стоит здесь."`:""}>${stkNum(r.ozAsg)}</td><td>${stkNum(r.oz)}</td><td>${stkNum(r.ozTransit)}</td>`
-        +`<td><b>${nf.format(r.total)}</b></td><td>${stkDelta(r.dTotal)}</td></tr>`;
+  if(!rows.length){
+    html+=`<tr><td colspan="12"><div class="empty-hint">Под текущий поиск и категории не попал ни один товар`
+      +` с остатком на ${fmtDateLong(W.to)}. Очистите поиск или выберите «Все категории».</div></td></tr></tbody>`;
+  } else {
+    html+=`<tr class="stk-total"><td class="metric"><b>ИТОГО</b> `
+      +`<span class="sub">${cats.length} ${plural(cats.length,"категория","категории","категорий")} · `
+      +`${rows.length} ${plural(rows.length,"товар","товара","товаров")}</span></td>`
+      +`<td><b>${stkNum(T.fbo)}</b></td><td><b>${way(T.wbTransit)}</b></td><td><b>${stkNum(T.msk)}</b></td>`
+      +`<td><b>${stkNum(T.nsk1)}</b></td><td><b>${stkNum(T.nsk2)}</b></td><td><b>${stkNum(T.klin)}</b></td>`
+      +`<td><b>${stkNum(T.ozAsg)}</b></td><td><b>${stkNum(T.oz)}</b></td><td><b>${way(T.ozTransit)}</b></td>`
+      +`<td><b>${nf.format(T.total)}</b></td><td><b>${stkDelta(T.dTotal)}</b></td></tr>`;
+    const maxTot=Math.max(...cats.map(c=>c.total),1);
+    cats.forEach(c=>{
+      const open=stkOpenCat===c.cat;
+      html+=`<tr class="row-group stk-cat" data-cat="${esc(c.cat)}" style="cursor:pointer" title="${open?"Свернуть":"Показать товары категории"}">`
+        +`<td class="metric"><span class="stk-caret${open?" open":""}">▸</span> <b>${esc(c.cat)}</b> `
+        +`<span class="sub">${c.n} ${plural(c.n,"товар","товара","товаров")}</span></td>`
+        +`<td>${stkNum(c.fbo)}</td><td>${way(c.wbTransit)}</td><td>${stkNum(c.msk)}</td>`
+        +`<td>${stkNum(c.nsk1)}</td><td>${stkNum(c.nsk2)}</td><td>${stkNum(c.klin)}</td>`
+        +`<td class="${c.ozAsg?"":"d-zero"}">${stkNum(c.ozAsg)}</td><td>${stkNum(c.oz)}</td><td>${way(c.ozTransit)}</td>`
+        +`<td style="background:${heatBg(c.total,maxTot)}"><b>${nf.format(c.total)}</b></td>`
+        +`<td>${stkDelta(c.dTotal)}</td></tr>`;
+      if(open) c.list.slice().sort((a,b)=>b.total-a.total).forEach(r=>{
+        html+=`<tr class="in-grp"><td class="metric">${r.sku? skuLink(r.sku) : esc(r.sup)} `
+          +`<span class="sub">${esc((r.name||"").slice(0,44))}</span><br><span class="sub">1С ${esc(r.sup)}</span></td>`
+          +`<td>${stkNum(r.fbo)}</td><td>${way(r.wbTransit)}</td><td>${stkNum(r.msk)}</td>`
+          +`<td>${stkNum(r.nsk1)}</td><td>${stkNum(r.nsk2)}</td><td>${stkNum(r.klin)}</td>`
+          +`<td class="${r.ozAsg?"":"d-zero"}"${r.ozDup?` title="Из «ВСЕГО» вычтено ${r.ozDup} шт: на эту партию Ozon уже создал заявку, а в ведомости она ещё стоит здесь."`:""}>${stkNum(r.ozAsg)}</td><td>${stkNum(r.oz)}</td><td>${way(r.ozTransit)}</td>`
+          +`<td><b>${nf.format(r.total)}</b></td><td>${stkDelta(r.dTotal)}</td></tr>`;
+      });
     });
-  });
-  html+="</tbody>";
+    html+="</tbody>";
+  }
   document.getElementById("stkTable").innerHTML=html;
   document.getElementById("stkCount").textContent=
     `${cats.length} ${plural(cats.length,"категория","категории","категорий")} · ${rows.length} ${plural(rows.length,"товар","товара","товаров")}`;
@@ -11244,10 +11485,11 @@ function stkClusterDelta(sup,from,to){
   return {from:db, to:da, by};
 }
 
-function renderStockMove(rows,pTxt){
+function renderStockMove(rows,W){
   const card=document.getElementById("stkMoveCard"), box=document.getElementById("stkMove");
   const cap=document.getElementById("stkMoveCap");
   const whDays=(stockSeries().srcDays||{}).wh||[];
+  W=W||stkWin();
   card.hidden=false;
   if(whDays.length<2){
     cap.textContent="";
@@ -11255,6 +11497,8 @@ function renderStockMove(rows,pTxt){
       +`Движение появится здесь после следующей ведомости 1С: дашборд сам сопоставит, что ушло со склада и куда приехало.</div>`;
     return;
   }
+  if(!rows.length){ cap.textContent="";
+    box.innerHTML=`<div class="empty-hint">Под текущий поиск и категории не попал ни один товар.</div>`; return; }
   /* ГЛАВНЫЙ ВОПРОС ВКЛАДКИ — «ОТКУДА УБЫЛО И КУДА ПРИЕХАЛО» (продавец 07.10.2026: «смотрим,
      откуда товар убыл с какого моего склада и куда прибыл на какой мп; если это озон —
      в какой округ-город он приехал»). Поэтому блок показывает всю цепочку, а не только
@@ -11267,10 +11511,20 @@ function renderStockMove(rows,pTxt){
      пара: отгрузка едет на площадку одну-три недели, и всё это время она обязана висеть тут.
      ПРИЁМКА СЧИТАЕТСЯ С ПОПРАВКОЙ НА ПРОДАЖИ и РАЗДЕЛЬНО ПО ПЛОЩАДКАМ: остаток падает от
      продаж, без поправки ходовой товар всегда выглядит зависшим. */
-  const base=stkPrevSnap();
-  const inWin=(stkPeriod && base)? whDays.filter(d=>d>=base.date) : whDays.slice();
-  const win=inWin.length>=2? inWin : whDays.slice(-2);
-  const to=win[win.length-1], from=win[0];
+  /* КОНЦЫ ОТРЕЗКА — ЗАМЕРЫ СКЛАДА, ПОПАВШИЕ В ПЕРИОД: конец — последний замер не позже конца
+     периода, начало — последний замер не позже начала (состояние на эту дату), а если слой
+     начался позже — первый замер внутри периода. Так блок следует за календарём и не берёт
+     замеры за его пределами (раньше при нехватке точек брались две последние — даже если
+     выбран прошлый период). */
+  const atOrBefore=d=>{ let r=null; whDays.forEach(x=>{ if(x<=d) r=x; }); return r; };
+  const to=atOrBefore(W.to);
+  let from=atOrBefore(W.from); if(!from) from=whDays.find(d=>d>=W.from&&d<=W.to)||null;
+  if(!to){ cap.textContent="";
+    box.innerHTML=`<div class="empty-hint">На ${fmtDateLong(W.to)} ваш склад ещё не замеряли: первая ведомость 1С — ${fmtDateLong(whDays[0])}. `
+      +`Выберите период после этой даты, чтобы увидеть, что ушло со склада и куда приехало.</div>`; return; }
+  if(!from || from>=to){ cap.textContent="";
+    box.innerHTML=`<div class="empty-hint">${W.same? "Выбран один день" : `За период ${fmtDate(W.from)} – ${fmtDate(W.to)} был один замер склада (${fmtDate(to)})`} — сравнивать не с чем. `
+      +`Замеры склада есть с ${fmtDate(whDays[0])} по ${fmtDate(whDays[whDays.length-1])}: расширьте период.</div>`; return; }
   const byDate={}; stockSeries().snaps.forEach(s=>byDate[s.date]=s);
   const A=byDate[to], B=byDate[from];
   const sold=stkSoldByCode(from,to);
@@ -11345,19 +11599,25 @@ function renderStockMove(rows,pTxt){
 
 /* График слоёв по дням. ЛИНИИ, А НЕ СТОПКА: у слоёв разная глубина истории, и стопка в днях
    без замера рисовала бы ступени на всю высоту там, где просто нет данных. */
-function renderStockChart(codes){
+function renderStockChart(codes,W){
   const all=stockSeries().snaps;
+  W=W||stkWin();
   /* ГРАФИК ПОКАЗЫВАЕТ ТОТ ЖЕ ОТРЕЗОК, ЧТО И КОЛОНКА Δ (просьба продавца 05.10.2026: «выбрал
      7 дней и видишь на графике динамику по 7 дням»). Начало — ровно тот срез, с которым
      считается Δ, поэтому разница между концами линии и есть число в колонке. Раньше график
      всегда рисовал всю историю, и период переключал только таблицу. */
-  const base=stkPrevSnap();
-  const snaps=(stkPeriod && base)? all.filter(s=>s.date>=base.date) : all;
+  const snaps=W? all.filter(s=>s.date>=W.start.date && s.date<=W.end.date) : all;
   const set=new Set(codes), dates=snaps.map(s=>s.date);
+  if(!set.size){
+    document.getElementById("stkChartCap").textContent="";
+    document.getElementById("stkChartLegend").innerHTML="";
+    document.getElementById("stkChart").innerHTML=`<div class="empty-hint">Под текущий поиск и категории не попал ни один товар.</div>`;
+    return;
+  }
   const series=[
     {k:"fbo", l:"Склады ВБ (FBO)", c:cssv("--s1")},
-    {k:"oz",  l:"Ozon",            c:cssv("--s2")},
-    {k:"wh",  l:"Ваши склады",     c:cssv("--s3")}
+    {k:"oz",  l:"Склады Ozon",     c:cssv("--s2")},
+    {k:"wh",  l:"Ваши склады (1С)",c:cssv("--s3")}
   ];
   const vals=series.map(s=>snaps.map(sn=>{
     if(!sn.has[s.k]) return null;                    // слой ещё не начинался — разрыв, а не ноль
@@ -11366,6 +11626,13 @@ function renderStockChart(codes){
   }));
   const per=dates.length? `${fmtDate(dates[0])} – ${fmtDate(dates[dates.length-1])} · ${set.size} ${plural(set.size,"товар","товара","товаров")} по текущему фильтру` : "";
 
+  if(stkChartMode==="delta" && dates.length<2){
+    document.getElementById("stkChartCap").textContent=per;
+    document.getElementById("stkChartLegend").innerHTML="";
+    document.getElementById("stkChart").innerHTML=`<div class="empty-hint">Выбран один день — изменений показать нечего. `
+      +`Расширьте период или переключите график на «Остаток».</div>`;
+    return;
+  }
   if(stkChartMode==="delta"){
     /* Δ между соседними ЗАМЕРАМИ. Первый день окна показать нечем (не с чем сравнивать),
        поэтому он пустой. У слоя с редкими замерами всё движение между ними схлопывается
@@ -11441,12 +11708,15 @@ function stockDeltaBars(mount,dates,series,dv){
    за день. Без этой поправки машина 900 шт выглядит как +650 и читается как «пришло меньше». */
 const STK_EVENT_MIN=150;      // шт: ниже этого — обычное дневное шевеление, не событие
 const STK_MOVE_MIN=30;        // шт: минимум «ждём» в блоке отгрузок — ниже это расход по FBS
-function renderStockEvents(codes){
+function renderStockEvents(codes,W){
   const card=document.getElementById("stkArrCard"), box=document.getElementById("stkArr");
-  const all=stockSeries().snaps, base=stkPrevSnap();
-  const snaps=(stkPeriod && base)? all.filter(s=>s.date>=base.date) : all;
+  const all=stockSeries().snaps;
+  W=W||stkWin();
+  const snaps=W? all.filter(s=>s.date>=W.start.date && s.date<=W.end.date) : all;
   const set=new Set(codes);
-  if(snaps.length<2){ card.hidden=true; return; }
+  if(snaps.length<2 || !set.size){ card.hidden=false; document.getElementById("stkArrCap").textContent="";
+    box.innerHTML=`<div class="empty-hint">${!set.size? "Под текущий поиск и категории не попал ни один товар."
+      : "Выбран один день — событий между замерами нет. Расширьте период."}</div>`; return; }
   /* ПРОДАЖИ ПО ДНЯМ НУЖНЫ ДВАЖДЫ, И ЭТО КЛЮЧЕВОЕ.
      1) Приход: остаток площадки одновременно падает от продаж, поэтому «пришло» ≈ Δ + продано.
         Без поправки машина 900 шт выглядит как +650 и читается как «пришло меньше».
@@ -11477,13 +11747,15 @@ function renderStockEvents(codes){
      «+466 шт» вместо реальных ≈6 400. Сравниваем замер с ПРЕДЫДУЩИМ ЗАМЕРОМ ТОГО ЖЕ СЛОЯ. */
   const byDate={}; all.forEach(s=>byDate[s.date]=s);
   const S=stockSeries(), src=S.srcDays, brk=S.breaks||{};
-  const LAY=[{k:"fbo",l:"склады ВБ",c:cssv("--s1")},{k:"oz",l:"Ozon",c:cssv("--s2")},{k:"wh",l:"ваши склады",c:cssv("--s3")}];
-  const from=snaps[0].date, ev=[];
+  const LAY=[{k:"fbo",l:"склады ВБ",c:cssv("--s1")},{k:"oz",l:"склады Ozon",c:cssv("--s2")},{k:"wh",l:"ваши склады",c:cssv("--s3")}];
+  const from=snaps[0].date, to=snaps[snaps.length-1].date, ev=[];
   LAY.forEach(L=>{
     const days=(src[L.k]||[]).filter(d=>byDate[d]), bad=brk[L.k]||new Set();
     for(let i=1;i<days.length;i++){
       const a=byDate[days[i]], b=byDate[days[i-1]];
-      if(a.date<from) continue;                       // замер целиком до окна — не наше событие
+      /* Событие — в окне, если ЕГО замер позже начала и не позже конца: изменение на самый первый
+         день окна произошло ДО него и в «Изменение» периода не входит. */
+      if(a.date<=from || a.date>to) continue;
       let d=0; const byCode=[];
       set.forEach(c=>{ const x=(a.sup[c]||{})[L.k]||0, y=(b.sup[c]||{})[L.k]||0;
         if(x-y) byCode.push([c,x-y]); d+=x-y; });
@@ -11502,7 +11774,7 @@ function renderStockEvents(codes){
   if(!ev.length){
     card.hidden=false;
     document.getElementById("stkArrCap").textContent="";
-    box.innerHTML=`<div class="empty-hint">За выбранный период остатки между замерами менялись меньше чем на ${STK_EVENT_MIN} шт — крупных приходов и отгрузок не было.</div>`;
+    box.innerHTML=`<div class="empty-hint">С ${fmtDate(from)} по ${fmtDate(to)} остатки между замерами менялись меньше чем на ${STK_EVENT_MIN} шт — крупных приходов и отгрузок не было.</div>`;
     return;
   }
   ev.reverse();                                        // свежее сверху
@@ -11724,9 +11996,8 @@ document.getElementById("srHorizon").addEventListener("change",e=>{
 document.getElementById("stkSearch").addEventListener("input",renderStockTab);
 document.getElementById("stkCat").addEventListener("change",renderStockTab);
 document.getElementById("stkPeriodSeg").addEventListener("click",e=>{
-  const b=e.target.closest("button"); if(!b) return;
-  [...e.currentTarget.children].forEach(x=>x.setAttribute("aria-pressed","false"));
-  b.setAttribute("aria-pressed","true"); stkPeriod=+b.dataset.n; renderStockTab(); });
+  const b=e.target.closest("button"); if(!b) return; stkSetPeriod(+b.dataset.n); });
+document.getElementById("stkRangeBtn").addEventListener("click",e=>stkOpenCalendar(e.currentTarget));
 /* Раскрытие категории — одна открыта за раз: так таблица остаётся обозримой, а продавец
    всегда видит полный список категорий сверху, не теряя контекст. */
 document.getElementById("stkTable").addEventListener("click",e=>{
