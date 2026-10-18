@@ -148,6 +148,73 @@
   .daterange input[type="date"]:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring)}
   .daterange.active input[type="date"]{border-color:var(--accent)}
 
+  /* ===== Календарь-диапазон — переиспользуемый компонент (openDateRangePicker) =====
+     Панель position:fixed (как у enhanceSelect), цвета — только токены темы. Классы дней:
+     drp-full / drp-partial / drp-none — подсветка из классификатора dayInfo(). */
+  .drp-trigger{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);background:var(--surface);
+    color:var(--text-1);font:inherit;font-size:13px;font-weight:530;padding:8px 12px;border-radius:var(--r-sm);
+    cursor:pointer;box-shadow:var(--shadow-sm);white-space:nowrap;transition:border-color .15s,box-shadow .15s}
+  .drp-trigger:hover{border-color:var(--border-2)}
+  .drp-trigger.active{border-color:var(--accent);color:var(--text-1)}
+  .drp-trigger[aria-expanded="true"]{border-color:var(--accent);box-shadow:var(--ring)}
+  .drp-trigger svg{width:15px;height:15px;color:var(--accent);flex:none}
+  .drp-panel{position:fixed;z-index:45;background:var(--surface);border:1px solid var(--border-2);
+    border-radius:var(--r);box-shadow:var(--shadow-lg);padding:14px 14px 12px;color:var(--text-1);font-size:13px;
+    overflow:auto;max-width:calc(100vw - 16px);outline:none}
+  .drp-head{display:flex;align-items:baseline;justify-content:space-between;gap:4px 14px;margin-bottom:10px;flex-wrap:wrap}
+  .drp-head b{font-size:14px;font-weight:650;letter-spacing:-.01em}
+  .drp-head .drp-cur{font-size:12px;color:var(--muted)}
+  .drp-presets{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+  .drp-chip{border:1px solid var(--border);background:var(--surface-2);color:var(--text-2);font:inherit;font-size:12.5px;
+    font-weight:550;padding:5px 11px;border-radius:99px;cursor:pointer;transition:color .12s,border-color .12s}
+  .drp-chip:hover{color:var(--text-1);border-color:var(--border-2)}
+  .drp-chip.active{background:var(--accent-weak);color:var(--accent);border-color:color-mix(in srgb,var(--accent) 40%,transparent)}
+  .drp-note{font-size:12px;color:var(--text-2);line-height:1.5;margin-bottom:10px;padding:8px 10px;
+    border-radius:var(--r-sm);background:var(--surface-2);max-width:522px}
+  .drp-note b{color:var(--text-1);font-weight:620}
+  .drp-months{display:flex;gap:18px;align-items:flex-start}
+  .drp-month{width:252px;flex:none}
+  .drp-mt{display:flex;align-items:center;justify-content:space-between;gap:6px;height:30px;margin-bottom:4px;
+    font-weight:620;font-size:13.5px}
+  .drp-mt span{flex:1;text-align:center}
+  .drp-nav{width:30px;height:30px;flex:none;border:1px solid var(--border);background:var(--surface);color:var(--text-1);
+    border-radius:8px;cursor:pointer;font:inherit;font-size:17px;line-height:1;display:grid;place-items:center;padding:0}
+  .drp-nav:hover:not(:disabled){background:var(--surface-2);border-color:var(--border-2)}
+  .drp-nav:disabled{opacity:.3;cursor:default}
+  .drp-nav.ph{visibility:hidden}
+  .drp-grid{display:grid;grid-template-columns:repeat(7,1fr);row-gap:2px}
+  .drp-dow{font-size:11px;color:var(--muted);text-align:center;padding:3px 0 5px;font-weight:600}
+  .drp-d{position:relative;height:34px;border:0;margin:0;background:transparent;color:var(--text-1);font:inherit;font-size:13px;
+    font-variant-numeric:tabular-nums;cursor:pointer;border-radius:8px;padding:0 0 3px}
+  .drp-d:hover:not(:disabled){box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--accent) 65%,transparent)}
+  .drp-d:focus-visible{box-shadow:var(--ring);z-index:1}
+  .drp-d.drp-partial{background:color-mix(in srgb,var(--warn) 20%,transparent)}
+  .drp-d.drp-none{color:var(--muted);
+    background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 26%,transparent) 0 2px,transparent 2px 6px)}
+  .drp-d:disabled{cursor:not-allowed;opacity:.55}
+  .drp-d.is-today{font-weight:700;text-decoration:underline;text-underline-offset:3px;text-decoration-color:var(--accent)}
+  .drp-d.in-range{border-radius:0;box-shadow:inset 0 0 0 40px color-mix(in srgb,var(--accent) 22%,transparent)}
+  .drp-d.is-start,.drp-d.is-end{background:var(--accent);color:#fff;font-weight:680;box-shadow:none;opacity:1}
+  .drp-d.is-start{border-radius:8px 0 0 8px} .drp-d.is-end{border-radius:0 8px 8px 0}
+  .drp-d.is-start.is-end{border-radius:8px}
+  .drp-dots{position:absolute;left:0;right:0;bottom:4px;display:flex;justify-content:center;gap:2px;pointer-events:none}
+  .drp-dots i{width:4px;height:4px;border-radius:50%;display:block}
+  .drp-d.is-start .drp-dots i,.drp-d.is-end .drp-dots i{box-shadow:0 0 0 1px #fff}
+  .drp-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:10px;font-size:11.5px;color:var(--text-2);max-width:522px}
+  .drp-legend .lg{display:inline-flex;align-items:center;gap:6px}
+  .drp-legend .sw{width:18px;height:13px;border-radius:3px;border:1px solid var(--border-2);flex:none}
+  .drp-legend .sw-full{background:var(--surface)}
+  .drp-legend .sw-partial{background:color-mix(in srgb,var(--warn) 20%,var(--surface))}
+  .drp-legend .sw-none{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 34%,transparent) 0 2px,transparent 2px 6px)}
+  .drp-legend .dt{width:6px;height:6px;border-radius:50%;flex:none}
+  .drp-foot{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--grid);flex-wrap:wrap}
+  .drp-hint{flex:1 1 200px;font-size:12px;color:var(--text-2);line-height:1.4}
+  .drp-hint b{color:var(--text-1);font-weight:640}
+  .drp-foot .btn{padding:7px 13px}
+  .drp-foot .btn:disabled{opacity:.45;cursor:default}
+  @media(max-width:640px){ .drp-month{width:min(252px,calc(100vw - 50px))} .drp-panel{padding:12px 10px 10px}
+    .drp-hint{flex-basis:100%} .drp-foot [data-act="cancel"]{margin-left:auto} }
+
   /* ===== KPI-плитки ===== */
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
     padding:16px 18px 15px;box-shadow:var(--shadow),inset 0 1px 0 color-mix(in srgb,#fff 55%,transparent);
@@ -9427,6 +9494,228 @@ window.addEventListener("resize",()=>{closeAllUisel();closeColFilterOnScroll();}
 document.addEventListener("scroll",e=>{ if(_colFilterPanel && _colFilterPanel.contains(e.target)) return; closeColFilterOnScroll(); },true);
 // заменяем ВСЕ выпадающие списки на кастомные (открываются вниз)
 document.querySelectorAll("select").forEach(enhanceSelect);
+
+/* =========================================================================
+   КАЛЕНДАРЬ-ДИАПАЗОН — ПЕРЕИСПОЛЬЗУЕМЫЙ КОМПОНЕНТ (без библиотек)
+   =========================================================================
+   Зачем свой, а не <input type="date">: нативный календарь в каждом браузере свой, не умеет
+   красить дни и не показывает, за какие дни данных НЕТ. Просьба продавца 18.10.2026: «даты,
+   за которые информации у тебя нету, выдели цветом, чтобы я понимал, с какого числа могу
+   смотреть, и не выбирал периоды, когда данных нет». Панель — position:fixed (как у
+   enhanceSelect), поэтому её не режет overflow родителя; цвета — только токены темы.
+
+   API (держи стабильным — им пользуются несколько вкладок):
+     openDateRangePicker(anchor, opts) → {close} | null  (повторный вызов с тем же anchor — закрывает)
+       anchor  — элемент, под которым открыть (обычно кнопка .drp-trigger); ему ставится aria-expanded
+       opts.from, opts.to — ISO «ГГГГ-ММ-ДД», текущий выбор (можно null)
+       opts.min, opts.max — ISO, крайние дни, которые можно выбрать. Дни вне — недоступны.
+                           max не может быть позже СЕГОДНЯ: будущие дни недоступны всегда.
+       opts.dayInfo(iso)  — необязательный классификатор дня → {cls, title, dots, disabled} | null
+                           cls: 'full' | 'partial' | 'none' (встроенные стили: full — обычный,
+                                partial — жёлтая подложка «есть часть данных», none — штриховка
+                                «данных нет»); любой другой cls даёт класс drp-<cls> для своих стилей
+                           title: подсказка на дне (нативный title)
+                           dots: массив CSS-цветов — точки под числом (напр. «в этот день был замер»)
+                           disabled: true — день нельзя выбрать
+                           Вызывается по разу на день (результат кешируется на время открытия).
+       opts.legend   — [{cls:'none', label:'нет данных'} | {dot:'#цвет', label:'…'}] — легенда под сеткой
+       opts.note     — HTML-строка над сеткой (напр. «данные есть: ВБ с 14.07, Ozon с 31.08»)
+       opts.presets  — [{label, from, to, active?}] — чипы быстрого выбора; клик сразу применяет
+                       и закрывает. Чип подсвечен, если active:true или его from/to = текущему выбору.
+       opts.title    — заголовок панели (по умолчанию «Период»)
+       opts.months   — сколько месяцев рядом (по умолчанию 2; на экране уже 640px — 1)
+       opts.onApply(from, to, preset) — выбран диапазон; preset — объект чипа или null
+       opts.onClose()                 — панель закрыта (любым способом)
+     closeDateRangePicker()           — закрыть открытый календарь, если он есть
+     drpRangeText(from, to, mode)     — подпись для кнопки: «08.10 – 15.10.2026 · 8 дней»;
+                                        mode='arrow' → «08.10 → 15.10.2026» (сравнение двух срезов)
+     DRP_ICON                         — SVG-иконка календаря для кнопки .drp-trigger
+
+   Поведение: первый клик — начало, второй — конец (раньше начала — меняются местами), до
+   второго клика диапазон подсвечивается под курсором. «Применить» при одном выбранном дне даёт
+   диапазон из одного дня. Закрытие: Esc, клик вне панели, «Отмена». Клавиатура: стрелки двигают
+   фокус по дням (через границу месяца листает), Enter/пробел выбирает. Открыт только один.
+   Пример кнопки: `<button type="button" class="drp-trigger" aria-haspopup="dialog"
+   aria-expanded="false">${DRP_ICON}<span>…</span></button>`. */
+const DRP_MONTHS=["Январь","Февраль","Март","Апрель","Май","Июнь","Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
+const DRP_DOW=["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+const DRP_ICON='<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
+let _drp=null;
+function _drpIso(y,m,d){ return new Date(Date.UTC(y,m,d)).toISOString().slice(0,10); }   // переполнение дня/месяца — норма
+function _drpToday(){ const t=new Date(); return _drpIso(t.getFullYear(),t.getMonth(),t.getDate()); }
+function _drpDiff(a,b){ return Math.round((Date.parse(b+"T00:00:00Z")-Date.parse(a+"T00:00:00Z"))/864e5); }
+function drpRangeText(from,to,mode){
+  if(!from&&!to) return "Выбрать даты";
+  from=from||to; to=to||from;
+  const dm=s=>s.slice(8,10)+"."+s.slice(5,7);
+  if(from===to) return dm(to)+"."+to.slice(0,4);
+  const f=from.slice(0,4)===to.slice(0,4)? dm(from) : dm(from)+"."+from.slice(0,4);
+  if(mode==="arrow") return `${f} → ${dm(to)}.${to.slice(0,4)}`;
+  const n=_drpDiff(from,to)+1;
+  return `${f} – ${dm(to)}.${to.slice(0,4)} · ${n} ${plural(n,"день","дня","дней")}`;
+}
+function closeDateRangePicker(){
+  if(!_drp) return; const d=_drp; _drp=null;
+  d.panel.remove();
+  document.removeEventListener("pointerdown",d.onDoc,true);
+  document.removeEventListener("keydown",d.onKey,true);
+  window.removeEventListener("resize",d.onRe); window.removeEventListener("scroll",d.onRe,true);
+  if(d.anchor) d.anchor.setAttribute("aria-expanded","false");
+  if(d.opts.onClose){ try{ d.opts.onClose(); }catch(e){} }
+}
+function openDateRangePicker(anchor,opts){
+  if(_drp && _drp.anchor===anchor){ closeDateRangePicker(); return null; }   // повторный клик по кнопке — закрыть
+  closeDateRangePicker();
+  if(typeof closeAllUisel==="function") closeAllUisel();
+  if(typeof closeColFilter==="function") closeColFilter();
+  opts=opts||{};
+  const today=_drpToday();
+  const max=(opts.max && opts.max<today)? opts.max : today;
+  const min=opts.min||null;
+  const cache=new Map();
+  const info=iso=>{ if(!cache.has(iso)){ let r=null;
+      if(typeof opts.dayInfo==="function"){ try{ r=opts.dayInfo(iso)||null; }catch(e){ r=null; } }
+      cache.set(iso,r); }
+    return cache.get(iso); };
+  const isDis=iso=>{ const r=info(iso); return (min&&iso<min) || iso>max || !!(r&&r.disabled); };
+  const st={a:opts.from||null, b:opts.to||null, hover:null};
+  if(st.a&&st.b&&st.b<st.a){ const t=st.a; st.a=st.b; st.b=t; }
+  if(st.a&&!st.b) st.b=st.a;
+  const nMon=Math.max(1,Math.min(3, opts.months || (window.innerWidth<640? 1 : 2)));
+  const ym=iso=>(+iso.slice(0,4))*12+(+iso.slice(5,7)-1);
+  const minYm=min? ym(min) : -Infinity, maxYm=ym(max);
+  // первый показанный месяц: так, чтобы месяц конца выбора был ПОСЛЕДНИМ из показанных
+  let view=ym(st.b||st.a||max)-(nMon-1);
+  const clampView=()=>{ view=Math.min(view, maxYm-(nMon-1)); if(view<minYm) view=minYm; };
+
+  const panel=document.createElement("div");
+  panel.className="drp-panel"; panel.tabIndex=-1;
+  panel.setAttribute("role","dialog"); panel.setAttribute("aria-label",opts.title||"Выбор периода");
+
+  const monthHtml=(k,idx)=>{
+    const y=Math.floor(k/12), m=k%12;
+    const first=new Date(Date.UTC(y,m,1)), lead=(first.getUTCDay()+6)%7, dim=new Date(Date.UTC(y,m+1,0)).getUTCDate();
+    const prevDis=k<=minYm, nextDis=k>=maxYm;
+    let h=`<div class="drp-month"><div class="drp-mt">`
+      +`<button type="button" class="drp-nav${idx===0?"":" ph"}" data-nav="-1" aria-label="Предыдущий месяц"${prevDis?" disabled":""}>‹</button>`
+      +`<span>${DRP_MONTHS[m]} ${y}</span>`
+      +`<button type="button" class="drp-nav${idx===nMon-1?"":" ph"}" data-nav="1" aria-label="Следующий месяц"${nextDis?" disabled":""}>›</button>`
+      +`</div><div class="drp-grid">`+DRP_DOW.map(d=>`<div class="drp-dow">${d}</div>`).join("");
+    for(let i=0;i<lead;i++) h+=`<span></span>`;
+    for(let d=1;d<=dim;d++){
+      const iso=_drpIso(y,m,d), r=info(iso), dis=isDis(iso);
+      let title=r&&r.title? r.title : "";
+      if(!title){ if(iso>today) title="Этот день ещё не наступил";
+        else if(min&&iso<min) title="Раньше "+fmtDateLong(min)+" данных нет";
+        else if(iso>max) title="После "+fmtDateLong(max)+" данных нет"; }
+      const cls="drp-d"+(r&&r.cls? " drp-"+r.cls : "")+(iso===today?" is-today":"");
+      const dots=(r&&r.dots&&r.dots.length)? `<span class="drp-dots">${r.dots.map(c=>`<i style="background:${c}"></i>`).join("")}</span>` : "";
+      h+=`<button type="button" class="${cls}" data-iso="${iso}"${dis?" disabled":""}${title?` title="${esc(title)}"`:""}`
+        +` aria-label="${esc(fmtDateLong(iso)+(title?". "+title:""))}">${d}${dots}</button>`;
+    }
+    return h+`</div></div>`;
+  };
+  const presetOn=p=>p.active===true || (p.active!==false && p.from===st.a && p.to===st.b);
+  const render=()=>{
+    clampView();
+    const legend=(opts.legend||[]).map(l=>l.dot
+        ? `<span class="lg"><i class="dt" style="background:${l.dot}"></i>${esc(l.label)}</span>`
+        : `<span class="lg"><span class="sw sw-${esc(l.cls||"full")}"></span>${esc(l.label)}</span>`).join("");
+    panel.innerHTML=
+      `<div class="drp-head"><b>${esc(opts.title||"Период")}</b><span class="drp-cur" data-cur></span></div>`
+      +((opts.presets&&opts.presets.length)? `<div class="drp-presets">`+opts.presets.map((p,i)=>
+          `<button type="button" class="drp-chip${presetOn(p)?" active":""}" data-preset="${i}">${esc(p.label)}</button>`).join("")+`</div>` : "")
+      +(opts.note? `<div class="drp-note">${opts.note}</div>` : "")
+      +`<div class="drp-months">`+Array.from({length:nMon},(_,i)=>monthHtml(view+i,i)).join("")+`</div>`
+      +(legend? `<div class="drp-legend">${legend}</div>` : "")
+      +`<div class="drp-foot"><span class="drp-hint" data-hint></span>`
+      +`<button type="button" class="btn" data-act="cancel">Отмена</button>`
+      +`<button type="button" class="btn primary" data-act="apply">Применить</button></div>`;
+    paint();
+  };
+  const paint=()=>{
+    const a=st.a, b=st.b || (a&&st.hover? st.hover : null);
+    const lo=a&&b? (a<b?a:b) : a, hi=a&&b? (a<b?b:a) : a;
+    panel.querySelectorAll(".drp-d[data-iso]").forEach(el=>{ const iso=el.dataset.iso;
+      el.classList.toggle("is-start", !!lo && iso===lo);
+      el.classList.toggle("is-end", !!hi && iso===hi);
+      el.classList.toggle("in-range", !!lo && !!hi && iso>lo && iso<hi);
+      el.setAttribute("aria-pressed", (lo&&iso>=lo&&iso<=(hi||lo))? "true" : "false"); });
+    const hint=panel.querySelector("[data-hint]"), cur=panel.querySelector("[data-cur]");
+    if(!st.a) hint.innerHTML="Нажмите на первый день периода";
+    else if(!st.b) hint.innerHTML=`С <b>${fmtDateLong(st.a)}</b> — теперь последний день (или «Применить» для одного дня)`;
+    else { const n=_drpDiff(st.a,st.b)+1;
+      hint.innerHTML=`С <b>${fmtDateLong(st.a)}</b> по <b>${fmtDateLong(st.b)}</b> · ${n} ${plural(n,"день","дня","дней")}`; }
+    if(cur) cur.textContent=(opts.from||opts.to)? "сейчас: "+drpRangeText(opts.from,opts.to) : "";
+    const ap=panel.querySelector('[data-act="apply"]'); if(ap) ap.disabled=!st.a;
+  };
+  const pick=iso=>{
+    if(!st.a || st.b){ st.a=iso; st.b=null; }
+    else if(iso<st.a){ st.b=st.a; st.a=iso; }
+    else st.b=iso;
+    st.hover=null; paint();
+  };
+  const focusDay=iso=>{ const b=panel.querySelector(`.drp-d[data-iso="${iso}"]`); if(b&&!b.disabled) b.focus(); return !!b; };
+  const apply=()=>{ if(!st.a) return; const f=st.a, t=st.b||st.a; const cb=opts.onApply; closeDateRangePicker(); if(cb) cb(f,t,null); };
+
+  panel.addEventListener("click",e=>{
+    const chip=e.target.closest("[data-preset]");
+    if(chip){ const p=opts.presets[+chip.dataset.preset]; const cb=opts.onApply; closeDateRangePicker(); if(cb) cb(p.from,p.to,p); return; }
+    const nav=e.target.closest("[data-nav]");
+    if(nav){ if(nav.disabled) return; const dir=nav.dataset.nav; view+=+dir; render();
+      const nb=panel.querySelector(`.drp-nav[data-nav="${dir}"]:not(.ph)`); if(nb&&!nb.disabled) nb.focus(); else panel.focus();
+      return; }
+    const act=e.target.closest("[data-act]");
+    if(act){ if(act.dataset.act==="cancel") closeDateRangePicker(); else apply(); return; }
+    const day=e.target.closest(".drp-d[data-iso]");
+    if(day && !day.disabled) pick(day.dataset.iso);
+  });
+  panel.addEventListener("pointerover",e=>{
+    if(!st.a || st.b) return;
+    const day=e.target.closest(".drp-d[data-iso]"); if(!day || day.disabled) return;
+    if(st.hover!==day.dataset.iso){ st.hover=day.dataset.iso; paint(); } });
+  panel.addEventListener("pointerleave",()=>{ if(st.hover){ st.hover=null; paint(); } });
+  panel.addEventListener("keydown",e=>{
+    const day=e.target.closest&&e.target.closest(".drp-d[data-iso]");
+    const step={ArrowLeft:-1,ArrowRight:1,ArrowUp:-7,ArrowDown:7}[e.key];
+    if(day && step){ e.preventDefault();
+      let iso=day.dataset.iso;
+      for(let guard=0;guard<62;guard++){ iso=addDays(iso,step);
+        if((min&&iso<min) || iso>max) return;            // упёрлись в край — остаёмся
+        if(!isDis(iso)) break; }
+      const k=ym(iso);
+      if(k<view || k>view+nMon-1){ view+= k<view? -1 : 1; render(); }
+      focusDay(iso);
+      if(st.a && !st.b){ st.hover=iso; paint(); }
+      return; }
+    if(e.key==="Enter" && !day && st.a && !e.target.closest("button")){ e.preventDefault(); apply(); }
+  });
+  const onDoc=e=>{ if(!_drp) return; if(panel.contains(e.target) || (anchor&&anchor.contains(e.target))) return; closeDateRangePicker(); };
+  const onKey=e=>{ if(e.key==="Escape" && _drp){ e.stopPropagation(); closeDateRangePicker();
+    if(anchor&&document.contains(anchor)) anchor.focus({preventScroll:true}); } };
+  const place=()=>{
+    if(!_drp) return;
+    const r=anchor? anchor.getBoundingClientRect() : {left:8,top:8,bottom:8};
+    if(anchor && (r.bottom<0 || r.top>window.innerHeight)){ closeDateRangePicker(); return; }  // кнопка уехала с экрана
+    panel.style.maxHeight=(window.innerHeight-16)+"px";
+    const pw=panel.offsetWidth, ph=panel.offsetHeight;
+    let left=Math.min(r.left, window.innerWidth-pw-8); left=Math.max(8,left);
+    let top=r.bottom+6;
+    if(top+ph>window.innerHeight-8){ top = (r.top-6-ph>=8)? r.top-6-ph : Math.max(8,window.innerHeight-8-ph); }
+    panel.style.left=left+"px"; panel.style.top=top+"px";
+  };
+  const onRe=e=>{ if(e && e.type==="scroll" && e.target && e.target.nodeType===1 && panel.contains(e.target)) return; place(); };
+  _drp={panel,anchor,opts,onDoc,onKey,onRe};
+  render();
+  document.body.appendChild(panel);
+  place();
+  if(anchor) anchor.setAttribute("aria-expanded","true");
+  document.addEventListener("pointerdown",onDoc,true);
+  document.addEventListener("keydown",onKey,true);
+  window.addEventListener("resize",onRe); window.addEventListener("scroll",onRe,true);
+  panel.focus({preventScroll:true});
+  return {close:closeDateRangePicker};
+}
 
 /* ---- период A / период B ---- */
 function funnelDates(){ return [...new Set(activeFunnel().map(r=>r.date))].sort(); }
