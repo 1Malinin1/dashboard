@@ -572,6 +572,9 @@
   #tip .t-row .k{display:inline-flex;align-items:center;gap:6px;color:var(--text-2)}
   #tip .t-row .k i{width:14px;height:3px;border-radius:2px;display:inline-block}
   #tip .t-row .v{font-weight:680;font-variant-numeric:tabular-nums}
+  /* подсказки KPI «Аналитики» и «Финансов» (tipBox): пояснения переносятся, суммы — нет */
+  #tip .tip-box{max-width:340px}
+  #tip .tip-box .v{white-space:nowrap}
 
   /* ===== Зона перетаскивания файлов (Товар/Финансы) ===== */
   .drop{border:1.5px dashed var(--border-2);border-radius:var(--r);padding:32px 20px;text-align:center;
@@ -721,6 +724,8 @@
   #turnTable td.name-cell{max-width:150px}
   /* «Аналитика»: две таблицы в полширины — название уже, иначе «Прибыль» уезжает за край */
   #anLossTable td.name-cell,#anAdTable td.name-cell{max-width:180px}
+  /* ABC: 9 колонок — без поджатого названия последняя («Возврат» / «Отмены») пряталась за прокруткой */
+  #anTable td.name-cell{max-width:220px}
   #anLossTable th,#anLossTable td,#anAdTable th,#anAdTable td{padding-left:10px;padding-right:10px}
   /* «Подсорт» на «Всего» — 11 колонок, поджимаем название, чтобы влезало без прокрутки */
   #turnTable.wide th.metric,#turnTable.wide td.metric{min-width:86px}
@@ -1639,6 +1644,8 @@ const tip=document.getElementById("tip");
 function showTip(html,x,y){tip.innerHTML=html;tip.style.opacity=1;
   const r=tip.getBoundingClientRect();let nx=x+14,ny=y+14;
   if(nx+r.width>innerWidth-8)nx=x-r.width-14; if(ny+r.height>innerHeight-8)ny=y-r.height-14;
+  // не даём уехать за левый/верхний край: на телефоне подсказка не влезала ни справа, ни слева от пальца
+  nx=Math.max(8,Math.min(nx,innerWidth-r.width-8)); ny=Math.max(8,ny);
   tip.style.left=nx+"px";tip.style.top=ny+"px";}
 function hideTip(){tip.style.opacity=0;}
 
@@ -5943,13 +5950,14 @@ function renderFinanceHistoryInfo(){
   const skuCount=new Set(FINANCE_CACHE.map(r=>r.sku)).size;
   /* Граница факт/оценка — прямо в строке свежести: без неё «108 дней финансов» читались как
      108 дней отчётов WB, хотя с 03.08 это модель (отчёты закрыты 24.08). */
-  el.innerHTML=`<span class="dot"></span>Финансы Wildberries: ${dates.length} дн., с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])}`
+  // основной текст — одним span: .freshness — flex с переносом, иначе хвост «· 325 товаров…» уезжал строкой с «·» в начале
+  el.innerHTML=`<span class="dot"></span><span style="flex:1 1 0;min-width:0">Финансы Wildberries: ${dates.length} дн., с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])}`
     + (financeEstFrom
         ? ` · <span class="acc">факт по отчётам «О реализации» — по ${fmtDateLong(addDays(financeEstFrom,-1))}, дальше <b>ОЦЕНКА</b> (${fmtDate(financeEstFrom)} – ${fmtDate(financeEstTo)})</span>`
         : "")
     + ` · ${skuCount} товаров · ${fmt(FINANCE_ROW_COUNT)} строк отчётов учтено`
     + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`)
-    + localDataResetLink();
+    + localDataResetLink() + `</span>`;
 }
 
 let finPeriodN=0;      // 0 = весь загруженный период (кнопки строит renderPeriodSeg)
@@ -8997,11 +9005,23 @@ function anShow(content){
      безубыточный ДРР = прибыль до рекламы ÷ выручка.
    У Ozon это ровно формула из «Рекламы»: 1 − фиксированная ставка ИУ (ozFixedRate) − доля
    себестоимости; у ВБ — 1 − удержания WB − доля себестоимости. Товары без себестоимости не
-   судим: их прибыль завышена, и безубыточный ДРР вышел бы фантомно высоким. */
-const anIsAdWaste=r=> r.hasCost && r.ad>0 && r.ad>=r.preAdProfit;
+   судим: их прибыль завышена, и безубыточный ДРР вышел бы фантомно высоким.
+   РАСХОД МЕНЬШЕ AD_MIN_SPEND (500 ₽) ЗА ПЕРИОД НЕ СУДИМ — то же правило, что в «Рекламе»: это
+   перелив ставки, а не кампания. Без порога в коротких периодах половина списка была копеечной
+   (сен 26: 7 из 13 товаров с расходом 0,9–20 ₽, «1 нед»: 6 из 13 — меньше рубля). */
+const anIsAdWaste=r=> r.hasCost && r.ad>=AD_MIN_SPEND && r.ad>=r.preAdProfit;
+const anIsAdSmall=r=> r.hasCost && r.ad>0 && r.ad<AD_MIN_SPEND && r.ad>=r.preAdProfit;
+/* «Минус» товара без единой продажи, весь из копеечного рекламного перелива (XWAY-расход части
+   ровно размазан по дням, и товар без продаж получает 0,08–1,6 ₽). В таблице ABC строка остаётся
+   (правило hasActivity — число товаров как на «Главной»), но в «Убыточные» не идёт: в окт 26 таких
+   было 6 из 12, и в списке стояли «0 шт · 0 ₽ · −0 ₽». */
+const anIsNoiseLoss=r=> r.profit<0 && !(r.qty||0) && !(r.returnsQty||0) && Math.abs(r.revenue||0)<1 && (r.ad||0)<AD_MIN_SPEND;
 // доли меньше 1% — с двумя знаками: «0,96%», а не «1%» (иначе возвраты ВБ округлялись вдвое)
 const pctR=v=>(v*100).toLocaleString("ru-RU",{maximumFractionDigits:Math.abs(v)<0.01?2:1})+"%";
 const anWasteRub=r=> r.ad-Math.max(0,r.preAdProfit);   // сколько рекламы ушло сверх прибыли до неё
+/* Подсказка KPI «Аналитики» и «Финансов» — не шире 340 px: длинные пояснения переносятся, а не
+   растягивают #tip до 700–900 px (на телефоне он целиком уезжал за левый край экрана). */
+const tipBox=h=>`<div class="tip-box">${h}</div>`;
 
 /* ---------- Wildberries: расчёт ---------- */
 // комиссия и логистика на штуку — из ОТЧЁТОВ WB (в оценке они одной долей на все товары)
@@ -9034,14 +9054,14 @@ function anCalcWb(dates,cat,q){
     r.fQty=f.qty; r.fRet=f.ret; r.fRev=f.rev; r.fPayout=f.payout; r.fLog=f.log;
     r.fRetRate = f.qty>0? f.ret/f.qty : (f.ret>0? 1 : null);
     r.drr = r.revenue>0? r.ad/r.revenue : (r.ad>0? Infinity : 0);
-    r.beDrr = r.revenue>0? r.preAdProfit/r.revenue : null; });
+    r.beDrr = (r.revenue>0 && r.hasCost)? r.preAdProfit/r.revenue : null; });   // без себестоимости — фантом, не печатаем
   const {ranked,totalPos}=classifyABC(all);
-  const lossers=ranked.filter(r=>r.profit<0).sort((a,b)=>a.profit-b.profit);
-  const adWaste=ranked.filter(anIsAdWaste).sort((a,b)=>anWasteRub(b)-anWasteRub(a));
+  const lossers=ranked.filter(r=>r.profit<0 && !anIsNoiseLoss(r)).sort((a,b)=>a.profit-b.profit), lossNoise=ranked.filter(anIsNoiseLoss).length;
+  const adWaste=ranked.filter(anIsAdWaste).sort((a,b)=>anWasteRub(b)-anWasteRub(a)), adSmall=ranked.filter(anIsAdSmall).length;
   const fQty=Object.values(fact).reduce((a,e)=>a+e.qty,0), fRet=Object.values(fact).reduce((a,e)=>a+e.ret,0);
   const sum=(arr,k)=>arr.reduce((a,r)=>a+(r[k]||0),0);
   const tbl=sum(all,"profit"), svcSum=sum(svc,"profit");
-  return {mp:"wb", dates, sp, all, svc, ranked, totalPos, lossers, adWaste,
+  return {mp:"wb", dates, sp, all, svc, ranked, totalPos, lossers, lossNoise, adWaste, adSmall,
     lossSum:sum(lossers,"profit"), wasteExtra:adWaste.reduce((a,r)=>a+anWasteRub(r),0),
     abcCounts:["A","B","C","loss"].map(k=>ranked.filter(r=>r.abc===k).length),
     aProfit:ranked.filter(r=>r.abc==="A").reduce((a,r)=>a+r.profit,0),
@@ -9072,7 +9092,7 @@ function anCalcOz(dates,cat,q){
     const f=fun[r.sku]||null;
     return {...r, net:r.qty, preAdProfit:r.profit+r.ad,
       drr: r.revenue>0? r.ad/r.revenue : (r.ad>0? Infinity : 0),
-      beDrr: r.revenue>0? 1-FX-r.cogs/r.revenue : null,
+      beDrr: (r.revenue>0 && r.hasCost)? 1-FX-r.cogs/r.revenue : null,
       fOrd:f? f.ord:0, fDlv:f? f.dlv:0, fCnc:f? f.cnc:0,
       cancelRate: f&&f.ord>0? f.cnc/f.ord : null,
       openRate: f&&f.ord>0? Math.max(0,f.ord-f.dlv-f.cnc)/f.ord : null,
@@ -9080,11 +9100,11 @@ function anCalcOz(dates,cat,q){
       boOwn: !!(lastH && lastH.bySku && lastH.bySku[r.sku]>0)};
   });
   const {ranked,totalPos}=classifyABC(prod);
-  const lossers=ranked.filter(r=>r.profit<0).sort((a,b)=>a.profit-b.profit);
-  const adWaste=ranked.filter(anIsAdWaste).sort((a,b)=>anWasteRub(b)-anWasteRub(a));
+  const lossers=ranked.filter(r=>r.profit<0 && !anIsNoiseLoss(r)).sort((a,b)=>a.profit-b.profit), lossNoise=ranked.filter(anIsNoiseLoss).length;
+  const adWaste=ranked.filter(anIsAdWaste).sort((a,b)=>anWasteRub(b)-anWasteRub(a)), adSmall=ranked.filter(anIsAdSmall).length;
   const F=Object.values(fun).reduce((a,e)=>({ord:a.ord+e.ord,dlv:a.dlv+e.dlv,cnc:a.cnc+e.cnc}),{ord:0,dlv:0,cnc:0});
   const sum=(arr,k)=>arr.reduce((a,r)=>a+(r[k]||0),0);
-  return {mp:"ozon", dates, agg, prod, all:prod, ranked, totalPos, lossers, adWaste, fun, funDays:[...funDays].sort(),
+  return {mp:"ozon", dates, agg, prod, all:prod, ranked, totalPos, lossers, lossNoise, adWaste, adSmall, fun, funDays:[...funDays].sort(),
     lossSum:sum(lossers,"profit"), wasteExtra:adWaste.reduce((a,r)=>a+anWasteRub(r),0),
     abcCounts:["A","B","C","loss"].map(k=>ranked.filter(r=>r.abc===k).length),
     aProfit:ranked.filter(r=>r.abc==="A").reduce((a,r)=>a+r.profit,0),
@@ -9123,13 +9143,13 @@ function renderAnalyticsTab(){
   const tr=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
   const sep=`border-top:1px solid var(--grid);margin-top:5px;padding-top:6px`;
   const neutral=t=>`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">${t}</div>`;
-  const aTip=`<div class="t-hd">ABC-анализ по прибыли — Wildberries</div>`+tr("A · ядро",abcCounts[0]+" тов.")+tr("B · середина",abcCounts[1]+" тов.")+tr("C · хвост",abcCounts[2]+" тов.")+tr("Убыточные",abcCounts[3]+" тов.")+`<div class="t-row" style="${sep}"><span class="k">A даёт</span><span class="v">${pct(aProfit/totalPos)} прибыли</span></div>`
+  const aTip=`<div class="t-hd">ABC-анализ по прибыли — Wildberries</div>`+tr("A · ядро",abcCounts[0]+" тов.")+tr("B · середина",abcCounts[1]+" тов.")+tr("C · хвост",abcCounts[2]+" тов.")+tr("Убыточные",lossers.length+" тов.")+(D.lossNoise? tr("Без продаж, минус — копеечный перелив рекламы",D.lossNoise+" тов.") : "")+`<div class="t-row" style="${sep}"><span class="k">A даёт</span><span class="v">${pct(aProfit/totalPos)} прибыли</span></div>`
     +`<div class="t-row" style="opacity:.75"><span class="k">Класс по доле, накопленной до товара: пока не набрано 80% — A, до 95% — B, дальше C</span></div>`;
   const lossTip=`<div class="t-hd">Убыточные — ${lossers.length} тов.</div>`+tr("Суммарный минус",rub(D.lossSum))
     +`<div class="t-row" style="opacity:.75"><span class="k">Прибыль после удержаний WB, себестоимости и рекламы — меньше нуля</span></div>`;
   const adTip=hasAds? `<div class="t-hd">Реклама не окупается — Wildberries</div>`
       +tr("ДРР товара ≥ его безубыточного ДРР",adWaste.length+" тов.")+tr("Ушло сверх прибыли до рекламы",rub(D.wasteExtra))
-      +`<div class="t-row" style="${sep};opacity:.75"><span class="k">Безубыточный ДРР = прибыль до рекламы ÷ выручка: выше него реклама съедает всю маржу</span></div>`
+      +`<div class="t-row" style="${sep};opacity:.75"><span class="k">Безубыточный ДРР = прибыль до рекламы ÷ выручка: выше него реклама съедает всю маржу. Расход меньше ${fmt(AD_MIN_SPEND)} ₽ за период не судим</span></div>`
     : `<div class="t-hd">Реклама</div>`+tr("Расход на рекламу в снимке не заведён");
   const retTip=D.retRate!=null
     ? `<div class="t-hd">Возвраты — по отчётам WB</div>`+tr("Возвращено ÷ продано",fmt(D.fRet)+" из "+fmt(D.fQty)+" шт")+tr("Дни отчётов",perTxt(sp.fact))
@@ -9143,7 +9163,7 @@ function renderAnalyticsTab(){
       delta:hasAds? neutral(adWaste.length? rub(D.wasteExtra)+" сверх прибыли" : "товаров") : `<div class="delta" style="background:var(--surface-2);color:var(--muted)">нет данных</div>`},
     {lbl:"Возвраты (по отчётам WB)",val:D.retRate!=null? pctR(D.retRate) : "нет данных",tip:retTip,
       delta:D.retRate!=null? neutral(fmt(D.fRet)+" из "+fmt(D.fQty)+" шт · "+fp) : `<div class="delta" style="background:var(--surface-2);color:var(--muted)">в оценке возвратов нет</div>`},
-  ].map(kpiCard).join("");
+  ].map(k=>kpiCard(k.tip? {...k,tip:tipBox(k.tip)} : k)).join("");
   wireKpiTips("anKpis");
   const note=document.getElementById("anNote");
   if(sp.est.length){
@@ -9167,7 +9187,7 @@ function renderAnalyticsTab(){
   else {
     const maxShare=ranked.reduce((m,r)=>Math.max(m,r.share||0),0);
     const maxAbsProfit=ranked.reduce((m,r)=>Math.max(m,Math.abs(r.profit)),0);
-    let html=`<thead><tr>${thSort("Товар","name",anSortState,"metric")}${thSort("Категория","category",anSortState)}${thSort("Класс","abc",anSortState)}${thSort("Продано","qty",anSortState)}${thSort("Выручка, ₽","revenue",anSortState)}${thSort("Прибыль, ₽","profit",anSortState)}${thSort("Доля приб.","share",anSortState)}${thSort("Маржа","margin",anSortState)}${thSort("Возврат (отчёт)","returnRate",anSortState)}</tr></thead><tbody>`;
+    let html=`<thead><tr>${thSort("Товар","name",anSortState,"metric")}${thSort("Категория","category",anSortState)}${thSort("Класс","abc",anSortState)}${thSort("Продано","qty",anSortState)}${thSort("Выручка, ₽","revenue",anSortState)}${thSort("Прибыль, ₽","profit",anSortState)}${thSort("Доля приб.","share",anSortState)}${thSort("Маржа","margin",anSortState)}${thSort('<span title="Только по отчётам WB «О реализации»: в оценке (с 03.08) возвратов нет">Возврат</span>',"returnRate",anSortState)}</tr></thead><tbody>`;
     rows.slice(0,300).forEach(r=>{
       const profTxt=r.hasCost? rub(r.profit) : `<span title="Без вычета себестоимости — она не указана">${rub(r.profit)}*</span>`;
       const barW=maxShare&&r.share>0? (r.share/maxShare*100).toFixed(1) : 0;
@@ -9202,10 +9222,11 @@ function anTitles(mp){
 }
 // подпись под таблицей ABC: сумма колонки «Прибыль» сходится с KPI «Главной» за тот же период
 function anSumTxt(D,mpName,dates){
-  const n=D.svc? D.svc.length : 0;
+  const n=D.svc? D.svc.length : 0, svc=n && Math.round(D.svcProfit)!==0;
+  // без служебных строк «X = X» читалось как опечатка — тогда пишем одну сумму
   return `${mpName} · ${perTxt(dates)} · сумма колонки «Прибыль» <b>${rub(D.tblProfit)}</b>`
-    +(n && Math.round(D.svcProfit)!==0? ` + ${n} ${plural(n,"служебная строка","служебные строки","служебных строк")} без продаж ${rub(D.svcProfit)} (в таблицу не попадают)` : "")
-    +` = <b>${rub(D.profit)}</b> — та же прибыль, что на «Главной» ${mpName} за этот период`;
+    +(svc? ` + ${n} ${plural(n,"служебная строка","служебные строки","служебных строк")} без продаж ${rub(D.svcProfit)} (в таблицу не попадают) = <b>${rub(D.profit)}</b>` : "")
+    +` — та же прибыль, что на «Главной» ${mpName} за этот период`;
 }
 function renderAnLoss(D){
   const L=D.lossers;
@@ -9214,11 +9235,14 @@ function renderAnLoss(D){
     ? `<thead><tr><th class="metric">Товар</th><th>Продано</th><th>Выручка</th><th>Прибыль, ₽</th></tr></thead><tbody>`
       + L.slice(0,15).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td><td>${fmt(r.net)}</td><td>${rub(r.revenue)}</td><td class="neg">${r.hasCost?rub(r.profit):rub(r.profit)+"*"}${r.ad?`<span class="sub2">реклама ${rub(r.ad)}</span>`:""}</td></tr>`).join("")
       + (L.length>15? `<tr><td class="muted" colspan="4">… и ещё ${L.length-15} — весь список в таблице ABC (класс «убыток»)</td></tr>` : "")
+      + (D.lossNoise? `<tr><td class="muted" colspan="4" style="white-space:normal;text-align:left">Не считаем ${D.lossNoise} ${plural(D.lossNoise,"товар","товара","товаров")} без продаж, у которых минус — копеечный перелив рекламы (меньше ${fmt(AD_MIN_SPEND)} ₽)</td></tr>` : "")
       + `</tbody>`
     : `<tbody><tr><td class="empty-hint">Убыточных товаров нет 🎉</td></tr></tbody>`;
 }
 function renderAnAdWaste(D,mpName){
-  const A=D.adWaste;
+  const A=D.adWaste, capEl=document.getElementById("anAdCap");
+  // мелкий расход в список не попал — говорим, сколько таких, чтобы не казалось, что их потеряли
+  if(capEl && D.adSmall) capEl.textContent+=` Расход меньше ${fmt(AD_MIN_SPEND)} ₽ за период не судим — это перелив ставки, а не кампания (${D.adSmall} ${plural(D.adSmall,"товар","товара","товаров")}).`;
   document.getElementById("anAdNote").textContent = !D.hasAds? "нет данных" : (A.length? `${A.length} шт · ${rub(D.wasteExtra)} сверх прибыли` : "нет");
   const pc=v=> v==null? "—" : (v===Infinity? "нет продаж" : pct(v));
   document.getElementById("anAdTable").innerHTML = !D.hasAds
@@ -9341,9 +9365,10 @@ function renderAnalyticsOzon(){
   anShow(true);
   const allDates=[...new Set(rowsAll.map(r=>r.date))].sort();
   const bo=ozBuyoutFor(allDates[allDates.length-1]);
-  fresh.innerHTML=`<span class="dot"></span>Ozon · заказы по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])}`
+  // текст — ОДНИМ span: .freshness — flex с переносом, и голый текст после <b> уезжал отдельной строкой, начинаясь с «:»
+  fresh.innerHTML=`<span class="dot"></span><span style="flex:1 1 0;min-width:0">Ozon · заказы по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])}`
     +` · <b>ОЦЕНКА</b>: выручка = заказано × ${pct(bo)} выкупа, площадка забирает ${ozFixedRate().toFixed(1).replace(".",",")}% тарифа ИУ + реклама`
-    +` · те же цифры, что на «Главной» Ozon`;
+    +` · те же цифры, что на «Главной» Ozon</span>`;
   const catSel=document.getElementById("anCat"); if(!catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("anCat"), q=document.getElementById("anSearch").value.trim().toLowerCase();
   const P=mpPeriodPick("ozon","anPeriodSeg",analyticsPeriodN,anMonth);
@@ -9355,12 +9380,12 @@ function renderAnalyticsOzon(){
   const sep=`border-top:1px solid var(--grid);margin-top:5px;padding-top:6px`;
   const neutral=t=>`<div class="delta" style="background:var(--surface-2);color:var(--text-2)">${t}</div>`;
   const fxTxt=ozFixedRate().toFixed(1).replace(".",",")+"%";
-  const aTip=`<div class="t-hd">ABC-анализ по прибыли — Ozon</div>`+tr("A · ядро",abcCounts[0]+" тов.")+tr("B · середина",abcCounts[1]+" тов.")+tr("C · хвост",abcCounts[2]+" тов.")+tr("Убыточные",abcCounts[3]+" тов.")+`<div class="t-row" style="${sep}"><span class="k">A даёт</span><span class="v">${pct(aProfit/totalPos)} прибыли</span></div>`;
+  const aTip=`<div class="t-hd">ABC-анализ по прибыли — Ozon</div>`+tr("A · ядро",abcCounts[0]+" тов.")+tr("B · середина",abcCounts[1]+" тов.")+tr("C · хвост",abcCounts[2]+" тов.")+tr("Убыточные",lossers.length+" тов.")+(D.lossNoise? tr("Без продаж, минус — копеечный перелив рекламы",D.lossNoise+" тов.") : "")+`<div class="t-row" style="${sep}"><span class="k">A даёт</span><span class="v">${pct(aProfit/totalPos)} прибыли</span></div>`;
   const lossTip=`<div class="t-hd">Убыточные — ${lossers.length} тов.</div>`+tr("Суммарный минус",rub(D.lossSum))
     +`<div class="t-row" style="opacity:.75"><span class="k">Прибыль = выручка − тариф ИУ ${fxTxt} − реклама − себестоимость</span></div>`;
   const adTip=`<div class="t-hd">Реклама не окупается — Ozon</div>`
     +tr("ДРР товара ≥ его безубыточного ДРР",adWaste.length+" тов.")+tr("Ушло сверх прибыли до рекламы",rub(D.wasteExtra))
-    +`<div class="t-row" style="${sep};opacity:.75"><span class="k">Безубыточный ДРР = 1 − ${fxTxt} тарифа − доля себестоимости. Ниже 10% — недобор для соинвеста, выше безубыточного — продажа в минус</span></div>`;
+    +`<div class="t-row" style="${sep};opacity:.75"><span class="k">Безубыточный ДРР = 1 − ${fxTxt} тарифа − доля себестоимости. Ниже 10% — недобор для соинвеста, выше безубыточного — продажа в минус. Расход меньше ${fmt(AD_MIN_SPEND)} ₽ за период не судим</span></div>`;
   const cTip=D.cancelRate!=null
     ? `<div class="t-hd">Отмены — воронка Ozon</div>`+tr("Отменено ÷ заказано",fmt(D.F.cnc)+" из "+fmt(D.F.ord)+" шт")
       +tr("Ещё в пути (не доставлено и не отменено)",pct(D.openRate))+tr("Дни воронки",perTxt(D.funDays))
@@ -9376,7 +9401,7 @@ function renderAnalyticsOzon(){
     {lbl:"Отмены (воронка Ozon)",val:D.cancelRate!=null? pctR(D.cancelRate) : "нет данных",tip:cTip,
       delta:D.cancelRate!=null? neutral(fmt(D.F.cnc)+" из "+fmt(D.F.ord)+" шт · в пути "+pct(D.openRate))
         : `<div class="delta" style="background:var(--surface-2);color:var(--muted)">воронка — с 01.07</div>`},
-  ].map(kpiCard).join("");
+  ].map(k=>kpiCard(k.tip? {...k,tip:tipBox(k.tip)} : k)).join("");
   wireKpiTips("anKpis");
   const note=document.getElementById("anNote");
   note.hidden=false;
@@ -9396,7 +9421,7 @@ function renderAnalyticsOzon(){
   else {
     const maxShare=ranked.reduce((m,r)=>Math.max(m,r.share||0),0);
     const maxAbsProfit=ranked.reduce((m,r)=>Math.max(m,Math.abs(r.profit)),0);
-    let html=`<thead><tr>${thSort("Товар","name",anSortState,"metric")}${thSort("Категория","category",anSortState)}${thSort("Класс","abc",anSortState)}${thSort("Продано (оценка)","qty",anSortState)}${thSort("Выручка, ₽","revenue",anSortState)}${thSort("Прибыль, ₽","profit",anSortState)}${thSort("Доля приб.","share",anSortState)}${thSort("Маржа","margin",anSortState)}${thSort("Отмены (воронка)","returnRate",anSortState)}</tr></thead><tbody>`;
+    let html=`<thead><tr>${thSort("Товар","name",anSortState,"metric")}${thSort("Категория","category",anSortState)}${thSort("Класс","abc",anSortState)}${thSort('<span title="Оценка: заказано × % выкупа">Продано</span>',"qty",anSortState)}${thSort("Выручка, ₽","revenue",anSortState)}${thSort("Прибыль, ₽","profit",anSortState)}${thSort("Доля приб.","share",anSortState)}${thSort("Маржа","margin",anSortState)}${thSort('<span title="Отменено ÷ заказано по воронке Ozon">Отмены</span>',"returnRate",anSortState)}</tr></thead><tbody>`;
     rows.slice(0,300).forEach(r=>{
       const profTxt=r.hasCost? rub(r.profit) : `<span title="Без вычета себестоимости — она не указана">${rub(r.profit)}*</span>`;
       const barW=maxShare&&r.share>0? (r.share/maxShare*100).toFixed(1) : 0;
@@ -9429,8 +9454,8 @@ function renderAnalyticsAll(){
   analyticsPeriodN=P.n;
   const W=(wbOk && P.wDates.length)? anCalcWb(P.wDates,null,"") : null;
   const O=(ozOk && P.oDates.length)? anCalcOz(P.oDates,null,"") : null;
-  fresh.innerHTML=`<span class="dot"></span>Обе площадки рядом · <b>месяц у каждой свой</b>: у Wildberries целыми неделями (неделя — в месяц своего четверга), у Ozon календарный`
-    +(financeEstFrom? ` · ВБ с ${fmtDate(financeEstFrom)} — оценка` : "")+` · Ozon — оценка по тарифу ИУ`;
+  fresh.innerHTML=`<span class="dot"></span><span style="flex:1 1 0;min-width:0">Обе площадки рядом · <b>месяц у каждой свой</b>: у Wildberries целыми неделями (неделя — в месяц своего четверга), у Ozon календарный`
+    +(financeEstFrom? ` · ВБ с ${fmtDate(financeEstFrom)} — оценка` : "")+` · Ozon — оценка по тарифу ИУ</span>`;
   document.getElementById("anKpis").innerHTML="";
   const note=document.getElementById("anNote"); note.hidden=true; note.innerHTML="";
   const v=(x,cls)=>`<span class="v"${cls?` style="color:${cls}"`:""}>${x}</span>`;
@@ -9588,7 +9613,7 @@ function renderFinanceTab(){
     {lbl:"Штрафы и удержания, ₽",val:estOnly? "—" : rub(finesDed),delta:factOnly},
     {lbl:reimbLbl+", ₽",val:rub(now.reimb),delta:fe(nf.reimb,ne.reimb)},
     {lbl:"Доля удержаний WB",val:now.revenue?pct(wbHold/now.revenue):"—",tip:holdTip},
-  ].map(kpiCard).join("");
+  ].map(k=>kpiCard(k.tip? {...k,tip:tipBox(k.tip)} : k)).join("");
   wireKpiTips("finKpis");
 
   // что здесь факт, а что оценка — одной строкой над графиками, а не мелким шрифтом в подсказке
