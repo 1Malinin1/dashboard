@@ -329,6 +329,14 @@
   #stkTable tr.in-grp td.metric{white-space:normal;min-width:230px;max-width:280px;line-height:1.35}
   #stkTable tr.stk-total td.metric .sub.blk{margin-left:0}
   #stkTable th .th-sub{display:block;font-size:10.5px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
+  /* «Движение товара» и «Приходы и отгрузки»: в ячейках длинные пояснения (склады, округа Ozon,
+     список товаров), а table.rnp запрещает перенос — таблицы были 1 590 px при 1 114 доступных, и
+     колонки «На Ozon», «Ждём», «Что двигалось» уезжали за правый край даже на 1920. Переносим. */
+  #stkMove table.rnp td,#stkArr table.rnp td{white-space:normal;line-height:1.4}
+  #stkMove table.rnp td.metric,#stkArr table.rnp td.metric{min-width:200px}
+  #stkArr table.rnp .stk-what{text-align:left;min-width:240px}
+  /* дельта на плитке: на узком экране переносится «с 08.10» целиком, а не по словам */
+  #stkKpis .kpi .delta{flex-wrap:wrap;white-space:nowrap;row-gap:1px}
   .stk-caret{display:inline-block;color:var(--accent);font-size:11px;
     transition:transform .14s ease;transform-origin:50% 50%}
   .stk-caret.open{transform:rotate(90deg)}
@@ -675,8 +683,11 @@
   #tip .t-hd{font-weight:640;margin-bottom:7px;font-size:12px;color:var(--text-2)}
   #tip .t-hd ~ .t-hd{margin-top:9px}
   #tip .t-row{display:flex;align-items:baseline;gap:12px;margin-top:4px;justify-content:space-between}
-  #tip .t-row .k{display:inline-flex;align-items:center;gap:6px;color:var(--text-2);min-width:0}
-  #tip .t-row .k i{width:14px;height:3px;border-radius:2px;display:inline-block;flex:none}
+  /* Подпись — обычный блок, а не inline-flex: у inline-flex базовая линия бралась от пустого
+     свотча <i>, и при align-items:baseline подпись съезжала на ~3px ниже числа во ВСЕХ подсказках
+     графиков. Свотч стоит в строке текста (vertical-align), длинная подпись переносится под него. */
+  #tip .t-row .k{display:block;color:var(--text-2);min-width:0}
+  #tip .t-row .k i{width:14px;height:3px;border-radius:2px;display:inline-block;vertical-align:middle;margin:-2px 6px 0 0}
   #tip .t-row .v{font-weight:680;font-variant-numeric:tabular-nums;white-space:nowrap;flex:none}
   #tip .t-sep{border-top:1px solid var(--grid);margin-top:6px;padding-top:6px}
   #tip .t-p{margin-top:6px;color:var(--text-2);font-size:12px}
@@ -11804,7 +11815,7 @@ function renderStockEvents(codes,W){
     +(nbr? ` · ${nbr} ${plural(nbr,"день","дня","дней")} со сменой состава отчёта — не движение товара` : "");
   const nm={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s&&!nm[s]) nm[s]=c.name||s; });
   box.innerHTML=`<div class="table-scroll"><table class="rnp"><thead><tr><th class="metric">Когда и где</th>`
-    +`<th>Изменение</th><th>Оценка прихода</th><th class="metric" style="text-align:left">Что двигалось</th></tr></thead><tbody>`
+    +`<th>Изменение</th><th>Оценка прихода</th><th class="stk-what">Что двигалось</th></tr></thead><tbody>`
     +ev.slice(0,30).map(e=>{
       const up=e.d>0;
       const arrival=(up&&e.sold>0)? e.d+e.sold : null;
@@ -11816,7 +11827,7 @@ function renderStockEvents(codes,W){
             : (arrival? "<b>≈ "+nf.format(arrival)+"</b> <span class=\"sub\">шт пришло (остаток +"+nf.format(e.d)+", продано "+nf.format(e.sold)+")</span>"
             : (up? "<b>≈ "+nf.format(e.d)+"</b> <span class=\"sub\">шт пришло</span>"
                  : `<span class="sub">${went}${e.sold>0? ", сверх продаж "+nf.format(e.sold):""}</span>`))}</td>`
-        +`<td class="metric" style="text-align:left"><span class="sub">`
+        +`<td class="stk-what"><span class="sub">`
         +e.top.map(([c,v])=>`${esc((nm[c]||c).slice(0,26))} <b>${v>0?"+":"−"}${nf.format(Math.abs(v))}</b>`).join(" · ")
         +`</span></td></tr>`;
     }).join("")+`</tbody></table></div>`;
