@@ -9177,7 +9177,7 @@ function renderAnalyticsTab(){
 
   anTitles("wb");
   // --- ABC-таблица ---
-  document.getElementById("anCount").textContent=D.all.length+" товаров";
+  document.getElementById("anCount").textContent=D.all.length+" "+plural(D.all.length,"товар","товара","товаров");
   document.getElementById("anAbcSum").innerHTML=anSumTxt(D,"Wildberries",P.dates);
   const abcLabel={A:"A",B:"B",C:"C",loss:"убыток"};
   const rows=sortRows(ranked,anSortState,{
@@ -9271,7 +9271,7 @@ function renderReturns(D){
     list=sortRows(list,anRetSortState,{ name:r=>r.name||"", qty:r=>r.fOrd, returnsQty:r=>r.fCnc,
       returnRate:r=>r.cancelRate, open:r=>r.openRate, bo:r=>r.boMeas });
     document.getElementById("anRetNote").textContent = list.length
-      ? `${list.length} товаров · отменено ${fmt(D.F.cnc)} из ${fmt(D.F.ord)} шт` : "нет данных";
+      ? `${list.length} ${plural(list.length,"товар","товара","товаров")} · отменено ${fmt(D.F.cnc)} из ${fmt(D.F.ord)} шт` : "нет данных";
     tbl.innerHTML = list.length
       ? `<thead><tr>${thSort("Товар","name",anRetSortState,"metric")}${thSort("Заказано, шт","qty",anRetSortState)}${thSort("Отменено, шт","returnsQty",anRetSortState)}${thSort("% отмен","returnRate",anRetSortState)}${thSort("Ещё в пути","open",anRetSortState)}${thSort("Выкуп по замеру","bo",anRetSortState)}</tr></thead><tbody>`
         + list.slice(0,300).map(r=>`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)} · ${esc(r.category||"—")}</span></td>`
@@ -9293,7 +9293,7 @@ function renderReturns(D){
   withRet=sortRows(withRet,anRetSortState,{
     name:r=>r.name||"", qty:r=>r.fQty, returnsQty:r=>r.fRet, returnRate:r=>r.fRetRate, lostRub:r=>r.lostRub });
   document.getElementById("anRetNote").textContent = withRet.length
-    ? `${withRet.length} товаров · всего ${fmt(withRet.reduce((a,r)=>a+r.fRet,0))} шт возвратов`
+    ? `${withRet.length} ${plural(withRet.length,"товар","товара","товаров")} · всего ${fmt(withRet.reduce((a,r)=>a+r.fRet,0))} шт возвратов`
     : (sp.fact.length? "возвратов нет" : "нет отчётов WB за период");
   tbl.innerHTML = withRet.length
     ? `<thead><tr>${thSort("Товар","name",anRetSortState,"metric")}${thSort("Продано","qty",anRetSortState)}${thSort("Возвраты","returnsQty",anRetSortState)}${thSort("% возврата","returnRate",anRetSortState)}${thSort("Возвращено ~₽","lostRub",anRetSortState)}</tr></thead><tbody>`
@@ -9411,7 +9411,7 @@ function renderAnalyticsOzon(){
     +`Это оценка: отчёта о реализации у Ozon в снимке нет. Месяц — календарный.`;
 
   anTitles("ozon");
-  document.getElementById("anCount").textContent=D.prod.length+" товаров";
+  document.getElementById("anCount").textContent=D.prod.length+" "+plural(D.prod.length,"товар","товара","товаров");
   document.getElementById("anAbcSum").innerHTML=anSumTxt(D,"Ozon",P.dates);
   const abcLabel={A:"A",B:"B",C:"C",loss:"убыток"};
   const rows=sortRows(ranked,anSortState,{
