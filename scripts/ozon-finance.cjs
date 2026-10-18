@@ -177,7 +177,9 @@ function adFact(d,a,rv){                            // абсолютный ра
   const pi=apIdx(d); if(pi<0) return null;
   const sp=(AP[pi].bySup||{})[a]; if(sp==null) return null;
   const tot=partRev[pi][a]||0;
-  return tot>0? sp*rv/tot : (d===partLast[pi]? sp : 0);
+  // выручки в части нет — расход целиком кладёт блок «товар без продаж» в calc() на partLast;
+  // вернуть sp здесь значило бы посчитать его дважды, если у товара есть пустая запись money (ревью 15.10.2026)
+  return tot>0? sp*rv/tot : 0;
 }
 
 function calc(ds){

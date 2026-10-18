@@ -32,7 +32,14 @@
 //   артикул совпал с заказанным SKU). Расход приписываем ему — он дал выручку.
 // · В отчёте ВЕСЬ кабинет, включая товары другого менеджера (Vulpes и т.п.). Наши — артикул
 //   есть в каталоге ВБ (supplierCode) или Озона; чужие только печатаются суммой.
-// · Повторная заливка того же периода ЗАМЕНЯЕТ его целиком (по дням периода).
+// · ХРАНЕНИЕ ПО ДНЯМ: каждый день — своя запись в periods (from=to) со своей статистикой. Повторная
+//   заливка ЗАМЕНЯЕТ только свои дни, соседние остаются; несколько файлов за один день в ОДНОЙ команде
+//   складываются (дубли строк по «ID заказа + SKU» отсекаются) — так собирается отчёт, порезанный на части.
+// · ЗАЩИТЫ ОТ МОЛЧАЛИВОГО НУЛЯ (ревью 15.10.2026): строка с артикулом, у которой не разобралась дата, —
+//   ОСТАНОВКА, а не пропуск; день периода без ЕДИНОЙ строки (ни наших, ни чужих) не засчитывается —
+//   это неполная выгрузка, а не «списаний не было»; сегодняшний день не засчитывается без --force —
+//   он ещё не закончился. Только отчёт «(все товары)»: отчёт по отдельной кампании оплаты за заказ
+//   уже сидит в XWAY, его сложение дало бы двойной счёт.
 //
 // Команды:
 //   node scripts/ozon-order-fee.cjs <отчёт1.xlsx> [отчёт2.xlsx …]
@@ -47,15 +54,29 @@ const OUT=path.join(__dirname,'..','decrypted');
 const DATA=path.join(OUT,'wb-data.js');
 
 const S=v=>(''+(v==null?'':v)).replace(/ /g,' ').replace(/\s+/g,' ').trim();
-// число может прийти и числом, и текстом «2,923.00 ₽» / «5.00%»
-const num=v=>{ if(typeof v==='number') return v; const t=S(v).replace(/[₽%$\s ]/g,'');
+// число может прийти и числом, и текстом: «2,923.00 ₽» (формат Ozon: запятая — тысячи, точка — дробь),
+// «2 923,00», «5.00%». Есть и точка, и запятая — дробная та, что правее; только запятая — тысячи лишь
+// при правильных группах («38,700», но не «0,125»).
+const num=v=>{ if(typeof v==='number') return v;
+  let t=S(v).replace(/[−–]/g,'-').replace(/[₽%$\s ]/g,'');
   if(!t) return 0;
-  const s = /,\d{3}(\D|$)/.test(t) || /\.\d{1,2}$/.test(t) ? t.replace(/,/g,'') : t.replace(/,/g,'.');
-  const n=parseFloat(s); return isNaN(n)?0:n; };
+  if(t.includes(',') && t.includes('.')) t = t.lastIndexOf(',')>t.lastIndexOf('.')? t.replace(/\./g,'').replace(',','.') : t.replace(/,/g,'');
+  else if(t.includes(',')) t = /^-?[1-9]\d{0,2}(,\d{3})+$/.test(t)? t.replace(/,/g,'') : t.replace(',','.');
+  const n=parseFloat(t); return isNaN(n)?0:n; };
 const F=v=>Math.round(v).toLocaleString('ru-RU');
 const P2=v=>v.toFixed(2).replace('.',',');
 const isIso=s=>/^\d{4}-\d{2}-\d{2}$/.test(s||'');
 const ruToIso=s=>{ const m=S(s).match(/^(\d{2})\.(\d{2})\.(\d{4})$/); return m? m[3]+'-'+m[2]+'-'+m[1] : null; };
+// дата строки: текст «01.10.2026», «1.10.2026 13:45», ISO, число Excel или объект Date
+const p2=n=>String(n).padStart(2,'0');
+function dayOf(v){
+  if(v instanceof Date && !isNaN(v)) return v.getFullYear()+'-'+p2(v.getMonth()+1)+'-'+p2(v.getDate());
+  if(typeof v==='number' && v>20000 && v<80000){ const d=new Date(Date.UTC(1899,11,30)+Math.floor(v)*864e5); return d.toISOString().slice(0,10); }
+  const t=S(v); let m=t.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})(?:\D|$)/);
+  if(m) return m[3]+'-'+p2(m[2])+'-'+p2(m[1]);
+  m=t.match(/^(\d{4})-(\d{2})-(\d{2})(?:\D|$)/); return m? m[1]+'-'+m[2]+'-'+m[3] : null; }
+// сегодня по Москве: день ещё не закончился, списания за него неполные
+const TODAY=new Date(Date.now()+3*3600e3).toISOString().slice(0,10);
 
 const ctx={}; vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(DATA,'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
@@ -69,6 +90,10 @@ if(!cmd){ console.log('Использование: node scripts/ozon-order-fee.c
 
 const OF=O.meta.orderFee || {periods:[], byDate:{}};
 OF.periods=OF.periods||[]; OF.byDate=OF.byDate||{};
+// хранение ПО ДНЯМ: многодневную запись (старый формат) разворачиваем в дни — иначе замена одного
+// дня снесла бы весь период. Статистика у развёрнутых дней — только сумма из byDate.
+OF.periods=[].concat(...OF.periods.map(p=>p.from===p.to? [p] : dayList(p.from,p.to).map(d=>({from:d,to:d,src:p.src,
+  total:+Object.values(OF.byDate[d]||{}).reduce((a,b)=>a+b,0).toFixed(2)}))));
 const ozDates=(O.orderSeries&&O.orderSeries.dates)||[];
 const ozLast=ozDates[ozDates.length-1]||null;
 
@@ -109,10 +134,10 @@ if(cmd==='list'){ printList(); process.exit(0); }
 if(cmd==='drop'){
   const [from,to]=[argv[1],argv[2]];
   if(!isIso(from)||!isIso(to)) throw new Error('drop <с ГГГГ-ММ-ДД> <по ГГГГ-ММ-ДД>');
-  const before=OF.periods.length;
-  OF.periods=OF.periods.filter(p=>p.to<from||p.from>to);
+  const gone=OF.periods.filter(p=>p.from>=from&&p.from<=to).map(p=>p.from);
+  OF.periods=OF.periods.filter(p=>!(p.from>=from&&p.from<=to));
   dayList(from,to).forEach(d=>delete OF.byDate[d]);
-  console.log('Убрано периодов: '+(before-OF.periods.length)+'. Эти дни снова считаются по модельной ставке.');
+  console.log('Убрано дней: '+gone.length+(gone.length? ' ('+gone.join(', ')+')' : '')+'. Эти дни снова считаются по модельной ставке.');
   save(); printList(); process.exit(0);
 }
 
@@ -125,66 +150,81 @@ const ours=new Set();
 Object.keys((O.orderSeries&&O.orderSeries.byArt)||{}).forEach(s=>ours.add(s));
 const ozCat=new Set((O.catalog||[]).map(c=>S(c.sku)));
 
+const FORCE=argv.includes('--force');
 const files=argv.filter(a=>!a.startsWith('--'));
-const loaded=[];
+const days={};            // день → {byArt, stat, alien, any, keys:Set, src:[]}
+const noCard={};
 for(const f of files){
   const wb=XLSX.readFile(f);
   const sh=wb.Sheets['Statistics']||wb.Sheets[wb.SheetNames[0]];
   const a=XLSX.utils.sheet_to_json(sh,{header:1,defval:'',raw:true});
   const top=a.slice(0,5).map(r=>r.map(S).join(' ')).join(' | ');
-  if(!/оплата за заказ/i.test(top))
-    throw new Error(path.basename(f)+': это не отчёт «Оплата за заказ» (в шапке: '+top.slice(0,160)+')');
+  if(!/оплата за заказ/i.test(top) || !/все товары/i.test(top))
+    throw new Error(path.basename(f)+': нужен отчёт «Оплата за заказ (все товары)» — кабинетное продвижение, которого XWAY не видит.'
+      +' Отчёт по отдельной кампании уже сидит в выгрузке XWAY, сложение дало бы двойной счёт. В шапке: '+top.slice(0,160));
   let hi=-1; for(let i=0;i<Math.min(15,a.length);i++){ const r=a[i].map(S);
     if(r.includes('Дата') && r.includes('Артикул') && r.some(x=>/^Расход/.test(x))){ hi=i; break; } }
   if(hi<0) throw new Error(path.basename(f)+': не нашёл шапку (Дата · Артикул · Расход, ₽). Первые строки:\n'
     +a.slice(0,5).map(r=>'  '+r.map(S).join(' · ')).join('\n'));
   const H=a[hi].map(S), I=n=>H.indexOf(n), IR=re=>H.findIndex(x=>re.test(x));
-  const iD=I('Дата'), iA=I('Артикул'), iSp=IR(/^Расход/), iQ=I('Количество'),
+  const iD=I('Дата'), iA=I('Артикул'), iSp=IR(/^Расход/), iQ=I('Количество'), iId=I('ID заказа'),
+        iSku=I('SKU'), iPs=I('SKU продвигаемого товара'),
         iRub=IR(/^Стоимость, /), iRate=IR(/^Ставка, %/), iName=I('Название товара');
   // период — из строки «Период: …», иначе по датам строк
-  const pm=top.match(/Период:\s*(\d{2}\.\d{2}\.\d{4})\s*[-–—]\s*(\d{2}\.\d{2}\.\d{4})/);
-  const rows=a.slice(hi+1).filter(r=>ruToIso(r[iD]));
-  let from=pm? ruToIso(pm[1]) : null, to=pm? ruToIso(pm[2]) : null;
-  if(!from){ const ds=rows.map(r=>ruToIso(r[iD])).sort(); from=ds[0]; to=ds[ds.length-1]; }
+  const pm=top.match(/Период:\s*(\d{1,2}\.\d{1,2}\.\d{4})\s*[-–—]\s*(\d{1,2}\.\d{1,2}\.\d{4})/);
+  const body=a.slice(hi+1).filter(r=>r.some(c=>S(c)!==''));
+  // строка с артикулом без читаемой даты — ОСТАНОВКА: молчаливый ноль опаснее падения
+  const bad=body.filter(r=>S(r[iA])!=='' && !dayOf(r[iD]));
+  if(bad.length) throw new Error(path.basename(f)+': у '+bad.length+' строк с артикулом не разобралась дата'
+    +' (например «'+S(bad[0][iD])+'») — ничего не записано');
+  const rows=body.filter(r=>dayOf(r[iD]));
+  let from=pm? dayOf(pm[1]) : null, to=pm? dayOf(pm[2]) : null;
+  if(!from){ const ds=rows.map(r=>dayOf(r[iD])).sort(); from=ds[0]; to=ds[ds.length-1]; }
   if(!from) throw new Error(path.basename(f)+': нет ни строки «Период», ни строк с датами');
-  const byDate={}, stat={rows:0,qty:0,rub:0,total:0,rates:{}}, alien={rows:0,total:0}, outside=[];
-  const noCard={};
+  const outside=rows.filter(r=>{ const d=dayOf(r[iD]); return d<from||d>to; });
+  if(outside.length) throw new Error(path.basename(f)+': '+outside.length+' строк вне периода '+from+'…'+to
+    +' (например '+dayOf(outside[0][iD])+') — файл повреждён или период указан неверно, ничего не записано');
+  dayList(from,to).forEach(d=>{ const D=days[d]||(days[d]={byArt:{},stat:{rows:0,qty:0,rub:0,total:0,rates:{}},alien:{rows:0,total:0},any:0,keys:new Set(),dup:0,src:[]});
+    D.src.push(path.basename(f)); });
   rows.forEach(r=>{
-    const d=ruToIso(r[iD]), art=S(r[iA]).replace(/\s/g,''), sp=num(r[iSp]);
-    if(d<from||d>to){ outside.push(d); return; }
-    if(!ours.has(art)){ alien.rows++; alien.total+=sp; return; }
-    const day=byDate[d]||(byDate[d]={}); day[art]=(day[art]||0)+sp;
-    stat.rows++; stat.qty+=iQ>=0? num(r[iQ]) : 1; stat.rub+=iRub>=0? num(r[iRub]) : 0; stat.total+=sp;
-    const rt=iRate>=0? String(+num(r[iRate]).toFixed(2)) : '?'; stat.rates[rt]=(stat.rates[rt]||0)+1;
+    const d=dayOf(r[iD]), D=days[d], art=S(r[iA]).replace(/\s/g,''), sp=num(r[iSp]);
+    // одна и та же строка из двух частей отчёта не должна считаться дважды
+    const key=[S(r[iId]),S(r[iSku]),S(r[iPs]),art,sp].join('|');
+    if(D.keys.has(key)){ D.dup++; return; } D.keys.add(key);
+    D.any++;
+    if(!ours.has(art)){ D.alien.rows++; D.alien.total+=sp; return; }
+    D.byArt[art]=(D.byArt[art]||0)+sp;
+    D.stat.rows++; D.stat.qty+=iQ>=0? num(r[iQ]) : 1; D.stat.rub+=iRub>=0? num(r[iRub]) : 0; D.stat.total+=sp;
+    const rt=iRate>=0? String(+num(r[iRate]).toFixed(2)) : '?'; D.stat.rates[rt]=(D.stat.rates[rt]||0)+1;
     if(!ozCat.has(art)) noCard[art]=(iName>=0? S(r[iName]) : '');
   });
-  if(outside.length) throw new Error(path.basename(f)+': '+outside.length+' строк вне периода '+from+'…'+to
-    +' (например '+outside[0]+') — файл повреждён или период указан неверно, ничего не записано');
-  // копейки округляем до 2 знаков уже по сумме дня
-  Object.values(byDate).forEach(day=>Object.keys(day).forEach(k=>day[k]=+day[k].toFixed(2)));
-  loaded.push({f, from, to, byDate, stat, alien, noCard});
 }
-loaded.sort((x,y)=>x.from<y.from?-1:1);
-for(const L of loaded){
-  const repl=OF.periods.filter(p=>!(p.to<L.from||p.from>L.to));
-  OF.periods=OF.periods.filter(p=>p.to<L.from||p.from>L.to);
-  repl.forEach(p=>dayList(p.from,p.to).forEach(d=>delete OF.byDate[d]));
-  dayList(L.from,L.to).forEach(d=>delete OF.byDate[d]);
-  dayList(L.from,L.to).forEach(d=>{ OF.byDate[d]=L.byDate[d]||{}; });   // день без наших строк = покрыт, списаний 0
-  OF.periods.push({from:L.from, to:L.to, src:path.basename(L.f), rows:L.stat.rows, qty:L.stat.qty,
-    rub:Math.round(L.stat.rub), total:+L.stat.total.toFixed(2), rates:L.stat.rates,
-    alienRows:L.alien.rows, alienTotal:Math.round(L.alien.total)});
-  console.log(L.from+(L.to!==L.from? '…'+L.to:'')+'  '+path.basename(L.f)
-    +(repl.length? '  (заменил прежний период '+repl.map(p=>p.from+'…'+p.to).join(', ')+')' : ''));
-  console.log('   наши: строк '+L.stat.rows+' · шт '+L.stat.qty+' · база '+F(L.stat.rub)+' ₽ · списано '+F(L.stat.total)
-    +' ₽ ('+P2(L.stat.rub? L.stat.total/L.stat.rub*100 : 0)+'% базы) · ставки '
-    +Object.entries(L.stat.rates).map(([k,v])=>k+'%×'+v).join(', '));
-  console.log('   чужие (другой менеджер, не берём): строк '+L.alien.rows+' · '+F(L.alien.total)+' ₽');
-  const nc=Object.keys(L.noCard);
-  if(nc.length) console.log('   ВНИМАНИЕ: '+nc.length+' кодов с списанием, но без карточки Озона в снимке: '
-    +nc.slice(0,8).map(k=>k+(L.noCard[k]? ' «'+L.noCard[k].slice(0,30)+'»':'')).join(', ')
-    +' — расход учтётся строкой без названия');
-}
+const skipped=[];
+Object.keys(days).sort().forEach(d=>{
+  const D=days[d];
+  // день без единой строки — неполная выгрузка: НЕ засчитываем, иначе он молча обнулил бы оплату за заказ
+  if(!D.any){ skipped.push(d+' — в файле ни одной строки за этот день (выгрузка неполная?)'); return; }
+  if(d>=TODAY && !FORCE){ skipped.push(d+' — день ещё не закончился, списания неполные (перебить: --force)'); return; }
+  const old=OF.periods.find(p=>p.from===d);
+  OF.periods=OF.periods.filter(p=>p.from!==d);
+  Object.keys(D.byArt).forEach(k=>D.byArt[k]=+D.byArt[k].toFixed(2));
+  OF.byDate[d]=D.byArt;
+  OF.periods.push({from:d, to:d, src:D.src.join(' + '), rows:D.stat.rows, qty:D.stat.qty,
+    rub:Math.round(D.stat.rub), total:+D.stat.total.toFixed(2), rates:D.stat.rates,
+    alienRows:D.alien.rows, alienTotal:Math.round(D.alien.total)});
+  console.log(d+'  '+D.src.join(' + ')+(D.dup? '  (повторных строк отброшено: '+D.dup+')' : ''));
+  if(old) console.log('   ЗАМЕНИЛ прежние данные дня: было '+F(old.total||0)+' ₽'+(old.rows!=null? ' ('+old.rows+' стр.)' : '')
+    +' → стало '+F(D.stat.total)+' ₽ ('+D.stat.rows+' стр.). Если это ВТОРАЯ ЧАСТЬ отчёта — залей обе части одной командой.');
+  console.log('   наши: строк '+D.stat.rows+' · шт '+D.stat.qty+' · база '+F(D.stat.rub)+' ₽ · списано '+F(D.stat.total)
+    +' ₽ ('+P2(D.stat.rub? D.stat.total/D.stat.rub*100 : 0)+'% базы) · ставки '
+    +Object.entries(D.stat.rates).map(([k,v])=>k+'%×'+v).join(', '));
+  console.log('   чужие (другой менеджер, не берём): строк '+D.alien.rows+' · '+F(D.alien.total)+' ₽');
+});
+if(skipped.length){ console.log('\n  НЕ ЗАСЧИТАНО (эти дни остаются как были):'); skipped.forEach(x=>console.log('   · '+x)); }
+const nc=Object.keys(noCard);
+if(nc.length) console.log('   ВНИМАНИЕ: '+nc.length+' кодов с списанием, но без карточки Озона в снимке: '
+  +nc.slice(0,8).map(k=>k+(noCard[k]? ' «'+noCard[k].slice(0,30)+'»':'')).join(', ')
+  +' — расход учтётся строкой без названия');
 save();
 console.log('');
 printList();

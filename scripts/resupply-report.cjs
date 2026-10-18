@@ -271,12 +271,12 @@ let rows=sups.map(sup=>{
     minDays:Math.min(w.spd>0?w.days:Infinity,o.spd>0?o.days:Infinity)};
 });
 
-// ---- ДОБОР НЕПОЛНОЙ МАШИНЫ И УПАКОВКА (та же логика, что в index.html — держи синхронно) ----
-// Неполную машину от TRUCK_TOPUP_MIN паллет добиваем до полной: везти полупустую дороже.
-// Добираем только тем, что на площадке продастся за TOPUP_SELL_DAYS, и внутри лимита кодов:
-// сначала кодами, что УЖЕ в машине, новыми — пока их меньше MAX_CODES_PER_TRUCK.
-// Не добили до полной — не добираем вообще. Свободный остаток — после розничного резерва.
-const TRUCK_TOPUP_MIN=15, TOPUP_SELL_DAYS=90;
+// ---- НЕПОЛНЫХ МАШИН НЕ БЫВАЕТ, УПАКОВКА (та же логика, что в index.html — держи синхронно) ----
+// Правило продавца 09.09.2026, внесено в дашборд 15.10.2026: каждую неполную машину направления
+// добиваем до 33 паллет свободным товаром ТОГО ЖЕ склада (после резерва): по паллете коду, у
+// которого запас на площадке кончится раньше; новый код — только если с ним машину ещё можно
+// добить и кодов ≤ MAX_CODES_PER_TRUCK. Потолка по сроку продажи нет. Добить нечем — машина не
+// едет ЦЕЛИКОМ (паллеты возвращаются на склад, rollO/rollW). Сначала Ozon, внутри — где паллет больше.
 const TRUCK_WH=['Евросиб','Нск-FBS','Мск'];
 const truckPal=(r,wh,mp)=>r[(mp==='ozon'?'o':'w')+({'Евросиб':'N2','Нск-FBS':'N1','Мск':'M'})[wh]]||0;
 const truckItems=(wh,mp)=>rows.map(r=>({sup:r.sup,name:r.name,pal:truckPal(r,wh,mp),
@@ -299,51 +299,70 @@ function packTrucks(items){
   return trucks;
 }
 const plan=[];
+// добор одной неполной машины: Map(строка → паллет) или null — см. truckFill в index.html
+function truckFill(free,d,t){
+  const oz=d.mp==='ozon';
+  const pal=r=> oz? r.palOz : r.palWb, spd=r=> oz? r.oSpd : r.wSpd;
+  const base=r=> oz? (r.oCov+r.shipO) : (r.wCov+r.shipW);
+  const cand=rows.filter(r=>pal(r)>0 && spd(r)>0 && free[r.sup][d.wh]>=pal(r));
+  const fr=new Map(cand.map(r=>[r,free[r.sup][d.wh]])), add=new Map();
+  const inT=new Set(t.items.map(x=>x.sup));
+  let left=PALLETS_PER_TRUCK-t.pallets, slots=MAX_CODES_PER_TRUCK-t.items.length;
+  const capP=r=>Math.floor(fr.get(r)/pal(r));
+  const days=r=>(base(r)+(add.get(r)||0)*pal(r))/spd(r);
+  while(left>0){
+    let inCap=0; const outs=[];
+    cand.forEach(r=>{ const c=capP(r); if(c<=0) return; if(inT.has(r.sup)) inCap+=c; else outs.push(c); });
+    outs.sort((a,b)=>b-a);
+    const topSum=k=>{ let s=0; for(let i=0;i<k&&i<outs.length;i++) s+=outs[i]; return s; };
+    let best=null, bestD=Infinity;
+    for(const r of cand){
+      const c=capP(r); if(c<=0) continue;
+      if(!inT.has(r.sup)){
+        if(slots<=0) continue;
+        const k=slots-1, rest=(k>0 && c>=outs[Math.min(k,outs.length)-1])? topSum(k+1)-c : topSum(k);
+        if(inCap+c+Math.max(0,rest) < left) continue;
+      }
+      const dd=days(r);
+      if(dd<bestD || (dd===bestD && best && r.sup<best.sup)){ best=r; bestD=dd; }
+    }
+    if(!best) return null;
+    if(!inT.has(best.sup)){ inT.add(best.sup); slots--; }
+    fr.set(best,fr.get(best)-pal(best)); add.set(best,(add.get(best)||0)+1); left--;
+  }
+  return add;
+}
 (function topUp(){
-  const free={}, cap={};
-  rows.forEach(r=>{ free[r.sup]={'Евросиб':Math.max(0,r.availNsk2-r.usedNsk2),
-                                 'Нск-FBS':Math.max(0,r.availNsk1-r.usedNsk1),
-                                 'Мск':    Math.max(0,r.whMsk -r.usedMsk)};
-    cap[r.sup]={ozon:Math.max(0,Math.floor(r.oSpd*TOPUP_SELL_DAYS)-(r.oCov+r.shipO)),
-                wb:  Math.max(0,Math.floor(r.wSpd*TOPUP_SELL_DAYS)-(r.wCov+r.shipW))}; });
-  const dk=v=>v===Infinity? 1e9 : (v||0);
-  const dirs=[]; TRUCK_WH.forEach(wh=>['ozon','wb'].forEach(mp=>
-    dirs.push({wh,mp,total:truckItems(wh,mp).reduce((a,x)=>a+x.pal,0)})));
-  dirs.sort((a,b)=>b.total-a.total);
+  const free={}, bySup={};
+  rows.forEach(r=>{ bySup[r.sup]=r; r.rollO=0; r.rollW=0;
+    free[r.sup]={'Евросиб':Math.max(0,r.availNsk2-r.usedNsk2),
+                 'Нск-FBS':Math.max(0,r.availNsk1-r.usedNsk1),
+                 'Мск':    Math.max(0,r.whMsk -r.usedMsk)}; });
+  const WK={'Евросиб':['N2','usedNsk2'],'Нск-FBS':['N1','usedNsk1'],'Мск':['M','usedMsk']};
+  const shift=(r,d,pals,isTop)=>{ const oz=d.mp==='ozon', qty=pals*(oz? r.palOz : r.palWb);
+    free[r.sup][d.wh]-=qty; r[WK[d.wh][1]]+=qty; r[(oz?'o':'w')+WK[d.wh][0]]+=pals;
+    if(oz){ r.shipO+=qty; r.palO+=pals; if(isTop) r.topUpO+=qty; else if(pals<0) r.rollO-=qty; }
+    else  { r.shipW+=qty; r.palW+=pals; if(isTop) r.topUpW+=qty; else if(pals<0) r.rollW-=qty; } };
+  const dirs=[]; TRUCK_WH.forEach((wh,i)=>['ozon','wb'].forEach(mp=>
+    dirs.push({wh,mp,i,total:truckItems(wh,mp).reduce((a,x)=>a+x.pal,0)})));
+  dirs.sort((a,b)=>(a.mp===b.mp? 0 : (a.mp==='ozon'? -1 : 1)) || (b.total-a.total) || (a.i-b.i));
   dirs.forEach(d=>{ if(d.total<=0) return;
-    const trucks=packTrucks(truckItems(d.wh,d.mp));
-    const pal=r=> d.mp==='ozon'? r.palOz : r.palWb;
-    const dayOf=r=> d.mp==='ozon'? r.oDays : r.wDays;
-    const ok=r=>{ const p=pal(r); return p>0 && free[r.sup][d.wh]>=p && cap[r.sup][d.mp]>=p; };
+    const trucks=packTrucks(truckItems(d.wh,d.mp)), kept=[], dropped=[];
     trucks.forEach(t=>{
-      if(t.pallets>=PALLETS_PER_TRUCK || t.pallets<TRUCK_TOPUP_MIN) return;
-      const inT=new Set(t.items.map(x=>x.sup));
-      const fr={},cp={},add=new Map();
-      rows.forEach(r=>{ fr[r.sup]=free[r.sup][d.wh]; cp[r.sup]=cap[r.sup][d.mp]; });
-      let left=PALLETS_PER_TRUCK-t.pallets;
-      const fill=list=>{ let moved=true; while(left>0&&moved){ moved=false;
-        for(const r of list){ if(left<=0) break; const p=pal(r);
-          if(fr[r.sup]<p||cp[r.sup]<p) continue;
-          fr[r.sup]-=p; cp[r.sup]-=p; add.set(r,(add.get(r)||0)+1); left--; moved=true; } } };
-      fill(rows.filter(r=>inT.has(r.sup)&&ok(r)).sort((a,b)=>dk(dayOf(a))-dk(dayOf(b))));
-      const slots=MAX_CODES_PER_TRUCK-t.items.length;
-      if(left>0&&slots>0) fill(rows.filter(r=>!inT.has(r.sup)&&ok(r)).sort((a,b)=>dk(dayOf(a))-dk(dayOf(b))).slice(0,slots));
-      if(left>0) return;
-      add.forEach((pals,r)=>{ const qty=pals*pal(r); const oz=(d.mp==='ozon');
-        free[r.sup][d.wh]-=qty; cap[r.sup][d.mp]-=qty;
-        if(d.wh==='Евросиб'){ r.usedNsk2+=qty; if(oz) r.oN2+=pals; else r.wN2+=pals; }
-        else if(d.wh==='Нск-FBS'){ r.usedNsk1+=qty; if(oz) r.oN1+=pals; else r.wN1+=pals; }
-        else { r.usedMsk+=qty; if(oz) r.oM+=pals; else r.wM+=pals; }
-        if(oz){ r.shipO+=qty; r.palO+=pals; r.topUpO+=qty; }
-        else  { r.shipW+=qty; r.palW+=pals; r.topUpW+=qty; }
-        const ex=t.items.find(x=>x.sup===r.sup); if(ex) ex.pal+=pals; else t.items.push({sup:r.sup,pal:pals});
-        t.pallets+=pals; t.free-=pals; });
+      if(t.pallets>=PALLETS_PER_TRUCK){ kept.push(t); return; }
+      const add=truckFill(free,d,t);
+      if(add){ add.forEach((pals,r)=>{ shift(r,d,pals,true);
+          const ex=t.items.find(x=>x.sup===r.sup); if(ex) ex.pal+=pals; else t.items.push({sup:r.sup,pal:pals});
+          t.pallets+=pals; t.free-=pals; });
+        kept.push(t); }
+      else { t.items.forEach(x=>shift(bySup[x.sup],d,-x.pal,false)); dropped.push(t); }
     });
-    trucks.sort((a,b)=>b.pallets-a.pallets);
-    const tail=trucks.filter(t=>t.pallets<PALLETS_PER_TRUCK);
-    plan.push({whn:d.wh,mp:(d.mp==='ozon'?'Ozon':'ВБ FBO'),total:trucks.reduce((a,t)=>a+t.pallets,0),trucks,
-      full:trucks.length-tail.length,tail:tail.reduce((a,t)=>a+t.pallets,0),
-      codes:new Set(trucks.flatMap(t=>t.items.map(x=>x.sup))).size});
+    kept.sort((a,b)=>b.pallets-a.pallets);
+    const tail=kept.filter(t=>t.pallets<PALLETS_PER_TRUCK);
+    plan.push({whn:d.wh,mp:(d.mp==='ozon'?'Ozon':'ВБ FBO'),total:kept.reduce((a,t)=>a+t.pallets,0),trucks:kept,
+      full:kept.length-tail.length,tail:tail.reduce((a,t)=>a+t.pallets,0),
+      codes:new Set(kept.flatMap(t=>t.items.map(x=>x.sup))).size,
+      dropped, droppedPal:dropped.reduce((a,t)=>a+t.pallets,0)});
   });
   plan.sort((a,b)=>b.total-a.total);
   rows.forEach(r=>{ r.rest=r.have-r.shipO-r.shipW-r.move; });
@@ -415,10 +434,16 @@ console.log('Покрытие ВБ: на складах ВБ и в пути '+F(
 if(plan.length){
   console.log('\nПЛАН МАШИН ('+PALLETS_PER_TRUCK+' паллет, не больше '+MAX_CODES_PER_TRUCK+' кодов, сборка с одного склада на одну площадку):');
   plan.forEach(p=>{ console.log('  '+(p.whn+' → '+p.mp).padEnd(14)+String(p.total).padStart(4)+' палл · '
-    +p.full+' маш'+(p.tail? ' + остаток '+p.tail+' палл':'')+' · '+p.codes+' кодов');
+    +p.full+' маш'+(p.tail? ' + остаток '+p.tail+' палл':'')+' · '+p.codes+' кодов'
+    +(p.droppedPal? ' · НЕ ЕДЕТ '+p.droppedPal+' палл (до '+PALLETS_PER_TRUCK+' добить нечем)':''));
     p.trucks.forEach((t,i)=>console.log('      '+(t.pallets>=PALLETS_PER_TRUCK? 'Машина '+(i+1):'Остаток').padEnd(11)
       +t.pallets+' палл · '+t.items.length+' кодов: '+t.items.slice(0,10).map(x=>x.sup+'×'+x.pal).join(', ')
-      +(t.items.length>10?' …':''))); });
+      +(t.items.length>10?' …':'')));
+    p.dropped.forEach(t=>console.log('      '+'Не едет'.padEnd(11)+t.pallets+' палл · '+t.items.length+' кодов: '
+      +t.items.slice(0,10).map(x=>x.sup+'×'+x.pal).join(', ')+(t.items.length>10?' …':''))); });
+  { const tu=rows.reduce((a,r)=>a+r.topUpO+r.topUpW,0), rl=rows.filter(r=>r.rollO+r.rollW>0);
+    console.log('  добор до полных машин: '+F(tu)+' шт · не едет (машину не собрать): '
+      +F(rl.reduce((a,r)=>a+r.rollO+r.rollW,0))+' шт по '+rl.length+' кодам'); }
 }
 const noPalCnt=needAny.filter(r=>r.noPal).length;
 if(noPalCnt) console.log('\nБез вместимости паллеты (везём штуками): '+noPalCnt+' позиций');

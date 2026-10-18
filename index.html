@@ -2960,7 +2960,7 @@ function turnHowTo(view,oz,mp){
       "Берём сначала с Евросиба (Нск-2), потом с Нск-1 (FBS), потом из Москвы — Нск-1 и Москву бережём под FBS Wildberries. С РВБ Клин на Ozon не возим: он только под ВБ FBO",
       "Рознице на каждый артикул оставляем "+RETAIL_RESERVE+" шт на двух новосибирских складах вместе: сначала на Евросибе, недостающее — на Нск-1. Везём только то, что сверх этого",
       "Паллеты собираем в МАШИНЫ по "+PALLETS_PER_TRUCK+" — машина всегда с ОДНОГО склада, и в ней не больше "+MAX_CODES_PER_TRUCK+" кодов",
-      "Если в неполной машине набралось "+TRUCK_TOPUP_MIN+" паллет и больше — добиваем её до полной товаром, который продастся за "+Math.round(TOPUP_SELL_DAYS/30)+" месяца: сначала кодами, что уже лежат в этой машине, новыми — только пока кодов меньше "+MAX_CODES_PER_TRUCK,
+      "Неполных машин не бывает: каждую неполную машину добиваем до "+PALLETS_PER_TRUCK+" паллет свободным товаром того же склада — по паллете тому коду, у которого запас на площадке кончится раньше, не больше "+MAX_CODES_PER_TRUCK+" кодов в машине. Добить нечем — машина не едет вовсе",
       "Отгрузить = сколько из этого закрывает ваш склад"
     ] : [
       "Поставки на склады Wildberries (FBO) идут со всех ваших складов; продажа — и по FBO, и по FBS с Москвы и Нск-1",
@@ -2983,8 +2983,8 @@ function turnHowTo(view,oz,mp){
     if(O) notes.push("У Озона всё видно самому: создали поставку — она в «в пути», приехала — перешла в остаток.");
     if(O) notes.push("Паллеты округляются ВВЕРХ: если потребность не делится на паллету ровно, везём паллету целиком с запасом. Раньше округляли вниз, и товар не дотягивал до "+RESUPPLY_DAYS+" дней (при паллете 108 шт и потребности 163 шт уезжала одна паллета — покрытие 24 дня вместо 30). Стартовые партии («не менее "+LAUNCH_QTY+"») помечены звёздочкой.");
     if(O) notes.push("В машине не больше "+MAX_CODES_PER_TRUCK+" кодов — склад собирает её руками. Коды кладём от самых горящих; код, не влезший целиком, переходит в следующую машину. Последнее место в машине отдаём коду, которым её можно добить до "+PALLETS_PER_TRUCK+" паллет.",
-      "Если паллет на складе меньше, чем на машину, — машина не собирается, показываем просто паллеты. Если у товара не набирается даже паллета, в строке стоит пометка.",
-      "ДОБОР МАШИНЫ: неполную машину от "+TRUCK_TOPUP_MIN+" паллет добиваем до "+PALLETS_PER_TRUCK+" — везти полупустую дороже, чем довезти то, что скоро понадобится. Добираем только тем, что на Озоне продастся за "+Math.round(TOPUP_SELL_DAYS/30)+" месяца (покрытие товара после добора не выходит за этот срок), сначала паллетами тех кодов, что уже лежат в этой машине, новые коды — только пока в машине их меньше "+MAX_CODES_PER_TRUCK+". Такие штуки помечены «добор машины». Если добить до полной нечем — не добираем вообще.");
+      "Если у товара не набирается даже паллета, в строке стоит пометка.",
+      "НЕПОЛНЫХ МАШИН НЕ БЫВАЕТ (ваше правило): каждую неполную машину добиваем до "+PALLETS_PER_TRUCK+" паллет свободным товаром ТОГО ЖЕ склада (после розничного резерва). Паллеты по одной получает код, у которого запас на этой площадке кончится раньше; новый код берём, только если с ним машину ещё можно добить и кодов не больше "+MAX_CODES_PER_TRUCK+". Потолка «продастся за N месяцев» нет — сколько везти, решает резерв, горизонт задаёт только очерёдность. Такие штуки помечены «добор машины». Если добить до полной нечем — машина не едет ЦЕЛИКОМ, её паллеты остаются на складе (пометка «не едет — машину не собрать»).");
     notes.push(O? ("Статус: «Срочно» — покрытие меньше "+Math.round(RESUPPLY_DAYS/3)+" дней; «Подсорт» — меньше "+RESUPPLY_DAYS+"; «Нет на складе» — отгружать нечего.")
                 : ("Статус: «Срочно» — на Нск-1 меньше "+Math.round(NSK1_MIN_DAYS/2)+" дней продаж; «Подсорт» — меньше "+NSK1_MIN_DAYS+"; «Нет на складе» — переместить нечего, на Евросибе этого товара нет."));
     if(W) notes.push("ЗДЕСЬ И В «ЗАПАСЕ И ТЕМПЕ» СЧИТАЕТСЯ РАЗНОЕ, и так задумано. Решение «поднять или снизить цену» принимается по ВСЕМУ запасу — склады WB, все ваши склады и Ozon вместе. А перемещение между складами смотрит ТОЛЬКО на Нск-1: именно с него уходит FBS на Wildberries, и там должно лежать минимум "+NSK1_MIN_DAYS+" дней продаж. Московский остаток в этот счёт не входит — подвезти его в Новосибирск нельзя.");
@@ -3336,20 +3336,21 @@ function resupplyRows(){
   Object.defineProperty(out,"_truckPlan",{value:plan,enumerable:false});
   return out;
 }
-/* ---- ДОБОР НЕПОЛНОЙ МАШИНЫ ----
-   Правило продавца: если в неполной машине набралось хотя бы TRUCK_TOPUP_MIN паллет,
-   её добиваем до ПОЛНОЙ — гнать полупустую фуру дороже, чем довезти товар, который
-   всё равно скоро понадобится. Ограничение, чтобы добор не превратился в застой на
-   площадке: берём только то, что там точно продастся за TOPUP_SELL_DAYS (3 месяца),
-   то есть добавка не выводит покрытие товара за этот горизонт.
-   С 15.10.2026 ДОБИРАЕМ ВНУТРИ ЛИМИТА КОДОВ (MAX_CODES_PER_TRUCK): сначала паллетами тех
-   кодов, что УЖЕ лежат в этой машине (слот не нужен), новые коды — только пока в машине
-   их меньше шести. Раньше добор раздавал по одной паллете разным кодам («максимально
-   разнообразно») и сам плодил машины на 10–15 кодов — правило 08.10 это запрещает.
-   Если добить до полной не выходит — не добираем вообще: смысл только в полной машине.
-   Свободный остаток для добора — ПОСЛЕ розничного резерва (availNsk1/availNsk2). */
-const TRUCK_TOPUP_MIN=15;     // с какого остатка машину имеет смысл добивать
-const TOPUP_SELL_DAYS=90;     // добираем только тем, что продастся за 3 месяца
+/* ---- НЕПОЛНЫХ МАШИН НЕ БЫВАЕТ (правило продавца 09.09.2026, внесено в дашборд 15.10.2026:
+   «внеси правило»; 08.10: «на одно направление мы отправляем минимум машиной: если где-то идёт
+   30 паллет — добивай до 33») ----
+   КАЖДУЮ неполную машину направления (склад × площадка) добиваем до PALLETS_PER_TRUCK свободным
+   товаром ЭТОГО склада (после розничного резерва и порога Евросиба). Порядок добора — по одной
+   паллете тому коду, у которого запас на ЭТОЙ площадке кончится раньше (меньше дней после добора),
+   внутри лимита MAX_CODES_PER_TRUCK: новый код берётся, только если машину после него ещё можно
+   добить до полной. Потолка «продастся за N месяцев» нет: 08.10 продавец снял его как ограничитель
+   объёма («остальное нам нужно развезти на маркетплейсы») — горизонт решает только ПОРЯДОК.
+   Добиваем только тем, что на этой площадке продаётся (иначе «дней запаса» не посчитать).
+   ДОБИТЬ НЕЧЕМ — МАШИНА НЕ ЕДЕТ ЦЕЛИКОМ, вместе с базовой нуждой («хвост не едет»): паллеты
+   возвращаются на склад и достаются следующим направлениям, в строке — `rollO`/`rollW`.
+   ОТМЕНА прежнего (TRUCK_TOPUP_MIN=15, TOPUP_SELL_DAYS=90, «сначала кодами, что уже в машине»,
+   неполная машина показывалась остатком) — не возвращай. Порядок направлений: сначала все Ozon
+   (приоритет продавца), внутри площадки — где паллет больше. Дубль — scripts/resupply-report.cjs. */
 /* НЕ БОЛЬШЕ 6 КОДОВ В МАШИНЕ, ПАЛЛЕТ ПО-ПРЕЖНЕМУ 33 (правило продавца 08.10.2026): склад
    собирает машину руками, и 10–15 кодов в одной фуре ему неудобны. Держи синхронно
    с scripts/resupply-report.cjs. */
@@ -3387,69 +3388,52 @@ function packTrucks(items){
   }
   return trucks;
 }
-function truckPlanEntry(wh,mp,trucks){
+function truckPlanEntry(wh,mp,trucks,dropped){
   trucks.sort((a,b)=>b.pallets-a.pallets);              // полные — первыми, остатки — в конце
   const tail=trucks.filter(t=>t.pallets<PALLETS_PER_TRUCK);
+  dropped=dropped||[];
   return {wh,mp,total:trucks.reduce((a,t)=>a+t.pallets,0),trucks,
     full:trucks.length-tail.length,tailPallets:tail.reduce((a,t)=>a+t.pallets,0),
-    codes:new Set(trucks.flatMap(t=>t.items.map(x=>x.sup))).size};
+    codes:new Set(trucks.flatMap(t=>t.items.map(x=>x.sup))).size,
+    // машины, которые до полной не добить: не едут, их паллеты вернулись на склад
+    dropped, droppedPallets:dropped.reduce((a,t)=>a+t.pallets,0)};
 }
 function topUpTrucks(rows){
   // ШЕСТЬ НАПРАВЛЕНИЙ: три склада × две площадки. «РВБ Клин» НЕ отгружает — товар с него
   // уже уехал на ВБ и учтён как «в пути» в покрытии, см. SRC_WB/klinBySup.
-  // что осталось свободного на каждом складе и сколько ещё влезает в 3 месяца продаж
-  const free={}, cap={};
-  rows.forEach(r=>{
-    // свободно = что можно брать (после розничного резерва и порога NSK2_MIN_TAKE)
-    // минус ФАКТИЧЕСКИ взятое (паллетами или штуками)
+  // свободно = что можно брать (после розничного резерва и порога NSK2_MIN_TAKE)
+  // минус ФАКТИЧЕСКИ взятое (паллетами или штуками)
+  const free={}, bySup={};
+  rows.forEach(r=>{ bySup[r.sup]=r; r.rollO=0; r.rollW=0;
     free[r.sup]={"Евросиб": Math.max(0,(r.availNsk2||0)-r.usedNsk2),
                  "Нск-FBS": Math.max(0,(r.availNsk1||0)-r.usedNsk1),
-                 "Мск":     Math.max(0,r.whMsk -r.usedMsk)};
-    cap[r.sup]={ozon: Math.max(0, Math.floor(r.oSpd*TOPUP_SELL_DAYS)-(r.oCov+r.shipO)),
-                wb:   Math.max(0, Math.floor(r.wSpd*TOPUP_SELL_DAYS)-(r.wCov+r.shipW))};
-  });
-  const dk=v=>v===Infinity? 1e9 : (v||0);
-  const dirs=[]; TRUCK_WH.forEach(wh=>["ozon","wb"].forEach(mp=>
-    dirs.push({wh,mp,total:truckItems(rows,wh,mp).reduce((a,x)=>a+x.pal,0)})));
-  dirs.sort((a,b)=>b.total-a.total);                    // где паллет больше — первыми
+                 "Мск":     Math.max(0,r.whMsk -r.usedMsk)}; });
+  const WK={"Евросиб":"Nsk2","Нск-FBS":"Nsk1","Мск":"Msk"};
+  // сдвинуть отгрузку кода по направлению на pals паллет (минус — откат машины)
+  const shift=(r,d,pals,isTop)=>{ const oz=d.mp==="ozon", qty=pals*(oz? r.palOz : r.palWb);
+    free[r.sup][d.wh]-=qty; r["used"+WK[d.wh]]+=qty; r[(oz?"o":"w")+WK[d.wh]]+=pals;
+    if(oz){ r.shipO+=qty; r.palShipO+=pals; if(isTop) r.topUpO+=qty; else if(pals<0) r.rollO-=qty; }
+    else  { r.shipW+=qty; r.palShipW+=pals; if(isTop) r.topUpW+=qty; else if(pals<0) r.rollW-=qty; } };
+  const dirs=[]; TRUCK_WH.forEach((wh,i)=>["ozon","wb"].forEach(mp=>
+    dirs.push({wh,mp,i,total:truckItems(rows,wh,mp).reduce((a,x)=>a+x.pal,0)})));
+  dirs.sort((a,b)=>(a.mp===b.mp? 0 : (a.mp==="ozon"? -1 : 1)) || (b.total-a.total) || (a.i-b.i));
   const plan=[];
   dirs.forEach(d=>{
     if(d.total<=0) return;
-    const trucks=packTrucks(truckItems(rows,d.wh,d.mp));
-    const pal=r=> d.mp==="ozon"? r.palOz : r.palWb;
-    const dayOf=r=> d.mp==="ozon"? r.oDays : r.wDays;
-    const ok=r=>{ const p=pal(r); return p>0 && free[r.sup][d.wh]>=p && cap[r.sup][d.mp]>=p; };
+    const trucks=packTrucks(truckItems(rows,d.wh,d.mp)), kept=[], dropped=[];
     trucks.forEach(t=>{
-      if(t.pallets>=PALLETS_PER_TRUCK || t.pallets<TRUCK_TOPUP_MIN) return;  // полная или мало паллет
-      // сухой прогон: добьём ли ровно до полной? если нет — не трогаем вообще
-      const inT=new Set(t.items.map(x=>x.sup));
-      const fr={}, cp={}, add=new Map();
-      rows.forEach(r=>{ fr[r.sup]=free[r.sup][d.wh]; cp[r.sup]=cap[r.sup][d.mp]; });
-      let left=PALLETS_PER_TRUCK-t.pallets;
-      const fill=list=>{ let moved=true;
-        while(left>0 && moved){ moved=false;
-          for(const r of list){ if(left<=0) break; const p=pal(r);
-            if(fr[r.sup]<p || cp[r.sup]<p) continue;
-            fr[r.sup]-=p; cp[r.sup]-=p; add.set(r,(add.get(r)||0)+1); left--; moved=true; } } };
-      fill(rows.filter(r=>inT.has(r.sup)&&ok(r)).sort((a,b)=>dk(dayOf(a))-dk(dayOf(b))));
-      const slots=MAX_CODES_PER_TRUCK-t.items.length;
-      if(left>0 && slots>0)
-        fill(rows.filter(r=>!inT.has(r.sup)&&ok(r)).sort((a,b)=>dk(dayOf(a))-dk(dayOf(b))).slice(0,slots));
-      if(left>0) return;
-      add.forEach((pals,r)=>{ const qty=pals*pal(r);
-        free[r.sup][d.wh]-=qty; cap[r.sup][d.mp]-=qty;
-        const oz=(d.mp==="ozon");
-        if(d.wh==="Евросиб"){ r.usedNsk2+=qty; if(oz) r.oNsk2+=pals; else r.wNsk2+=pals; }
-        else if(d.wh==="Нск-FBS"){ r.usedNsk1+=qty; if(oz) r.oNsk1+=pals; else r.wNsk1+=pals; }
-        else { r.usedMsk+=qty; if(oz) r.oMsk+=pals; else r.wMsk+=pals; }
-        if(oz){ r.shipO+=qty; r.palShipO+=pals; r.topUpO+=qty; }
-        else  { r.shipW+=qty; r.palShipW+=pals; r.topUpW+=qty; }
-        const ex=t.items.find(x=>x.sup===r.sup);
-        if(ex) ex.pal+=pals;
-        else t.items.push({sup:r.sup,name:r.name,cap:pal(r),have:r.have,days:dayOf(r),pal:pals});
-        t.pallets+=pals; t.free-=pals; });
+      if(t.pallets>=PALLETS_PER_TRUCK){ kept.push(t); return; }
+      const add=truckFill(rows,free,d,t);
+      if(add){ add.forEach((pals,r)=>{ shift(r,d,pals,true);
+          const ex=t.items.find(x=>x.sup===r.sup);
+          if(ex) ex.pal+=pals;
+          else t.items.push({sup:r.sup,name:r.name,cap:(d.mp==="ozon"? r.palOz : r.palWb),have:r.have,
+            days:(d.mp==="ozon"? r.oDays : r.wDays),pal:pals});
+          t.pallets+=pals; t.free-=pals; });
+        kept.push(t); }
+      else { t.items.forEach(x=>shift(bySup[x.sup],d,-x.pal,false)); dropped.push(t); }
     });
-    plan.push(truckPlanEntry(d.wh,d.mp,trucks));
+    plan.push(truckPlanEntry(d.wh,d.mp,kept,dropped));
   });
   // пересобираем всё, что зависит от объёма отгрузки
   rows.forEach(r=>{ r.ship=r.shipW+r.shipO;
@@ -3457,6 +3441,45 @@ function topUpTrucks(rows){
     r.daysAfterW = r.wSpd>0? (r.wCov+r.shipW)/r.wSpd : (r.wCov+r.shipW>0? Infinity:0);
     r.daysAfterO = r.oSpd>0? (r.oCov+r.shipO)/r.oSpd : (r.oCov+r.shipO>0? Infinity:0); });
   return plan.sort((a,b)=>b.total-a.total);
+}
+/* Добор ОДНОЙ неполной машины до полной — сухой прогон: возвращает Map(строка → паллет) или
+   null, если до PALLETS_PER_TRUCK не добить. Каждую паллету получает код с наименьшим запасом
+   в днях на этой площадке ПОСЛЕ уже добавленного (покрытие + отгрузка + добор) ÷ продаж/дн;
+   при равенстве — меньший код 1С (детерминизм, тот же порядок в resupply-report.cjs).
+   Новый код занимает слот, только если после него машину ещё можно добить: ёмкость кодов
+   в машине + его + лучших из оставшихся новых на свободные слоты ≥ недостающих паллет. */
+function truckFill(rows,free,d,t){
+  const oz=d.mp==="ozon";
+  const pal=r=> oz? r.palOz : r.palWb, spd=r=> oz? r.oSpd : r.wSpd;
+  const base=r=> oz? (r.oCov+r.shipO) : (r.wCov+r.shipW);
+  const cand=rows.filter(r=>pal(r)>0 && spd(r)>0 && free[r.sup][d.wh]>=pal(r));
+  const fr=new Map(cand.map(r=>[r,free[r.sup][d.wh]])), add=new Map();
+  const inT=new Set(t.items.map(x=>x.sup));
+  let left=PALLETS_PER_TRUCK-t.pallets, slots=MAX_CODES_PER_TRUCK-t.items.length;
+  const capP=r=>Math.floor(fr.get(r)/pal(r));
+  const days=r=>(base(r)+(add.get(r)||0)*pal(r))/spd(r);
+  while(left>0){
+    let inCap=0; const outs=[];
+    cand.forEach(r=>{ const c=capP(r); if(c<=0) return; if(inT.has(r.sup)) inCap+=c; else outs.push(c); });
+    outs.sort((a,b)=>b-a);
+    const topSum=k=>{ let s=0; for(let i=0;i<k&&i<outs.length;i++) s+=outs[i]; return s; };
+    let best=null, bestD=Infinity;
+    for(const r of cand){
+      const c=capP(r); if(c<=0) continue;
+      if(!inT.has(r.sup)){
+        if(slots<=0) continue;
+        // лучшие из ОСТАЛЬНЫХ новых на slots−1 мест: если r среди первых slots−1, берём slots и вычитаем его
+        const k=slots-1, rest = (k>0 && c>=outs[Math.min(k,outs.length)-1])? topSum(k+1)-c : topSum(k);
+        if(inCap+c+Math.max(0,rest) < left) continue;
+      }
+      const dd=days(r);
+      if(dd<bestD || (dd===bestD && best && r.sup<best.sup)){ best=r; bestD=dd; }
+    }
+    if(!best) return null;
+    if(!inT.has(best.sup)){ inT.add(best.sup); slots--; }
+    fr.set(best,fr.get(best)-pal(best)); add.set(best,(add.get(best)||0)+1); left--;
+  }
+  return add;
 }
 // короткое имя склада для ячейки: три склада, см. WHS
 function whShort(n){ const k=whKey(n); return WH_BY_KEY[k]? WH_BY_KEY[k].short
@@ -3526,10 +3549,15 @@ function renderTruckPlan(rows,filtered){
       return `<div class="tp-truck"><b>${full? "Машина "+(i+1) : "Остаток"}</b> — ${t.pallets} палл. · ${t.items.length} кодов`
         +`<span class="tp-items">${t.items.slice(0,14).map(x=>esc(x.sup)+"×"+x.pal).join(", ")}${t.items.length>14? " …":""}</span></div>`;
     }).join("");
+    /* Машина, которую до полной не добить, не едет (неполных машин не бывает) — но молча её
+       не прячем: иначе продавец не узнает, что нужда по этим кодам осталась без отгрузки. */
+    const drop=(p.dropped||[]).map(t=>`<div class="tp-truck"><b style="color:var(--bad-txt)">Не едет</b> — ${t.pallets} палл. · ${t.items.length} кодов`
+      +`<span class="tp-items">до ${PALLETS_PER_TRUCK} паллет добить нечем: ${t.items.slice(0,14).map(x=>esc(x.sup)+"×"+x.pal).join(", ")}${t.items.length>14? " …":""}</span></div>`).join("");
     return `<div class="tp-card"><div class="tp-head">${esc(p.wh)} → ${nameMp(p.mp)}</div>`
-      +`<div class="tp-sum"><b>${p.total}</b> паллет · <b>${p.full}</b> ${p.full===1?"машина":"машин"} по ${PALLETS_PER_TRUCK}`
+      +`<div class="tp-sum">${p.full? `<b>${p.total}</b> паллет · <b>${p.full}</b> ${p.full===1?"машина":"машин"} по ${PALLETS_PER_TRUCK}` : "машин нет"}`
       +(p.tailPallets? ` · остаток <b>${p.tailPallets}</b> палл. (на машину не хватает)` : "")
-      +` · ${p.codes} кодов</div>${list}</div>`;
+      +(p.droppedPallets? ` · <b style="color:var(--bad-txt)">не едет ${p.droppedPallets}</b> палл. — машину не собрать` : "")
+      +(p.full? ` · ${p.codes} кодов` : "")+`</div>${list}${drop}</div>`;
   }).join("");
   el.innerHTML=`<div class="tp-title">${plan.length? "План машин · "+PALLETS_PER_TRUCK+" паллет в машине, сборка с одного склада" : "Перемещение между складами"}`
     +(filtered? `<span class="tp-note"> · план по всему подсорту — фильтры таблицы на него не влияют</span>`:"")
@@ -3615,11 +3643,20 @@ function renderTurnResupply(){
       +tr2("На складе сейчас",fmt(whAll)+" шт")+tr2("− на "+mpTxt,"−"+fmt(shipMp)+" шт")
       +tr2("= останется",fmt(restMp)+" шт")
       +tr2("Перемещение Евросиб → Нск-1",fmt(shipW)+" шт (склада не покидает)");
+  /* Неполных машин не бывает: в подсказке — сколько добрано до полных машин и сколько НЕ ЕДЕТ,
+     потому что машину с этого склада до полной не добить (иначе «нужда есть, отгрузки нет»
+     читалась бы как ошибка расчёта). */
+  const topUpMp=rows.reduce((a,r)=>a+(showW&&WB_FBO_SUPPLY? (r.topUpW||0):0)+(showO? (r.topUpO||0):0),0);
+  const rollRows=rows.filter(r=>(showW&&WB_FBO_SUPPLY? (r.rollW||0):0)+(showO? (r.rollO||0):0)>0);
+  const rollMp=rollRows.reduce((a,r)=>a+(showW&&WB_FBO_SUPPLY? (r.rollW||0):0)+(showO? (r.rollO||0):0),0);
+  const shipTip=`<div class="t-hd">Машины только полные (${PALLETS_PER_TRUCK} паллет)</div>`
+    +tr2("К отгрузке",fmt(shipMp)+" шт")+tr2("в т.ч. добор до полной машины",fmt(topUpMp)+" шт")
+    +tr2("Не едет — машину не собрать",rollMp? fmt(rollMp)+" шт · "+rollRows.length+" "+plural(rollRows.length,"код","кода","кодов") : "нет");
   document.getElementById("turnKpis").innerHTML=[
     {lbl: mp==="wb"&&!WB_FBO_SUPPLY? "Позиций требуют перемещения" : "Позиций требуют подсорта",
      val:rows.filter(r=>need(r)>0).length+" из "+rows.length,
      valColor:toShip.length?"var(--accent)":"var(--text-1)"},
-    {lbl: mp==="wb"&&!WB_FBO_SUPPLY? "Переместить на Нск-1, шт" : "К отгрузке со склада, шт",val:fmt(shipMp)},
+    {lbl: mp==="wb"&&!WB_FBO_SUPPLY? "Переместить на Нск-1, шт" : "К отгрузке со склада, шт",val:fmt(shipMp),tip:shipTip},
     {lbl:"Нечем закрыть (нет на складе)",val:noStock.length,valColor:noStock.length?"var(--crit-txt)":"var(--text-1)"},
     {lbl: mp==="all"? "Останется на складе, шт" : "Останется после отгрузки на "+mpTxt+", шт",
      val:fmt(mp==="all"? restAll : restMp), tip:restTip},
@@ -3660,7 +3697,9 @@ function renderTurnResupply(){
       +`<td>${r.needW? fmt(r.needW)+" шт" : "—"}</td>`
       +`<td style="font-weight:700;${r.shipW?"color:var(--accent)":""}">${r.shipW? fmt(r.shipW)+" шт"
         +`<span class="sub2 mut">${r.palShipW? r.palShipW+" палл."+(both?"":resupPalSrc(r.wNsk2,r.wNsk1,r.wMsk)) : "без паллет"}${both?"":(r.wSpd>0? " · станет "+dTxt(r.daysAfterW)+" дн" : " · старт")}</span>`
-        +(r.topUpW&&!both? `<span class="sub2 acc" title="Машина добиралась до полной: эти паллеты сверх потребности на ${RESUPPLY_DAYS} дней, но товар продастся за ${Math.round(TOPUP_SELL_DAYS/30)} мес.">＋${fmt(r.topUpW)} добор машины</span>`:"") : "—"}</td>`;
+        +(r.topUpW&&!both? `<span class="sub2 acc" title="Неполных машин не бывает: машину добили до ${PALLETS_PER_TRUCK} паллет. Эти штуки сверх потребности на ${RESUPPLY_DAYS} дней — добор идёт тем, у кого запас на площадке кончится раньше.">＋${fmt(r.topUpW)} добор машины</span>`:"")
+        +(r.rollW? `<span class="sub2 crit" title="Неполных машин не бывает: машину с этого склада до ${PALLETS_PER_TRUCK} паллет добить нечем, поэтому она не едет целиком.">не едет ${fmt(r.rollW)} шт — машину не собрать</span>`:"")
+        : (r.rollW? `<span class="sub2 crit" title="Неполных машин не бывает: машину с этого склада до ${PALLETS_PER_TRUCK} паллет добить нечем, поэтому она не едет целиком.">не едет ${fmt(r.rollW)} шт — машину не собрать</span>` : "—")}</td>`;
     else if(showW) html+=`<td title="Покрытие ВБ = остаток на складах WB (FBO) + то, что уже едет или назначено к отправке на ВБ (журнал отгрузок и склад РВБ Клин) + свободный FBS-запас (Москва и незанятый Озоном Нск-1).">${r.wSpd>0? dTxt(r.wDaysAll) : "—"}<span class="sub2 mut">FBO ${fmt(r.wStock)}${r.wTransit?` + <b class="acc">${fmt(r.wTransit)}</b> едет на ВБ`:""}${r.wbFbsFree?` + FBS <b class="acc">${fmt(r.wbFbsFree)}</b>`:""} · ${r.wSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
       +`<td title="На сколько дней продаж ВБ хватит остатка на складе Нск-1 — именно с него уходит FBS покупателю. Показан остаток за вычетом того, что с Нск-1 забрал Ozon.">${r.wSpd>0? dTxt(r.nsk1Days) : "—"}<span class="sub2 mut">${fmt(r.nsk1Free)} на Нск-1</span></td>`
       +`<td style="font-weight:700;${r.move?"color:var(--accent)":""}" title="Везём с Евросиба, когда на Нск-1 осталось меньше ${NSK1_MIN_DAYS} дней продаж ВБ по FBS; довозим ровно до этого минимума.">${r.move? fmt(r.move)+" шт"
@@ -3670,7 +3709,9 @@ function renderTurnResupply(){
       +`<td>${r.needO? fmt(r.needO)+" шт" : "—"}</td>`
       +`<td style="font-weight:700;${r.shipO?"color:var(--accent)":""}">${r.shipO? fmt(r.shipO)+" шт"
         +`<span class="sub2 mut">${r.palShipO? r.palShipO+" палл."+(both?"":resupPalSrc(r.oNsk2,r.oNsk1,r.oMsk)) : "без паллет"}${both?"":(r.oSpd>0? " · станет "+dTxt(r.daysAfterO)+" дн" : " · старт")}</span>`
-        +(r.topUpO&&!both? `<span class="sub2 acc" title="Машина добиралась до полной: эти паллеты сверх потребности на ${RESUPPLY_DAYS} дней, но товар продастся за ${Math.round(TOPUP_SELL_DAYS/30)} мес.">＋${fmt(r.topUpO)} добор машины</span>`:"") : "—"}</td>`;
+        +(r.topUpO&&!both? `<span class="sub2 acc" title="Неполных машин не бывает: машину добили до ${PALLETS_PER_TRUCK} паллет. Эти штуки сверх потребности на ${RESUPPLY_DAYS} дней — добор идёт тем, у кого запас на площадке кончится раньше.">＋${fmt(r.topUpO)} добор машины</span>`:"")
+        +(r.rollO? `<span class="sub2 crit" title="Неполных машин не бывает: машину с этого склада до ${PALLETS_PER_TRUCK} паллет добить нечем, поэтому она не едет целиком.">не едет ${fmt(r.rollO)} шт — машину не собрать</span>`:"")
+        : (r.rollO? `<span class="sub2 crit" title="Неполных машин не бывает: машину с этого склада до ${PALLETS_PER_TRUCK} паллет добить нечем, поэтому она не едет целиком.">не едет ${fmt(r.rollO)} шт — машину не собрать</span>` : "—")}</td>`;
     html+=`<td>${fmt(r.rest)}</td>`
       +`<td>${(r.china||r.onOrder)? `${r.china?`<span class="sub2 acc" style="display:block" title="Едет из Китая — примерно через месяц у вас на складе">+${fmt(r.china)} ~1 мес</span>`:""}${r.onOrder?`<span class="sub2 mut" style="display:block" title="Заказано производству: ~3 месяца до вашего склада, ~4 месяца до площадки">+${fmt(r.onOrder)} ~3 мес</span>`:""}` : "—"}</td>`
       +`<td>${resupBadge(st)}</td></tr>`;
@@ -4499,6 +4540,7 @@ function exportResupplyXLSX(){
   if(W && WB_FBO_SUPPLY) cols.push(
     {h:"ОТГРУЗИТЬ НА ВБ FBO, шт", v:r=>r.shipW||"", w:23, tot:"shipW"},
     {h:"в т.ч. добор машины (ВБ)", v:r=>r.topUpW||"", w:24},
+    {h:"НЕ ЕДЕТ на ВБ: машину не собрать, шт", v:r=>r.rollW||"", w:30},
     {h:"Паллет ВБ",        v:r=>r.palShipW||"", w:11},
     {h:"из них Евросиб (ВБ)", v:r=>r.wNsk2||"", w:19},
     {h:"из них Нск-1 (ВБ)",   v:r=>r.wNsk1||"", w:17},
@@ -4509,6 +4551,7 @@ function exportResupplyXLSX(){
   if(O) cols.push(
     {h:"ОТГРУЗИТЬ НА OZON, шт", v:r=>r.shipO||"", w:22, tot:"shipO"},
     {h:"в т.ч. добор машины", v:r=>r.topUpO||"", w:21},
+    {h:"НЕ ЕДЕТ на Ozon: машину не собрать, шт", v:r=>r.rollO||"", w:32},
     {h:"Паллет Ozon",      v:r=>r.palShipO||"", w:13},
     {h:"из них Евросиб",   v:r=>r.oNsk2||"", w:15},
     {h:"из них Нск-1",     v:r=>r.oNsk1||"", w:13},
@@ -4536,8 +4579,8 @@ function exportResupplyXLSX(){
     ...(O? [["Остатки Ozon на дату", (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.stockDate)? fmtDateLong(RD.ozon.meta.stockDate):"—"]]:[]),
     ["Заказы по дату", RLAST? fmtDateLong(RLAST):"—"],
     ["Цель покрытия", RESUPPLY_DAYS+" дней продаж на каждой площадке"],
-    ["Добор машины", "неполную машину от "+TRUCK_TOPUP_MIN+" паллет добиваем до "+PALLETS_PER_TRUCK
-      +"; добираем только тем, что продастся за "+Math.round(TOPUP_SELL_DAYS/30)+" месяца: сначала кодами, что уже в машине, новыми — пока кодов меньше "+MAX_CODES_PER_TRUCK],
+    ["Добор машины", "неполных машин не бывает: каждую добиваем до "+PALLETS_PER_TRUCK+" паллет свободным товаром того же склада — тем, у кого запас на площадке кончится раньше, не больше "+MAX_CODES_PER_TRUCK
+      +" кодов в машине; потолка по сроку продажи нет. Добить нечем — машина не едет целиком (колонка «не едет»)"],
     ["Кодов в машине", "не больше "+MAX_CODES_PER_TRUCK+" (паллет по-прежнему "+PALLETS_PER_TRUCK+")"],
     ["Розничный резерв", RETAIL_RESERVE+" шт на артикул остаётся на Евросибе и Нск-1 вместе (сначала на Евросибе, недостающее — на Нск-1); на площадки уходит только то, что сверх"],
     ["Товары «На вывод»", "исключены из подсорта — выводим из ассортимента"],
@@ -4581,6 +4624,12 @@ function exportResupplyXLSX(){
     });
     tData.push(["",B(p.wh+" → "+mpN),B("ВСЕГО по направлению"),"",
       B(p.trucks.filter(t=>t.pallets>=PALLETS_PER_TRUCK).length+" полных машин"),"",B(dirQty),B(dirPal)]);
+    // неполных машин не бывает: то, что до полной не добить, не едет — но в файле видно, что осталось
+    (p.dropped||[]).forEach(t=>{ let qty=0;
+      t.items.forEach((it,j)=>{ const q=it.pal*(it.cap||0); qty+=q;
+        tData.push([j===0?p.wh:"", j===0?mpN:"", j===0?"НЕ ЕДЕТ — до "+PALLETS_PER_TRUCK+" паллет добить нечем":"",
+          it.sup, it.name||"", it.have||"", q||"", it.pal]); });
+      tData.push(["","",B("Не едет — итого"),"",B(t.items.length+" кодов"),"",B(qty),B(t.pallets)]); });
     tData.push(["","","","","","","",""]);
   });
   if(tData.length===1) tData.push(["—","—","паллет не набралось","","","","",""]);
@@ -6156,9 +6205,24 @@ function ozOrderFee(){ const F=RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.orderFee;
   return (F&&Array.isArray(F.periods)&&F.periods.length)? F : null; }
 function ozOrderFeeOn(d){ const F=ozOrderFee(); return !!(F && F.periods.some(p=>p.from<=d&&d<=p.to)); }
 function ozOrderFeeDay(d){ const F=ozOrderFee(); return (F&&F.byDate&&F.byDate[d])||{}; }
-function ozOrderFeeSpan(){ const F=ozOrderFee(); if(!F) return null;
-  const P=F.periods.slice().sort((a,b)=>a.from<b.from?-1:1);
-  return {from:P[0].from, to:P[P.length-1].to, n:P.length, total:P.reduce((a,p)=>a+(p.total||0),0)}; }
+/* Покрытие отчётом — ДО ПОСЛЕДНЕГО ДНЯ ЗАКАЗОВ (upTo): день отчёта позже ряда заказов в прибыль
+   ещё не попал (порядок заливки: заказы → XWAY → «Оплата за заказ»), и подпись «факт по 15.10»
+   при заказах по 14.10 обещала бы деньги, которых в прибыли нет. Сумма — по byDate тех же дней. */
+function ozOrderFeeSpan(upTo){ const F=ozOrderFee(); if(!F) return null;
+  const P=F.periods.filter(p=>!upTo || p.from<=upTo).slice().sort((a,b)=>a.from<b.from?-1:1);
+  if(!P.length) return null;
+  const to=upTo && P[P.length-1].to>upTo? upTo : P[P.length-1].to;
+  let total=0; Object.entries(F.byDate||{}).forEach(([d,m])=>{ if(d<P[0].from||d>to) return;
+    if(!P.some(p=>p.from<=d&&d<=p.to)) return;
+    Object.values(m||{}).forEach(v=>{ total+=(+v||0); }); });
+  return {from:P[0].from, to, n:P.length, total}; }
+/* Какие МОДЕЛЬНЫЕ ставки реально применены в окне — только по дням БЕЗ отчёта «Оплата за заказ».
+   Одна цифра (ставка последнего дня) врала бы: в окне 23.09–14.10 сентябрь идёт по 4,23%,
+   01–13.10 по 6,26%, а с отчётом ставки нет вовсе. */
+function ozModelRatesTxt(from,to){
+  const D=((RD&&RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[]).filter(d=>d>=from&&d<=to&&!ozOrderFeeOn(d));
+  const seen=[]; D.forEach(d=>{ const v=Math.round(ozAdRateFor(d)*100)/100; if(!seen.includes(v)) seen.push(v); });
+  return seen.length? seen.map(v=>v.toFixed(2).replace(".",",")+"%").join(" / ") : ""; }
 // подпись для строки свежести: у скольких товаров реклама идёт по факту, а не по ставке
 function ozAdFactNote(){
   const P=ozAdSpendParts();
@@ -6171,7 +6235,8 @@ function ozAdFactNote(){
     +` (${fmtDateLong(P[0].from)} – ${fmtDateLong(P[P.length-1].to)}, ${fmt(sum)} ₽)`;
   /* Кабинетная оплата за заказ: в дни с отчётом Ozon — факт по каждому товару, без него — ставка.
      Промолчать нельзя: иначе «ставка» в подписи читалась бы как модель там, где уже факт. */
-  const FS=ozOrderFeeSpan();
+  const OD=(RD&&RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[];
+  const FS=ozOrderFeeSpan(OD[OD.length-1]);
   if(FS) out+=` · оплата за заказ (её XWAY не видит) — <b>факт отчёта Ozon</b> за ${fmtDateLong(FS.from)}`
     +`${FS.from!==FS.to? " – "+fmtDateLong(FS.to):""} (${fmt(Math.round(FS.total))} ₽), в остальные дни — ставка`;
   else if(skus.size) out+=`, у остальных — ставка`;
@@ -6290,15 +6355,17 @@ function ozFinRows(){
       made.add(a);
       rows.push({date:d, sku:a, sup:a, name:e.name||a, category:e.cat||"", wbCategory:e.wbCat||"",
         ordRub, ordQty, revenue:rev, qty, cogs, hasCost:cp!=null, mpFee, ad:ads,
-        fee:fo? (fd[a]||0) : null, feeFact:fo, profit:rev-mpFee-cogs});
+        /* состав рекламы строки: adX — выгрузка XWAY, fee — факт отчёта «Оплата за заказ»,
+           adBase — модельная ставка. Инвариант: ad = adX + fee + adBase на каждой строке. */
+        fee:fo? (fd[a]||0) : 0, feeFact:fo, adX:0, adBase:fo? 0 : ads, profit:rev-mpFee-cogs});
     });
     /* Списание есть, а строки товара в этот день нет (заказы легли другим днём) — заводим
        строку с нулевой выручкой, иначе деньги молча выпали бы из прибыли. */
     if(fo) Object.entries(fd).forEach(([a,fee])=>{ if(made.has(a)||!fee) return;
       const e=meta[a]||{};
       rows.push({date:d, sku:a, sup:a, name:e.name||a, category:e.cat||"", wbCategory:e.wbCat||"",
-        ordRub:0, ordQty:0, revenue:0, qty:0, cogs:0, hasCost:false, mpFee:fee, ad:fee,
-        fee, feeFact:true, profit:-fee}); });
+        ordRub:0, ordQty:0, revenue:0, qty:0, cogs:0, hasCost:ozCostAt(a,d)!=null, mpFee:fee, ad:fee,
+        fee, feeFact:true, adX:0, adBase:0, profit:-fee}); });
   });
   ozApplyAdFact(rows,dates,meta);
   return (_ozFinCache=rows);
@@ -6333,18 +6400,29 @@ function ozApplyAdFact(rows,dates,meta){
       if(!arr||!arr.length){                             // расход есть, продаж нет — строка-остаток
         const e=meta[sku]||{};
         rows.push({date:last, sku, sup:sku, name:e.name||sku, category:e.cat||"", wbCategory:e.wbCat||"",
-          ordRub:0, ordQty:0, revenue:0, qty:0, cogs:0, hasCost:false,
-          mpFee:spend, ad:spend, adFact:true, profit:-spend});
+          ordRub:0, ordQty:0, revenue:0, qty:0, cogs:0, hasCost:ozCostAt(sku,last)!=null,
+          mpFee:spend, ad:spend, adFact:true, adX:spend, adBase:0, fee:0, feeFact:ozOrderFeeOn(last), profit:-spend});
         return; }
       const tot=arr.reduce((a,r)=>a+r.revenue,0);
       const addBase = ozz[sku]==null;                  // оплата за заказ выключена → базовые 5% сверху
-      arr.forEach((r,i)=>{
-        const share = tot>0? r.revenue/tot : (i===arr.length-1? 1 : 0);
+      /* Выручки в части нет — весь расход ложится на ПОСЛЕДНИЙ день части (как partLast в
+         ozon-finance.cjs): на строку этого дня, а нет её — на новую строку-остаток. Раньше брали
+         последнюю строку массива, а с нулевыми строками «только списание за заказ» это мог быть
+         другой день — браузер и скрипт расходились по неделям (ревью 15.10.2026). */
+      let host=null;
+      if(tot<=0){ host=arr.find(r=>r.date===last)||null;
+        if(!host){ const e=meta[sku]||{};
+          host={date:last, sku, sup:sku, name:e.name||sku, category:e.cat||"", wbCategory:e.wbCat||"",
+            ordRub:0, ordQty:0, revenue:0, qty:0, cogs:0, hasCost:ozCostAt(sku,last)!=null, mpFee:0, ad:0,
+            adX:0, adBase:0, fee:0, feeFact:false, profit:0};
+          rows.push(host); arr.push(host); } }
+      arr.forEach(r=>{
+        const share = tot>0? r.revenue/tot : (r===host? 1 : 0);
         /* в дни с отчётом «Оплата за заказ» сверху идёт ФАКТ списания (r.fee), ozzOn не нужен;
            без отчёта — модельная ставка, как раньше */
         const base = r.feeFact? (r.fee||0) : (addBase? r.revenue*ozAdRateFor(r.date)/100 : 0);
         const ad=spend*share + base;
-        r.ad=ad; r.adFact=true;
+        r.ad=ad; r.adFact=true; r.adX=spend*share; r.adBase=r.feeFact? 0 : base;
         r.mpFee=r.revenue*fixed/100+ad;
         r.profit=r.revenue-r.mpFee-r.cogs;
       });
@@ -7616,13 +7694,14 @@ function renderAdsOzon(){
   }
   const rows=ozAdRows(), L=ozAdLevels(rows);
   const q=(document.getElementById("adSearch").value||"").trim().toLowerCase();
-  const rateTxt=ozAdRateFor(W.to).toFixed(2).replace(".",",");
-  const FS=ozOrderFeeSpan();
+  // ставки — ТОЛЬКО те, что реально применены в окне по дням без отчёта (их бывает несколько)
+  const rateTxt=ozModelRatesTxt(W.from,W.to) || ozAdRateFor(W.to).toFixed(2).replace(".",",")+"%";
+  const FS=ozOrderFeeSpan(W.to);
   const FSper=FS? fmtDateLong(FS.from)+(FS.from!==FS.to? " – "+fmtDateLong(FS.to):"") : "";
   fresh.innerHTML=`<span class="dot"></span>Ozon · ${fmtDateLong(W.from)}${W.from!==W.to? " – "+fmtDateLong(W.to):""}`
     +` · расход = <b>выгрузка XWAY</b> по ${L.all.ads} ${plural(L.all.ads,"товару","товарам","товарам")}`
     +(FS? ` + <b>оплата за заказ по отчёту Ozon</b> (${FSper}, кабинетное продвижение — его XWAY не видит)` : "")
-    +(L.all.spR>0? ` + <b>ставка ${rateTxt}%</b> из юнит-экономики${FS? " в дни без отчёта Ozon" : " по остальным (другой канал продвижения, он есть у всех)"}` : "")
+    +(L.all.spR>0? ` + <b>ставка ${rateTxt}</b> из юнит-экономики${FS? " в дни без отчёта Ozon" : " по остальным (другой канал продвижения, он есть у всех)"}` : "")
     +` · склейки взяты с Wildberries по коду 1С (товар физически один)`;
   const drrOrd = L.all.ord>0? L.all.sp/L.all.ord*100 : 0;
   kp.innerHTML=[
@@ -7630,7 +7709,7 @@ function renderAdsOzon(){
      tip:`<div class="t-hd">Из чего сложен расход</div>`
        +tr2("Выгрузка XWAY ("+L.all.ads+" тов.)",fmt(Math.round(L.all.spF))+" ₽")
        +(FS? tr2("Оплата за заказ, отчёт Ozon",fmt(Math.round(L.all.spO))+" ₽") : "")
-       +(L.all.spR>0||!FS? tr2("Ставка "+rateTxt+"%"+(FS? " (дни без отчёта)" : " (остальные)"),fmt(Math.round(L.all.spR))+" ₽") : "")
+       +(L.all.spR>0||!FS? tr2("Ставка "+rateTxt+(FS? " (дни без отчёта)" : " (остальные)"),fmt(Math.round(L.all.spR))+" ₽") : "")
        +tr2("Карточек в кабинете",L.all.n)
        +tr2("Период",fmtDateLong(W.from)+(W.from!==W.to? " – "+fmtDateLong(W.to):""))},
     {lbl:"Выручка в выкупе, ₽", val:fmt(Math.round(L.all.rev)),
@@ -7645,7 +7724,7 @@ function renderAdsOzon(){
     {lbl:"Склеек с кампанией XWAY", val:String(L.tags.filter(t=>t.spF>0).length)+" из "+L.tags.length,
      tip:`<div class="t-hd">Склейки</div>`+tr2("Всего склеек",L.tags.length)
        +tr2("С отдельной кампанией",L.tags.filter(t=>t.spF>0).length)
-       +tr2("У остальных","реклама по ставке из юнитки")
+       +tr2("У остальных",FS? "оплата за заказ по отчёту Ozon"+(L.all.spR>0? ", без отчёта — ставка" : "") : "реклама по ставке из юнитки")
        +tr2("Источник склеек","Wildberries, по коду 1С")}
   ].map(kpiCard).join("");
   wireKpiTips("adKpis");
@@ -7690,8 +7769,8 @@ function renderAdsOzon(){
     +`которые вы запускали сами). Вторая — кабинетное продвижение «оплата за заказ», которое Ozon списывает `
     +`со всех товаров и которого XWAY не видит: `
     +(FS? `за ${FSper} — <b>ФАКТ из отчёта Ozon</b> «Оплата за заказ (все товары)» по каждому товару и дню`
-       +(L.all.spR>0? `, в дни без этого отчёта — ставка <b>${rateTxt}%</b> из юнит-экономики` : "")
-       : `ставка <b>${rateTxt}%</b> из юнит-экономики (отчёта Ozon «Оплата за заказ» за эти дни нет)`)
+       +(L.all.spR>0? `, в дни без этого отчёта — ставка <b>${rateTxt}</b> из юнит-экономики` : "")
+       : `ставка <b>${rateTxt}</b> из юнит-экономики (отчёта Ozon «Оплата за заказ» за эти дни нет)`)
     +`. Это то же самое число, что уходит `
     +`в прибыль на «Главной» — два разных расчёта рекламы развели бы вкладки между собой. `
     +`Выручка = заказано ₽ × % выкупа (${(ozBuyoutFor(W.to)*100).toFixed(1).replace(".",",")}%, замер по воронке). `
@@ -8278,7 +8357,12 @@ function renderHomeOzon(){
   const sep=`border-top:1px solid var(--grid);margin-top:5px;padding-top:6px`;
   const dlt=(cur,pr)=>{ if(!pr||!(pr>0)) return ""; const d=(cur-pr)/pr*100;
     return `<div class="delta ${d>=0?"up":"down"}">${d>=0?"▲":"▼"} ${Math.abs(d).toFixed(1)}% к пред.</div>`; };
-  const feeParts=[["Комиссия категории",T.commission],["Реклама",T.ads],
+  /* Реклама в тариф НЕ входит с 17.09.2026: фиксированная часть (32,7%) — проценты от выручки,
+     реклама — рублями по факту (XWAY + отчёт «Оплата за заказ») или ставкой по дате. Прежние
+     подписи «Забирает Ozon (42,7%)» и «Фиксированная плата 10%» врали. */
+  const FX=ozFixedRate(), fxTxt=FX.toFixed(1).replace(".",",")+"%";
+  const adParts=now.rows.reduce((a,r)=>{ a.x+=(r.adX||0); a.f+=(r.fee||0); a.b+=(r.adBase||0); return a; },{x:0,f:0,b:0});
+  const feeParts=[["Комиссия категории",T.commission],
     ["Подписка Premium и прочее",T.other],["Эквайринг",T.acquiring],
     ["Логистика",T.logistics],["Возвраты",T.returns],["Платное размещение",T.placement]]
     .filter(x=>x[1]>0);
@@ -8288,10 +8372,10 @@ function renderHomeOzon(){
      delta:dlt(now.profit,prev&&prev.profit),
      tip:`<div class="t-hd">Прибыль Ozon — как считается</div>`
        +tr("Выручка (заказано × % выкупа)",rub(now.revenue))
-       +tr("− Забирает Ozon ("+T.total+"%)","−"+rub(now.mpFee))
+       +tr("− Забирает Ozon (тариф "+fxTxt+" + реклама)","−"+rub(now.mpFee))
        +tr("− Себестоимость проданного","−"+rub(now.cogs))
        +`<div class="t-row" style="${sep}"><span class="k">= Прибыль</span><span class="v">${rub(now.profit)}</span></div>`
-       +`<div class="t-row" style="${sep};opacity:.75"><span class="k">Реклама уже внутри ${T.total}% — отдельно не вычитается</span></div>`},
+       +`<div class="t-row" style="${sep};opacity:.75"><span class="k">Реклама уже внутри «Забирает Ozon» — отдельно не вычитается</span></div>`},
     {lbl:"Выручка, ₽",val:rub(now.revenue),delta:dlt(now.revenue,prev&&prev.revenue),
      tip:`<div class="t-hd">Выручка Ozon</div>`
        +tr("Заказано за период",rub(now.ordRub))
@@ -8300,13 +8384,17 @@ function renderHomeOzon(){
        +tr("Продано (оценка)",fmt(now.qty)+" шт")
        +tr("Средний чек",now.qty?rub(now.revenue/now.qty):"—")},
     {lbl:"Забирает Ozon, ₽",val:rub(now.mpFee),
-     tip:`<div class="t-hd">Забирает Ozon — ${T.total}% от выручки (ИУ)</div>`
-       +feeParts.map(([k,v])=>tr(k,v+"% · "+rub(now.revenue*v/100))).join("")
+     tip:`<div class="t-hd">Забирает Ozon — тариф ИУ ${fxTxt} + реклама</div>`
+       +feeParts.map(([k,v])=>tr(k,String(v).replace(".",",")+"% · "+rub(now.revenue*v/100))).join("")
+       +tr("Реклама (по факту и ставке)",rub(now.ad))
        +`<div class="t-row" style="${sep}"><span class="k">Итого</span><span class="v">${rub(now.mpFee)}</span></div>`},
     {lbl:"Реклама, ₽",val:rub(now.ad),
      tip:`<div class="t-hd">Реклама Ozon</div>`
-       +tr("Фиксированная плата",T.ads+"% от выручки")
+       +(adParts.x>0.5? tr("Выгрузка XWAY (кампании)",rub(adParts.x)) : "")
+       +(adParts.f>0.5? tr("Оплата за заказ, отчёт Ozon",rub(adParts.f)) : "")
+       +(adParts.b>0.5? tr("Ставка юнит-экономики (дни без отчёта)",rub(adParts.b)) : "")
        +tr("= Расход",rub(now.ad))
+       +tr("Доля от выручки",now.revenue? pct(now.ad/now.revenue) : "—")
        +`<div class="t-row" style="${sep};opacity:.75"><span class="k">Уже входит в «Забирает Ozon» — второй раз не вычитается</span></div>`},
     {lbl:"Маржинальность",val:now.revenue?pct(now.margin):"—",
      valColor:now.margin>=0?"var(--good-txt)":"var(--crit-txt)",
@@ -8354,7 +8442,7 @@ function renderHomeOzon(){
     revenue:r=>r.revenue, cogs:r=>r.cogs, wbHold:r=>r.mpFee, ad:r=>r.ad, profit:r=>r.profit, margin:r=>r.margin });
   const maxAbsP=list.reduce((m,r)=>Math.max(m,Math.abs(r.profit)),0);
   document.getElementById("homeCount").textContent=list.length+" товаров";
-  document.getElementById("homeTblNote").textContent=`Ozon · период: ${dates.length} дн. · оценка по тарифу ИУ (${T.total}%)`;
+  document.getElementById("homeTblNote").textContent=`Ozon · период: ${dates.length} дн. · оценка: тариф ИУ ${fxTxt} + реклама по факту (XWAY, отчёт «Оплата за заказ») или ставке`;
   if(!list.length){ document.getElementById("homeTable").innerHTML=`<tbody><tr><td class="empty-hint">Нет данных за этот период</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар","name",homeSortState,"metric")}${thSort("Категория","category",homeSortState)}
     ${thSort("Продано","qty",homeSortState)}${thSort("Выручка, ₽","revenue",homeSortState)}${thSort("Себест., ₽","cogs",homeSortState)}${thSort("Забирает Ozon, ₽","wbHold",homeSortState)}${thSort("Реклама","ad",homeSortState)}${thSort("Прибыль, ₽","profit",homeSortState)}${thSort("Маржа","margin",homeSortState)}</tr></thead><tbody>`;
@@ -10153,6 +10241,17 @@ function recBuild(){
     items: cant.slice(0,6).map(r=>({n:fmt(cantQ(r))+" шт", x:r.name,
       w:(r.china+r.onOrder>0? "едет "+fmt(r.china+r.onOrder)+" шт" : "ничего не едет")})),
     keys: cant.flatMap(r=>[r.sup,r.skuWb]), n: cant.length, tab:"turnover", view:"resupply", rank: 1});
+  // ---- 3б. Не едет: машину не собрать (неполных машин не бывает, ЗАП-03) ----
+  /* Нужда есть и товар на складе есть, но машину с этого склада до PALLETS_PER_TRUCK паллет добить
+     нечем — по правилу она не едет. Молчать нельзя: иначе срочная позиция выпала бы из всех списков
+     (в «Отгрузить» её нет — отгрузка ноль, в «Нечем закрыть» нет — склад не пуст). */
+  const roll=recAlive(rs.filter(r=>(r.rollO||0)+(r.rollW||0)>0)).sort((a,b)=>a.minDays-b.minDays);
+  if(roll.length) add({sev:"warn", key:"roll",
+    title:"Не едет — машину не собрать: "+roll.length+" "+plural(roll.length,"позиция","позиции","позиций"),
+    why:`Неполных машин не бывает: машину с этого склада до ${PALLETS_PER_TRUCK} паллет добить нечем (свободного товара, который продаётся на этой площадке, не хватает), поэтому она не едет. Решение за вами: подождать, пока наберётся, или отправить исключением.`,
+    items: roll.slice(0,6).map(r=>({n:fmt((r.rollO||0)+(r.rollW||0))+" шт", x:r.name,
+      w:(r.rollO? "на Ozon, "+(r.oDays===Infinity?"∞":Math.round(r.oDays))+" дн запаса" : "на ВБ FBO, "+(r.wDays===Infinity?"∞":Math.round(r.wDays))+" дн запаса")})),
+    keys: roll.flatMap(r=>[r.sup,r.skuWb]), n: roll.length, tab:"turnover", view:"resupply", rank: 2});
   /* ---- 4. Реклама на товар без запаса на ВБ ----
      ВСЕГДА по всему ассортименту: `adRows()` фильтрует по выбранной на «Рекламе»
      категории, и без этой развязки рекомендации молча сужались до неё — продавец
