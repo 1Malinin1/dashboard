@@ -235,7 +235,6 @@
   .kpi .delta.up{color:var(--good-txt);background:color-mix(in srgb,var(--good) 12%,var(--surface))}
   .kpi .delta.down{color:var(--crit-txt);background:color-mix(in srgb,var(--crit) 12%,var(--surface))}
   .kpi .delta .muted{color:inherit;opacity:.72}
-  .kpi .kpi-b{font-size:12px;color:var(--muted);margin-top:7px;font-variant-numeric:tabular-nums;line-height:1.4}
   .kpi .spark{margin-top:11px;height:30px;width:100%;display:block}
   /* герой-плитка: главная метрика периода — крупнее, с акцентом */
   .kpi.hero{background:
@@ -452,6 +451,7 @@
   /* «Реклама»: пирамида с колонкой заказов и сравнением A | B | Δ (19.10.2026). На узком экране
      пирамида прокручивается вбок внутри своей карточки — страница вбок не едет. */
   .drrlv-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .kpi .kpi-b{font-size:12px;color:var(--muted);margin-top:7px;font-variant-numeric:tabular-nums;line-height:1.4}   /* «B: … · изменение» под KPI */
   .drrlv.wq .lv{grid-template-columns:minmax(150px,1.4fr) 104px 124px 130px 92px minmax(50px,.8fr)}
   .drrlv.cmp .lv{grid-template-columns:minmax(150px,1.3fr) 128px 142px 150px 112px minmax(40px,.5fr);align-items:start}
   .drrlv.wq,.drrlv.cmp{min-width:720px}
@@ -493,16 +493,16 @@
   .hyp .hy-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
   .hyp .hy-scroll{overflow:auto;max-height:430px;border:1px solid var(--border);border-radius:var(--r)}
   .hyp table.hy-t{border-collapse:collapse;width:100%;font-size:12px;min-width:980px}
-  .hyp .hy-m{display:grid;grid-template-columns:auto auto auto;gap:2px 8px;font-variant-numeric:tabular-nums;white-space:nowrap;
-    font-size:11.5px;align-items:baseline}
-  .hyp .hy-m .k{color:var(--muted)} .hyp .hy-m .v{text-align:right} .hyp .hy-m .d .dlt{font-size:11px}
+  .hyp .hy-m{display:grid;grid-template-columns:auto auto auto;gap:2px 6px;font-variant-numeric:tabular-nums;white-space:nowrap;
+    font-size:11px;align-items:baseline}
+  .hyp .hy-m .k{color:var(--muted)} .hyp .hy-m .v{text-align:right} .hyp .hy-m .d .dlt{font-size:10.5px}
   .hyp .hy-t th{position:sticky;top:0;z-index:1;background:var(--surface-2);color:var(--muted);font-weight:620;font-size:11px;
     text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);white-space:nowrap}
   .hyp .hy-t td{padding:8px 9px;border-top:1px solid var(--border);vertical-align:top;color:var(--text-1);line-height:1.4}
   .hyp .hy-t tr:first-child td{border-top:0}
   .hyp .hy-t td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
   .hyp .hy-t .s{display:block;font-size:11px;color:var(--muted);font-weight:500}
-  .hyp .hy-t .what{max-width:270px;min-width:190px}
+  .hyp .hy-t .what{max-width:240px;min-width:170px}
   .hyp .hy-t tr.over td{background:color-mix(in srgb,var(--crit) 7%,transparent)}
   .hyp .hy-t tr.sel td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
   .hyp .hy-go{border:1px solid var(--border-2);background:none;color:var(--accent);font:inherit;font-size:11.5px;font-weight:620;
@@ -8771,7 +8771,7 @@ function renderAdsPerf(){
     {lbl:"Расход за период, ₽", val:fmt(Math.round(T.sp)),
      delta:kB(TB? fmt(Math.round(TB.sp))+" · "+adDltHtml(adDeltaPct(T.sp,TB.sp,nA,nB),0) : ""),
      tip:`<div class="t-hd">Период A</div>`+tr2("С",fmtDateLong(A.from))+tr2("По",fmtDateLong(A.to))
-       +tr2("Дней с выгрузками",nA)+(A.cut.length? tr2("Пропорционально дням",cutTxt(A.cut)) : "")
+       +tr2("Дней с выгрузками",nA)+(A.cut.length? tr2("Пропорционально дням: "+cutTxt(A.cut)) : "")
        +tr2("Кампаний в выборке",rows.length)
        +(cmp? `<div class="t-hd">Период B</div>`+(B.days? tr2("С",fmtDateLong(B.from))+tr2("По",fmtDateLong(B.to))+tr2("Дней с выгрузками",nB)
             +tr2("Расход",fmt(Math.round(TB.sp))+" ₽") : tr2("Выгрузок рекламы за "+adRangeTxt(B.reqFrom,B.reqTo)+" нет")) : "")},
@@ -8976,7 +8976,8 @@ function adWbPickerOpts(which){
   const note=`Выгрузки рекламы Wildberries: <b>${def? esc(adRangeTxt(def.from,def.to)) : "нет"}</b>`
     +(so.length? ` (${so.map(p=>adDM(p.from)+"–"+adDM(p.to)).join(", ")} — «только расход»: реклама не крутилась, в ДРР не идёт)` : "")+".";
   const legend=[{cls:"full",label:"выгрузка за день"},{cls:"partial",label:"выгрузка за несколько дней одним файлом"},
-    perf? {cls:"none",label:"выгрузки нет — выбрать нельзя"} : {cls:"low",label:"выгрузки рекламы нет"}];
+    perf? {cls:"none",label:"выгрузки нет — выбрать нельзя"} : {cls:"low",label:"выгрузки рекламы нет"}]
+    .concat(perf? [] : [{cls:"none",label:"заказов нет"}]);
   const C=adPeriodCtx("wb");
   if(which==="B") return adPickerB(C,lo,hi,act,"wb",dayInfo,legend,note);
   const A=C.A;
@@ -9035,7 +9036,7 @@ function ozAdPickerOpts(which){
    выручка в выкупе, ДРР, CPO по коду и по его склейке. Меньше 7 дней «после» — «рано судить» (один день — не вердикт).
    Клик «На цифрах →» ставит период A = «после», B = «до» и фильтрует таблицу по коду.
    ================================================================================================ */
-let _opyt=null, _opytState="idle", _opytErr="", _hypSel=null, _hypList=[];
+let _opyt=null, _opytState="idle", _opytErr="", _hypSel=null, _hypList=[], _hypMemo=null;
 const OPYT_COLS=[["id",/^id$/i],["mp",/^площадк/i],["date",/^дата/i],["code",/^код/i],["what",/^что/i],["base",/^база/i],
   ["check",/^проверит/i],["outcome",/^исход/i],["text",/^закономерн/i],["conf",/^подтв/i],["effect",/^эффект/i],["where",/^где/i]];
 function opytMap(head,rows){
@@ -9159,10 +9160,17 @@ function renderAdHyp(){
   const mpName= mp==="ozon"? "Ozon" : "Wildberries";
   ttl.textContent="Гипотезы и опыты — "+mpName;
   if(_opytState==="idle") opytLoad();
+  if(_opytState!=="ok") body.dataset.hypMp="";
   if(_opytState==="loading"||_opytState==="idle"){ sum.textContent="читаю ОПЫТ.md…"; body.innerHTML=`<div class="hy-msg">Читаю ОПЫТ.md…</div>`; return; }
   if(_opytState==="fail"||!_opyt){ sum.innerHTML=`<span class="hot">ОПЫТ.md не прочитан</span>`;
     body.innerHTML=`<div class="hy-msg">Не удалось прочитать ОПЫТ.md (${esc(_opytErr)}). Остальные цифры вкладки считаются как обычно. `
       +`<button type="button" class="hy-go" data-hyp-retry="1">Повторить</button></div>`; return; }
+  /* Блок не зависит от периода, поиска и фильтров вкладки — пересчитываем, только когда сменились площадка,
+     выбранный опыт, сам ОПЫТ.md, данные (новые массивы после перезаливки) или день. Иначе каждый символ в поиске
+     пересобирал бы цифры всех опытов. */
+  const memoKey=[mp,_hypSel,_drpToday()].join("|"), finRef=mp==="ozon"? ozFinRows() : (RD&&RD.adPerf);
+  if(_hypMemo && _hypMemo.key===memoKey && _hypMemo.opyt===_opyt && _hypMemo.data===finRef && body.dataset.hypMp===mp){
+    _hypList=_hypMemo.list; return; }
   _hypCache.clear();
   const D=_opyt;
   const pats=D.pat.map(p=>({...p, m:opytMp(p.mp,[p.text,p.effect,p.where].join(" "))})).filter(p=>p.m===mp||p.m==="both"||p.m==null);
@@ -9207,11 +9215,11 @@ function renderAdHyp(){
         +(v.after&&B&&!B.days? `<span class="s">до правки данных о рекламе нет</span>` : "") : "—");
     // проверка — в первой колонке (таблица помещается в экран 1536 px без прокрутки вбок); исход — под правкой
     const chk = v.outcome? `<span class="s"><span class="badge ordered"><span class="d"></span>проверено</span></span>`
-      : (v.overdue? `<span class="s">проверить ${fmtDate(v.dc)}</span><span class="s"><span class="badge critical"><span class="d"></span>проверка просрочена</span></span>`
+      : (v.overdue? `<span class="s">проверить ${adDM(v.dc)}</span><span class="s"><span class="badge critical"><span class="d"></span>проверка просрочена</span></span>`
       : (v.today? `<span class="s"><span class="badge warning"><span class="d"></span>проверить сегодня</span></span>`
-      : (v.dc? `<span class="s">проверить ${fmtDate(v.dc)} · через ${adDaysTxt(adNDays(today,v.dc)-1)}</span>` : "")));
+      : (v.dc? `<span class="s">проверить ${adDM(v.dc)}, через ${adDaysTxt(adNDays(today,v.dc)-1)}</span>` : "")));
     return `<tr class="${v.overdue?"over":""}${_hypSel===e.id?" sel":""}">`
-      +`<td><b>${esc(e.id)}</b><span class="s">правка ${v.d0? fmtDate(v.d0) : esc(e.date||"—")}</span>`
+      +`<td><b>${esc(e.id)}</b><span class="s">правка ${v.d0? adDM(v.d0) : esc(e.date||"—")}</span>`
         +(v.status? `<span class="s"><span class="badge ${stB}"><span class="d"></span>${esc(v.status)}</span></span>` : "")+chk
         +(e.m==null? `<span class="s">площадка не указана</span>` : (e.m==="both"? `<span class="s">обе площадки</span>` : ""))
         +(v.after&&ok? `<span class="s" style="margin-top:6px"><button type="button" class="hy-go" data-hyp-go="${i}" title="Период A = после правки, B = до, таблица — по коду ${esc(e.code)}">На цифрах →</button></span>` : "")+`</td>`
@@ -9239,6 +9247,8 @@ function renderAdHyp(){
         +`<th>Товар: до → после</th><th>Его склейка: до → после</th></tr></thead>`
         +`<tbody>${rows}</tbody></table></div>`
       : `<div class="hy-msg">По ${mpName} правок в журнале пока нет. Записываются командой <code>node scripts/opyt.cjs change "${mp==="ozon"?"Ozon":"ВБ"}|&lt;код&gt;|&lt;что изменено&gt;|&lt;база&gt;|&lt;дата проверки&gt;"</code>.</div>`);
+  body.dataset.hypMp=mp;
+  _hypMemo={key:memoKey, opyt:_opyt, data:finRef, list:exps};
 }
 const v0last=mp=>{ const B=mp==="ozon"? ozAdBounds() : adPerfDefWin(); return B? (B.hi||B.to) : null; };
 function hypGo(i){

@@ -119,6 +119,7 @@ function nextId(prefix, list) {
 function takeMp(parts, need) {
   const m = normMp(parts[0]);
   if (m && parts.length >= need + 1) return { mp: m, rest: parts.slice(1) };
+  if (m) return null;                    // площадка названа, но частей не хватает — не записывать «ВБ» в колонку кода
   if (parts.length >= need) {
     console.warn("площадка не указана — записываю «" + MP_DEFAULT + "». Для Wildberries начните с «ВБ|».");
     return { mp: MP_DEFAULT, rest: parts };
