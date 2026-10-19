@@ -3305,7 +3305,9 @@ function renderOutSplit(id,agg,adOut,kind){
 function renderOutBar(){
   const el=document.getElementById("outBar"); if(!el) return;
   const n=outCount();
-  if(!RD || !n){ el.hidden=true; el.innerHTML=""; return; }
+  // на «Остатках» плашки нет: там «На вывод» виден, пока есть остаток (ЗАП-06, см. stkRows)
+  const onStock=!((document.getElementById("tab-stock")||{}).hidden);
+  if(!RD || !n || onStock){ el.hidden=true; el.innerHTML=""; return; }
   el.hidden=false;
   el.innerHTML = showOut
     ? `Товары со статусом «На вывод» <span class="hn-n">показаны</span> — они снова участвуют в расчётах и перечнях.`
@@ -6544,12 +6546,19 @@ function ozTerms(){ return (RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.terms)||null
    то же правило, что у % выкупа). Отчёт закрытого месяца НЕ дозревает, поэтому применять
    его к своему же месяцу — не «переписывание прошлого».
    ДУБЛЬ — `adRateFor()` в scripts/ozon-finance.cjs, ДЕРЖИ СИНХРОННО. */
+/* С 01.10.2026 МОДЕЛЬНОЙ СТАВКИ НЕТ ВОВСЕ (РЕК-23, продавец 19.10.2026: «убери базовую оплату за
+   заказ, берём плату за заказ только с отчётов, которые я сам даю тебе»). Плата за заказ в эти дни —
+   только из отчёта «Оплата за заказ»; дня без отчёта — 0, пока отчёт не придёт. Ручные записи
+   unitReports (src:'manual' — номинал 5%/7%, это не отчёт) в расчёт не идут нигде. До 01.10 —
+   как было: ставка из отчётов «Юнит-экономика», которые прислал продавец. */
+const OZ_FEE_REPORT_ONLY_FROM="2026-10-01";
 function ozUnitReports(){ const L=(RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.unitReports)||[];
   /* НЕЗРЕЛЫЕ отчёты отбрасываем: у отчёта за незакрытый период Ozon ещё не начислил
      комиссию и эквайринг, и его ставка рекламы (0,15% против 4,23% в августе) раздула бы
      прибыль. Признак ставит scripts/ozon-unit-report.cjs по совпадению комиссии с тарифом. */
-  return L.filter(r=>r.mature!==false).slice().sort((a,b)=>a.from<b.from?-1:1); }
+  return L.filter(r=>r.mature!==false && r.src!=="manual").slice().sort((a,b)=>a.from<b.from?-1:1); }
 function ozAdRateFor(date){
+  if(date>=OZ_FEE_REPORT_ONLY_FROM) return 0;
   const T=ozTerms(), L=ozUnitReports();
   if(!L.length) return T? (T.ads||0) : 0;
   for(const r of L) if(r.from<=date && date<=r.to) return r.adsRate;
@@ -6583,7 +6592,8 @@ function ozAdSpendPartIdx(d){ const P=ozAdSpendParts(); for(let i=0;i<P.length;i
    продвижение, которое по умолчанию снимает за заказ 7%, и его Xway не видит»).
    В дни, за которые отчёт загружен: реклама товара = выгрузка XWAY целиком + списание из
    отчёта (нет товара в отчёте — 0). Модельная ставка unitReports и список ozzOn в эти дни НЕ
-   применяются. Дни без отчёта — по-старому. Ведёт scripts/ozon-order-fee.cjs;
+   применяются. Дни без отчёта: до 01.10 — ставка юнит-экономики, с 01.10 — 0 до отчёта (РЕК-23).
+   Ведёт scripts/ozon-order-fee.cjs;
    ДУБЛЬ — feeOn()/feeDay()/calc() в scripts/ozon-finance.cjs, ДЕРЖАТЬ СИНХРОННО. */
 function ozOrderFee(){ const F=RD&&RD.ozon&&RD.ozon.meta&&RD.ozon.meta.orderFee;
   return (F&&Array.isArray(F.periods)&&F.periods.length)? F : null; }
@@ -6604,9 +6614,16 @@ function ozOrderFeeSpan(upTo){ const F=ozOrderFee(); if(!F) return null;
    Одна цифра (ставка последнего дня) врала бы: в окне 23.09–14.10 сентябрь идёт по 4,23%,
    01–13.10 по 6,26%, а с отчётом ставки нет вовсе. */
 function ozModelRatesTxt(from,to){
-  const D=((RD&&RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[]).filter(d=>d>=from&&d<=to&&!ozOrderFeeOn(d));
+  const D=((RD&&RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[]).filter(d=>d>=from&&d<=to&&d<OZ_FEE_REPORT_ONLY_FROM&&!ozOrderFeeOn(d));
   const seen=[]; D.forEach(d=>{ const v=Math.round(ozAdRateFor(d)*100)/100; if(!seen.includes(v)) seen.push(v); });
   return seen.length? seen.map(v=>v.toFixed(2).replace(".",",")+"%").join(" / ") : ""; }
+/* Дни с 01.10 без отчёта «Оплата за заказ»: плата за заказ в них НЕ учтена (РЕК-23) — об этом
+   обязаны сказать строка свежести, «Реклама» и «Рекомендации», иначе прибыль читается как полная. */
+function ozFeeMissDays(from,to){
+  return ((RD&&RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[])
+    .filter(d=>d>=OZ_FEE_REPORT_ONLY_FROM&&(!from||d>=from)&&(!to||d<=to)&&!ozOrderFeeOn(d)); }
+function ozFeeMissTxt(days){ return days.length? ` · за ${recRangesTxt(days)} отчёта «Оплата за заказ» ещё нет —`
+  +` плата за заказ за ${days.length>1? "эти дни":"этот день"} <b>не учтена</b> до отчёта` : ""; }
 // подпись для строки свежести: у скольких товаров реклама идёт по факту, а не по ставке
 function ozAdFactNote(){
   const P=ozAdSpendParts();
@@ -6622,13 +6639,15 @@ function ozAdFactNote(){
   const OD=(RD&&RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[];
   const FS=ozOrderFeeSpan(OD[OD.length-1]);
   if(FS) out+=` · оплата за заказ (её XWAY не видит) — <b>факт отчёта Ozon</b> за ${fmtDateLong(FS.from)}`
-    +`${FS.from!==FS.to? " – "+fmtDateLong(FS.to):""} (${fmt(Math.round(FS.total))} ₽), в остальные дни — ставка`;
-  else if(skus.size) out+=`, у остальных — ставка`;
+    +`${FS.from!==FS.to? " – "+fmtDateLong(FS.to):""} (${fmt(Math.round(FS.total))} ₽)`
+    +(OD.some(d=>d<OZ_FEE_REPORT_ONLY_FROM)? `, до ${fmtDateLong(OZ_FEE_REPORT_ONLY_FROM)} — ставка юнит-экономики` : "")
+    +ozFeeMissTxt(ozFeeMissDays());
+  else if(skus.size) out+=`, у остальных — ставка`+ozFeeMissTxt(ozFeeMissDays());
   /* Реклама запущена, а выгрузки по ней ещё нет — значит эти кампании считаются по августовской
      ставке и их реальный расход в прибыли НЕ учтён. Молчать об этом нельзя. */
   const wait=W.filter(s=>!skus.has(s));
   if(wait.length) out+=` · по ${wait.length} ${plural(wait.length,"товару","товарам","товарам")} реклама запущена,`
-    +` но выгрузки XWAY ещё нет — пока считаются по ставке`;
+    +` но выгрузки XWAY ещё нет — расход их кампаний в прибыль пока не попал`;
   return out;
 }
 /* ---------------------------------------------------------------------------
@@ -7035,6 +7054,33 @@ function renderHomeWeeks(cat,q){
            срок доставки: `отгрузить через = хватит дней − OZ_LEAD_DAYS`. */
 const SR_BAND=0.15;      // ±15% вокруг цели — «держать», за пределами — действовать
 const OZ_LEAD_DAYS=30;   // поставка со склада продавца до продажи на Ozon — около месяца
+/* СЕЗОН (ЗАП-05, продавец 19.10.2026: «впереди у нас ещё чёрная пятница и новый год, новый год пусть
+   считается как 2-3 средних месяца, чёрная пятница как 1.5, посмотрим как будет по факту»).
+   Спрос до партии — не «темп × дней», а Σ(темп × вес дня): ноябрь ×1,5, декабрь ×2,5 (середина «2–3»),
+   остальные ×1. Нынешний темп (заказы 7 дней) считается темпом обычного месяца — так верно в октябре;
+   В НОЯБРЕ ТЕМП САМ БУДЕТ СЕЗОННЫМ, и вес ноября ляжет на него второй раз — правило пересмотреть по
+   факту ноября (новое правило через rules.cjs). Веса — только здесь; действуют только на «Запас и темп»
+   (и на выводы «Рекомендаций», которые берут их из srDecorate). */
+const SEASON_W={"11":1.5,"12":2.5};
+function srSeasonW(iso){ return SEASON_W[iso.slice(5,7)]||1; }
+/* Накопленные веса от сегодняшнего дня: _srCum.c[n] = Σ весов первых n дней (сегодня — день 0).
+   Горизонт `hz` дней (= дней до выхода партии, тот же отсчёт, что etaLeft в srRows). */
+let _srCum=null;
+function srCum(){ const today=new Date().toISOString().slice(0,10);
+  if(_srCum && _srCum.today===today) return _srCum;
+  const c=[0]; let d=today; for(let i=0;i<1500;i++){ c.push(c[i]+srSeasonW(d)); d=addDays(d,1); }
+  return (_srCum={today,c}); }
+// «дни спроса» горизонта: сколько обычных дней продаж уместится в hz календарных дней
+function srSeasonDays(hz){ if(!(hz>0)) return 0; const c=srCum().c, n=Math.floor(hz);
+  if(n>=c.length-1) return c[c.length-1]+(hz-(c.length-1));
+  return c[n]+(hz-n)*(c[n+1]-c[n]); }
+// на сколько календарных дней хватит запаса при темпе обычного месяца с учётом сезона
+function srSeasonReach(stock,rate){
+  if(!(rate>0)) return stock>0? Infinity : 0;
+  const need=stock/rate, c=srCum().c;           // нужно «дней спроса»
+  if(need>=c[c.length-1]) return (c.length-1)+(need-c[c.length-1]);
+  let lo=0, hi=c.length-1; while(hi-lo>1){ const m=(lo+hi)>>1; if(c[m]<=need) lo=m; else hi=m; }
+  return lo+(need-c[lo])/(c[lo+1]-c[lo]); }
 /* Заказы (GROSS) в день по площадке и коду 1С. Репрайсеру продавец задаёт именно ЧИСЛО
    ЗАКАЗОВ в день, к которому тот стремится (упрётся в минимальную цену, если нужно много,
    и поднимет цену, если мало). Поэтому цель обязана быть в заказах, а не в выкупах:
@@ -7142,7 +7188,7 @@ function srRows(){
          остаток Ozon отдельно от «в пути» и признак, что код вообще есть на Ozon. */
       whKlin, ozOnly:o.stock||0, ozTr:o.transit||0, onOz:!!O[sup],
       spdWb, spdOz, spd,
-      days: spd>0? total/spd : (total>0? Infinity : 0),
+      days: srSeasonReach(total,spd),             // с учётом сезона (ЗАП-05)
       ordWb:ordW[sup]||0, ordOz:ordO[sup]||0,
       batch:b, incoming:b? b.qty:0, eta:b? b.eta:null, etaWh:b? b.etaWh:null,
       etaLeft:b? b.left:null, noOwnBatch:!!(b&&b.noOwn),
@@ -7178,13 +7224,16 @@ function srDecorate(rows){
        недостачу (`ozNeed − своё`), а не весь спрос Озона — иначе склад резался бы дважды.
        `whReach` — все три отгрузочных склада: с 21.09.2026 на Ozon возит и Москва. Клин сюда
        не входит: его товар уже назначен на ВБ. */
-    const ozNeed = hz>0 ? r.spdOz*hz : 0;                    // сколько Озон продаст за горизонт
+    /* СЕЗОН (ЗАП-05): спрос за горизонт = темп × «дни спроса» (ноябрь ×1,5, декабрь ×2,5), а цель —
+       темп обычного месяца, при котором база ровно доживёт до партии. Внутри октября sd = hz. */
+    const sd = hz>0 ? srSeasonDays(hz) : 0;
+    const ozNeed = hz>0 ? r.spdOz*sd : 0;                    // сколько Озон продаст за горизонт
     const ozOwn  = (r.stockOz||0);                           // чем закроется сам (остаток + его «в пути»)
     const whReach= (r.whMsk||0)+(r.whNsk1||0)+(r.whNsk2||0); // склад, доступный Озону
     const ozTake = hz>0 ? Math.max(0, Math.min(ozNeed-ozOwn, whReach)) : 0;
     const wbBase = (r.stockWb||0)+(r.whQty||0);              // ВБ FBO + весь свой склад
     const wbAvail = hz>0 ? Math.max(0, wbBase-ozTake) : null;
-    const target = hz>0 ? wbAvail/hz : null;                 // сколько можно продавать в день НА ВБ
+    const target = hz>0 ? wbAvail/sd : null;                 // сколько можно продавать в день НА ВБ (обычный месяц)
     let verdict="none", ratio=null;
     if(target!=null){
       /* Особый случай: Озон СВОИМ спросом выбирает весь запас (ozTake >= total). Тогда «поднять
@@ -7199,7 +7248,7 @@ function srDecorate(rows){
         else verdict="hold"; }
     }
     // Ozon: цена не рычаг — считаем, когда отгружать, чтобы не уйти в аут
-    const ozDays = r.spdOz>0 ? r.stockOz/r.spdOz : (r.stockOz>0? Infinity : 0);
+    const ozDays = srSeasonReach(r.stockOz,r.spdOz);       // с учётом сезона
     const shipIn = r.spdOz>0 ? Math.round(ozDays-OZ_LEAD_DAYS) : null;
     /* ПЕРЕВОД ЦЕЛИ В ЗАКАЗЫ. В репрайсер продавец вводит число ЗАКАЗОВ в день, поэтому
        целевые выкупы делим на фактический % выкупа этого товара на ВБ (выкупы ÷ заказы
@@ -7207,7 +7256,7 @@ function srDecorate(rows){
     const boWb = r.ordWb>0 && r.spdWb>0 ? r.spdWb/r.ordWb
       : ((RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.all)||0.75);
     const targetOrders = target!=null? target/boWb : null;
-    return {...r, hz, hzSrc, ozTake, wbAvail, target, targetOrders, boWb, ratio, verdict,
+    return {...r, hz, hzSrc, sd, ozTake, wbAvail, target, targetOrders, boWb, ratio, verdict,
       gap:(target!=null? r.spdWb-target : null),
       gapOrders:(targetOrders!=null? r.ordWb-targetOrders : null), ozDays, shipIn};
   });
@@ -7289,15 +7338,16 @@ function srExtend(rows){
     const s=r.sup, hz=r.hz;
     // ---- Wildberries: только производные для показа, сам план — из srDecorate ----
     const wbBase=(r.stockWb||0)+(r.whQty||0);
-    const wbDays = r.wbAvail==null? null : (r.spdWb>0? r.wbAvail/r.spdWb : (r.wbAvail>0? Infinity : 0));
-    const wbLeft = (hz>0 && r.wbAvail!=null)? r.wbAvail-r.spdWb*hz : null;   // >0 — останется к партии
+    const sd=r.sd||0;                                  // «дни спроса» горизонта с сезоном (srDecorate)
+    const wbDays = r.wbAvail==null? null : srSeasonReach(r.wbAvail,r.spdWb);
+    const wbLeft = (hz>0 && r.wbAvail!=null)? r.wbAvail-r.spdWb*sd : null;   // >0 — останется к партии
     // ---- Ozon ----
     const card=ozCard[s];
     const split=card && card.ozReq!=null && card.ozWay!=null;
     const ozWay=split? (card.ozWay||0) : 0;
     const ozAsg=(asg[s]&&asg[s].all)||0;
     const ozBo = r.ordOz>0 && r.spdOz>0 ? r.spdOz/r.ordOz : null;
-    const ozNeedHz = hz>0 ? Math.max(0, r.spdOz*hz - r.stockOz) : null;   // чего не хватит Ozon до партии
+    const ozNeedHz = hz>0 ? Math.max(0, r.spdOz*sd - r.stockOz) : null;   // чего не хватит Ozon до партии
     /* Что ваши склады могут дать Ozon — тот же свободный остаток, из которого отгружает подсорт
        (resupplyRows): Москва + Нск-1 + Евросиб, на Евросибе позиции меньше NSK2_MIN_TAKE не берём,
        розничный резерв RETAIL_RESERVE (с 18.10.2026 он 0). Клин и «Ozon СФО/ЦФО» сюда не входят:
@@ -7315,17 +7365,19 @@ function srExtend(rows){
     // ---- Всего: весь товар один раз ----
     const wbShip=ship[s]||0;
     const bizTotal=(r.total||0)+wbShip;               // = «Всего товара» на «Остатках» (+ отгрузки в пути на ВБ)
-    const bizDays = r.spd>0? bizTotal/r.spd : (bizTotal>0? Infinity : 0);
+    const bizDays = srSeasonReach(bizTotal,r.spd);
     /* Стороны «где лежит»: Клин — сторона ВБ (собран и уезжает на ВБ), «Ozon СФО/ЦФО» — сторона Ozon
        (они уже внутри `ozTr`, см. ozTransitEff), ваши склады — всё остальное. Сумма = bizTotal. */
     const sideWb=(r.stockWb||0)+wbShip+(r.whKlin||0), sideOz=(r.stockOz||0), sideWh=(r.whQty||0)-(r.whKlin||0);
     let bizSt;
     if(r.spd<=0) bizSt="nosale";
     else if(!(hz>0)) bizSt="nohz";
-    else if(bizDays<hz) bizSt="short";
-    else if(bizDays>hz/(1-SR_BAND)) bizSt="over";
+    /* сравниваем спрос до партии (с сезоном) с товаром: без сезона это ровно прежние
+       «хватит дней < горизонта» и «темп ниже нужного больше чем на SR_BAND» */
+    else if(bizTotal<r.spd*sd) bizSt="short";
+    else if(r.spd*sd<bizTotal*(1-SR_BAND)) bizSt="over";
     else bizSt="ok";
-    const bizLeft = hz>0? bizTotal-r.spd*hz : null;
+    const bizLeft = hz>0? bizTotal-r.spd*sd : null;
     const acts=[];
     if(r.verdict==="short") acts.push("ВБ: не хватит и Озону");
     else if(r.verdict==="up") acts.push("ВБ: поднять цену");
@@ -8236,13 +8288,15 @@ function renderAdsOzon(){
   const rows=ozAdRows(), L=ozAdLevels(rows);
   const q=(document.getElementById("adSearch").value||"").trim().toLowerCase();
   // ставки — ТОЛЬКО те, что реально применены в окне по дням без отчёта (их бывает несколько)
-  const rateTxt=ozModelRatesTxt(W.from,W.to) || ozAdRateFor(W.to).toFixed(2).replace(".",",")+"%";
+  const rateTxt=ozModelRatesTxt(W.from,W.to) || (W.to<OZ_FEE_REPORT_ONLY_FROM? ozAdRateFor(W.to).toFixed(2).replace(".",",")+"%" : "");
+  const feeMiss=ozFeeMissDays(W.from,W.to);
   const FS=ozOrderFeeSpan(W.to);
   const FSper=FS? fmtDateLong(FS.from)+(FS.from!==FS.to? " – "+fmtDateLong(FS.to):"") : "";
   fresh.innerHTML=`<span class="dot"></span>Ozon · ${fmtDateLong(W.from)}${W.from!==W.to? " – "+fmtDateLong(W.to):""}`
     +` · расход = <b>выгрузка XWAY</b> по ${L.all.ads} ${plural(L.all.ads,"товару","товарам","товарам")}`
     +(FS? ` + <b>оплата за заказ по отчёту Ozon</b> (${FSper}, кабинетное продвижение — его XWAY не видит)` : "")
-    +(L.all.spR>0? ` + <b>ставка ${rateTxt}</b> из юнит-экономики${FS? " в дни без отчёта Ozon" : " по остальным (другой канал продвижения, он есть у всех)"}` : "")
+    +(L.all.spR>0? ` + <b>ставка ${rateTxt}</b> из юнит-экономики${FS? " в дни до "+fmtDateLong(OZ_FEE_REPORT_ONLY_FROM)+" без отчёта Ozon" : " по остальным (другой канал продвижения, он есть у всех)"}` : "")
+    +ozFeeMissTxt(feeMiss)
     +` · склейки взяты с Wildberries по коду 1С (товар физически один)`;
   const drrOrd = L.all.ord>0? L.all.sp/L.all.ord*100 : 0;
   kp.innerHTML=[
@@ -8250,7 +8304,8 @@ function renderAdsOzon(){
      tip:`<div class="t-hd">Из чего сложен расход</div>`
        +tr2("Выгрузка XWAY ("+L.all.ads+" тов.)",fmt(Math.round(L.all.spF))+" ₽")
        +(FS? tr2("Оплата за заказ, отчёт Ozon",fmt(Math.round(L.all.spO))+" ₽") : "")
-       +(L.all.spR>0||!FS? tr2("Ставка "+rateTxt+(FS? " (дни без отчёта)" : " (остальные)"),fmt(Math.round(L.all.spR))+" ₽") : "")
+       +(L.all.spR>0||(!FS&&rateTxt)? tr2("Ставка "+rateTxt+(FS? " (дни без отчёта до "+fmtDateLong(OZ_FEE_REPORT_ONLY_FROM)+")" : " (остальные)"),fmt(Math.round(L.all.spR))+" ₽") : "")
+       +(feeMiss.length? tr2("Оплата за заказ за "+feeMiss.length+" дн. без отчёта","не учтена") : "")
        +tr2("Карточек в кабинете",L.all.n)
        +tr2("Период",fmtDateLong(W.from)+(W.from!==W.to? " – "+fmtDateLong(W.to):""))},
     {lbl:"Выручка в выкупе, ₽", val:fmt(Math.round(L.all.rev)),
@@ -8910,8 +8965,12 @@ function srTableAll(rows,WK){
 /* «КАК СЧИТАЕТСЯ» — СВОЙ ТЕКСТ У КАЖДОГО ВИДА, КОРОТКИМИ ШАГАМИ (просьба продавца 18.10.2026: прежний
    блок был стеной текста через стрелки). Один источник и для экрана, и для листа «Как считается»
    в выгрузке — так файл описывает ровно тот вид, который скачан. */
+// подпись сезона для «Как считается» — веса печатаются из SEASON_W, а не пишутся руками
+function srSeasonTxt(){ const RU={"01":"январь","02":"февраль","03":"март","04":"апрель","05":"май","06":"июнь","07":"июль","08":"август","09":"сентябрь","10":"октябрь","11":"ноябрь","12":"декабрь"};
+  const L=Object.entries(SEASON_W).sort().map(([m,w])=>RU[m]+" ×"+String(w).replace(".",","));
+  return "Сезон: спрос до партии считается с весами месяцев — "+L.join(", ")+", остальные ×1 (решение продавца 19.10.2026: чёрная пятница и Новый год). Нынешний темп — темп обычного месяца: «хватит дней» и цель учитывают, что в ноябре и декабре товар уходит быстрее."; }
 function srHowTo(mp){
-  const band=Math.round(SR_BAND*100), hz=srHzTxt(), WK=srWeeks(mp);
+  const band=Math.round(SR_BAND*100), hz=srHzTxt(), WK=srWeeks(mp), ss=srSeasonTxt();
   const wk=WK? "«Неделя "+srWkShort(WK.curFrom,WK.curTo)+"» — заказы в штуках за последнюю закрытую неделю ("+srWkRange(WK.curFrom,WK.curTo)+") против предыдущей ("+srWkRange(WK.prevFrom,WK.prevTo)+"). Идущая неделя в сравнение не входит." : "";
   if(mp==="ozon"){
     const bi=buyoutInfo("ozon")||{};
@@ -8922,7 +8981,7 @@ function srHowTo(mp){
       "Сравниваем с горизонтом ("+hz+"). Хватает — «Хватит до партии». Не хватает и запаса меньше чем на "+OZ_LEAD_DAYS+" дн (столько идёт поставка до продажи) — «Отгружать сейчас». Не хватает, но срок поставки перекрыт — «Кончится до партии», отгрузить через «хватит дней − "+OZ_LEAD_DAYS+"».",
       "«Склады дадут» — свободный остаток Москвы, Нск-1 и Евросиба (на Евросибе позиции меньше "+NSK2_MIN_TAKE+" шт не берём). Этот же склад кормит и Wildberries."],
       notes:["Цену на Ozon здесь не оцениваем: репрайсера там нет — Ozon следует за ценой ВБ ради индекса, поэтому рычаг один: когда и сколько отгрузить.",
-        "Сколько везти машинами и с какого склада — вид «Подсорт со склада» на вкладке «Оборачиваемость».", wk].filter(Boolean)};
+        "Сколько везти машинами и с какого склада — вид «Подсорт со склада» на вкладке «Оборачиваемость».", ss, wk].filter(Boolean)};
   }
   if(mp==="all") return {title:"Как считается — Всего (бизнес по коду 1С)", steps:[
       "Товар бизнеса = склады ВБ (FBO) + в пути на ВБ + Ozon (остаток и в пути) + ваши склады. Каждая штука один раз: Клин и «Ozon СФО/ЦФО» не задваиваются — та же сумма, что «Всего товара» на вкладке «Остатки».",
@@ -8930,16 +8989,16 @@ function srHowTo(mp){
       "Хватит дней = товар бизнеса ÷ продаж в день.",
       "«До партии»: хватит дней сравниваем с горизонтом ("+hz+"). Меньше — «Не хватит»; заметно больше (темп ниже нужного больше чем на "+band+"%, та же граница, что «Разогнать» на ВБ) — «Избыток»; между — «Хватит».",
       "«Лежит / продаётся»: верхняя полоска — где лежит товар (ВБ вместе с Клином · Ozon вместе с назначенным · ваши склады), нижняя — где он продаётся (ВБ · Ozon). Перекос показывает, на какой площадке действовать."],
-      notes:["«Что делать» собран из двух других видов: цена — только на ВБ (вид «Wildberries»), на Ozon — отгрузка (вид «Ozon»).", wk].filter(Boolean)};
+      notes:["«Что делать» собран из двух других видов: цена — только на ВБ (вид «Wildberries»), на Ozon — отгрузка (вид «Ozon»).", ss, wk].filter(Boolean)};
   return {title:"Как считается — Wildberries (план продаж для репрайсера)", steps:[
       "База — то, что Wildberries может продать до партии: склады ВБ (FBO) + ваши склады.",
       "Из базы вычитаем, что Ozon заберёт с ваших складов до партии: его продажи за горизонт минус то, что у него уже лежит и едет. Остаток на складах Ozon в базу не входит — Wildberries его не продаст.",
-      "Цель продаж в день = база ÷ горизонт ("+hz+").",
+      "Цель продаж в день = база ÷ горизонт ("+hz+") с учётом сезона (веса месяцев — ниже): это темп обычного месяца, в сезон товар уйдёт быстрее.",
       "Цель заказов в день = цель продаж ÷ % выкупа товара на ВБ. Это число ставится в репрайсер.",
       "Сравниваем с заказами за последние 7 дней: выше цели больше чем на "+band+"% — «Поднять цену», ниже больше чем на "+band+"% — «Разогнать», между — «Держать»."],
     notes:["План только для Wildberries: ценой вы управляете на ВБ, Ozon следует за ней ради индекса.",
       "«Не хватит и Озону» — Ozon один выберет весь ваш склад до партии: даже без продаж на ВБ товара не хватит. Поднятие цены поможет лишь частично.",
-      "«Хватит на ВБ» = база ÷ нынешние продажи в день; меньше горизонта — товар кончится раньше партии.", wk].filter(Boolean)};
+      "«Хватит на ВБ» = база ÷ нынешние продажи в день; меньше горизонта — товар кончится раньше партии.", ss, wk].filter(Boolean)};
 }
 function renderSrHowTo(mp){
   const el=document.getElementById("srHowTo"); if(!el) return;
@@ -9143,7 +9202,7 @@ function renderHomeOzon(){
     +(boH? ` (замер ${fmtDateLong(boH[boH.length-1].from)} – ${fmtDateLong(boH[boH.length-1].to)}, от закрытых заказов)` : "")+`,`
     // ставка рекламы — ПРИМЕНЁННАЯ (из отчёта юнит-экономики), а не запасная T.ads из тарифа;
     // если последний день покрыт отчётом «Оплата за заказ», ставки там нет вовсе — только факт
-    +(ozOrderFeeOn(allDates[allDates.length-1])
+    +(ozOrderFeeOn(allDates[allDates.length-1]) || allDates[allDates.length-1]>=OZ_FEE_REPORT_ONLY_FROM
       ? ` площадка забирает ${ozFixedRate().toFixed(1)}% тарифа по вашим ИУ + реклама <b>по факту</b>`
         +` (выгрузка XWAY + оплата за заказ по отчёту Ozon)`
       : ` площадка забирает ${(ozFixedRate()+ozAdRateFor(allDates[allDates.length-1])).toFixed(1)}% по вашим ИУ`
@@ -9948,8 +10007,8 @@ function anTitles(mp){
   set("anAdTitle","Реклама не окупается — "+(oz?"Ozon":"Wildberries"));
   set("anRetTitle",oz? "Отмены заказов — Ozon" : "Разбор возвратов — Wildberries");
   set("anBeNote",oz
-    ? "Ozon · минимальная цена, покрывающая себестоимость и тариф ИУ "+ozFixedRate().toFixed(1).replace(".",",")+"% (комиссия, эквайринг, Premium). Реклама — расход периода, в цену не входит"
-    : "Wildberries · минимальная цена, покрывающая себестоимость, логистику и комиссию WB (реклама и хранение — расходы периода, не в цене)");
+    ? "Ozon · минимальная цена, покрывающая себестоимость и тариф ИУ "+ozFixedRate().toFixed(1).replace(".",",")+"% (комиссия, эквайринг, Premium). Реклама и плата за заказ — расходы периода, в цену не входят"
+    : "Wildberries · минимальная цена, покрывающая себестоимость, логистику и комиссию WB (реклама, хранение, штрафы и возмещение издержек — расходы периода, не в цене)");
   set("anAdCap",(oz
     ? "Реклама товара больше, чем он зарабатывает до рекламы: ДРР выше безубыточного (1 − "+ozFixedRate().toFixed(1).replace(".",",")+"% тарифа − доля себестоимости). Рабочий коридор на Ozon — от 10% (минимум для соинвеста) до безубыточного ДРР."
     : "Реклама товара больше, чем он зарабатывает до рекламы: ДРР выше безубыточного (прибыль до рекламы ÷ выручка)."));
@@ -11748,23 +11807,41 @@ function recMonthLeg(mp, key){
   const fact=(mp==="ozon"? recProfitOz : recProfitWb)(done), left=all.length-done.length, rate=fact/done.length;
   return {key, all, days:done.length, left, fact, rate, fcast:fact+rate*left, last, from:done[0]};
 }
+/* АВТО-ПЛАН (ДАН-04, продавец 19.10.2026: «бери с середины месяца фактические цифры и смотри по ним,
+   к чему идём, а план увеличивай — цель на 30% от того, что есть по факту»). По каждой площадке:
+   факт прибыли за 1–15 число × (дней в месяце ÷ 15) × 1,3. Появляется, когда в данных площадки есть
+   15-е число, и дальше не меняется (берёт только 1–15); до 15-го — только прогноз. Явный план из
+   `meta.plan` (scripts/set-plan.cjs) перекрывает расчётный — по каждой площадке отдельно. */
+const PLAN_UPLIFT=1.3, PLAN_MID_DAY=15;
+function recAutoPlanLeg(mp,key){
+  const all=planDaysOfMonth(key), first=all.slice(0,PLAN_MID_DAY), mid=first[first.length-1];
+  const S = mp==="ozon"? (RD.ozon&&RD.ozon.orderSeries) : RD.orderSeries;
+  const last=((S&&S.dates)||[]).slice(-1)[0]||"";
+  if(last<mid) return null;
+  const f=(mp==="ozon"? recProfitOz : recProfitWb)(first);
+  const fc=f/PLAN_MID_DAY*all.length;
+  return fc>0? {target:fc*PLAN_UPLIFT, fact15:f, fcast15:fc} : null;
+}
 function recPlanCalc(){
-  const P=(RD&&RD.meta&&RD.meta.plan)||null; if(!P) return null;
-  const key=planMonthKey(); if(!key||!P[key]) return null;
-  const plan=P[key], all=planDaysOfMonth(key);
+  const P=(RD&&RD.meta&&RD.meta.plan)||{};
+  const key=planMonthKey(); if(!key) return null;
+  const ex=P[key]||{}, all=planDaysOfMonth(key);
+  const aw=ex.wb>0? null : recAutoPlanLeg("wb",key), ao=ex.oz>0? null : recAutoPlanLeg("ozon",key);
+  const plan={wb: ex.wb>0? ex.wb : (aw&&aw.target), oz: ex.oz>0? ex.oz : (ao&&ao.target)};
+  if(!(plan.wb>0) && !(plan.oz>0)) return null;
   const wbLast=(RD.orderSeries&&RD.orderSeries.dates||[]).slice(-1)[0]||"";
   const ozLast=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates||[]).slice(-1)[0]||"";
-  function leg(target,last,calc){
+  function leg(target,last,calc,auto){
     const done=all.filter(d=>d<=last);
     if(!done.length||!(target>0)) return null;
     const fact=calc(done), left=all.length-done.length;
     const rate=fact/done.length, fcast=fact+rate*left;
     return {target, fact, days:done.length, left, rate, fcast,
       gap:fcast-target, need: left>0? (target-fact)/left : 0,
-      pct: fact/target, last};
+      pct: fact/target, last, auto:auto||null};
   }
-  const wb=leg(plan.wb, wbLast, recProfitWb);
-  const oz=leg(plan.oz, ozLast, recProfitOz);
+  const wb=leg(plan.wb, wbLast, recProfitWb, aw);
+  const oz=leg(plan.oz, ozLast, recProfitOz, ao);
   const both=(wb&&oz)? {target:wb.target+oz.target, fact:wb.fact+oz.fact,
     fcast:wb.fcast+oz.fcast, gap:(wb.fcast+oz.fcast)-(wb.target+oz.target),
     pct:(wb.fact+oz.fact)/(wb.target+oz.target)} : null;
@@ -11786,8 +11863,12 @@ function renderRecPlan(view){
     +(view==="wb"? " · Wildberries" : (view==="ozon"? " · Ozon" : " · обе площадки"));
   const cap=document.getElementById("recPlanCap");
   const days=(p.wb||p.oz).days, left=(p.wb||p.oz).left;
+  const autoL=[p.wb,p.oz].filter(x=>x&&x.auto);
   cap.innerHTML="Календарный месяц, "+p.all.length+" "+plural(p.all.length,"день","дня","дней")
     +". Прошло "+days+", осталось "+left+". Прогноз — линейный, по фактическому темпу с начала месяца."
+    +(autoL.length? " <b>План = +"+Math.round((PLAN_UPLIFT-1)*100)+"% к темпу первой половины месяца</b>"
+      +" (прибыль за 1–"+PLAN_MID_DAY+" ÷ "+PLAN_MID_DAY+" × "+p.all.length+" дн × "+String(PLAN_UPLIFT).replace(".",",")+")"
+      +(autoL.length<[p.wb,p.oz].filter(Boolean).length? " — у "+autoL.map(x=>x===p.wb?"Wildberries":"Ozon").join(" и ")+"; у другой площадки план задан вручную" : "")+"." : "")
     +" <span class=\"mut\">"+(p.wb? "Прибыль ВБ с 03.08 — оценка по заказам, не отчёт. " : "")
     +(p.oz? "Прибыль Ozon считается по «Предельной цене»." : "")+"</span>";
   const bar=(pctFact,pctFc)=>{
@@ -12127,7 +12208,7 @@ function recRulesOz(addAny, rs){
     const first=F.periods.reduce((m,p)=>(!m||p.from<m)? p.from : m, "");
     const miss=ozDates.filter(d=>d>=first && d<=lastOz && !ozOrderFeeOn(d));
     if(miss.length) g.push({n:miss.length+" "+plural(miss.length,"день","дня","дней"),
-      x:"нет отчёта «Оплата за заказ» за "+recRangesTxt(miss)+" — списание за эти дни считается по ставке "+recPc(ozAdRateFor(miss[miss.length-1]),2),
+      x:"нет отчёта «Оплата за заказ» за "+recRangesTxt(miss)+" — плата за заказ за эти дни в прибыли не учтена (берём только из ваших отчётов)",
       w:"отчёт Ozon «Оплата за заказ (все товары)»"});
   }
   // юнит-экономика — раз в месяц, лучшая проверка модели; ручные ставки отчётом не считаются
@@ -12243,9 +12324,9 @@ function recMpCard(x, prio){
   const m=x.month, mName=m? MON[+m.key.slice(5)-1] : "";
   const mo = m? `<div class="rmc-k"><span class="k">${mName[0].toUpperCase()+mName.slice(1)} <small>${fmtDate(m.from)}–${fmtDate(m.last)}, календарный</small></span>`
       +`<b class="v ${m.fact>=0?"good":"crit"}">${recRub(m.fact)} ₽</b>`
-      +(x.leg? `<small>план ${fmt(Math.round(x.leg.target))} ₽ · сделано ${Math.round(x.leg.pct*100)}% · прогноз ${recRub(x.leg.fcast)} ₽ · `
+      +(x.leg? `<small>план ${fmt(Math.round(x.leg.target))} ₽${x.leg.auto? " (+"+Math.round((PLAN_UPLIFT-1)*100)+"% к темпу 1–"+PLAN_MID_DAY+")" : ""} · сделано ${Math.round(x.leg.pct*100)}% · прогноз ${recRub(x.leg.fcast)} ₽ · `
           +`<span class="${x.leg.gap>=0?"good":"crit"}">${x.leg.gap>=0? "с опережением "+fmt(Math.round(x.leg.gap)) : "не хватает "+fmt(Math.round(-x.leg.gap))} ₽</span></small>`
-        : `<small>план на ${mName} не задан · прогноз на месяц ${recRub(m.fcast)} ₽ по темпу ${recRub(m.rate)} ₽/день</small>`)+`</div>`
+        : `<small>план на ${mName} появится, когда в данных будет ${PLAN_MID_DAY}-е число (+${Math.round((PLAN_UPLIFT-1)*100)}% к темпу 1–${PLAN_MID_DAY}) · прогноз на месяц ${recRub(m.fcast)} ₽ по темпу ${recRub(m.rate)} ₽/день</small>`)+`</div>`
     : `<div class="rmc-k"><span class="k">Месяц</span><b class="v">—</b><small>нет данных за месяц</small></div>`;
   const ord = `<div class="rmc-k"><span class="k">Заказы за неделю, шт</span>`
     +`<b class="v">${fmt(x.q1)}</b><small>прошлая неделя ${fmt(x.q0)}`
@@ -12708,7 +12789,7 @@ function stkRows(W){
   /* Коды — с ОБОИХ концов: товар, который кончился к концу периода, в срезе конца уже не лежит,
      а его минус обязан попасть в «Изменение» (иначе сумма Δ расходилась с расчётом по рядам). */
   const codes=[...new Set([...Object.keys(now.sup),...(prev? Object.keys(prev.sup):[]),...Object.keys(ship),...Object.keys(ozT)])];
-  return codes.map(s=>{
+  const rows=codes.map(s=>{
     const a=now.sup[s]||{fbo:0,oz:0,wh:0,whBy:{}}, b=(prev&&prev.sup[s])||{fbo:0,oz:0,wh:0}, w=a.whBy||{};
     const dOf=k=>cmp[k]? a[k]-b[k] : null;
     const wbT=live? (ship[s]||0) : null, oT=live? (ozT[s]||0) : null;
@@ -12724,7 +12805,19 @@ function stkRows(W){
       total:a.fbo+a.oz+a.wh+(wbT||0)+(oT||0)-dup,
       dFbo:dOf("fbo"), dOz:dOf("oz"), dWh:dOf("wh"),
       dTotal:anyCmp? ["fbo","oz","wh"].reduce((x,k)=>cmp[k]? x+(a[k]-b[k]) : x, 0) : null};
-  }).filter(r=>r.total>0 || (r.dTotal!=null && r.dTotal!==0));
+  });
+  /* «НА ВЫВОД» НА «ОСТАТКАХ» — СВОЁ ПРАВИЛО (ЗАП-06, продавец 19.10.2026: «всё что идёт на вывод скрой
+     тогда как по ним закончатся остатки, тогда плашка не будет нужна»). Код «На вывод» (recOutSups —
+     все карточки кода) виден, пока где-либо есть остаток, и скрыт, когда остатка нет нигде; флаг
+     showOut здесь не действует, плашки на этой вкладке нет (renderOutBar). Коды, которые закончились
+     за выбранный период, из таблицы уходят, но их уход не теряется: `outGone` печатается под итогом. */
+  const out=recOutSups(), gone={n:0,d:0};
+  const res=rows.filter(r=>{
+    if(out.has(r.sup)){ if(r.total>0) return true;
+      if(r.dTotal) { gone.n++; gone.d+=r.dTotal; } return false; }
+    return r.total>0 || (r.dTotal!=null && r.dTotal!==0); });
+  res.outGone=gone;
+  return res;
 }
 
 /* Какие слои вообще участвуют в Δ при текущем периоде — нужно и для расчёта, и для подписи:
@@ -12880,7 +12973,8 @@ function renderStockTab(){
     +R("= Всего товара",sh(sTot),"t-sep")
     +(sDup? `<div class="t-note">${nf.format(sDup)} шт стоят у вас на «Ozon СФО/ЦФО», и на них Ozon уже создал заявку — это один товар, он посчитан один раз.</div>` : "")
     +chgBlock(R(sw(c1)+"Склады ВБ",dTxt(dF))+R(sw(c2)+"Склады Ozon",dTxt(dO))+R(sw(c3)+"Ваши склады",dTxt(dW)), dAll)
-    +(W.same? "" : `<div class="t-note">«В пути» в изменение не входит. Слой без замера на ${fmtDate(W.start.date)} не сравнивается — иначе весь его остаток выглядел бы приходом.</div>`);
+    +(W.same? "" : `<div class="t-note">«В пути» в изменение не входит. Слой без замера на ${fmtDate(W.start.date)} не сравнивается — иначе весь его остаток выглядел бы приходом.</div>`)
+    +((!W.same && all.outGone && all.outGone.n)? `<div class="t-note">Ещё ${all.outGone.n} ${plural(all.outGone.n,"код","кода","кодов")} «На вывод» за период закончились (${stkSigned(all.outGone.d)} шт) — остатка у них больше нет, поэтому в таблице их нет и в изменение выше они не вошли.</div>` : "");
   const tipSite=`<div class="t-hd">Уже на площадках — продаётся (на ${fmtDateLong(W.to)})</div>`
     +R(sw(c1)+"Wildberries — склады ВБ (FBO)",sh(sFbo))+R(sw(c2)+"Ozon — склады Ozon",sh(sOz))
     +R("= На площадках",sh(sFbo+sOz),"t-sep")

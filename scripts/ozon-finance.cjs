@@ -82,12 +82,19 @@ O.meta.terms=T;
    не выделяется и остаётся в фиксированной части всегда («вот ее нужно считать по умолчанию»).
    Правило выбора то же, что у % выкупа; ручной `--ads` перекрывает всё.
    ДУБЛЬ — `ozAdRateFor()` в index.html, ДЕРЖИ СИНХРОННО. */
-// НЕЗРЕЛЫЕ ОТЧЁТЫ (mature===false) в выбор ставки НЕ идут — у них удержания ещё не начислены
-const UR=((O.meta.unitReports)||[]).filter(r=>r.mature!==false).slice().sort((a,b)=>a.from<b.from?-1:1);
+// НЕЗРЕЛЫЕ ОТЧЁТЫ (mature===false) в выбор ставки НЕ идут — у них удержания ещё не начислены.
+/* С 01.10.2026 МОДЕЛЬНОЙ СТАВКИ НЕТ (РЕК-23, продавец 19.10.2026: «убери базовую оплату за заказ,
+   берём плату за заказ только с отчётов, которые я сам даю тебе»): плата за заказ — только из отчёта
+   «Оплата за заказ», дня без отчёта — 0. Ручные записи (src:'manual') в расчёт не идут.
+   ДУБЛЬ — OZ_FEE_REPORT_ONLY_FROM/ozUnitReports()/ozAdRateFor() в index.html, ДЕРЖИ СИНХРОННО. */
+const FEE_ONLY_FROM='2026-10-01';
+const UR=((O.meta.unitReports)||[]).filter(r=>r.mature!==false && r.src!=='manual').slice().sort((a,b)=>a.from<b.from?-1:1);
 const adForced = arg('ads')!=null;
 const FIXED=+(T.total-T.ads).toFixed(4);
 function adRateFor(d){
-  if(adForced || !UR.length) return T.ads;
+  if(adForced) return T.ads;
+  if(d>=FEE_ONLY_FROM) return 0;
+  if(!UR.length) return T.ads;
   for(const r of UR) if(r.from<=d && d<=r.to) return r.adsRate;
   if(d < UR[0].from) return UR[0].adsRate;
   let last=UR[0]; for(const r of UR) if(r.to < d) last=r;
@@ -231,6 +238,7 @@ if(UR.length && !adForced){
     ? '(ручная ставка'+(r.perOrderRate? ': '+String(r.perOrderRate).replace('.',',')+'% от заказа' : '')+' — не отчёт)'
     : '(засчитано '+Math.round(r.gross).toLocaleString('ru-RU')+' ₽, реклама '+Math.round(r.ads).toLocaleString('ru-RU')+' ₽)')));
   console.log('      дни после последнего отчёта считаются по нему же; дни раньше первого — по первому');
+  console.log('      с '+FEE_ONLY_FROM+' ставки нет: плата за заказ — только отчёт «Оплата за заказ», день без отчёта — 0 (РЕК-23)');
 }else{
   console.log('   '+'реклама (нет отчётов)'.padEnd(28)+String(T.ads).padStart(6)+'%'+(adForced?'   ← задана вручную --ads':''));
 }
