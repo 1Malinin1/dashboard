@@ -1,11 +1,15 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <!-- Знак дашборда: три столбика роста на градиенте «выручка → прибыль». Нейтральный —
+       площадок две (Wildberries и Ozon); тот же рисунок — логотип в шапке и на экране кода. -->
   <defs>
     <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#2a78d6"/>
-      <stop offset="1" stop-color="#1aa877"/>
+      <stop offset="0" stop-color="#2563e3"/>
+      <stop offset=".55" stop-color="#187d9f"/>
+      <stop offset="1" stop-color="#0c9466"/>
     </linearGradient>
   </defs>
-  <rect width="64" height="64" rx="15" fill="url(#g)"/>
-  <text x="32" y="44" font-family="Segoe UI, Arial, sans-serif" font-size="30" font-weight="800"
-        fill="#ffffff" text-anchor="middle" letter-spacing="0.5">WB</text>
+  <rect width="64" height="64" rx="16" fill="url(#g)"/>
+  <rect x="14.5" y="34.5" width="8.6" height="16" rx="4.3" fill="#ffffff" fill-opacity=".72"/>
+  <rect x="27.7" y="25.3" width="8.6" height="25.2" rx="4.3" fill="#ffffff" fill-opacity=".86"/>
+  <rect x="40.9" y="15.5" width="8.6" height="35" rx="4.3" fill="#ffffff"/>
 </svg>
