@@ -112,7 +112,8 @@ git add wb-secure.js data-version.json && git commit && git push
   подсорт (`resupplyRows`, `topUpTrucks`, `truckFill`, `truckConsolidate`, `packTrucks`, `WHS`/`whKey`, `ozTransitEff`,
   партии `inbKeys`, выкуп `buyoutInfo`, фильтр «на вывод») ↔ `scripts/resupply-report.cjs`; дата подённого файла —
   `wb-extend-orders.cjs` ↔ `bake-funnel.cjs`; имя файла с «_» — `ozon-ads-spend.cjs` ↔ `update-ads-perf.cjs`;
-  фильтр `spendOnly` — `ad-part.cjs` ↔ `update-ads-perf.cjs`; «Итого к оплате» — воркер index.html ↔ `lib/parse-wb.cjs`.
+  фильтр `spendOnly` — `ad-part.cjs` ↔ `update-ads-perf.cjs`; «Итого к оплате» — воркер index.html ↔ `lib/parse-wb.cjs`;
+  колонки `ОПЫТ.md` — `OPYT_COLS`/`opytMap` ↔ `scripts/opyt.cjs`.
 - **Новый кеш от каталога/данных — сбрасывай в `hydrateData` И в `fdbRefreshCache`**, иначе после перезаливки
   останутся старые цифры.
 - **% выкупа действует с даты замера (`builtAt`) и вперёд, прошлое не пересчитывается** (обе площадки).
