@@ -1838,8 +1838,10 @@ const tip=document.getElementById("tip");
    Теперь: сначала ставим в (0,0) и меряем настоящий размер, потом справа/снизу от курсора,
    не влезает — слева/сверху, и в конце жёстко зажимаем в окно с отступом 8px. */
 function showTip(html,x,y){tip.innerHTML=html;
-  tip.style.left="0px";tip.style.top="0px";
-  const r=tip.getBoundingClientRect(), W=innerWidth, H=innerHeight, pad=8;
+  tip.style.left="0px";tip.style.top="0px";tip.style.maxWidth="";
+  let r=tip.getBoundingClientRect(); const W=innerWidth, H=innerHeight, pad=8;
+  /* Не влезла по высоте (длинная подсказка «Всего» на экране 1536×704) — расширяем, а не обрезаем. */
+  if(tip.scrollHeight>tip.clientHeight+1 && r.width<W-2*pad){ /* высоту режет max-height — сравниваем scrollHeight */ tip.style.maxWidth=Math.min(640,W-2*pad)+"px"; r=tip.getBoundingClientRect(); }
   let nx=x+14, ny=y+14;
   if(nx+r.width>W-pad) nx=x-r.width-14;
   if(ny+r.height>H-pad) ny=y-r.height-14;
@@ -12282,10 +12284,13 @@ function renderRecOverview(S){
 }
 function renderRecKpis(view, S, rulesShown){
   const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
-  const wkRows=(x)=>{ const ch=x.ch; if(!ch.w1) return tr2("Нет двух закрытых недель в ряду заказов");
-    return tr2("Закрытая неделя",recWkTxt(ch.w1))+tr2("Предыдущая",recWkTxt(ch.w0))
+  /* short — для «Всего»: там две площадки в одной подсказке, и с длинными датами она не влезала по высоте
+     на телефоне (390 px). Недели те же, пн–вс, только даты короче. */
+  const wkRows=(x,short)=>{ const ch=x.ch; if(!ch.w1) return tr2("Нет двух закрытых недель в ряду заказов");
+    const wt=short? recWkShort : recWkTxt;
+    return tr2("Закрытая неделя",wt(ch.w1))+tr2("Предыдущая",wt(ch.w0))
       +(ch.open&&ch.open.length? tr2("Идущая неделя",fmtDate(ch.open[0])+(ch.open.length>1? "–"+fmtDate(ch.open[ch.open.length-1]) : "")
-        +" — неполная, "+ch.open.length+" дн, в сравнение не идёт") : "")
+        +(short? " · "+ch.open.length+" дн, не сравнивается" : " — неполная, "+ch.open.length+" дн, в сравнение не идёт")) : "")
       +tr2("Заказано, шт",fmt(x.q1)+" против "+fmt(x.q0))
       +tr2("Заказано, ₽",fmt(Math.round(x.r1))+" против "+fmt(Math.round(x.r0))); };
   let cards;
@@ -12313,7 +12318,7 @@ function renderRecKpis(view, S, rulesShown){
          +tr2("Это расход, который можно перенаправить или вернуть, а не убыток")},
       {lbl:"Заказы: неделя к неделе", val:q0>0? recPctTxt(q1/q0-1) : "—",
        valColor:q1>=q0?"var(--good-txt)":"var(--crit-txt)",
-       tip:L.map(x=>`<div class="t-hd">${REC_MP_NM[x.mp]}</div>`+wkRows(x)).join("")
+       tip:L.map(x=>`<div class="t-hd">${REC_MP_NM[x.mp]} · недели пн–вс</div>`+wkRows(x,true)).join("")
          +`<div class="t-hd">Вместе</div>`+tr2("Заказано, шт",fmt(q1)+" против "+fmt(q0))+wkWarn},
       {lbl:"Прибыль за неделю, ₽", val:recRub(p1), valColor:p1>=0?"var(--good-txt)":"var(--crit-txt)",
        tip:`<div class="t-hd">Последняя закрытая неделя (пн–вс)</div>`
