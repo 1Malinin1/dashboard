@@ -448,6 +448,81 @@
   .drrlv .lv-n{font-variant-numeric:tabular-nums;text-align:right;color:var(--text-2)}
   .drrlv .lv-bar{height:7px;border-radius:4px;background:var(--surface-3);overflow:hidden}
   .drrlv .lv-bar i{display:block;height:100%;border-radius:4px}
+  /* «Реклама»: пирамида с колонкой заказов и сравнением A | B | Δ (19.10.2026). На узком экране
+     пирамида прокручивается вбок внутри своей карточки — страница вбок не едет. */
+  .drrlv-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .kpi .kpi-b{font-size:12px;color:var(--muted);margin-top:7px;font-variant-numeric:tabular-nums;line-height:1.4}   /* «B: … · изменение» под KPI */
+  .drrlv.wq .lv{grid-template-columns:minmax(150px,1.4fr) 104px 124px 130px 92px minmax(50px,.8fr)}
+  .drrlv.cmp .lv{grid-template-columns:minmax(150px,1.3fr) 128px 142px 150px 112px minmax(40px,.5fr);align-items:start}
+  .drrlv.wq,.drrlv.cmp{min-width:720px}
+  .drrlv .lv-n small.lv-b{display:block;font-size:10.5px;font-weight:500;color:var(--muted);line-height:1.35;margin-top:1px;white-space:nowrap}
+  .drrlv .lv-n small.lv-be{display:block;font-size:10px;font-weight:500;color:var(--muted);margin-top:2px;white-space:nowrap}
+  .drrlv.cmp .lv-bar{margin-top:7px}
+  /* изменение к периоду B: цвет — по направлению цели площадки, а не «вверх = хорошо» */
+  .dlt{font-weight:650;white-space:nowrap}
+  .dlt.good{color:var(--good-txt)} .dlt.bad{color:var(--crit-txt)} .dlt.neu{color:var(--text-2)}
+  td .ad-b{display:block;font-size:11px;color:var(--muted);font-weight:500;margin-top:1px;white-space:nowrap}
+  /* период A / B — две кнопки календаря и «убрать сравнение» */
+  .ad-period{display:inline-flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .ad-period[hidden],.ad-period .drp-trigger[hidden]{display:none}
+  .ad-period .drp-trigger .ad-ab{display:inline-grid;place-items:center;min-width:17px;height:17px;padding:0 4px;border-radius:5px;
+    font-size:10.5px;font-weight:750;background:var(--accent-weak);color:var(--accent)}
+  .ad-period .drp-trigger.off{color:var(--text-2);border-style:dashed}
+  .ad-cmp-x{border:1px solid var(--border);background:var(--surface);color:var(--muted);border-radius:var(--r-sm);
+    width:32px;height:34px;font:inherit;font-size:16px;line-height:1;cursor:pointer;display:grid;place-items:center;padding:0}
+  .ad-cmp-x:hover{color:var(--crit-txt);border-color:var(--border-2)}
+  .ad-cmp-x[hidden]{display:none}
+  .ad-pnote{font-size:12px;color:var(--text-2);background:var(--surface-2);border:1px solid var(--border);
+    border-radius:var(--r-sm);padding:7px 11px;margin:0 0 12px;line-height:1.5}
+  .ad-pnote[hidden]{display:none}
+  .ad-pnote b{color:var(--text-1);font-weight:640}
+  /* ---- «Гипотезы и опыты» (из ОПЫТ.md) ---- */
+  .hyp{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);
+    margin:0 0 14px;padding:0}
+  .hyp[hidden]{display:none}
+  .hyp>summary{list-style:none;cursor:pointer;display:flex;align-items:baseline;gap:6px 12px;flex-wrap:wrap;padding:14px 18px;user-select:none}
+  .hyp>summary::-webkit-details-marker{display:none}
+  .hyp>summary::before{content:"▸";color:var(--accent);font-size:11px;transition:transform .14s ease;align-self:center}
+  .hyp[open]>summary::before{transform:rotate(90deg)}
+  .hyp>summary h3{margin:0;font-size:15px}
+  .hyp .hy-sum{font-size:12px;color:var(--muted)}
+  .hyp .hy-sum b{color:var(--text-1);font-weight:650}
+  .hyp .hy-sum .hot{color:var(--crit-txt);font-weight:650}
+  .hyp .hy-body{padding:0 18px 16px}
+  .hyp .hy-cap{font-size:12px;color:var(--text-2);line-height:1.55;margin:0 0 10px}
+  .hyp .hy-h{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin:14px 0 6px}
+  .hyp .hy-scroll{overflow:auto;max-height:430px;border:1px solid var(--border);border-radius:var(--r)}
+  .hyp table.hy-t{border-collapse:collapse;width:100%;font-size:12px;min-width:980px}
+  .hyp .hy-m{display:grid;grid-template-columns:auto auto auto;gap:2px 6px;font-variant-numeric:tabular-nums;white-space:nowrap;
+    font-size:11px;align-items:baseline}
+  .hyp .hy-m .k{color:var(--muted)} .hyp .hy-m .v{text-align:right} .hyp .hy-m .d .dlt{font-size:10.5px}
+  .hyp .hy-t th{position:sticky;top:0;z-index:1;background:var(--surface-2);color:var(--muted);font-weight:620;font-size:11px;
+    text-align:left;padding:7px 9px;border-bottom:1px solid var(--border);white-space:nowrap}
+  .hyp .hy-t td{padding:8px 9px;border-top:1px solid var(--border);vertical-align:top;color:var(--text-1);line-height:1.4}
+  .hyp .hy-t tr:first-child td{border-top:0}
+  .hyp .hy-t td.n{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .hyp .hy-t .s{display:block;font-size:11px;color:var(--muted);font-weight:500}
+  .hyp .hy-t .what{max-width:240px;min-width:170px}
+  .hyp .hy-t tr.over td{background:color-mix(in srgb,var(--crit) 7%,transparent)}
+  .hyp .hy-t tr.sel td{background:color-mix(in srgb,var(--accent) 9%,transparent)}
+  .hyp .hy-go{border:1px solid var(--border-2);background:none;color:var(--accent);font:inherit;font-size:11.5px;font-weight:620;
+    border-radius:7px;padding:4px 9px;cursor:pointer;white-space:nowrap}
+  .hyp .hy-go:hover{background:var(--surface-3);border-color:var(--accent)}
+  .hyp .hy-pats{display:grid;gap:6px;grid-template-columns:repeat(auto-fill,minmax(min(100%,470px),1fr))}
+  .hyp .hy-pat{display:grid;grid-template-columns:52px minmax(0,1fr) auto;gap:4px 12px;padding:8px 10px;border:1px solid var(--border);
+    border-radius:var(--r-sm);font-size:12.5px;line-height:1.45;color:var(--text-1)}
+  .hyp .hy-pat .id{font-weight:700;color:var(--accent)}
+  .hyp .hy-pat .meta{grid-column:2/4;font-size:11.5px;color:var(--muted);display:-webkit-box;-webkit-box-orient:vertical;
+    -webkit-line-clamp:3;overflow:hidden}
+  .hyp .hy-pat .meta b{color:var(--text-2);font-weight:600}
+  .hyp .hy-msg{font-size:12.5px;color:var(--text-2);padding:10px 12px;border:1px dashed var(--border-2);border-radius:var(--r-sm)}
+  @media(max-width:600px){
+    .hyp>summary{padding:12px 14px} .hyp .hy-body{padding:0 12px 14px}
+    .hyp .hy-pat{grid-template-columns:44px minmax(0,1fr)} .hyp .hy-pat>.badge{grid-column:2} .hyp .hy-pat .meta{grid-column:1/3}
+    .ad-period{width:100%} .ad-period .drp-trigger{flex:1 1 auto;justify-content:flex-start;min-width:0}
+    .ad-period .drp-trigger span{overflow:hidden;text-overflow:ellipsis}
+    #tab-ads .toolbar .count{white-space:normal;margin-left:0;min-width:0}   /* длинная подпись периода не распирает страницу */
+  }
   /* ---- Разбор одного товара («хватит ли партии») ---- */
   /* Строка «скрыты товары на вывод». Как и у .itm-ctl, правило [hidden] обязательно —
      display у класса перебивает браузерное [hidden]{display:none}. */
@@ -1002,6 +1077,7 @@
   #adTable td .sub2.acc{color:var(--accent);font-weight:600}
   #adTable td .sub2.crit{color:var(--crit-txt);font-weight:600}
   #adTable td.name-cell{max-width:250px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #adTable td .oz-nm{max-width:230px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}   /* Ozon: название не распирает таблицу */
   #adTable td.ad-art{white-space:nowrap;font-variant-numeric:tabular-nums;user-select:all}
   #adTable td.crit{color:var(--crit-txt)}
   #adTable th,#adTable td{padding-left:9px;padding-right:9px}
@@ -1591,11 +1667,12 @@
     <div class="toolbar">
       <input type="search" id="adSearch" placeholder="Поиск: артикул, код 1С или название…">
       <select id="adGroupSel"></select>
-      <div class="daterange" id="adDateRange">
-        <span class="dr-label">Период:</span>
-        <input type="date" id="adFromInp" aria-label="Дата с">
-        <span class="dr-dash">–</span>
-        <input type="date" id="adToInp" aria-label="Дата по">
+      <div class="ad-period" id="adDateRange">
+        <button type="button" class="drp-trigger" id="adRangeBtn" aria-haspopup="dialog" aria-expanded="false"
+          title="Период A — за какие дни считать цифры вкладки. Дни без данных в календаре заштрихованы"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2.5"/><path d="M3 10h18M8 3v4M16 3v4"/></svg><span id="adRangeLbl">Период</span></button>
+        <button type="button" class="drp-trigger off" id="adCmpBtn" aria-haspopup="dialog" aria-expanded="false"
+          title="Период B — с чем сравнить. По умолчанию — предыдущий период такой же длины"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M7 7h11l-3-3M17 17H6l3 3"/></svg><span id="adCmpLbl">Сравнить с периодом…</span></button>
+        <button type="button" class="ad-cmp-x" id="adCmpOff" hidden title="Убрать сравнение" aria-label="Убрать сравнение">×</button>
       </div>
       <div class="seg" id="adViewSeg" role="group" aria-label="Что показать">
         <button data-v="cand" aria-pressed="true">Кандидаты</button>
@@ -1605,11 +1682,16 @@
       <span class="count" id="adCount"></span>
       <button class="btn" id="adExportBtn">Скачать Excel</button>
     </div>
+    <div class="ad-pnote" id="adPNote" hidden></div>
     <div class="card" id="adDrrTree" hidden style="margin-bottom:14px">
       <h3>ДРР по уровням — в выкупе</h3>
       <div class="cap" id="adDrrCap">Весь ассортимент → категория → склейка → товар. Цель ≤7%, хорошо 6%, ниже 6% — идеально. Клик по строке проваливается на уровень ниже.</div>
-      <div id="adDrrLevels"></div>
+      <div class="drrlv-wrap" id="adDrrLevels"></div>
     </div>
+    <details class="hyp" id="adHypBox" open hidden>
+      <summary><h3 id="adHypTitle">Гипотезы и опыты</h3><span class="hy-sum" id="adHypSum"></span></summary>
+      <div class="hy-body" id="adHyp"></div>
+    </details>
     <div class="howto" id="adHowTo"></div>
     <div class="table-card">
       <div class="table-scroll"><table class="rnp" id="adTable"></table></div>
@@ -7510,11 +7592,133 @@ function adWin(){ const dates=adDates(); if(!dates.length) return [];
 function adDaysN(){ return adWin().length; }
 function adPeriodTxt(){ const w=adWin(); return w.length
   ? fmtDateLong(w[0])+" – "+fmtDateLong(w[w.length-1])+" ("+w.length+" дн)" : "—"; }
-function initAdDateBounds(){ const dates=adDates(), f=document.getElementById("adFromInp"),
-    t=document.getElementById("adToInp");
-  if(!f||!t||!dates.length) return;
-  f.min=t.min=dates[0]; f.max=t.max=dates[dates.length-1];
-  const w=adWin(); if(w.length){ f.value=w[0]; t.value=w[w.length-1]; } }
+/* ==================== ПЕРИОДЫ A и B НА «РЕКЛАМЕ» (просьба продавца 18.10.2026) ====================
+   Дословно: «важно добавить период, чтобы не в общем и целом видеть какие-то цифры за непонятный
+   промежуток, а выбрать период и сравнивать результаты… мы тестим гипотезы, и важно потом увидеть
+   результат на цифрах».
+   · ПЕРИОД A — у каждой площадки свой. ВБ: `adFrom/adTo` (то же состояние, что было у отбора кандидатов);
+     пусто = окно по умолчанию СВОЕГО вида: «Кандидаты/По склейкам» — последние AD_DEF_DAYS дней ряда заказов
+     (как было), «Отдача» — все дни выгрузок XWAY без частей «только расход» (как было). Ozon: `ozAdFrom/ozAdTo`,
+     пусто = все дни выгрузок XWAY — ровно прежнее `ozAdWindow()`, цифры по умолчанию не меняются.
+   · ПЕРИОД B (сравнение) — по желанию. По умолчанию — ПРЕДЫДУЩИЙ ПЕРИОД ТАКОЙ ЖЕ ДЛИНЫ, выровненный как A
+     (неделя пн–вс → предыдущая неделя пн–вс; месяц → предыдущий месяц: у Ozon календарный, у ВБ — целые недели
+     по четвергу). «Последние 7 против предыдущих 7» сравнением по умолчанию НЕ бывает (правило продавца).
+   · Цифры периода считают ТЕ ЖЕ функции, что и без него (`adPerfRows(R)`, `ozAdRows(W)`) — формула одна.
+   · «Рекомендации» зовут эти функции БЕЗ периода (окно по умолчанию), поэтому выбор периода здесь их не двигает,
+     а «Открыть →» сбрасывает период вкладки (`adResetPeriods`) — цифры на обеих вкладках совпадают.
+   ========================================================================================= */
+let adBFrom=null, adBTo=null, adCmpOn=false;                                   // ВБ: период B
+let ozAdFrom=null, ozAdTo=null, ozBFrom=null, ozBTo=null, ozCmpOn=false;       // Ozon: периоды A и B
+let adBNote=null, ozBNote=null;          // подпись периода B, поставленного из опыта («столько же дней до правки И-08»)
+function adResetPeriods(){ adFrom=adTo=null; adBFrom=adBTo=null; adCmpOn=false; adBNote=null;
+  ozAdFrom=ozAdTo=null; ozBFrom=ozBTo=null; ozCmpOn=false; ozBNote=null; _hypSel=null; }
+const adNDays=(a,b)=>Math.round((Date.parse(b+"T00:00:00Z")-Date.parse(a+"T00:00:00Z"))/864e5)+1;   // включительно
+const adPc=(v,d=1)=>(v==null||!isFinite(v))? "—" : v.toFixed(d).replace(".",",")+"%";
+const adDM=d=>d? d.slice(8,10)+"."+d.slice(5,7) : "—";
+const adRangeTxt=(a,b)=>!a? "—" : (a===b? fmtDateLong(a) : fmtDateLong(a)+" – "+fmtDateLong(b));
+const adDaysTxt=n=>n+" "+plural(n,"день","дня","дней");
+/* Месяц ВБ — целые недели пн–вс; неделя относится к месяцу своего ЧЕТВЕРГА (то же правило, что wbMonthOfWeek). */
+function wbMonthRange(key){ const [y,m]=key.split("-").map(Number);
+  const a=new Date(Date.UTC(y,m-1,1)); while(a.getUTCDay()!==4) a.setUTCDate(a.getUTCDate()+1);
+  const b=new Date(Date.UTC(y,m,0));   while(b.getUTCDay()!==4) b.setUTCDate(b.getUTCDate()-1);
+  return {from:addDays(a.toISOString().slice(0,10),-3), to:addDays(b.toISOString().slice(0,10),3)}; }
+const adMonKey=(key,k)=>{ const [y,m]=key.split("-").map(Number); return new Date(Date.UTC(y,m-1+k,1)).toISOString().slice(0,7); };
+const adMonIdx=key=>(+key.slice(0,4))*12+(+key.slice(5,7));
+/* Предыдущий период «как A»: месяц → предыдущий месяц (Ozon — календарный, ВБ — по четвергу); идущий месяц
+   длиннее недели → те же дни предыдущего месяца; целые недели пн–вс → столько же недель перед A; иначе — те же
+   N дней прямо перед A. Идущий месяц проверяется РАНЬШЕ недель: месяц ВБ начинается с понедельника, и в воскресенье
+   «окт 26 (ВБ) · идёт» (28.09–18.10, 3 целые недели) сравнивался бы с 07.09–27.09, а в среду (28.09–14.10) — с теми
+   же днями сентября ВБ. Неделя и короче (чип «нед …», один день 01.10) — с предыдущей неделей / предыдущими днями,
+   а не с теми же днями месяц назад: иначе 01.10 сравнивался бы с 01.09, а не с 30.09. */
+function adPrevRunMonth(from,to,mp,n){
+  /* Идущий месяц (A начинается с начала месяца и в нём же кончается) → ТЕ ЖЕ ДНИ ПРЕДЫДУЩЕГО МЕСЯЦА, выровненные
+     так же: у Ozon от 1-го числа, у ВБ — от первого понедельника месяца ВБ (тот же состав дней недели). Конец не
+     выходит за предыдущий месяц; если тот короче — разница длины учтена сравнением «в среднем за день». */
+  if(mp==="ozon" && from.slice(8)==="01" && from.slice(0,7)===to.slice(0,7)){
+    const pf=adMonKey(from.slice(0,7),-1)+"-01", pe=addDays(from,-1);
+    let t=addDays(pf,n-1); if(t>pe) t=pe;
+    return {from:pf, to:t, how:"те же дни предыдущего календарного месяца"}; }
+  if(mp==="wb"){ const k=wbMonthOfWeek(mondayOf(from)).key, R=wbMonthRange(k);
+    if(R.from===from && to<=R.to){ const P=wbMonthRange(adMonKey(k,-1));
+      let t=addDays(P.from,n-1); if(t>P.to) t=P.to;
+      return {from:P.from, to:t, how:"те же дни предыдущего месяца ВБ (от его первого понедельника)"}; } }
+  return null;
+}
+function adPrevLike(from,to,mp){
+  const n=adNDays(from,to), w=n/7;
+  if(mp==="ozon" && from.slice(8)==="01" && addDays(to,1).slice(8)==="01"){
+    const k=adMonIdx(to.slice(0,7))-adMonIdx(from.slice(0,7))+1;
+    return {from:adMonKey(from.slice(0,7),-k)+"-01", to:addDays(from,-1),
+      how:k>1? "предыдущие "+k+" календарных месяца" : "предыдущий календарный месяц"}; }
+  if(mp==="wb"){ const k1=wbMonthOfWeek(mondayOf(from)).key, k2=wbMonthOfWeek(mondayOf(to)).key;
+    if(wbMonthRange(k1).from===from && wbMonthRange(k2).to===to){
+      const k=adMonIdx(k2)-adMonIdx(k1)+1;
+      return {from:wbMonthRange(adMonKey(k1,-k)).from, to:addDays(from,-1),
+        how:(k>1? "предыдущие "+k+" месяца ВБ" : "предыдущий месяц ВБ")+" (целые недели по четвергу)"}; } }
+  const run=adPrevRunMonth(from,to,mp,n);
+  if(run && n>7) return run;
+  // целые недели пн–вс → столько же недель пн–вс прямо перед A
+  if(n%7===0 && new Date(from+"T00:00:00Z").getUTCDay()===1)
+    return {from:addDays(from,-n), to:addDays(from,-1),
+      how: w===1? "предыдущая неделя пн–вс" : "предыдущие "+w+" "+plural(w,"неделя","недели","недель")+" пн–вс"};
+  return {from:addDays(from,-n), to:addDays(from,-1),
+    how: n===1? "предыдущий день" : (n%10===1&&n%100!==11? "предыдущий " : "предыдущие ")+adDaysTxt(n)};
+}
+/* Чипы календаря: окно по умолчанию, реальные окна выгрузок (последняя и многодневные), календарные недели
+   пн–вс и месяцы, целиком лежащие в данных, плюс идущий месяц с пометкой «идёт». Подписи — из данных. */
+function adPresets(mp,lo,hi,parts,def){
+  const out=[], seen=new Set(), add=p=>{ const k=p.from+"|"+p.to; if(seen.has(k)||p.from>p.to) return; seen.add(k); out.push(p); };
+  if(def) add({label:def.label, from:def.from, to:def.to});
+  if(parts.length){ const p=parts[parts.length-1];
+    add({label:"Последняя выгрузка · "+(p.from===p.to? adDM(p.to) : adDM(p.from)+"–"+adDM(p.to)), from:p.from, to:p.to}); }
+  if(lo&&hi){
+    let m=mondayOf(hi); if(addDays(m,6)>hi) m=addDays(m,-7);
+    for(let i=0;i<6 && m>=lo; i++, m=addDays(m,-7)) add({label:"нед "+adDM(m)+"–"+adDM(addDays(m,6)), from:m, to:addDays(m,6)});
+    const ks=[]; for(let k=lo.slice(0,7); k<=hi.slice(0,7); k=adMonKey(k,1)) ks.push(k);
+    if(mp==="wb"){ const k0=wbMonthOfWeek(mondayOf(lo)).key; if(!ks.includes(k0)) ks.unshift(k0); }
+    ks.reverse().forEach(k=>{ const R= mp==="wb"? wbMonthRange(k) : {from:k+"-01", to:addDays(adMonKey(k,1)+"-01",-1)};
+      const nm=RU_MONTHS[+k.slice(5,7)-1]+" "+k.slice(2,4)+(mp==="wb"? " (ВБ)" : "");
+      if(R.from>=lo && R.to<=hi) add({label:nm, from:R.from, to:R.to});
+      else if(R.from>=lo && R.from<=hi && R.to>hi) add({label:nm+" · идёт", from:R.from, to:hi}); });
+  }
+  parts.filter(p=>p.from!==p.to).slice(-3).reverse().forEach(p=>add({label:"Выгрузка "+adDM(p.from)+"–"+adDM(p.to), from:p.from, to:p.to}));
+  return out;
+}
+/* Изменение A к B. Суммы (расход, выручка, заказы) при РАЗНОЙ длине периодов сравниваются в среднем за день —
+   иначе 7 дней против 5 дали бы «рост» на ровном месте; ДРР и CPO — отношения, сравниваются как есть. */
+function adDeltaPct(a,b,na,nb){ if(b==null||a==null||!isFinite(a)||!isFinite(b)) return null;
+  const norm=na&&nb&&na!==nb, x=norm? a/na : a, y=norm? b/nb : b;
+  if(!(y>0)) return x>0? Infinity : null; return (x-y)/y*100; }
+function adDltHtml(p,dir){                // dir: +1 — рост хорошо, −1 — рост плохо, 0 — нейтрально
+  if(p==null) return "";
+  if(p===Infinity) return `<span class="dlt ${dir>0?"good":(dir<0?"bad":"neu")}">было 0</span>`;
+  if(Math.abs(p)<0.05) return `<span class="dlt neu">±0%</span>`;
+  const cls= dir===0? "neu" : ((p>0)===(dir>0)? "good" : "bad");
+  return `<span class="dlt ${cls}">${p>0?"▲ +":"▼ −"}${Math.abs(p).toFixed(Math.abs(p)<10?1:0).replace(".",",")}%</span>`; }
+function adDltPp(a,b,cls){ if(a==null||b==null||!isFinite(a)||!isFinite(b)) return "";
+  const d=a-b; if(Math.abs(d)<0.05) return `<span class="dlt neu">±0 п.п.</span>`;
+  return `<span class="dlt ${cls}">${d>0?"+":"−"}${Math.abs(d).toFixed(1).replace(".",",")} п.п.</span>`; }
+/* Цвет изменения ДРР — ПО ЦЕЛИ ПЛОЩАДКИ, а не «вверх = хорошо». ВБ: 7% — ПОТОЛОК, снижение хорошо.
+   Ozon: 10% — МИНИМУМ (соинвест по ИУ), безубыточный ДРР — потолок: ниже минимума хорошо расти, выше потолка —
+   снижаться, внутри коридора — нейтрально, а вход в коридор снаружи — хорошо. */
+function adDrrDirCls(mp,a,b,be){
+  if(a==null||b==null||!isFinite(a)||!isFinite(b)) return "neu";
+  const d=a-b; if(Math.abs(d)<0.05) return "neu";
+  if(mp!=="ozon") return d<0? "good" : "bad";
+  const inC=v=>v>=OZ_DRR_GOAL && (be==null || v<=be);
+  if(inC(a)) return inC(b)? "neu" : "good";
+  if(a<OZ_DRR_GOAL) return d>0? "good" : "bad";
+  return d<0? "good" : "bad";
+}
+// подстрока «B: значение · изменение» под цифрой A (пусто, когда сравнения нет)
+const adBLine=(txt,dlt,tag)=>`<${tag||"span"} class="${tag==="small"?"lv-b":"ad-b"}">B: ${txt}${dlt? " · "+dlt : ""}</${tag||"span"}>`;
+/* Органы управления ВБ-шного отбора прячутся на Ozon и на «Всего» и ОБЯЗАТЕЛЬНО возвращаются на ВБ.
+   У селекта после enhanceSelect видна обёртка `.uisel`, а сам <select> скрыт — прятать/показывать надо обёртку:
+   раньше `style.display=""` на нативном селекте выводил его вторым рядом с кастомным, а на Ozon кастомный
+   «Пушкары (109)» оставался висеть. */
+function adCtlShow(map){ Object.entries(map).forEach(([id,on])=>{ const e=document.getElementById(id); if(!e) return;
+  const t=(e.tagName==="SELECT" && e.closest(".uisel"))? e.closest(".uisel") : e;
+  t.style.display = on? "" : "none"; }); }
 /* Объект сортировки НЕЛЬЗЯ пересоздавать: wireSortable держит на него ссылку с загрузки
    (та же грабля, что с turnSortState). Меняем только поля. */
 let adSortState={key:"rub",dir:1};
@@ -7587,16 +7791,57 @@ function recWasTxt(r){
 }
 const num1 = v => v.toFixed(1).replace(".",",");
 
-function adPerfRows(){
+/* ВБ, «Отдача»: день с данными — день АКТИВНОЙ части выгрузок XWAY (`adPerf.parts` без `spendOnly`). Часть
+   «только расход» в ДРР не идёт (решение продавца 09.09.2026), в календаре её дни выбрать нельзя. */
+function adPerfParts(){ const P=(RD&&RD.adPerf)||null; if(!P) return [];
+  const parts=(Array.isArray(P.parts)&&P.parts.length)? P.parts : (P.bySku&&P.from? [{from:P.from,to:P.to,bySku:P.bySku}] : []);
+  return parts.slice().sort((a,b)=>a.from<b.from?-1:1); }
+const adPerfActive=()=>adPerfParts().filter(p=>!p.spendOnly);
+function adPerfDefWin(){ const A=adPerfActive(); return A.length? {from:A[0].from, to:A[A.length-1].to} : null; }
+const AD_PERF_F=["spend","rk","imp","clicks","carts","ord","rub","othOrd","othRub","totOrd","totRub"];
+/* Свод выгрузок за [from…to]. ЧАСТЬ, КОТОРУЮ ПЕРИОД РЕЖЕТ (выгрузка пришла одним файлом за несколько дней,
+   а в период попала лишь часть её дней), БЕРЁТСЯ ПРОПОРЦИОНАЛЬНО ДНЯМ — так же «Главная» разносит расход XWAY
+   (`adRowsFromPerf`: поровну по дням выгрузки), поэтому расход здесь и в прибыли — одно число. Расход, заказы
+   и выручка части делятся на ОДНУ долю, её ДРР и CPO от этого не меняются. Какие части разрезаны — в `cut`
+   (вкладка пишет это над таблицей). Целиком исключать такую часть нельзя: период показывал бы меньше дней,
+   чем подписано. */
+function adPerfAgg(from,to){
+  const bySku={}, cut=[]; let days=0, lo=null, hi=null;
+  adPerfActive().forEach(p=>{ const a=p.from>from? p.from : from, b=p.to<to? p.to : to; if(a>b) return;
+    const n=adNDays(p.from,p.to), k=adNDays(a,b), w=k/n;
+    days+=k; if(!lo||a<lo) lo=a; if(!hi||b>hi) hi=b;
+    if(k<n) cut.push({from:p.from, to:p.to, k, n});
+    Object.entries(p.bySku||{}).forEach(([sku,e])=>{
+      const o=bySku[sku]||(bySku[sku]=Object.fromEntries(AD_PERF_F.map(f=>[f,0])));
+      AD_PERF_F.forEach(f=>{ let v=e[f]; if(f==="totRub"&&v==null) v=e.rub;   // как в adPerfRows: нет «Общей суммы» — берём «Заказы, руб.»
+        if(v) o[f]+=v*w; }); }); });
+  return {bySku, days, from:lo, to:hi, cut};
+}
+/* Период A «Отдачи»: выбранные даты ∩ дни выгрузок; ничего не выбрано — все дни выгрузок (как было). */
+function adPerfA(){ const def=adPerfDefWin(); if(!def) return null;
+  const isDef=!adFrom&&!adTo, f=isDef? def.from : (adFrom||adTo), t=isDef? def.to : (adTo||adFrom);
+  const G=adPerfAgg(f,t);
+  return {reqFrom:f, reqTo:t, from:G.from, to:G.to, days:G.days, cut:G.cut, isDef, G}; }
+function adPerfB(A){ if(!adCmpOn||!A||!A.from) return null;
+  const auto=!(adBFrom&&adBTo), r=auto? adPrevLike(A.from,A.to,"wb") : {from:adBFrom, to:adBTo, how:adBNote||"выбран вручную"};
+  const G=adPerfAgg(r.from,r.to);
+  return {reqFrom:r.from, reqTo:r.to, from:G.from, to:G.to, days:G.days, cut:G.cut, auto, how:r.how, G}; }
+// окно отбора кандидатов как диапазон дат (для расхода в колонке «Реклама ₽» за ТОТ ЖЕ период)
+function adCandRange(){ const w=adWin(); return w.length? {from:w[0], to:w[w.length-1]} : null; }
+/* Строки «Отдачи». Без аргумента — ВСЕ активные части (`P.bySku`, как было: так их читают «Рекомендации»);
+   с периодом R ({from,to} или результат adPerfA/adPerfB) — свод частей внутри периода (adPerfAgg). */
+function adPerfRows(R){
   const P=(RD&&RD.adPerf)||null; if(!P||!P.bySku) return [];
+  let src=P.bySku, nDays=Math.max(1, Math.round((new Date(P.to)-new Date(P.from))/864e5)+1);
+  if(R){ const G=R.G||adPerfAgg(R.reqFrom||R.from, R.reqTo||R.to); src=G.bySku; nDays=Math.max(1,G.days); }
   const bo=adBuyout();
   /* Запас на ВБ и «на сколько хватит» — прямо в таблице отдачи (просьба продавца
      31.08.2026): решение «оставить/снизить/выключить» он принимает вместе с запасом,
      и раньше за этим приходилось уходить в «Кандидаты» или в выгрузку. Продажи в день
      считаем ЗА ПЕРИОД САМОЙ ВЫГРУЗКИ — тот же период, что и расход в этой таблице. */
   const msk=adMskBySup();
-  const days=Math.max(1, Math.round((new Date(P.to)-new Date(P.from))/864e5)+1);
-  return Object.entries(P.bySku).map(([sku,e])=>{
+  const days=nDays;
+  return Object.entries(src).map(([sku,e])=>{
     const c=(RD.catalog||[]).find(x=>""+x.sku===sku)||{};
     const totRub=e.totRub!=null? e.totRub : e.rub;    // вся выручка артикула за период
     /* ВЫКУП БЕРЁМ СВОЙ У КАЖДОГО ТОВАРА, а не общий по магазину (правка продавца
@@ -7661,7 +7906,7 @@ function adPerfRows(){
    Чек берётся В ЗАКАЗАХ (как в отчёте), выкуп домножается отдельно — иначе он учёлся бы дважды. */
 const adMaxCpo = (aov,bo,goal) => aov>0? goal/100*aov*bo : 0;
 const adDrrCls = v => v===Infinity? "crit" : (v<=AD_DRR_GREAT? "good" : (v<=AD_DRR_GOAL? "warning" : "crit"));
-const adDrrTxt = v => v===Infinity? "нет продаж" : v.toFixed(1)+"%";
+const adDrrTxt = v => v===Infinity? "нет продаж" : v.toFixed(1).replace(".",",")+"%";   // десятичная запятая
 function adDrrBadge(v){ const c=adDrrCls(v);
   return `<span class="badge ${c==="good"?"good":(c==="warning"?"warning":"critical")}"><span class="d"></span>${adDrrTxt(v)}</span>`; }
 /* НА ОЗОНЕ 10% — ЭТО МИНИМУМ, КОТОРЫЙ НАДО ДЕРЖАТЬ, А НЕ ПОТОЛОК (правило продавца
@@ -7707,12 +7952,14 @@ function adMskBySup(){
 const adMskHeld = sup => _adMskHeld[sup]||0;
 /* ДРР склейки/категории для видов отбора. Считается по тому же правилу, что и в «Отдаче»:
    расход ÷ (выручка ВСЕХ карточек уровня в заказах × свой % выкупа каждой). Кешируется
-   на один рендер — иначе adPerfRows() пересобирался бы на каждую строку таблицы. */
+   на один рендер — иначе adPerfRows() пересобирался бы на каждую строку таблицы.
+   С 19.10.2026 — ЗА ТОТ ЖЕ ПЕРИОД, что и отбор (части выгрузок внутри окна отбора), а не за все выгрузки. */
 let _adDrrCache=null;
 function adDrrLevelsCache(){
   if(_adDrrCache) return _adDrrCache;
   const byTag={}, byGroup={}; let all={spend:0,rev:0};
-  adPerfRows().forEach(r=>{
+  const CR=adCandRange();
+  (CR? adPerfRows(CR) : []).forEach(r=>{
     const t=byTag[r.tag]||(byTag[r.tag]={spend:0,rev:0});
     t.spend+=r.spend; t.rev+=r.revD;
     const g=byGroup[r.group]||(byGroup[r.group]={spend:0,rev:0});
@@ -7742,9 +7989,10 @@ function adRows(){
   /* ДЕЙСТВУЮЩИЕ КАМПАНИИ — ПРЯМО В ОТБОРЕ (просьба продавца 31.08.2026: «тут я этого
      не вижу»). Отбор и деньги были в разных видах, и главное — что реклама крутится
      на товар, которого на ВБ почти нет, — приходилось искать глазами в «Отдаче».
-     Расход берётся за период ЗАГРУЖЕННОЙ ВЫГРУЗКИ, а не за календарное окно отбора:
-     другого источника нет, и это честно подписано в шапке колонки и в подсказке. */
-  const perf={}; adPerfRows().forEach(p=>{ perf[p.sku]=p; });
+     С 19.10.2026 расход берётся ЗА ТО ЖЕ ОКНО, что и выручка отбора: выгрузки лежат частями по дням
+     (`adPerf.parts`), и сводим только те, что внутри окна (разрезанную — пропорционально дням, см. adPerfAgg).
+     Раньше здесь была сумма всех выгрузок, и выручка с расходом в одной строке были за разные отрезки. */
+  const perf={}; adPerfRows({from:win[0], to:win[win.length-1]}).forEach(p=>{ perf[p.sku]=p; });
   const NOW=adPerfNow();                       // расход по последней выгрузке — «крутится ли сейчас»
   const out=adOutGroups();
   // при активном фокусе выбранная категория не сужает список — фокус и есть выборка
@@ -7860,7 +8108,11 @@ function adColDefs(){
 function adBaseRows(){
   if(adView!=="perf") return adRows();
   // в таблицу и в фильтры идут только карточки С кампанией; нулевые нужны лишь в знаменателе
-  const rows=dropOut(adPerfRows()).filter(r=>r.spend>0);
+  const A=adPerfA(); if(!A) return [];
+  /* При сравнении в таблице и кампании, которые крутились в B, а в A выключены: иначе «что выключили»
+     пропадало бы из сравнения молча. */
+  const B=adPerfB(A), bOn=(B&&B.days)? new Set(adPerfRows(B).filter(r=>r.spend>0).map(r=>r.sku)) : null;
+  const rows=dropOut(adPerfRows(A)).filter(r=>r.spend>0 || (bOn&&bOn.has(r.sku)));
   const gSel = (recFocus && recFocus.tab==="ads")? null : adGroup;
   return gSel? rows.filter(r=>r.group===gSel) : rows;
 }
@@ -7888,17 +8140,21 @@ function renderAdsTab(){
      чьи цифры продавец сверяет с кабинетом XWAY. */
   const mp=_appliedMp||"wb";           // площадку ставит switchTab/applyMpData
   if(mp==="ozon"){ renderAdsOzon(); return; }
-  ["adGroupSel","adViewSeg","adDateRange","adExportBtn"].forEach(id=>{
-    const e=document.getElementById(id); if(e) e.style.display=""; });   // вернуть ВБ-шные органы управления
+  adCtlShow({adGroupSel:true, adViewSeg:true, adDateRange:true, adExportBtn:true, adSearch:true});   // вернуть ВБ-шные органы управления
   if(mp==="all"){
+    adCtlShow({adGroupSel:false, adViewSeg:false, adDateRange:false, adExportBtn:false, adSearch:false});
     document.getElementById("adDrrTree").hidden=true;
     document.getElementById("adKpis").innerHTML="";
     document.getElementById("adHowTo").innerHTML="";
+    { const n=document.getElementById("adPNote"); if(n){ n.hidden=true; n.innerHTML=""; } }
+    { const h=document.getElementById("adHypBox"); if(h) h.hidden=true; }
+    { const c=document.getElementById("adCount"); if(c) c.textContent=""; }
     document.getElementById("adFreshness").innerHTML='<span class="dot" style="background:var(--warn-txt)"></span>'
       +'Реклама считается по площадке — у ВБ и Ozon разные кабинеты, ставки и артикулы. Выберите ВБ или Ozon.';
     el.innerHTML=""; return;
   }
-  initAdDateBounds();
+  adPeriodUi("wb");
+  renderAdHyp();
   { const c=document.getElementById("adDrrTree"); if(c) c.hidden = adView!=="perf"; }
   /* Группы сортируем по числу карточек: первой должна открываться самая крупная
      («Пушкары», 75 товаров), а не та, что случайно раньше в каталоге. */
@@ -7926,6 +8182,11 @@ function renderAdsTab(){
     sel.value=adGroup||"";
     if(typeof enhanceSelect==="function") enhanceSelect(sel);
   }
+  /* adGroup меняют и клик по пирамиде, и «На цифрах →» из опытов — программная смена value не шлёт change,
+     и подпись кастомного селекта оставалась старой. Синхронизируем руками. */
+  if(sel && sel.value!==(adGroup||"")){ sel.value=adGroup||"";
+    const tg=sel.closest(".uisel")&&sel.closest(".uisel").querySelector(".uisel-trigger");
+    if(tg){ const o=sel.options[sel.selectedIndex]; tg.textContent=o? o.textContent : ""; } }
   const fresh=document.getElementById("adFreshness");
   if(fresh){
     const noTags=!groups.length;
@@ -7946,7 +8207,10 @@ function renderAdsTab(){
     imp:r=>r.imp, ctr:r=>r.ctr, cr:r=>r.cr, price:r=>r.price, ok:r=>r.ok?0:1 });
   const cand=S(all.filter(r=>r.ok));
   // кампании, которые крутятся на товар без запаса на ВБ, — деньги в трубу
-  const adP=(RD&&RD.adPerf)||null;
+  // расход в отборе — за то же окно, что и выручка (части выгрузок внутри окна); сколько дней окна ими покрыто
+  const CR=adCandRange(), CG=CR? adPerfAgg(CR.from,CR.to) : null;
+  const adPerTxt = CR? adRangeTxt(CR.from,CR.to)+(CG&&CG.days? (CG.days<adNDays(CR.from,CR.to)? " (выгрузки рекламы есть за "+CG.days+" из "+adNDays(CR.from,CR.to)+" дн)" : "")
+    : " (выгрузок рекламы за эти дни нет)") : "—";
   const risk=[...all].filter(r=>r.adSpend>=AD_MIN_SPEND && r.coverDays<AD_MIN_STOCK_DAYS).sort((a,b)=>b.adSpend-a.adSpend);
   const riskSpend=risk.reduce((a,r)=>a+r.adSpend,0);
   const drop=S(all.filter(r=>r.abc==="A" && !r.ok));
@@ -7982,7 +8246,7 @@ function renderAdsTab(){
           +`<div class="t-hd">Кандидаты</div>`
           +tr2("Их выручка",fmt(Math.round(candRub))+" ₽")
           +tr2("Доля от выборки",(totRub? (candRub/totRub*100).toFixed(0):0)+"%")
-          +tr2("Расход и ДРР — за период загруженной выгрузки рекламы")}; })(),
+          +tr2("Расход и ДРР — за тот же период, что и выручка: "+adPerTxt)}; })(),
     /* KPI про ДЕНЬГИ, а не про счёт позиций: главное, что видно из этой таблицы, —
        сколько рекламы крутится на товар, которого на ВБ почти не осталось. Число
        отсеянных ушло в подсказку. */
@@ -7990,7 +8254,7 @@ function renderAdsTab(){
      valColor:riskSpend?"var(--crit-txt)":"var(--text-1)",
      tip:`<div class="t-hd">Деньги идут в товар, которого не хватит</div>`
        +tr2("Кампаний",risk.length)
-       +tr2("Расход за "+(adP? fmtDateLong(adP.from)+" – "+fmtDateLong(adP.to) : "период выгрузки"),
+       +tr2("Расход за "+adPerTxt,
             fmt(Math.round(riskSpend))+" ₽")
        +(risk.length? `<div class="t-hd">Кто именно</div>`
           +risk.slice(0,6).map(r=>tr2(r.sku+" · "+(r.cover? fmt(r.cover)+" шт, "+adFmtD(r.coverDays)+" дн" : "остатка нет"),
@@ -8055,8 +8319,7 @@ function renderAdsTab(){
     if(off.length){
       const s=off.reduce((a,r)=>a+r.adSpend,0);
       html+=`<tr class="row-sep"><td colspan="14" class="grp-head" style="padding-top:14px;color:var(--crit-txt)"><span class="grp-in">`
-        +`Реклама крутится, а запаса на ВБ нет — ${fmt(Math.round(s))} ₽ за период выгрузки`
-        +`${adP? " ("+fmtDateLong(adP.from)+" – "+fmtDateLong(adP.to)+")":""}. Это первое, что стоит выключить:</span></td></tr>`;
+        +`Реклама крутится, а запаса на ВБ нет — ${fmt(Math.round(s))} ₽ за ${esc(adPerTxt)}. Это первое, что стоит выключить:</span></td></tr>`;
       off.forEach(r=>{ html+=`<tr>`+cell(r)+`<td>${esc(r.tag)}</td>`+body(r)+`</tr>`; });
     }
   } else {
@@ -8101,23 +8364,25 @@ function renderAdsTab(){
    (26–30.08: 7.8%), а в выкупе выходит выше — именно её продавец и держит ≤7%. */
 /* Что осталось за бортом: выведенные группы. Считаем ПО СЫРОМУ СНИМКУ (adPerfRows их уже
    выкинул), чтобы расход по ним был виден и сходился с кабинетом. */
-function adOutSummary(){
+function adOutSummary(R){
   const P=(RD&&RD.adPerf)||null, out=adOutGroups(); if(!P||!out.size) return null;
+  const src = R? (R.G||adPerfAgg(R.reqFrom||R.from, R.reqTo||R.to)).bySku : (P.bySku||{});
   const bySku={}; (RD.catalog||[]).forEach(c=>bySku[""+c.sku]=c);
-  const bo=adBuyout(); let sp=0, ord=0, rev=0, n=0, ads=0; const gs={};
-  Object.entries(P.bySku||{}).forEach(([sku,e])=>{ const c=bySku[sku]; if(!c) return;
+  const bo=adBuyout(); let sp=0, ord=0, rev=0, oq=0, n=0, ads=0; const gs={};
+  Object.entries(src).forEach(([sku,e])=>{ const c=bySku[sku]; if(!c) return;
     const g=c.adGroup||""; if(!out.has(g)) return;
     const b=buyoutOf("wb",sku,bo);
-    sp+=e.spend||0; ord+=e.totRub||0; rev+=(e.totRub||0)*b; n++; if(e.spend>0) ads++;
+    sp+=e.spend||0; ord+=e.totRub||0; rev+=(e.totRub||0)*b; oq+=e.totOrd||0; n++; if(e.spend>0) ads++;
     gs[g]=(gs[g]||0)+(e.spend||0); });
-  return {sp, ord, rev, n, ads, groups:gs, drr: rev>0? sp/rev*100 : (sp>0? Infinity:0)};
+  return {sp, ord, rev, oq, n, ads, groups:gs, drr: rev>0? sp/rev*100 : (sp>0? Infinity:0)};
 }
-function adLevels(){
-  const rows=adPerfRows(), bo=adBuyout();
+function adLevels(R){
+  const rows=adPerfRows(R), bo=adBuyout();
   const mk=list=>{ const sp=list.reduce((a,r)=>a+r.spend,0);
     const ord=list.reduce((a,r)=>a+r.totRub,0);
     const rev=list.reduce((a,r)=>a+r.revD,0);      // у каждого товара свой % выкупа
-    return {sp, ord, rev, boEff: ord>0? rev/ord : bo,
+    const oq=list.reduce((a,r)=>a+(r.totOrd||0),0);  // заказы, шт (все заказы карточек уровня)
+    return {sp, ord, rev, oq, boEff: ord>0? rev/ord : bo,
       drr: rev>0? sp/rev*100 : (sp>0? Infinity:0),
       n:list.length, ads:list.filter(r=>r.spend>0).length}; };
   const byG={}; rows.forEach(r=>(byG[r.group]||(byG[r.group]=[])).push(r));
@@ -8130,13 +8395,40 @@ function adLevels(){
   const tags=Object.entries(byT).map(([t,l])=>({key:t, ...mk(l)})).sort((a,b)=>b.ord-a.ord);
   return {all:mk(rows), groups, tags, bo};
 }
+/* Ячейки строки пирамиды (обе площадки): расход · выручка в выкупе · ДРР · заказы, шт. При сравнении под каждой
+   цифрой — значение периода B и изменение: суммы в % (при разной длине периодов — в среднем за день), ДРР в п.п.,
+   цвет ДРР — по цели площадки (adDrrDirCls). Расход — нейтральный цвет: сам по себе он ни хорош, ни плох. */
+function adLvCells(o,b,opt){
+  const cmp=!!opt.cmp, nA=opt.nA, nB=opt.nB;
+  const bl=(txt,d)=>`<small class="lv-b">B: ${txt}${d? " · "+d : ""}</small>`;
+  const bs = !cmp? null : (b||null);
+  const spB  = !cmp? "" : (bs? bl(fmt(Math.round(bs.sp))+" ₽", adDltHtml(adDeltaPct(o.sp,bs.sp,nA,nB),0)) : bl("нет данных"));
+  const revB = !cmp? "" : (bs? bl(fmt(Math.round(bs.rev))+" ₽", adDltHtml(adDeltaPct(o.rev,bs.rev,nA,nB),1)) : bl("нет данных"));
+  const drrB = !cmp? "" : (!bs? bl("нет данных")
+    : (bs.sp<AD_MIN_SPEND? bl(bs.sp>0? "мелкий расход" : "нет рекламы")
+    : bl(adPc(bs.drr), o.sp>=AD_MIN_SPEND? adDltPp(o.drr,bs.drr,adDrrDirCls(opt.mp,o.drr,bs.drr,o.be)) : "")));
+  const oqB  = !cmp? "" : (bs? bl(fmt(Math.round(bs.oq)), adDltHtml(adDeltaPct(o.oq,bs.oq,nA,nB),1)) : bl("нет данных"));
+  return `<div class="lv-n">${fmt(Math.round(o.sp))} ₽${spB}</div>`
+    +`<div class="lv-n">${fmt(Math.round(o.rev))} ₽${opt.revSub? opt.revSub(o) : ""}${revB}</div>`
+    +`<div class="lv-n">${opt.badge(o.drr,o.sp,o)}${opt.drrSub? opt.drrSub(o) : ""}${drrB}</div>`
+    +`<div class="lv-n">${fmt(Math.round(o.oq||0))}${oqB}</div>`;
+}
+function adLvHead(cmp){ const h=t=>`<div class="lv-n" style="font-size:11px">${t}</div>`;
+  return `<div class="lv" style="padding-bottom:0"><div class="lv-nm" style="color:var(--muted);font-size:11px">Уровень${cmp? " · A, под ним B и изменение" : ""}</div>`
+    +h("расход")+h("выручка в выкупе")+h("ДРР")+h("заказы, шт")+`<div></div></div>`; }
 function renderAdDrrLevels(){
   const card=document.getElementById("adDrrTree"), el=document.getElementById("adDrrLevels");
   if(!card||!el) return;
-  if(adView!=="perf" || !(RD&&RD.adPerf)){ card.hidden=true; return; }
+  const A=(adView==="perf" && RD && RD.adPerf)? adPerfA() : null;
+  if(!A){ card.hidden=true; return; }
   card.hidden=false;
-  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Весь ассортимент → категория → склейка → товар. Цель ≤"+AD_DRR_GOAL+"%, хорошо "+AD_DRR_GREAT+"%, ниже — идеально. Клик по строке проваливается на уровень ниже."; }
-  const L=adLevels(), P=RD.adPerf;
+  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Wildberries: весь ассортимент → категория → склейка → товар. Цель ≤"+AD_DRR_GOAL+"%, хорошо "+AD_DRR_GREAT+"%, ниже — идеально. Клик по строке проваливается на уровень ниже."; }
+  if(!A.days){ el.innerHTML=`<div class="hy-msg" style="margin-top:10px">За ${esc(adRangeTxt(A.reqFrom,A.reqTo))} выгрузок рекламы Wildberries нет — считать нечего.</div>`; return; }
+  const B=adPerfB(A), cmp=!!(B&&B.days);
+  const L=adLevels(A), LB=cmp? adLevels(B) : null;
+  const zero={sp:0,rev:0,oq:0,drr:0};
+  const gB={}, tB={}; if(LB){ LB.groups.forEach(g=>gB[g.key]=g); LB.tags.forEach(t=>tB[t.key]=t); }
+  const pickB=(map,k)=> !LB? null : (map[k]||zero);
   const maxSp=Math.max(L.all.sp,1);
   /* Расход меньше порога — ДРР не показываем: «0.0%» при расходе 5 ₽ читается как
      идеальная кампания, хотя рекламы там просто нет. */
@@ -8145,35 +8437,26 @@ function renderAdDrrLevels(){
     : adDrrBadge(v);
   const bar=sp=>`<div class="lv-bar"><i style="width:${Math.max(2,Math.round(sp/maxSp*100))}%;background:${
     sp/maxSp>0.5?"var(--accent)":"var(--border-2)"}"></i></div>`;
-  const line=(o,cls,nmSub,click)=>`<div class="lv ${cls}"${click?` data-k="${esc(click.k)}" data-v="${esc(click.v)}"`:""}>`
+  const opt={mp:"wb", cmp, nA:A.days, nB:B? B.days : 0, badge,
+    revSub:o=>`<small style="display:block;font-size:10px;color:var(--muted);font-weight:500">выкуп ${(o.boEff*100).toFixed(0)}%</small>`};
+  const line=(o,b,cls,nmSub,click)=>`<div class="lv ${cls}"${click?` data-k="${esc(click.k)}" data-v="${esc(click.v)}"`:""}>`
     +`<div class="lv-nm">${esc(o.key||o.name)}${nmSub?`<small>${esc(nmSub)}</small>`:""}</div>`
-    +`<div class="lv-n">${fmt(Math.round(o.sp))} ₽</div>`
-    +`<div class="lv-n">${fmt(Math.round(o.rev))} ₽<small style="display:block;font-size:10px;color:var(--muted);font-weight:500">выкуп ${(o.boEff*100).toFixed(0)}%</small></div>`
-    +`<div class="lv-n">${badge(o.drr,o.sp)}</div>`
-    +bar(o.sp)+`</div>`;
-  const head=`<div class="lv" style="padding-bottom:0"><div class="lv-nm" style="color:var(--muted);font-size:11px">Уровень</div>`
-    +`<div class="lv-n" style="font-size:11px">расход</div><div class="lv-n" style="font-size:11px">выручка в выкупе</div>`
-    +`<div class="lv-n" style="font-size:11px">ДРР</div><div></div></div>`;
-  let html=`<div class="drrlv">`+head
-    +`<div class="lv total">`
-      +`<div class="lv-nm">Весь ассортимент<small>${L.all.ads} кампаний на ${L.all.n} карточках · ${fmtDateLong(P.from)} – ${fmtDateLong(P.to)}</small></div>`
-      +`<div class="lv-n">${fmt(Math.round(L.all.sp))} ₽</div>`
-      +`<div class="lv-n">${fmt(Math.round(L.all.rev))} ₽<small style="display:block;font-size:10px;color:var(--muted);font-weight:500">выкуп ${(L.all.boEff*100).toFixed(0)}%</small></div>`
-      +`<div class="lv-n">${badge(L.all.drr,L.all.sp)}</div>`+bar(L.all.sp)+`</div>`
+    +adLvCells(o,b,opt)+bar(o.sp)+`</div>`;
+  let html=`<div class="drrlv ${cmp?"cmp":"wq"}">`+adLvHead(cmp)
+    +line({...L.all,key:"Весь ассортимент"}, LB? LB.all : null, "total",
+        `${L.all.ads} ${plural(L.all.ads,"кампания","кампании","кампаний")} на ${L.all.n} карточках · ${adRangeTxt(A.from,A.to)}`)
     +`<div class="lv-h">Категории — по выручке, клик выбирает</div>`
-    +L.groups.map(g=>line(g,"clickable"+(adGroup===g.key?" sel":""),
-        g.ads+" кампаний · "+g.n+" карточек",{k:"group",v:g.key})).join("")
+    +L.groups.map(g=>line(g,pickB(gB,g.key),"clickable"+(adGroup===g.key?" sel":""),
+        g.ads+" "+plural(g.ads,"кампания","кампании","кампаний")+" · "+g.n+" карточек",{k:"group",v:g.key})).join("")
     +`<div class="lv-h">Склейки${adGroup? " — категория «"+esc(adGroup)+"»" : " — все категории"} · клик фильтрует таблицу</div>`
-    +L.tags.map(t=>line(t,"clickable"+((adColFilters.tag&&adColFilters.tag.has(t.key))?" sel":""),
-        t.ads+" кампаний · "+t.n+" карточек",{k:"tag",v:t.key})).join("");
-  const X=adOutSummary();
-  if(X && X.n) html+=`<div class="lv-h">Не считается — товар на вывод</div>`
-    +`<div class="lv" style="opacity:.62">`
-      +`<div class="lv-nm">${esc(Object.keys(X.groups).join(" · "))}<small>${X.ads} кампаний на ${X.n} карточках · решение от ${
-          (RD.meta&&RD.meta.adOutAt)? fmtDateLong(RD.meta.adOutAt):"—"}</small></div>`
-      +`<div class="lv-n">${fmt(Math.round(X.sp))} ₽</div>`
-      +`<div class="lv-n">${fmt(Math.round(X.rev))} ₽</div>`
-      +`<div class="lv-n">${badge(X.drr,X.sp)}</div>`+bar(X.sp)+`</div>`;
+    +L.tags.map(t=>line(t,pickB(tB,t.key),"clickable"+((adColFilters.tag&&adColFilters.tag.has(t.key))?" sel":""),
+        t.ads+" "+plural(t.ads,"кампания","кампании","кампаний")+" · "+t.n+" карточек",{k:"tag",v:t.key})).join("");
+  const X=adOutSummary(A);
+  if(X && X.n){ const XB=LB? adOutSummary(B) : null;
+    html+=`<div class="lv-h">Не считается — товар на вывод</div>`
+      +line({...X,key:Object.keys(X.groups).join(" · "),boEff:X.ord>0? X.rev/X.ord : adBuyout()}, XB||(LB? zero : null), "",
+          `${X.ads} ${plural(X.ads,"кампания","кампании","кампаний")} на ${X.n} карточках · решение от ${(RD.meta&&RD.meta.adOutAt)? fmtDateLong(RD.meta.adOutAt):"—"}`)
+        .replace('<div class="lv ">','<div class="lv" style="opacity:.62">'); }
   html+=`</div>`;
   el.innerHTML=html;
 }
@@ -8205,7 +8488,7 @@ function ozAdMap(){                       // код 1С → {group, tag} из к
     if(c.adTag   && !e.tag)   e.tag=c.adTag; });
   return (_ozAdMapCache=m);
 }
-function ozAdWindow(){                    // период = дни выгрузок расхода
+function ozAdWindow(){                    // окно ПО УМОЛЧАНИЮ = все дни выгрузок расхода (его же читают «Рекомендации»)
   const P=ozAdSpendParts();
   if(P.length) return {from:P[0].from, to:P[P.length-1].to};
   // выгрузок ещё нет — цепочку всё равно показываем: реклама у всех идёт по ставке
@@ -8213,6 +8496,31 @@ function ozAdWindow(){                    // период = дни выгруз�
   if(!d.length) return null;
   return {from:d[Math.max(0,d.length-14)], to:d[d.length-1], rateOnly:true};
 }
+const ozDatesAll=()=>((RD&&RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[]);
+/* Границы данных о рекламе Ozon: первый и последний день, за который есть выгрузка XWAY или отчёт «Оплата за
+   заказ». Период A/B режется по ним. Дни ВНУТРИ без выгрузки XWAY (пропуски) не выкидываются: реклама в них
+   считается так же, как на «Главной» (отчёт «Оплата за заказ» или ставка), календарь их помечает отдельно. */
+function ozAdBounds(){
+  const D=ozDatesAll(), cov=D.filter(d=>ozAdSpendPartIdx(d)>=0 || ozOrderFeeOn(d));
+  if(cov.length) return {lo:cov[0], hi:cov[cov.length-1]};
+  const W=ozAdWindow(); return W? {lo:W.from, hi:W.to, rateOnly:true} : null; }
+function ozAdClip(f,t,isDef){
+  const Bd=ozAdBounds(); if(!Bd||!f||!t) return null;
+  if(f>t){ const x=f; f=t; t=x; }
+  const lo=isDef? f : (f<Bd.lo? Bd.lo : f), hi=isDef? t : (t>Bd.hi? Bd.hi : t);
+  const dates=lo<=hi? ozDatesAll().filter(d=>d>=lo&&d<=hi) : [];
+  // выгрузка XWAY за несколько дней, которую период режет: её расход попадает долей (по выручке дня, как на «Главной»)
+  const cut=ozAdSpendParts().filter(p=>p.from!==p.to && p.from<=hi && p.to>=lo && (p.from<lo || p.to>hi))
+    .map(p=>({from:p.from, to:p.to, k:adNDays(p.from>lo? p.from:lo, p.to<hi? p.to:hi), n:adNDays(p.from,p.to)}));
+  return {reqFrom:f, reqTo:t, from:dates.length? lo : null, to:dates.length? hi : null, days:dates.length, dates, cut,
+    isDef:!!isDef, rateOnly:!!Bd.rateOnly};
+}
+function ozAdA(){ const def=ozAdWindow(); if(!def) return null;
+  const isDef=!ozAdFrom&&!ozAdTo;
+  return ozAdClip(isDef? def.from : (ozAdFrom||ozAdTo), isDef? def.to : (ozAdTo||ozAdFrom), isDef); }
+function ozAdB(A){ if(!ozCmpOn||!A||!A.from) return null;
+  const auto=!(ozBFrom&&ozBTo), r=auto? adPrevLike(A.from,A.to,"ozon") : {from:ozBFrom, to:ozBTo, how:ozBNote||"выбран вручную"};
+  const C=ozAdClip(r.from,r.to,false); if(C){ C.auto=auto; C.how=r.how; } return C; }
 /* РЕКЛАМА ЕСТЬ У КАЖДОГО ТОВАРА, А НЕ ТОЛЬКО У ВОСЬМИ ИЗ ВЫГРУЗКИ (правка продавца
    18.09.2026: «по умолчанию, помимо тех товаров, что я скинул, есть рекламный расход —
    там работает другой канал продвижения; по всем остальным ты берёшь фиксированный расход
@@ -8222,45 +8530,58 @@ function ozAdWindow(){                    // период = дни выгруз�
    ПОЭТОМУ СТРОКИ БЕРУТСЯ ИЗ `ozFinRows()` — того же источника, что «Главная»: там у каждой
    строки `ad` уже посчитан правильно (факт XWAY у своих товаров, ставка из юнит-экономики
    у остальных). Так реклама в цепочке ДРР и реклама в прибыли — ОДНО И ТО ЖЕ ЧИСЛО;
-   считать их двумя разными способами нельзя, разъедутся при первой же правке. */
-function ozAdRows(){
-  const W=ozAdWindow(), O=RD&&RD.ozon;
-  if(!W || !O || !O.orderSeries) return [];
+   считать их двумя разными способами нельзя, разъедутся при первой же правке.
+   Окно — аргумент `Wn` ({from,to}: период A/B вкладки); без аргумента — окно по умолчанию (`ozAdWindow`),
+   так зовут «Рекомендации», и выбор периода на «Рекламе» их цифры не двигает. */
+function ozAdRows(Wn){
+  const W=Wn||ozAdWindow(), O=RD&&RD.ozon;
+  if(!W || !W.from || !O || !O.orderSeries) return [];
   const M=ozAdMap();
   const fin=ozFinRows().filter(r=>r.date>=W.from && r.date<=W.to);
   const nDays=new Set(fin.map(r=>r.date)).size || 1;
-  // факт XWAY держим отдельно — в таблице видно, где факт, а где модель
+  /* факт XWAY держим отдельно — в таблице видно, где факт, а где модель. Берём его из тех же строк (`adX`):
+     выгрузка за несколько дней там разнесена по дням пропорционально выручке дня, как на «Главной». За все дни
+     выгрузок это ровно сумма выгрузок; за период, который режет выгрузку, — её доля за попавшие дни. */
   const fact={};
-  ozAdSpendParts().forEach(p=>{ if(p.to<W.from || p.from>W.to) return;
-    Object.entries(p.bySup||{}).forEach(([s,v])=>fact[s]=(fact[s]||0)+v); });
+  fin.forEach(r=>{ if(r.adX) fact[r.sku]=(fact[r.sku]||0)+r.adX; });
   const by={};
   // fee — ФАКТ оплаты за заказ из отчёта Ozon (дни, за которые он загружен), см. ozOrderFeeOn
-  fin.forEach(r=>{ const e=by[r.sku]||(by[r.sku]={ordRub:0,rev:0,qty:0,spend:0,fee:0});
-    e.ordRub+=r.ordRub; e.rev+=r.revenue; e.qty+=r.qty; e.spend+=r.ad; if(r.feeFact) e.fee+=(r.fee||0); });
+  // revNC — выручка дней, где у товара нет себестоимости: безубыточный ДРР по ним был бы фантомом (≈ 100% − тариф)
+  fin.forEach(r=>{ const e=by[r.sku]||(by[r.sku]={ordRub:0,rev:0,qty:0,oq:0,cogs:0,spend:0,fee:0,revNC:0});
+    e.ordRub+=r.ordRub; e.rev+=r.revenue; e.qty+=r.qty; e.oq+=r.ordQty||0; e.cogs+=r.cogs||0;
+    if(!r.hasCost) e.revNC+=r.revenue||0;
+    e.spend+=r.ad; if(r.feeFact) e.fee+=(r.fee||0); });
   const cat={}; (O.catalog||[]).forEach(c=>cat[""+c.sku]=c);
   const keys=new Set([...Object.keys(by), ...Object.keys(fact), ...Object.keys(cat)]);
-  const rows=[];
+  const FXr=ozFixedRate(), rows=[];
   keys.forEach(sup=>{
-    const a=by[sup]||{ordRub:0,rev:0,qty:0,spend:0,fee:0}, c=cat[sup], e=M[sup]||{};
+    const a=by[sup]||{ordRub:0,rev:0,qty:0,oq:0,cogs:0,spend:0,fee:0,revNC:0}, c=cat[sup], e=M[sup]||{};
     rows.push({sup, ozonSku:(c&&c.ozonSku)||null, name:(c&&c.name)||sup, cat:(c&&c.category)||"",
       group:e.group||"(без группы)", tag:e.tag||"(без склейки)",
       spend:a.spend, spendFact:fact[sup]||0, spendFee:a.fee,
       spendRate:Math.max(0,a.spend-(fact[sup]||0)-a.fee),
       isFact:(fact[sup]||0)>0,
-      ordRub:a.ordRub, rev:a.rev, qty:a.qty,
+      ordRub:a.ordRub, rev:a.rev, qty:a.qty, oq:a.oq, cogs:a.cogs, revNC:a.revNC,
       stock:(c&&c.ozStock)||0, days:nDays});
   });
   rows.forEach(r=>{ r.drr = r.rev>0? r.spend/r.rev*100 : (r.spend>0? Infinity : 0);
+    r.cpo = r.oq>0? r.spend/r.oq : (r.spend>0? Infinity : 0);           // цена заказа: расход ÷ заказы, шт
+    r.be = (r.rev>0 && !(r.revNC>0))? 100-FXr-r.cogs/r.rev*100 : null;  // безубыточный ДРР (потолок); нет себестоимости — нет и его
     r.spd = r.days? r.qty/r.days : 0;
     r.coverDays = r.spd>0? r.stock/r.spd : (r.stock>0? Infinity : 0); });
   return rows;
 }
 function ozAdLevels(rows){
+  const FXr=ozFixedRate();
   const mk=list=>{ const sp=list.reduce((a,r)=>a+r.spend,0);
     const spF=list.reduce((a,r)=>a+r.spendFact,0), spO=list.reduce((a,r)=>a+(r.spendFee||0),0);
     const ord=list.reduce((a,r)=>a+r.ordRub,0), rev=list.reduce((a,r)=>a+r.rev,0);
-    return {sp, spF, spO, spR:Math.max(0,sp-spF-spO), ord, rev, boEff: ord>0? rev/ord : 0,
+    const oq=list.reduce((a,r)=>a+(r.oq||0),0), cg=list.reduce((a,r)=>a+(r.cogs||0),0);
+    const revC=rev-list.reduce((a,r)=>a+(r.revNC||0),0);       // безубыточный уровня — по выручке товаров С себестоимостью
+    return {sp, spF, spO, spR:Math.max(0,sp-spF-spO), ord, rev, oq, cogs:cg, boEff: ord>0? rev/ord : 0,
       drr: rev>0? sp/rev*100 : (sp>0? Infinity : 0),
+      be: revC>0? 100-FXr-cg/revC*100 : null,
+      cpo: oq>0? sp/oq : (sp>0? Infinity : 0),
       n:list.length, ads:list.filter(r=>r.spendFact>0).length}; };
   const byG={}; rows.forEach(r=>(byG[r.group]||(byG[r.group]=[])).push(r));
   // порядок — ПО ВЫРУЧКЕ (правило с ВБ: смотрим туда, где больше зарабатываем)
@@ -8270,89 +8591,121 @@ function ozAdLevels(rows){
     .sort((a,b)=>(b.sp-a.sp)||(b.ord-a.ord));     // склейки — от самой дорогой по расходу
   return {all:mk(rows), groups, tags};
 }
+/* Бейдж ДРР на «Рекламе» Ozon — КОРИДОР «10% … безубыточный ДРР» (памятка 29.09.2026): ниже 10% — недобор
+   (риск потерять соинвест), выше безубыточного — реклама уводит в минус (красный), внутри — зелёный. */
+function ozDrrBadgeBe(v,be){
+  if(v!==Infinity && be!=null && v>be)
+    return `<span class="badge critical" title="Выше безубыточного ДРР ${adPc(be)}: реклама уводит в минус"><span class="d"></span>${adDrrTxt(v)}</span>`;
+  return ozDrrBadge(v); }
 function renderAdsOzon(){
   const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
   const el=document.getElementById("adTable"), fresh=document.getElementById("adFreshness");
   const tree=document.getElementById("adDrrTree"), lv=document.getElementById("adDrrLevels");
   const kp=document.getElementById("adKpis"), howto=document.getElementById("adHowTo");
-  // элементы, заточенные под ВБ-шный отбор кандидатов, на Озоне не нужны
-  ["adGroupSel","adViewSeg","adDateRange","adExportBtn","adSearch"].forEach(id=>{
-    const e=document.getElementById(id); if(e) e.style.display = (id==="adSearch")? "" : "none"; });
-  const W=ozAdWindow();
-  if(!W){
+  // элементы, заточенные под ВБ-шный отбор кандидатов, на Озоне не нужны; периоды A/B — нужны
+  adCtlShow({adGroupSel:false, adViewSeg:false, adExportBtn:false, adSearch:true, adDateRange:true});
+  const A=ozAdA();
+  adPeriodUi("ozon");
+  renderAdHyp();
+  if(!A){
     tree.hidden=true; kp.innerHTML=""; howto.innerHTML="";
     fresh.innerHTML='<span class="dot" style="background:var(--warn-txt)"></span>'
       +'Ozon · нет данных о заказах — цепочку ДРР считать не из чего.';
     el.innerHTML=""; return;
   }
-  const rows=ozAdRows(), L=ozAdLevels(rows);
+  const cnt=document.getElementById("adCount");
+  if(!A.days){
+    tree.hidden=true; kp.innerHTML=""; howto.innerHTML="";
+    fresh.innerHTML='<span class="dot" style="background:var(--warn-txt)"></span>'
+      +`Ozon · за ${esc(adRangeTxt(A.reqFrom,A.reqTo))} данных о рекламе нет — выберите другой период.`;
+    if(cnt) cnt.textContent="";
+    el.innerHTML=`<tbody><tr><td class="empty-hint">За выбранный период данных о рекламе Ozon нет</td></tr></tbody>`; return;
+  }
+  const B=ozAdB(A), cmp=!!(B&&B.days), nA=A.days, nB=B? B.days : 0;   // B без данных — только пометка над таблицей
+  const rows=ozAdRows(A), L=ozAdLevels(rows);
+  const rowsB=(B&&B.days)? ozAdRows(B) : null, LB=rowsB? ozAdLevels(rowsB) : null;
   const q=(document.getElementById("adSearch").value||"").trim().toLowerCase();
+  const per=adRangeTxt(A.from,A.to);
   // ставки — ТОЛЬКО те, что реально применены в окне по дням без отчёта (их бывает несколько)
-  const rateTxt=ozModelRatesTxt(W.from,W.to) || (W.to<OZ_FEE_REPORT_ONLY_FROM? ozAdRateFor(W.to).toFixed(2).replace(".",",")+"%" : "");
-  const feeMiss=ozFeeMissDays(W.from,W.to);
-  const FS=ozOrderFeeSpan(W.to);
-  const FSper=FS? fmtDateLong(FS.from)+(FS.from!==FS.to? " – "+fmtDateLong(FS.to):"") : "";
-  fresh.innerHTML=`<span class="dot"></span>Ozon · ${fmtDateLong(W.from)}${W.from!==W.to? " – "+fmtDateLong(W.to):""}`
+  const rateTxt=ozModelRatesTxt(A.from,A.to) || (A.to<OZ_FEE_REPORT_ONLY_FROM? ozAdRateFor(A.to).toFixed(2).replace(".",",")+"%" : "");
+  const feeMiss=ozFeeMissDays(A.from,A.to);   // дни с 01.10 без отчёта «Оплата за заказ» — плата за заказ не учтена (РЕК-23)
+  // оплата за заказ по отчёту Ozon — только дни ВНУТРИ периода
+  const feeDays=(A.dates||[]).filter(d=>ozOrderFeeOn(d));
+  const FS=feeDays.length? {from:feeDays[0], to:feeDays[feeDays.length-1]} : null;
+  const FSper=FS? adRangeTxt(FS.from,FS.to) : "";
+  fresh.innerHTML=`<span class="dot"></span>Ozon · период ${per} (${adDaysTxt(nA)})`
+    +(cmp? ` · сравнение с ${adRangeTxt(B.from,B.to)} (${adDaysTxt(nB)})` : "")
     +` · расход = <b>выгрузка XWAY</b> по ${L.all.ads} ${plural(L.all.ads,"товару","товарам","товарам")}`
     +(FS? ` + <b>оплата за заказ по отчёту Ozon</b> (${FSper}, кабинетное продвижение — его XWAY не видит)` : "")
     +(L.all.spR>0? ` + <b>ставка ${rateTxt}</b> из юнит-экономики${FS? " в дни до "+fmtDateLong(OZ_FEE_REPORT_ONLY_FROM)+" без отчёта Ozon" : " по остальным (другой канал продвижения, он есть у всех)"}` : "")
     +ozFeeMissTxt(feeMiss)
     +` · склейки взяты с Wildberries по коду 1С (товар физически один)`;
   const drrOrd = L.all.ord>0? L.all.sp/L.all.ord*100 : 0;
+  const kB=(a,b,dir,f)=> !cmp? "" : `<div class="kpi-b">B: ${b==null? "нет данных" : f(b)+" · "+adDltHtml(adDeltaPct(a,b,nA,nB),dir)}</div>`;
   kp.innerHTML=[
-    {lbl:"Расход на рекламу, ₽", val:fmt(Math.round(L.all.sp)),
+    {lbl:"Расход на рекламу, ₽", val:fmt(Math.round(L.all.sp)), delta:kB(L.all.sp, LB&&LB.all.sp, 0, v=>fmt(Math.round(v))),
      tip:`<div class="t-hd">Из чего сложен расход</div>`
        +tr2("Выгрузка XWAY ("+L.all.ads+" тов.)",fmt(Math.round(L.all.spF))+" ₽")
        +(FS? tr2("Оплата за заказ, отчёт Ozon",fmt(Math.round(L.all.spO))+" ₽") : "")
        +(L.all.spR>0||(!FS&&rateTxt)? tr2("Ставка "+rateTxt+(FS? " (дни без отчёта до "+fmtDateLong(OZ_FEE_REPORT_ONLY_FROM)+")" : " (остальные)"),fmt(Math.round(L.all.spR))+" ₽") : "")
        +(feeMiss.length? tr2("Оплата за заказ за "+feeMiss.length+" дн. без отчёта","не учтена") : "")
        +tr2("Карточек в кабинете",L.all.n)
-       +tr2("Период",fmtDateLong(W.from)+(W.from!==W.to? " – "+fmtDateLong(W.to):""))},
-    {lbl:"Выручка в выкупе, ₽", val:fmt(Math.round(L.all.rev)),
+       +tr2("Период A",per)
+       +(cmp? tr2("Период B",B.days? adRangeTxt(B.from,B.to)+" · "+fmt(Math.round(LB.all.sp))+" ₽" : "данных нет") : "")},
+    {lbl:"Выручка в выкупе, ₽", val:fmt(Math.round(L.all.rev)), delta:kB(L.all.rev, LB&&LB.all.rev, 1, v=>fmt(Math.round(v))),
      tip:`<div class="t-hd">База ДРР</div>`+tr2("Заказано, ₽",fmt(Math.round(L.all.ord)))
-       +tr2("% выкупа",(ozBuyoutFor(W.to)*100).toFixed(1)+"%")
+       +tr2("Заказы, шт",fmt(Math.round(L.all.oq)))
+       +tr2("% выкупа",adPc(ozBuyoutFor(A.to)*100))
        +tr2("Дни","те же, что у расхода")},
     {lbl:"ДРР кабинета Ozon", val:L.all.sp>0? adDrrTxt(L.all.drr):"нет рекламы",
-     valColor:L.all.sp>0? (L.all.drr>=OZ_DRR_GOAL?"var(--ok-txt)":"var(--bad-txt)"):"var(--text-1)",
+     // цвет — по коридору «10% … безубыточный»: ниже минимума жёлтый, выше потолка красный (токенов --ok-txt/--bad-txt нет — цвет терялся)
+     valColor:L.all.sp>0? (L.all.be!=null&&L.all.drr>L.all.be? "var(--crit-txt)" : (L.all.drr>=OZ_DRR_GOAL? "var(--good-txt)" : "var(--warn-txt)")) : "var(--text-1)",
+     delta: !cmp? "" : `<div class="kpi-b">B: ${LB&&LB.all.sp>0? adPc(LB.all.drr)+" · "+adDltPp(L.all.drr,LB.all.drr,adDrrDirCls("ozon",L.all.drr,LB.all.drr,L.all.be)) : "нет данных"}</div>`,
      tip:`<div class="t-hd">ДРР по всему кабинету</div>`+tr2("В выкупе",adDrrTxt(L.all.drr))
-       +tr2("В заказах",drrOrd.toFixed(1)+"%")+tr2("Цель","не ниже "+OZ_DRR_GOAL+"%")
+       +tr2("В заказах",adPc(drrOrd))+tr2("Цель","не ниже "+OZ_DRR_GOAL+"%")
+       +(L.all.be!=null? tr2("Безубыточный ДРР кабинета",adPc(L.all.be)) : "")
        +tr2("Зачем","минимум для поддержания соинвеста по ИУ")},
     {lbl:"Склеек с кампанией XWAY", val:String(L.tags.filter(t=>t.spF>0).length)+" из "+L.tags.length,
+     delta: !cmp? "" : `<div class="kpi-b">B: ${LB? LB.tags.filter(t=>t.spF>0).length+" из "+LB.tags.length : "нет данных"}</div>`,
      tip:`<div class="t-hd">Склейки</div>`+tr2("Всего склеек",L.tags.length)
        +tr2("С отдельной кампанией",L.tags.filter(t=>t.spF>0).length)
-       +tr2("У остальных",FS? "оплата за заказ по отчёту Ozon"+(L.all.spR>0? ", без отчёта — ставка" : "") : "реклама по ставке из юнитки")
+       +tr2("У остальных",(FS? "оплата за заказ по отчёту Ozon"+(L.all.spR>0? ", до "+fmtDateLong(OZ_FEE_REPORT_ONLY_FROM)+" без отчёта — ставка" : "")
+         : (A.from<OZ_FEE_REPORT_ONLY_FROM? "реклама по ставке из юнитки" : "только XWAY"))+(feeMiss.length? "; дни без отчёта — плата за заказ не учтена" : ""))
        +tr2("Источник склеек","Wildberries, по коду 1С")}
   ].map(kpiCard).join("");
   wireKpiTips("adKpis");
   // ---- пирамида
   tree.hidden=false;
-  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Кабинет Ozon → категория → склейка → товар. Цель — держать ДРР не ниже "+OZ_DRR_GOAL+"%: это минимум для поддержания соинвеста по ИУ, поэтому ниже "+OZ_DRR_GOAL+"% — недобор, а не экономия (на ВБ правило обратное, там 7% — потолок). Клик по склейке фильтрует таблицу."; }
+  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Кабинет Ozon → категория → склейка → товар. Цель — держать ДРР не ниже "+OZ_DRR_GOAL+"%: это минимум для поддержания соинвеста по ИУ, поэтому ниже "+OZ_DRR_GOAL+"% — недобор, а не экономия (на ВБ правило обратное, там 7% — потолок). Потолок — безубыточный ДРР уровня (подписан под ДРР): выше него реклама уводит в минус. Клик по склейке фильтрует таблицу."; }
   const maxSp=Math.max(L.all.sp,1);
-  const badge=(v,sp)=> sp<AD_MIN_SPEND
+  const badge=(v,sp,o)=> sp<AD_MIN_SPEND
     ? `<span class="badge nodata"><span class="d"></span>${sp>0? "мелкий расход":"нет рекламы"}</span>`
-    : ozDrrBadge(v);
+    : ozDrrBadgeBe(v, o&&o.be);
   const bar=sp=>`<div class="lv-bar"><i style="width:${Math.max(2,Math.round(sp/maxSp*100))}%;background:${
     sp/maxSp>0.5?"var(--accent)":"var(--border-2)"}"></i></div>`;
-  const line=(o,cls,sub,click)=>`<div class="lv ${cls}"${click?` data-k="${esc(click.k)}" data-v="${esc(click.v)}"`:""}>`
+  const zero={sp:0,rev:0,oq:0,drr:0,be:null};
+  const gB={}, tB={}; if(LB){ LB.groups.forEach(g=>gB[g.key]=g); LB.tags.forEach(t=>tB[t.key]=t); }
+  const pickB=(m,k)=> !LB? null : (m[k]||zero);
+  const opt={mp:"ozon", cmp, nA, nB, badge,
+    drrSub:o=>(o.be!=null && o.rev>0)? `<small class="lv-be">безубыт. ≤${adPc(o.be)}</small>` : ""};
+  const line=(o,b,cls,sub,click)=>`<div class="lv ${cls}"${click?` data-k="${esc(click.k)}" data-v="${esc(click.v)}"`:""}>`
     +`<div class="lv-nm">${esc(o.key)}${sub?`<small>${esc(sub)}</small>`:""}</div>`
-    +`<div class="lv-n">${fmt(Math.round(o.sp))} ₽</div>`
-    +`<div class="lv-n">${fmt(Math.round(o.rev))} ₽</div>`
-    +`<div class="lv-n">${badge(o.drr,o.sp)}</div>`+bar(o.sp)+`</div>`;
-  const head=`<div class="lv" style="padding-bottom:0"><div class="lv-nm" style="color:var(--muted);font-size:11px">Уровень</div>`
-    +`<div class="lv-n" style="font-size:11px">расход</div><div class="lv-n" style="font-size:11px">выручка в выкупе</div>`
-    +`<div class="lv-n" style="font-size:11px">ДРР</div><div></div></div>`;
-  lv.innerHTML=`<div class="drrlv">`+head
-    +`<div class="lv total"><div class="lv-nm">Весь кабинет Ozon<small>${L.all.ads} ${plural(L.all.ads,"кампания","кампании","кампаний")} на ${L.all.n} карточках · ${fmtDateLong(W.from)}${W.from!==W.to? " – "+fmtDateLong(W.to):""}</small></div>`
-      +`<div class="lv-n">${fmt(Math.round(L.all.sp))} ₽</div><div class="lv-n">${fmt(Math.round(L.all.rev))} ₽</div>`
-      +`<div class="lv-n">${badge(L.all.drr,L.all.sp)}</div>`+bar(L.all.sp)+`</div>`
+    +adLvCells(o,b,opt)+bar(o.sp)+`</div>`;
+  lv.innerHTML=`<div class="drrlv ${cmp?"cmp":"wq"}">`+adLvHead(cmp)
+    +line({...L.all,key:"Весь кабинет Ozon"}, LB? LB.all : null, "total",
+        `${L.all.ads} ${plural(L.all.ads,"кампания","кампании","кампаний")} на ${L.all.n} карточках · ${per}`)
     +`<div class="lv-h">Категории — по выручке</div>`
-    +L.groups.filter(g=>g.ord>0||g.sp>0).map(g=>line(g,"",(g.ads? g.ads+" с кампанией XWAY · ":"")+g.n+" карточек")).join("")
+    +L.groups.filter(g=>g.ord>0||g.sp>0||(LB&&gB[g.key]&&(gB[g.key].ord>0||gB[g.key].sp>0)))
+      .map(g=>line(g,pickB(gB,g.key),"",(g.ads? g.ads+" с кампанией XWAY · ":"")+g.n+" карточек")).join("")
     +`<div class="lv-h">Склейки — по расходу · клик фильтрует таблицу</div>`
-    +L.tags.filter(t=>t.sp>0||t.ord>0).map(t=>line(t,"clickable"+(_ozAdTagFilter===t.key?" sel":""),
+    +L.tags.filter(t=>t.sp>0||t.ord>0||(LB&&tB[t.key]&&(tB[t.key].ord>0||tB[t.key].sp>0)))
+      .map(t=>line(t,pickB(tB,t.key),"clickable"+(_ozAdTagFilter===t.key?" sel":""),
         (t.ads? t.ads+" с кампанией XWAY · ":"")+t.n+" карточек",{k:"oztag",v:t.key})).join("")
     +`</div>`;
   // ---- таблица товаров
-  let list=rows.filter(r=>r.spend>0 || r.ordRub>0);
+  const bMap={}; if(rowsB) rowsB.forEach(r=>bMap[r.sup]=r);
+  const act=r=>r&&(r.spend>0 || r.ordRub>0);
+  let list=rows.filter(r=>act(r) || act(bMap[r.sup]));
   // фокус из «Рекомендаций» (ключ — код 1С): показываем ровно позиции правила
   const ozFocused=!!(recFocus && recFocus.tab==="ads" && recFocus.keys.size);
   if(ozFocused) list=focusApply(list);
@@ -8360,8 +8713,7 @@ function renderAdsOzon(){
   if(q) list=list.filter(r=>matchQ(r.sup,r.name,q) || (""+(r.ozonSku||"")).includes(q));
   const tagAgg={}; L.tags.forEach(t=>tagAgg[t.key]=t);
   list.sort((a,b)=>(b.spend-a.spend)||(b.rev-a.rev));
-  const cnt=document.getElementById("adCount");
-  if(cnt) cnt.textContent=list.length+" "+plural(list.length,"товар","товара","товаров")
+  if(cnt) cnt.textContent=list.length+" "+plural(list.length,"товар","товара","товаров")+" · "+adRangeTxt(A.from,A.to)
     +(ozFocused? " · по рекомендации" : (_ozAdTagFilter? " · склейка «"+_ozAdTagFilter+"»":""));
   howto.innerHTML=`<b>Как считается — Ozon.</b> ДРР = расход ÷ выручка в выкупе. `
     +`<b>Расход складывается из двух частей.</b> Первая — выгрузка XWAY целиком (клики и оплата за заказ в кампаниях, `
@@ -8372,27 +8724,42 @@ function renderAdsOzon(){
        : `ставка <b>${rateTxt}</b> из юнит-экономики (отчёта Ozon «Оплата за заказ» за эти дни нет)`)
     +`. Это то же самое число, что уходит `
     +`в прибыль на «Главной» — два разных расчёта рекламы развели бы вкладки между собой. `
-    +`Выручка = заказано ₽ × % выкупа (${(ozBuyoutFor(W.to)*100).toFixed(1).replace(".",",")}%, замер по воронке). `
+    +`Выручка = заказано ₽ × % выкупа (${adPc(ozBuyoutFor(A.to)*100)}, замер по воронке). `
     +`В знаменателе уровня — выручка ВСЕХ карточек склейки, включая те, где отдельной кампании нет: реклама одного `
     +`товара тянет заказы соседям, и судить по личному ДРР значит выключать «лошадку». `
-    +`Склейки — те же, что на Wildberries, связка по коду 1С.`;
+    +`Склейки — те же, что на Wildberries, связка по коду 1С. `
+    +`<b>Период</b> — дни, за которые есть выгрузка XWAY или отчёт «Оплата за заказ»; по умолчанию — все дни выгрузок. `
+    +`Если выгрузка XWAY за несколько дней попала в период не целиком, её расход разнесён по дням пропорционально выручке дня — так же, как на «Главной». `
+    +`CPO = расход ÷ заказы, шт. Безубыточный ДРР = 100% − ${adPc(ozFixedRate())} тариф Ozon − доля себестоимости в выручке.`;
+  const bl=(txt,d)=>cmp? adBLine(txt,d) : "";
+  const noB=cmp && !rowsB;
   el.innerHTML=`<thead><tr>`
-    +`<th class="metric">Товар</th><th>Склейка</th><th>Заказано, ₽</th><th>Выручка в выкупе, ₽</th>`
-    +`<th>Расход, ₽</th><th>ДРР товара</th><th>ДРР склейки</th><th>Остаток Ozon</th><th>Хватит, дн</th></tr></thead><tbody>`
+    +`<th class="metric">Товар</th><th>Склейка</th><th>Заказы, шт</th><th>Заказано, ₽</th><th>Выручка в выкупе, ₽</th>`
+    +`<th>Расход, ₽</th><th>ДРР товара</th><th>ДРР склейки</th><th>CPO, ₽</th><th>Остаток Ozon</th><th>Хватит, дн</th></tr></thead><tbody>`
     +(list.length? list.map(r=>{
-      const T=tagAgg[r.tag]||{sp:0,drr:0};
-      const own = r.spend>0? ozDrrBadge(r.drr) : `<span class="mut">—</span>`;
-      const tg  = T.sp>=AD_MIN_SPEND? ozDrrBadge(T.drr) : `<span class="mut">—</span>`;
+      const T=tagAgg[r.tag]||{sp:0,drr:0,be:null}, b=bMap[r.sup]||null, TB=LB? (tB[r.tag]||zero) : null;
+      const own = r.spend>0? ozDrrBadgeBe(r.drr, r.be) : `<span class="mut">—</span>`;
+      const tg  = T.sp>=AD_MIN_SPEND? ozDrrBadgeBe(T.drr, T.be) : `<span class="mut">—</span>`;
       // видно, где ФАКТ выгрузки, а где модельная ставка — иначе цифры читаются одинаково
       const src=[r.isFact? "XWAY":"", r.spendFee>0? "отчёт Ozon":"", r.spendRate>=1? "ставка":""].filter(Boolean).join(" + ");
       const spCell = r.spend>0
-        ? fmt(Math.round(r.spend))+`<div class="sub">${src||"факт"}</div>`
+        ? fmt(Math.round(r.spend))+`<span class="sub2 mut">${src||"факт"}</span>`
         : "—";
-      return `<tr><td class="metric">${skuLink(r.sup)}<div class="sub">${esc(r.name.slice(0,44))}</div></td>`
-        +`<td>${esc(r.tag)}</td><td>${fmt(Math.round(r.ordRub))}</td><td>${fmt(Math.round(r.rev))}</td>`
-        +`<td>${spCell}</td><td>${own}</td><td>${tg}</td>`
+      const Bq  = noB? bl("нет данных") : (b? bl(fmt(Math.round(b.oq)), adDltHtml(adDeltaPct(r.oq,b.oq,nA,nB),1)) : "");
+      const Brv = noB? bl("нет данных") : (b? bl(fmt(Math.round(b.rev)), adDltHtml(adDeltaPct(r.rev,b.rev,nA,nB),1)) : "");
+      const Bsp = noB? bl("нет данных") : (b? bl(fmt(Math.round(b.spend)), adDltHtml(adDeltaPct(r.spend,b.spend,nA,nB),0)) : "");
+      const Bdr = noB? bl("нет данных") : (b? (b.spend>0? bl(adDrrTxt(b.drr), (r.spend>0&&isFinite(r.drr)&&isFinite(b.drr))? adDltPp(r.drr,b.drr,adDrrDirCls("ozon",r.drr,b.drr,r.be)) : "") : bl("—")) : "");
+      const Btg = noB? bl("нет данных") : (TB? (TB.sp>=AD_MIN_SPEND? bl(adDrrTxt(TB.drr), T.sp>=AD_MIN_SPEND? adDltPp(T.drr,TB.drr,adDrrDirCls("ozon",T.drr,TB.drr,T.be)) : "") : bl("—")) : "");
+      const Bcp = noB? bl("нет данных") : (b? (b.oq>0&&b.spend>0? bl(fmt(Math.round(b.cpo)), (r.oq>0&&r.spend>0)? adDltHtml(adDeltaPct(r.cpo,b.cpo),-1) : "") : bl("—")) : "");
+      // безубыточный ДРР товара — под его ДРР: те же цифры, что в правиле «Ozon: реклама в убыток» на «Рекомендациях»
+      const beL = !(r.spend>0)? "" : (r.be!=null? `<span class="sub2 mut">безубыт. ≤${adPc(r.be)}</span>`
+        : (r.rev>0? `<span class="sub2 mut" title="У товара нет себестоимости — безубыточный ДРР не посчитать">безубыт. —</span>` : ""));
+      return `<tr><td class="metric">${skuLink(r.sup)}<div class="sub oz-nm" title="${esc(r.name)}">${esc(r.name)}</div></td>`
+        +`<td>${esc(r.tag)}</td><td>${fmt(Math.round(r.oq))}${Bq}</td><td>${fmt(Math.round(r.ordRub))}</td><td>${fmt(Math.round(r.rev))}${Brv}</td>`
+        +`<td>${spCell}${Bsp}</td><td>${own}${beL}${Bdr}</td><td>${tg}${Btg}</td>`
+        +`<td>${r.oq>0&&r.spend>0? fmt(Math.round(r.cpo)) : (r.spend>0? "нет заказов" : "—")}${Bcp}</td>`
         +`<td>${fmt(r.stock)}</td><td>${r.coverDays===Infinity? "∞" : (r.spd>0? Math.round(r.coverDays):"—")}</td></tr>`;
-    }).join("") : `<tr><td colspan="9" class="mut">Нет данных за период выгрузки.</td></tr>`)
+    }).join("") : `<tr><td colspan="11" class="mut">Нет данных за выбранный период.</td></tr>`)
     +`</tbody>`;
 }
 /* Сортировка в «Отдаче» — ВНУТРИ склейки: сами склейки всегда идут по расходу сверху вниз
@@ -8412,6 +8779,12 @@ function renderAdsPerf(){
   if(!P){ el.innerHTML=`<tbody><tr><td class="empty-hint">Статистика рекламы не загружена. `
     +`Пришлите выгрузку XWAY с колонками «Расход, руб.» и «Заказы др. артикулов».</td></tr></tbody>`;
     document.getElementById("adKpis").innerHTML=""; document.getElementById("adCount").textContent=""; return; }
+  /* ПЕРИОД A — выбранные даты ∩ дни выгрузок (по умолчанию все дни выгрузок, как было); B — сравнение. */
+  const A=adPerfA(), B=adPerfB(A), cmp=!!(B&&B.days), nA=A? A.days : 0, nB=B? B.days : 0;   // B без данных — только пометка
+  if(!A || !A.days){
+    el.innerHTML=`<tbody><tr><td class="empty-hint">За ${esc(A? adRangeTxt(A.reqFrom,A.reqTo) : "выбранный период")} выгрузок рекламы Wildberries нет. `
+      +`Выберите другой период — дни с выгрузками в календаре не заштрихованы.</td></tr></tbody>`;
+    document.getElementById("adKpis").innerHTML=""; document.getElementById("adCount").textContent=""; renderAdHowTo(); return; }
   const q=(document.getElementById("adSearch")?.value||"").trim().toLowerCase();
   let rows=adFilteredRows(adBaseRows(),null);
   if(q) rows=rows.filter(r=>(r.sku+" "+r.sup+" "+r.name+" "+r.tag).toLowerCase().includes(q));
@@ -8425,10 +8798,15 @@ function renderAdsPerf(){
      иначе на экране «9 позиций», а расход в шапке за всю категорию. */
   const focused = !!(recFocus && recFocus.tab==="ads" && recFocus.keys.size);
   const gSel = focused? null : adGroup;
-  const fullByTag={};
-  (focused? focusApply(adPerfRows()) : adPerfRows()).forEach(r=>{
+  const fullByTag={}, allA=adPerfRows(A);
+  (focused? focusApply(allA) : allA).forEach(r=>{
     if(gSel && r.group!==gSel) return;
     (fullByTag[r.tag]||(fullByTag[r.tag]=[])).push(r); });
+  // период B: те же строки и тот же отбор (категория / фокус), чтобы сравнение было «яблоки с яблоками»
+  const allB=(B&&B.days)? adPerfRows(B) : null, fullByTagB={}, bSku={};
+  if(allB) (focused? focusApply(allB) : allB).forEach(r=>{ bSku[r.sku]=r;
+    if(gSel && r.group!==gSel) return;
+    (fullByTagB[r.tag]||(fullByTagB[r.tag]=[])).push(r); });
   const bo=adBuyout();
   const agg=list=>{ const sp=list.reduce((a,x)=>a+x.spend,0);
     const rD=list.reduce((a,x)=>a+x.revD,0), rA=list.reduce((a,x)=>a+x.revA,0);
@@ -8451,36 +8829,48 @@ function renderAdsPerf(){
       max7: adMaxCpo(aov,bow,AD_DRR_GOAL), max6: adMaxCpo(aov,bow,AD_DRR_GREAT)}; };
   // итог по вкладке — тоже по всей выборке склеек (знаменатель = все карточки)
   const T=agg(Object.values(fullByTag).flat());
+  const TB=allB? agg(Object.values(fullByTagB).flat()) : null;
   const tr2=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
+  const kB=html=> !cmp? "" : `<div class="kpi-b">B: ${TB? html : "нет данных"}</div>`;
+  const drrOrdA=T.rD>0? T.sp/(T.rD/bo)*100 : null, drrOrdB=TB&&TB.rD>0? TB.sp/(TB.rD/bo)*100 : null;
+  const cutTxt=c=>c.length? "выгрузка "+c.map(x=>adDM(x.from)+"–"+adDM(x.to)+" взята за "+x.k+" из "+x.n+" дн").join(", ") : "";
   document.getElementById("adKpis").innerHTML=[
     {lbl:"Расход за период, ₽", val:fmt(Math.round(T.sp)),
-     tip:`<div class="t-hd">Период рекламы</div>`+tr2("С",fmtDateLong(P.from))+tr2("По",fmtDateLong(P.to))
-       +tr2("Кампаний в выборке",rows.length)},
+     delta:kB(TB? fmt(Math.round(TB.sp))+" · "+adDltHtml(adDeltaPct(T.sp,TB.sp,nA,nB),0) : ""),
+     tip:`<div class="t-hd">Период A</div>`+tr2("С",fmtDateLong(A.from))+tr2("По",fmtDateLong(A.to))
+       +tr2("Дней с выгрузками",nA)+(A.cut.length? tr2("Пропорционально дням: "+cutTxt(A.cut)) : "")
+       +tr2("Кампаний в выборке",rows.length)
+       +(cmp? `<div class="t-hd">Период B</div>`+(B.days? tr2("С",fmtDateLong(B.from))+tr2("По",fmtDateLong(B.to))+tr2("Дней с выгрузками",nB)
+            +tr2("Расход",fmt(Math.round(TB.sp))+" ₽") : tr2("Выгрузок рекламы за "+adRangeTxt(B.reqFrom,B.reqTo)+" нет")) : "")},
     /* ГЛАВНАЯ ЦИФРА — ДРР В ВЫКУПЕ ПО ВЫБОРКЕ, знаменатель без «заказов других артикулов»:
        на уровне склейки/категории соседние карточки уже сидят в своей же выручке, и их
        добавление считало бы продажи дважды. `drrA` остаётся только в строке товара. */
     {lbl:"ДРР в выкупе (цель ≤"+AD_DRR_GOAL+"%)", val:adDrrTxt(T.drrD),
      valColor: T.drrD<=AD_DRR_GREAT? "var(--good-txt)" : (T.drrD<=AD_DRR_GOAL? "var(--warn-txt)" : "var(--crit-txt)"),
+     delta:kB(TB? adDrrTxt(TB.drrD)+" · "+adDltPp(T.drrD,TB.drrD,adDrrDirCls("wb",T.drrD,TB.drrD)) : ""),
      tip:`<div class="t-hd">Как считается</div>`
        +tr2("Расход",fmt(Math.round(T.sp))+" ₽")
        +tr2("Выручка всех карточек выборки, в заказах",fmt(Math.round(T.rD/bo))+" ₽")
        +tr2("× % выкупа",(bo*100).toFixed(0)+"%")
        +tr2("= выручка в выкупе",fmt(Math.round(T.rD))+" ₽")
        +tr2("ДРР в выкупе",adDrrTxt(T.drrD))
-       +tr2("ДРР в заказах (как в кабинете)",(T.rD>0? (T.sp/(T.rD/bo)*100).toFixed(1)+"%":"—"))
+       +tr2("ДРР в заказах (как в кабинете)",adPc(drrOrdA))
        +`<div class="t-hd">Цель</div>`+tr2("не более",AD_DRR_GOAL+"%")+tr2("хорошо",AD_DRR_GREAT+"%")
        +tr2("идеально","ниже "+AD_DRR_GREAT+"%")},
-    {lbl:"ДРР в заказах (кабинет XWAY)", val:(T.rD>0? (T.sp/(T.rD/bo)*100).toFixed(1)+"%":"—"),
+    {lbl:"ДРР в заказах (кабинет XWAY)", val:adPc(drrOrdA),
+     delta:kB(TB? adPc(drrOrdB)+" · "+adDltPp(drrOrdA,drrOrdB,adDrrDirCls("wb",drrOrdA,drrOrdB)) : ""),
      tip:`<div class="t-hd">Зачем эта цифра</div>`
        +tr2("Именно её показывает XWAY — по ней сверяетесь с кабинетом")
        +tr2("Выручка в заказах",fmt(Math.round(T.rD/bo))+" ₽")
        +tr2("Расход",fmt(Math.round(T.sp))+" ₽")
-       +tr2("ДРР в заказах",(T.rD>0? (T.sp/(T.rD/bo)*100).toFixed(1)+"%":"—"))
+       +tr2("ДРР в заказах",adPc(drrOrdA))
        +tr2("Ваша цель ≤"+AD_DRR_GOAL+"% задана В ВЫКУПЕ, поэтому в заказах она примерно "
-            +(AD_DRR_GOAL*bo).toFixed(1)+"%")},
+            +adPc(AD_DRR_GOAL*bo))},
     {lbl:"CPO факт / потолок, ₽",
      val:(T.cpo===Infinity? "—" : fmt(Math.round(T.cpo)))+" / "+fmt(Math.round(T.max7)),
      valColor: (T.cpo<=T.max6? "var(--good-txt)" : (T.cpo<=T.max7? "var(--warn-txt)" : "var(--crit-txt)")),
+     delta:kB(TB? (TB.cpo===Infinity? "—" : fmt(Math.round(TB.cpo)))+" / "+fmt(Math.round(TB.max7))
+       +(isFinite(T.cpo)&&isFinite(TB.cpo)? " · "+adDltHtml(adDeltaPct(T.cpo,TB.cpo),-1) : "") : ""),
      tip:`<div class="t-hd">Потолок CPO выводится из цели по ДРР</div>`
        +tr2("макс CPO = ДРР × чек × выкуп")
        +tr2("Средний чек",fmt(Math.round(T.aov))+" ₽")+tr2("Выкуп",(T.bo*100).toFixed(0)+"%")
@@ -8492,63 +8882,461 @@ function renderAdsPerf(){
        +tr2("по склейке — её общий чек и выкуп, взвешенные по заказам")},
   ].map(kpiCard).join("");
   wireKpiTips("adKpis");
-  document.getElementById("adCount").textContent=rows.length+" кампаний · "
-    +fmtDateLong(P.from)+" – "+fmtDateLong(P.to)
+  document.getElementById("adCount").textContent=rows.length+" "+plural(rows.length,"кампания","кампании","кампаний")+" · "
+    +adRangeTxt(A.from,A.to)
     +(focused? " · по рекомендации" : (adGroup? " · "+adGroup : " · все группы"));
   renderAdHowTo();
   if(!rows.length){ el.innerHTML=`<tbody><tr><td class="empty-hint">Под текущие фильтры кампаний нет</td></tr></tbody>`; return; }
   const byTag={}; rows.forEach(r=>(byTag[r.tag]||(byTag[r.tag]=[])).push(r));
   const F=(l,k)=>thSortF(l,k,adSortState,null,"ads");
+  // подстрока «B: …» под цифрой A; у строк без данных B — «нет данных»
+  const bl=(txt,d)=> cmp? adBLine(txt,d) : "";
+  const zeroB={spend:0,revA:0,revD:0,drrA:0,drrD:0,cpo:0,totOrd:0,max7:0};
   let html=`<thead><tr>`+thSortF("Товар / склейка","tag",adSortState,"metric","ads")
     +F("Артикул ВБ","sku")+F("Код 1С","sup")+F("Запас ВБ","stockSt")
     +`<th>Расход ₽</th><th>Выручка ₽ (выкуп)</th>`+F("ДРР общий","drrA")+F("ДРР свой","drrD")
     +F("CPO факт","cpoOver")+`<th>Макс CPO</th>`+F("Чек · выкуп","boOwn")
     +`<th>Заказы</th><th>+ др. арт.</th><th>CTR %</th><th>Решение</th></tr></thead><tbody>`;
   Object.entries(byTag).map(([t,l])=>({t,l,a:agg(fullByTag[t]||l)})).sort((a,b)=>b.a.sp-a.a.sp).forEach(({t,l,a})=>{
+    const ab=allB? agg(fullByTagB[t]||[]) : null;
     const verdict = a.drrA<=AD_DRR_GOAL
       ? `<span class="badge good"><span class="d"></span>В цели</span>`
       : `<span class="badge critical"><span class="d"></span>Править склейку</span>`;
-    html+=`<tr class="row-group"><td class="metric" style="font-weight:700;padding-top:12px">Склейка «${esc(t)}» · ${l.length} кампаний`
+    const nb=!allB;   // сравнение включено, а данных за B нет
+    html+=`<tr class="row-group"><td class="metric" style="font-weight:700;padding-top:12px">Склейка «${esc(t)}» · ${l.length} ${plural(l.length,"кампания","кампании","кампаний")}`
       +`<span class="sub2 mut">выручка по всем ${(fullByTag[t]||l).length} карточкам склейки</span></td>`
       +`<td colspan="2"></td>`
       +`<td style="font-weight:700" class="${a.msk?"":"d-zero"}">${a.msk? fmt(a.msk):"—"}`
       +`<span class="sub2 ${a.coverDays<AD_MIN_STOCK_DAYS?"crit":"mut"}">${adCoverTxt(a)}</span></td>`
-      +`<td style="font-weight:700">${fmt(Math.round(a.sp))}</td>`
-      +`<td style="font-weight:700">${fmt(Math.round(a.rA))}</td>`
+      +`<td style="font-weight:700">${fmt(Math.round(a.sp))}${nb? bl("нет данных") : (ab? bl(fmt(Math.round(ab.sp)),adDltHtml(adDeltaPct(a.sp,ab.sp,nA,nB),0)) : "")}</td>`
+      +`<td style="font-weight:700">${fmt(Math.round(a.rA))}${nb? bl("нет данных") : (ab? bl(fmt(Math.round(ab.rA)),adDltHtml(adDeltaPct(a.rA,ab.rA,nA,nB),1)) : "")}</td>`
       /* У СКЛЕЙКИ «ДРР с ассоциативными» НЕ ПОКАЗЫВАЕМ: заказы соседей — это карточки
          той же склейки, их выручка уже в знаменателе. Сложить второй раз = двойной счёт. */
       +`<td class="muted" title="Заказы соседей уже внутри склейки — второй раз не считаем">—</td>`
-      +`<td>${adDrrBadge(a.drrD)}</td>`
-      +`<td style="font-weight:700;${a.cpo>a.max7?"color:var(--crit-txt)":""}">${a.cpo===Infinity?"—":fmt(Math.round(a.cpo))}</td>`
+      +`<td>${adDrrBadge(a.drrD)}${nb? bl("нет данных") : (ab? (ab.sp>0? bl(adDrrTxt(ab.drrD),adDltPp(a.drrD,ab.drrD,adDrrDirCls("wb",a.drrD,ab.drrD))) : bl("нет рекламы")) : "")}</td>`
+      +`<td style="font-weight:700;${a.cpo>a.max7?"color:var(--crit-txt)":""}">${a.cpo===Infinity?"—":fmt(Math.round(a.cpo))}`
+      +`${nb? bl("нет данных") : (ab? bl(ab.cpo===Infinity||!(ab.sp>0)? "—" : fmt(Math.round(ab.cpo)), (isFinite(a.cpo)&&isFinite(ab.cpo)&&ab.sp>0)? adDltHtml(adDeltaPct(a.cpo,ab.cpo),-1) : "") : "")}</td>`
       +`<td style="font-weight:700">${fmt(Math.round(a.max7))}<span class="sub2 mut">идеал ${fmt(Math.round(a.max6))}</span></td>`
       +`<td>${fmt(Math.round(a.aov))}<span class="sub2 mut">× ${(a.bo*100).toFixed(0)}% выкуп</span></td>`
-      +`<td colspan="3"></td><td>${verdict}</td></tr>`;   // Заказы / «др. арт.» / CTR у склейки не печатаем
+      +`<td style="font-weight:700">${fmt(Math.round(a.o))}${nb? bl("нет данных") : (ab? bl(fmt(Math.round(ab.o)),adDltHtml(adDeltaPct(a.o,ab.o,nA,nB),1)) : "")}</td>`
+      +`<td colspan="2"></td><td>${verdict}</td></tr>`;   // «др. арт.» / CTR у склейки не печатаем
     adSortPerf(l).forEach(r=>{
+      const b= nb? null : (cmp? (bSku[r.sku]||zeroB) : null);
       html+=`<tr class="in-grp"><td class="metric name-cell" title="${esc(r.name)}">${esc(r.name)}`
         +`<span class="sub2 mut">${esc(r.category)}</span></td>`
         +`<td class="ad-art">${skuLink(r.sku)}</td><td class="ad-art">${esc(r.sup)}</td>`
         +`<td class="${r.msk?"":"d-zero"}">${r.msk? fmt(r.msk):"—"}`
         +`<span class="sub2 ${r.coverDays<AD_MIN_STOCK_DAYS?"crit":"mut"}">${adCoverTxt(r)}</span></td>`
-        +`<td>${fmt(Math.round(r.spend))}</td>`
-        +`<td>${fmt(Math.round(r.revA))}<span class="sub2 mut">свой ${fmt(Math.round(r.revD))}</span></td>`
-        +`<td>${adDrrBadge(r.drrA)}</td><td class="${adDrrCls(r.drrD)}">${adDrrTxt(r.drrD)}</td>`
+        +`<td>${fmt(Math.round(r.spend))}${nb? bl("нет данных") : (b? bl(fmt(Math.round(b.spend)),adDltHtml(adDeltaPct(r.spend,b.spend,nA,nB),0)) : "")}</td>`
+        +`<td>${fmt(Math.round(r.revA))}<span class="sub2 mut">свой ${fmt(Math.round(r.revD))}</span>${nb? bl("нет данных") : (b? bl(fmt(Math.round(b.revA)),adDltHtml(adDeltaPct(r.revA,b.revA,nA,nB),1)) : "")}</td>`
+        +`<td>${adDrrBadge(r.drrA)}${nb? bl("нет данных") : (b? (b.spend>0? bl(adDrrTxt(b.drrA),(r.spend>0&&isFinite(r.drrA)&&isFinite(b.drrA))? adDltPp(r.drrA,b.drrA,adDrrDirCls("wb",r.drrA,b.drrA)) : "") : bl("не крутилась")) : "")}</td>`
+        +`<td class="${adDrrCls(r.drrD)}">${adDrrTxt(r.drrD)}</td>`
         +`<td class="${r.cpo>r.max7?"crit":""}">${r.cpo===Infinity?"—":fmt(Math.round(r.cpo))}`
-        +`${(r.cpo!==Infinity&&r.max7>0&&r.cpo>r.max7)? `<span class="sub2 crit">×${(r.cpo/r.max7).toFixed(1)} к потолку</span>`:""}`
-        +`${(r.othOrd>0&&r.cpoAll!==Infinity)? `<span class="sub2 ${r.cpoAll<=r.maxA?"acc":"mut"}">с ассоц. ${fmt(Math.round(r.cpoAll))} ₽ / ${fmt(Math.round(r.maxA))}</span>`:""}</td>`
+        +`${(r.cpo!==Infinity&&r.max7>0&&r.cpo>r.max7)? `<span class="sub2 crit">×${(r.cpo/r.max7).toFixed(1).replace(".",",")} к потолку</span>`:""}`
+        +`${(r.othOrd>0&&r.cpoAll!==Infinity)? `<span class="sub2 ${r.cpoAll<=r.maxA?"acc":"mut"}">с ассоц. ${fmt(Math.round(r.cpoAll))} ₽ / ${fmt(Math.round(r.maxA))}</span>`:""}`
+        +`${nb? bl("нет данных") : (b? (b.spend>0&&b.totOrd>0? bl(fmt(Math.round(b.cpo)),(r.spend>0&&r.totOrd>0)? adDltHtml(adDeltaPct(r.cpo,b.cpo),-1) : "") : bl("—")) : "")}</td>`
         +`<td>${fmt(Math.round(r.max7))}<span class="sub2 mut">идеал ${fmt(Math.round(r.max6))}</span></td>`
         +`<td>${fmt(Math.round(r.aov))}<span class="sub2 ${r.boOwn?"acc":"mut"}">× ${(r.bo*100).toFixed(0)}% выкуп${r.boOwn?"":" (общий)"}</span></td>`
-        +`<td>${fmt(r.totOrd)}<span class="sub2 mut">с рекл. ${fmt(r.ord)}</span></td>`
-        +`<td>${fmt(r.othOrd)}<span class="sub2 mut">${fmt(Math.round(r.othRub))} ₽</span></td>`
-        +`<td>${r.ctr.toFixed(1)}</td>`
-        +`<td>${r.spend<AD_MIN_SPEND? `<span class="muted">мелкий расход</span>`
+        +`<td>${fmt(Math.round(r.totOrd))}<span class="sub2 mut">с рекл. ${fmt(Math.round(r.ord))}</span>${nb? bl("нет данных") : (b? bl(fmt(Math.round(b.totOrd)),adDltHtml(adDeltaPct(r.totOrd,b.totOrd,nA,nB),1)) : "")}</td>`
+        +`<td>${fmt(Math.round(r.othOrd))}<span class="sub2 mut">${fmt(Math.round(r.othRub))} ₽</span></td>`
+        +`<td>${r.ctr.toFixed(1).replace(".",",")}</td>`
+        +`<td>${!(r.spend>0)? `<span class="muted">в периоде A не крутилась</span>`
+             : (r.spend<AD_MIN_SPEND? `<span class="muted">мелкий расход</span>`
              : (r.drrA<=AD_DRR_GOAL? `<span class="muted">оставить</span>`
              : (a.drrA<=AD_DRR_GOAL? `<span class="muted">склейка в цели — тянет трафик</span>`
              : (r.max7>0 && r.cpo>r.max7
-                ? `<span class="crit">снизить ставку в ${(r.cpo/r.max7).toFixed(1)} раза</span>`
-                : `<span class="crit">разобрать</span>`)))}</td></tr>`;
+                ? `<span class="crit">снизить ставку в ${(r.cpo/r.max7).toFixed(1).replace(".",",")} раза</span>`
+                : `<span class="crit">разобрать</span>`))))}</td></tr>`;
     });
   });
   html+="</tbody>"; el.innerHTML=html;
+}
+/* ---- Периоды A/B: подписи кнопок, строка «как посчитан период», календари (openDateRangePicker) ---- */
+function adPeriodCtx(mp){
+  if(mp==="ozon"){ const A=ozAdA(); return {mp, A, B:ozAdB(A), cmpAllowed:true}; }
+  if(adView==="perf"){ const A=adPerfA(); return {mp, A, B:adPerfB(A), cmpAllowed:true}; }
+  const CR=adCandRange(), G=CR? adPerfAgg(CR.from,CR.to) : null;
+  return {mp, A:CR? {from:CR.from, to:CR.to, reqFrom:adFrom||CR.from, reqTo:adTo||CR.to, isDef:!adFrom&&!adTo,
+    days:adWin().length, adDays:G? G.days : 0, cut:G? G.cut : [], cand:true} : null, B:null, cmpAllowed:false};
+}
+function adPeriodUi(mp){
+  const lbl=document.getElementById("adRangeLbl"), rb=document.getElementById("adRangeBtn"), cb=document.getElementById("adCmpBtn"),
+    cl=document.getElementById("adCmpLbl"), cx=document.getElementById("adCmpOff"), note=document.getElementById("adPNote");
+  if(!lbl||!rb) return;
+  const C=adPeriodCtx(mp), A=C.A, B=C.B, on=!!(C.cmpAllowed&&B);
+  const defTxt = mp==="ozon"||C.A&&!C.A.cand? "все дни выгрузок рекламы" : "последние "+AD_DEF_DAYS+" дней";
+  rb.classList.toggle("active", !!(A&&!A.isDef));
+  lbl.innerHTML=(on? '<span class="ad-ab">A</span> ' : "")+esc(A&&A.from? drpRangeText(A.from,A.to) : "Период");
+  rb.title="Период A"+(A&&A.isDef? " — по умолчанию: "+defTxt : " — выбран вручную")+". Дни без данных в календаре заштрихованы";
+  cb.hidden=!C.cmpAllowed;
+  cb.classList.toggle("off", !on); cb.classList.toggle("active", on);
+  cl.innerHTML= on? '<span class="ad-ab">B</span> '+esc(B.from? drpRangeText(B.from,B.to) : drpRangeText(B.reqFrom,B.reqTo)+" · нет данных") : "Сравнить с периодом…";
+  cx.hidden=!on;
+  // строка «как посчитан период» — только когда есть что сказать
+  const L=[], isOz=mp==="ozon";
+  if(A){
+    if(A.cand){
+      if(A.adDays<A.days) L.push(A.adDays? `Выгрузки рекламы Wildberries есть за <b>${A.adDays} из ${A.days}</b> дней периода — колонка «Реклама ₽» и ДРР считаются только по ним.`
+        : `За ${esc(adRangeTxt(A.from,A.to))} выгрузок рекламы Wildberries нет — колонка «Реклама ₽» пустая.`);
+    } else if(!A.days){
+      L.push(`За ${esc(adRangeTxt(A.reqFrom,A.reqTo))} данных о рекламе ${isOz?"Ozon":"Wildberries"} нет.`);
+    } else if(!A.isDef && (A.reqFrom!==A.from || A.reqTo!==A.to)){
+      L.push(`Выбрано ${esc(adRangeTxt(A.reqFrom,A.reqTo))}, данные о рекламе ${isOz?"Ozon":"Wildberries"} есть за <b>${esc(adRangeTxt(A.from,A.to))}</b> — считаю по ним.`);
+    }
+    (A.cut||[]).forEach(c=>L.push(isOz
+      ? `Выгрузка XWAY за ${adDM(c.from)}–${adDM(c.to)} пришла одним файлом на ${c.n} дн, в период попало ${c.k} — её расход разнесён по дням <b>пропорционально выручке дня</b>, так же, как на «Главной».`
+      : `Выгрузка XWAY за ${adDM(c.from)}–${adDM(c.to)} пришла одним файлом на ${c.n} дн, в период попало ${c.k} — её расход, заказы и выручка взяты <b>пропорционально дням (${c.k} из ${c.n})</b>, так же «Главная» разносит расход по дням. ДРР и CPO этой выгрузки от этого не меняются.`));
+  }
+  if(on){
+    if(!B.days) L.push(`Сравнение: за ${esc(adRangeTxt(B.reqFrom,B.reqTo))} (${esc(B.how)}) данных о рекламе нет — сравнивать не с чем.`);
+    else {
+      L.push(`Сравнение: <b>B = ${esc(adRangeTxt(B.from,B.to))}</b> — ${esc(B.how)}`
+        +((B.reqFrom!==B.from||B.reqTo!==B.to)? `, данные есть только за ${adDaysTxt(B.days)} из ${adNDays(B.reqFrom,B.reqTo)}` : "")+".");
+      if(A&&A.days&&A.days!==B.days) L.push(`Периоды разной длины (A — ${adDaysTxt(A.days)}, B — ${adDaysTxt(B.days)}): расход, выручка и заказы сравниваются <b>в среднем за день</b>, ДРР и CPO — как есть.`);
+      (B.cut||[]).forEach(c=>L.push(`В периоде B выгрузка ${adDM(c.from)}–${adDM(c.to)} тоже взята частично (${c.k} из ${c.n} дн).`));
+    }
+  }
+  if(note){ note.hidden=!L.length; note.innerHTML=L.join("<br>"); }
+}
+// календарь периода A или B для текущей площадки/вида
+function adOpenPicker(btn,which){
+  const opts= _appliedMp==="ozon"? ozAdPickerOpts(which) : adWbPickerOpts(which);
+  if(opts) openDateRangePicker(btn,opts);
+}
+function adPickerB(C,lo,hi,parts,mp,dayInfo,legend,note){
+  const A=C.A; if(!A||!A.from) return null;
+  const auto=adPrevLike(A.from,A.to,mp), B=C.B;
+  const pre=[{label:"Как A, но раньше · "+adDM(auto.from)+"–"+adDM(auto.to), from:auto.from, to:auto.to, auto:true,
+      active: !!(B&&B.auto)}]
+    .concat(adPresets(mp,lo,hi,parts,null).filter(p=>!(p.from===A.from&&p.to===A.to)).map(p=>({...p, active:false})));
+  if(B) pre.push({label:"Без сравнения", from:A.from, to:A.to, off:true, active:false});
+  return {from:B? B.reqFrom : auto.from, to:B? B.reqTo : auto.to, min:lo, max:hi, dayInfo, legend,
+    title:"Период B — с чем сравнить "+drpRangeText(A.from,A.to,"none"),
+    note:`По умолчанию B — <b>${esc(auto.how)}</b> (${esc(adRangeTxt(auto.from,auto.to))}). `+note,
+    presets:pre,
+    onApply:(f,t,p)=>{
+      const set=(on,bf,bt)=>{ if(mp==="ozon"){ ozCmpOn=on; ozBFrom=bf; ozBTo=bt; ozBNote=null; } else { adCmpOn=on; adBFrom=bf; adBTo=bt; adBNote=null; } };
+      if(p&&p.off) set(false,null,null);
+      else if(p&&p.auto) set(true,null,null);
+      else if(f===auto.from&&t===auto.to) set(true,null,null);
+      else set(true,f,t);
+      renderAdsTab(); }};
+}
+function adWbPickerOpts(which){
+  const dates=adDates(); if(!dates.length) return null;
+  const perf=adView==="perf", parts=adPerfParts(), act=parts.filter(p=>!p.spendOnly), def=adPerfDefWin();
+  if(perf && !def) return null;
+  const partOf=d=>{ for(const p of parts) if(p.from<=d&&d<=p.to) return p; return null; };
+  const dset=new Set(dates);
+  const dayInfo=d=>{ const p=partOf(d);
+    // отбор считается по ряду заказов: за его краями дней нет вовсе (раньше они красились как «выгрузки нет»)
+    if(!perf && (d<dates[0] || d>dates[dates.length-1])) return {cls:"none", disabled:true, title:fmtDateLong(d)+": заказов Wildberries за этот день ещё нет — последние за "+fmtDateLong(dates[dates.length-1])};
+    if(!perf && !dset.has(d)) return {cls:"none", title:fmtDateLong(d)+": заказов Wildberries за этот день нет — в счёт не идёт"};
+    if(perf && def && (d<def.from || d>def.to) && !(p&&p.spendOnly)) return {cls:"none", disabled:true, title:fmtDateLong(d)+": выгрузок рекламы Wildberries нет — есть за "+adRangeTxt(def.from,def.to)};
+    if(p&&p.spendOnly) return {cls:"none", disabled:perf, title:`${fmtDateLong(d)}: выгрузка ${adDM(p.from)}–${adDM(p.to)} «только расход» — реклама фактически не крутилась, в ДРР не идёт`};
+    if(p) return {cls:p.from===p.to? "full" : "partial", title:fmtDateLong(d)+": выгрузка XWAY "+(p.from===p.to? "за этот день"
+      : `${adDM(p.from)}–${adDM(p.to)} одним файлом — если период режет её, цифры берутся пропорционально дням`)};
+    if(perf) return {cls:"none", disabled:true, title:fmtDateLong(d)+": выгрузки рекламы нет"};
+    return {cls:"low", title:fmtDateLong(d)+": заказы есть, выгрузки рекламы нет — колонка «Реклама ₽» за этот день пустая"}; };
+  const lo= perf? def.from : dates[0], hi= perf? def.to : dates[dates.length-1];
+  const so=parts.filter(p=>p.spendOnly);
+  const note=`Выгрузки рекламы Wildberries: <b>${def? esc(adRangeTxt(def.from,def.to)) : "нет"}</b>`
+    +(so.length? ` (${so.map(p=>adDM(p.from)+"–"+adDM(p.to)).join(", ")} — «только расход»: реклама не крутилась, в ДРР не идёт)` : "")+".";
+  const legend=[{cls:"full",label:"выгрузка за день"},{cls:"partial",label:"выгрузка за несколько дней одним файлом"},
+    perf? {cls:"none",label:"выгрузки нет — выбрать нельзя"} : {cls:"low",label:"выгрузки рекламы нет"}]
+    .concat(perf? [] : [{cls:"none",label:"заказов нет"}]);
+  const C=adPeriodCtx("wb");
+  if(which==="B") return adPickerB(C,lo,hi,act,"wb",dayInfo,legend,note);
+  const A=C.A;
+  const dflt= perf? {label:"Все дни выгрузок · "+adDM(def.from)+"–"+adDM(def.to), from:def.from, to:def.to}
+    : (()=>{ const f=dates[Math.max(0,dates.length-AD_DEF_DAYS)], t=dates[dates.length-1]; return {label:"Последние "+AD_DEF_DAYS+" дней · "+adDM(f)+"–"+adDM(t), from:f, to:t}; })();
+  let pre=adPresets("wb", perf? lo : addDays(hi,-120)<lo? lo : addDays(hi,-120), hi, act, dflt);
+  pre=pre.map((p,i)=>({...p, def:i===0, active: i===0? !!(A&&A.isDef) : (A&&!A.isDef&&p.from===A.reqFrom&&p.to===A.reqTo)}));
+  return {from:A&&A.from? (A.isDef? A.from : A.reqFrom) : null, to:A&&A.to? (A.isDef? A.to : A.reqTo) : null, min:lo, max:hi,
+    title: perf? "Период A — отдача рекламы Wildberries" : "Период A — отбор кандидатов Wildberries",
+    note: note+(perf? "" : " Период общий для всей вкладки: в «Отдаче» он режется по дням выгрузок."),
+    legend, dayInfo, presets:pre,
+    onApply:(f,t,p)=>{ if(p&&p.def){ adFrom=adTo=null; } else { adFrom=f; adTo=t; } renderAdsTab(); }};
+}
+function ozAdPickerOpts(which){
+  const D=ozDatesAll(), Bd=ozAdBounds(); if(!D.length||!Bd) return null;
+  const parts=ozAdSpendParts(), def=ozAdWindow(), dset=new Set(D);
+  const dayInfo=d=>{
+    if(d<Bd.lo) return {cls:"none", disabled:true, title:fmtDateLong(d)+": данных о рекламе Ozon нет — первые с "+fmtDateLong(Bd.lo)
+      +".\nРаньше реклама в прибыли «Главной» считается по ставке из юнит-экономики — это оценка, а не факт, сравнивать с ней нечего"};
+    if(d>Bd.hi) return {cls:"none", disabled:true, title:fmtDateLong(d)+": данных о рекламе Ozon ещё нет — последние за "+fmtDateLong(Bd.hi)};
+    if(!dset.has(d)) return {cls:"none", disabled:true, title:fmtDateLong(d)+": заказов Ozon за этот день нет"};
+    const pi=ozAdSpendPartIdx(d), p=pi>=0? parts[pi] : null, fee=ozOrderFeeOn(d);
+    const feeTxt= fee? "Отчёт Ozon «Оплата за заказ» — есть" : (d<OZ_FEE_REPORT_ONLY_FROM? "Отчёта «Оплата за заказ» нет — кабинетное продвижение по ставке юнит-экономики"
+      : "Отчёта «Оплата за заказ» нет — плата за заказ за этот день не учтена (берётся только из ваших отчётов)");
+    if(p) return {cls:p.from===p.to? "full" : "partial", title:fmtDateLong(d)+"\nВыгрузка XWAY "+(p.from===p.to? "за этот день"
+      : adDM(p.from)+"–"+adDM(p.to)+" одним файлом (расход разнесён по дням пропорционально выручке)")+"\n"+feeTxt};
+    return {cls:"low", title:fmtDateLong(d)+"\nВыгрузки XWAY нет — кампании XWAY в расход не попали\n"+feeTxt}; };
+  const F=ozOrderFee(), fp=F? F.periods.slice().sort((a,b)=>a.from<b.from?-1:1) : [];
+  const note=`Данные о рекламе Ozon: <b>${esc(adRangeTxt(Bd.lo,Bd.hi))}</b>`
+    +(parts.length? ` · выгрузки XWAY ${esc(adRangeTxt(parts[0].from,parts[parts.length-1].to))}` : " · выгрузок XWAY нет, реклама по ставке")
+    +(fp.length? ` · отчёт «Оплата за заказ» ${esc(adRangeTxt(fp[0].from,fp[fp.length-1].to))}` : "")+".";
+  const legend=[{cls:"full",label:"выгрузка XWAY за день"},{cls:"partial",label:"выгрузка за несколько дней одним файлом"},
+    {cls:"low",label:"выгрузки XWAY нет"},{cls:"none",label:"данных нет — выбрать нельзя"}];
+  const C=adPeriodCtx("ozon");
+  if(which==="B") return adPickerB(C,Bd.lo,Bd.hi,parts,"ozon",dayInfo,legend,note);
+  const A=C.A;
+  const dflt={label:"Все дни выгрузок · "+adDM(def.from)+"–"+adDM(def.to), from:def.from, to:def.to};
+  const pre=adPresets("ozon",Bd.lo,Bd.hi,parts,dflt)
+    .map((p,i)=>({...p, def:i===0, active: i===0? !!(A&&A.isDef) : (A&&!A.isDef&&p.from===A.reqFrom&&p.to===A.reqTo)}));
+  return {from:A? (A.isDef? def.from : A.reqFrom) : null, to:A? (A.isDef? def.to : A.reqTo) : null, min:Bd.lo, max:Bd.hi,
+    title:"Период A — реклама Ozon", note, legend, dayInfo, presets:pre,
+    onApply:(f,t,p)=>{ if(p&&p.def){ ozAdFrom=ozAdTo=null; } else { ozAdFrom=f; ozAdTo=t; } renderAdsTab(); }};
+}
+/* ==================== «ГИПОТЕЗЫ И ОПЫТЫ» — ИЗ ОПЫТ.md (просьба продавца 18.10.2026) ====================
+   «…так же какую гипотезу мы с тобой тестим, в файлах у тебя есть папка, в которой ты ищешь подтверждение нашим
+   рассуждениям, к примеру поиск лучше конвертит, чем поиск + каталог».
+   ИСТОЧНИК — ОПЫТ.md в корне репозитория (ведёт scripts/opyt.cjs): «ЗАКОНОМЕРНОСТИ» (П-xx) и «ЖУРНАЛ ПРАВОК
+   КАМПАНИЙ» (И-xx). Файл и так публичный (репозиторий открыт), данных магазина в нём нет — читаем его с того же
+   адреса без кеша. GitHub Pages собирает сайт Jekyll'ом и .md без шапки отдаёт как .html, поэтому порядок такой:
+   ОПЫТ.md → не вышло → ОПЫТ.html (те же таблицы из HTML). Не вышло и это — блок говорит, что файл не прочитан,
+   остальная вкладка считается как обычно.
+   Разбор — как rows() в opyt.cjs, но колонки ищутся ПО ЗАГОЛОВКУ: работает и со старым форматом, и с колонкой
+   «площадка» (добавлена 19.10.2026; её нет — площадка угадывается по тексту, не угадалась — запись видна на обеих
+   площадках с пометкой).
+   ЦИФРЫ К ПРАВКЕ — из тех же функций, что вкладка (ozAdRows / adPerfRows): «после» — от даты правки до
+   min(дата проверки, последний день данных), «до» — столько же дней прямо перед правкой. Метрики — расход, заказы,
+   выручка в выкупе, ДРР, CPO по коду и по его склейке. Меньше 7 дней «после» — «рано судить» (один день — не вердикт).
+   Клик «На цифрах →» ставит период A = «после», B = «до» и фильтрует таблицу по коду.
+   ================================================================================================ */
+let _opyt=null, _opytState="idle", _opytErr="", _hypSel=null, _hypList=[], _hypMemo=null;
+const OPYT_COLS=[["id",/^id$/i],["mp",/^площадк/i],["date",/^дата/i],["code",/^код/i],["what",/^что/i],["base",/^база/i],
+  ["check",/^проверит/i],["outcome",/^исход/i],["text",/^закономерн/i],["conf",/^подтв/i],["effect",/^эффект/i],["where",/^где/i]];
+function opytMap(head,rows){
+  const idx={}; head.forEach((h,i)=>{ const c=OPYT_COLS.find(x=>x[1].test((h||"").trim())); if(c&&idx[c[0]]==null) idx[c[0]]=i; });
+  return rows.filter(r=>r.some(c=>c&&c.trim()))
+    .map(r=>{ const o={}; Object.keys(idx).forEach(k=>o[k]=(r[idx[k]]||"").trim()); return o; })
+    .filter(o=>o.id);
+}
+function opytFromTables(T){
+  const find=re=>{ const k=Object.keys(T).find(x=>re.test(x)); return k? T[k] : null; };
+  const P=find(/закономерн/i), J=find(/журнал/i);
+  return {pat:P? opytMap(P.head,P.rows) : [], exp:J? opytMap(J.head,J.rows) : [],
+    mpCol: !!(J && J.head.some(h=>/^площадк/i.test((h||"").trim())))};
+}
+function opytParseMd(src){
+  const T={}; let sec=null;
+  String(src||"").split(/\r?\n/).forEach(l=>{
+    const h=l.match(/^##\s+(.+?)\s*$/); if(h){ sec=h[1].trim(); return; }
+    if(!sec || !/^\s*\|/.test(l)) return;
+    const cells=l.trim().replace(/^\|/,"").replace(/\|$/,"").split("|").map(c=>c.trim());
+    if(cells.every(c=>/^:?-{2,}:?$/.test(c))) return;                 // разделитель шапки
+    if(!T[sec]) T[sec]={head:cells, rows:[]}; else T[sec].rows.push(cells);
+  });
+  return opytFromTables(T);
+}
+function opytParseHtml(html){
+  const doc=new DOMParser().parseFromString(String(html||""),"text/html"), T={};
+  const txt=el=>{ const c=el.cloneNode(true); c.querySelectorAll("strong,b").forEach(b=>b.replaceWith("**"+b.textContent+"**"));
+    return c.textContent.replace(/\s+/g," ").trim(); };
+  doc.querySelectorAll("h2").forEach(h=>{
+    let n=h.nextElementSibling, tb=null;
+    while(n && !/^H[12]$/.test(n.tagName)){ if(n.tagName==="TABLE"){ tb=n; break; }
+      const q=n.querySelector&&n.querySelector("table"); if(q){ tb=q; break; } n=n.nextElementSibling; }
+    if(!tb) return;
+    const trs=[...tb.querySelectorAll("tr")]; if(!trs.length) return;
+    T[h.textContent.trim()]={head:[...trs[0].children].map(txt), rows:trs.slice(1).map(tr=>[...tr.children].map(txt))};
+  });
+  return opytFromTables(T);
+}
+function opytLoad(){
+  if(_opytState==="loading"||_opytState==="ok") return;
+  _opytState="loading";
+  const base=encodeURIComponent("ОПЫТ");
+  const get=u=>fetch(u+"?ts="+Date.now(),{cache:"no-store"}).then(r=>{ if(!r.ok) throw new Error("ответ "+r.status); return r.text(); });
+  get(base+".md").then(t=>{ if(/^\s*</.test(t)) throw new Error("html"); return opytParseMd(t); })
+    .catch(()=>get(base+".html").then(opytParseHtml))
+    .then(d=>{ if(!d || (!d.pat.length && !d.exp.length)) throw new Error("в файле не нашлось таблиц «ЗАКОНОМЕРНОСТИ» и «ЖУРНАЛ ПРАВОК КАМПАНИЙ»");
+      _opyt=d; _opytState="ok"; })
+    .catch(e=>{ _opytState="fail"; _opytErr=String((e&&e.message)||e); })
+    .finally(()=>{ const t=document.getElementById("tab-ads"); if(t && !t.hidden) renderAdHyp(); });
+}
+/* Площадка записи: колонка «площадка» (ВБ / Ozon / обе); колонки нет — по тексту записи (ОЗЗ, «П+Р», оплата за
+   заказ, Ozon — признаки Ozon; ВБ, Wildberries, «каталог» — признаки ВБ). Не определилась — null. */
+function opytMp(v,txt){
+  const s=(v||"").toLowerCase().trim();
+  if(s && s!=="—"){ if(/обе|оба|все|both/.test(s)) return "both"; if(/ozon|озон/.test(s)) return "ozon";
+    if(/(^|[^а-яё])вб([^а-яё]|$)|wb|wildberries|вайлдб/.test(s)) return "wb"; }
+  const t=(txt||"").toLowerCase();
+  const oz=/озз|оплат[аы] за заказ|п\+р|поиск[а-яё]* и рекоменд|ozon|озон/.test(t);
+  const wb=/(^|[^а-яё])вб([^а-яё]|$)|wildberries|поиск ?\+ ?каталог|(^|[^а-яё])каталог/.test(t);
+  return oz&&!wb? "ozon" : (wb&&!oz? "wb" : null);
+}
+function opytIso(s,ref){                      // «13.10», «13.10.2026», «2026-10-13» → ISO
+  if(!s) return null; s=String(s).trim();
+  let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0];
+  m=s.match(/^(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?/); if(!m) return null;
+  const dd=m[1].padStart(2,"0"), mm=m[2].padStart(2,"0");
+  const y=m[3]? (m[3].length===2? "20"+m[3] : m[3]) : ref.slice(0,4);
+  let iso=y+"-"+mm+"-"+dd;
+  if(!m[3] && iso>addDays(ref,200)) iso=(+y-1)+"-"+mm+"-"+dd;      // запись прошлого года
+  return iso;
+}
+const _hypCache=new Map();
+// свод по коду и его склейке за окно — теми же функциями, что считает вкладка
+function hypAgg(mp,from,to,code){
+  const FXr= mp==="ozon"? ozFixedRate() : 0;
+  const mk=l=>{ const sp=l.reduce((a,r)=>a+(r.spend||0),0), oq=l.reduce((a,r)=>a+(mp==="ozon"? (r.oq||0) : (r.totOrd||0)),0),
+      rev=l.reduce((a,r)=>a+(mp==="ozon"? (r.rev||0) : (r.revD||0)),0);
+    // Ozon: безубыточный ДРР (потолок коридора) — для цвета изменения ДРР, как в пирамиде
+    const cg=l.reduce((a,r)=>a+(r.cogs||0),0), revC=rev-l.reduce((a,r)=>a+(r.revNC||0),0);
+    // CPO без расхода не «0 ₽», а нет: рекламы не было (иначе «1 460 → 0 ▼ −100%» читается как удешевление заказа).
+    // ДРР без расхода — тоже «нет рекл.», а не «0,0%»: так и пирамида (бейдж «нет рекламы»), иначе выключенная
+    // реклама выглядела бы идеальным ДРР на ВБ и «недобором −25 п.п.» на Ozon
+    return {sp, oq, rev, drr: sp>0? (rev>0? sp/rev*100 : Infinity) : null, cpo: sp>0? (oq>0? sp/oq : Infinity) : null,
+      be: (mp==="ozon" && revC>0)? 100-FXr-cg/revC*100 : null}; };
+  if(mp==="ozon"){
+    const W=ozAdClip(from,to,false); if(!W||!W.days) return {days:0};
+    const key="oz|"+W.from+"|"+W.to; let rows=_hypCache.get(key); if(!rows){ rows=ozAdRows(W); _hypCache.set(key,rows); }
+    const tagName=(ozAdMap()[code]||{}).tag||"(без склейки)";
+    return {days:W.days, from:W.from, to:W.to, code:mk(rows.filter(r=>r.sup===code)), tag:mk(rows.filter(r=>r.tag===tagName)), tagName};
+  }
+  const G=adPerfAgg(from,to); if(!G.days) return {days:0};
+  const key="wb|"+G.from+"|"+G.to; let rows=_hypCache.get(key); if(!rows){ rows=adPerfRows({from,to,G}); _hypCache.set(key,rows); }
+  const own=rows.filter(r=>r.sup===code);
+  let tagName=own.length? own[0].tag : null;
+  if(!tagName){ const c=(RD.catalog||[]).find(x=>(""+(x.supplierCode||"")).trim()===code); tagName=c? adTagOf(c) : null; }
+  return {days:G.days, from:G.from, to:G.to, code:mk(own), tag:mk(tagName? rows.filter(r=>r.tag===tagName) : []), tagName:tagName||"—"};
+}
+function hypEval(mp,e){
+  const today=_drpToday(), d0=opytIso(e.date,today);
+  /* Дата проверки без года РАНЬШЕ даты правки — это следующий год (правка 28.12, проверить 04.01): иначе проверка
+     считалась бы просроченной сразу, а окно «после» схлопывалось в один день. */
+  let dc=opytIso(e.check,today);
+  if(dc && d0 && dc<d0 && !/\d{4}/.test(e.check||"")) dc=(+dc.slice(0,4)+1)+dc.slice(4);
+  const B=mp==="ozon"? ozAdBounds() : adPerfDefWin(), last=B? (B.hi||B.to) : null;
+  const st=((e.what||"").match(/·\s*(сделано|предложено|проверено)\s*$/i)||[])[1]||"";
+  const out=(e.outcome&&!/^[—–-]$/.test(e.outcome))? e.outcome : "";
+  const r={d0, dc, last, status:st.toLowerCase(), what:(e.what||"").replace(/\s*·\s*(сделано|предложено|проверено)\s*$/i,""), outcome:out};
+  r.overdue=!out && !!dc && dc<today; r.today=!out && dc===today;
+  if(!d0||!last) return r;
+  if(d0>last){ r.noData=true; return r; }
+  let endA= dc && dc<last? dc : last; if(endA<d0) endA=d0;
+  const n=adNDays(d0,endA);
+  r.after={from:d0, to:endA, n}; r.before={from:addDays(d0,-n), to:addDays(d0,-1), n};
+  r.early=n<7;
+  r.A=hypAgg(mp,r.after.from,r.after.to,e.code); r.B=hypAgg(mp,r.before.from,r.before.to,e.code);
+  return r;
+}
+const hypMd=s=>esc(s||"").replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");
+function renderAdHyp(){
+  const box=document.getElementById("adHypBox"), body=document.getElementById("adHyp"),
+    sum=document.getElementById("adHypSum"), ttl=document.getElementById("adHypTitle");
+  if(!box||!body) return;
+  const mp=_appliedMp==="ozon"? "ozon" : (_appliedMp==="wb"? "wb" : null);
+  if(!mp){ box.hidden=true; return; }
+  box.hidden=false;
+  const mpName= mp==="ozon"? "Ozon" : "Wildberries";
+  ttl.textContent="Гипотезы и опыты — "+mpName;
+  if(_opytState==="idle") opytLoad();
+  if(_opytState!=="ok") body.dataset.hypMp="";
+  if(_opytState==="loading"||_opytState==="idle"){ sum.textContent="читаю ОПЫТ.md…"; body.innerHTML=`<div class="hy-msg">Читаю ОПЫТ.md…</div>`; return; }
+  if(_opytState==="fail"||!_opyt){ sum.innerHTML=`<span class="hot">ОПЫТ.md не прочитан</span>`;
+    body.innerHTML=`<div class="hy-msg">Не удалось прочитать ОПЫТ.md (${esc(_opytErr)}). Остальные цифры вкладки считаются как обычно. `
+      +`<button type="button" class="hy-go" data-hyp-retry="1">Повторить</button></div>`; return; }
+  /* Блок не зависит от периода, поиска и фильтров вкладки — пересчитываем, только когда сменились площадка,
+     выбранный опыт, сам ОПЫТ.md, данные (новые массивы после перезаливки) или день. Иначе каждый символ в поиске
+     пересобирал бы цифры всех опытов. */
+  const memoKey=[mp,_hypSel,_drpToday()].join("|"), finRef=mp==="ozon"? ozFinRows() : (RD&&RD.adPerf);
+  if(_hypMemo && _hypMemo.key===memoKey && _hypMemo.opyt===_opyt && _hypMemo.data===finRef && body.dataset.hypMp===mp){
+    _hypList=_hypMemo.list; return; }
+  _hypCache.clear();
+  const D=_opyt;
+  const pats=D.pat.map(p=>({...p, m:opytMp(p.mp,[p.text,p.effect,p.where].join(" "))})).filter(p=>p.m===mp||p.m==="both"||p.m==null);
+  const today=_drpToday();
+  const exps=D.exp.map(e=>({...e, m:opytMp(e.mp,[e.what,e.base].join(" "))})).filter(e=>e.m===mp||e.m==="both"||e.m==null)
+    .map(e=>({...e, ev:hypEval(mp,e)}));
+  // порядок: просроченные проверки → по дате проверки → закрытые (с исходом) внизу
+  const rk=e=> e.ev.outcome? 2 : (e.ev.overdue? 0 : 1);
+  exps.sort((a,b)=>(rk(a)-rk(b)) || String(a.ev.dc||"9").localeCompare(String(b.ev.dc||"9")) || String(a.id).localeCompare(String(b.id),"ru",{numeric:true}));
+  _hypList=exps;
+  const nOver=exps.filter(e=>e.ev.overdue).length, nOpen=exps.filter(e=>!e.ev.outcome).length;
+  const nDue=exps.filter(e=>!e.ev.outcome && !e.ev.overdue && e.ev.dc && e.ev.dc<=addDays(today,3)).length;
+  sum.innerHTML=`<b>${exps.length}</b> ${plural(exps.length,"опыт","опыта","опытов")} (без исхода ${nOpen}) · <b>${pats.length}</b> ${plural(pats.length,"закономерность","закономерности","закономерностей")}`
+    +(nOver? ` · <span class="hot">проверка просрочена: ${nOver}</span>` : "")
+    +(nDue? ` · проверить в ближайшие 3 дня: ${nDue}` : "")+` · из ОПЫТ.md`;
+  const noMp=[...exps,...pats].filter(x=>x.m==null).length;
+  const catName=code=>{ if(mp==="ozon"){ const c=((RD.ozon&&RD.ozon.catalog)||[]).find(x=>""+x.sku===code); return c? c.name : ""; }
+    const c=(RD.catalog||[]).find(x=>(""+(x.supplierCode||"")).trim()===code); return c? c.name : ""; };
+  const f0=v=>v==null? "—" : fmt(Math.round(v));
+  const fC=v=>v==null? "нет рекл." : (v===Infinity? "нет заказов" : fmt(Math.round(v)));
+  const fD=v=>v==null? "нет рекл." : (v===Infinity? "нет продаж" : adPc(v));
+  /* Метрики «до → после» одним блоком: расход · заказы · выручка в выкупе · ДРР · CPO. Суммы при разной длине окон
+     (окно «до» обрезано началом данных) сравниваются в среднем за день; ДРР — в п.п., цвет по цели площадки
+     (Ozon — коридор «10% … безубыточный», ВБ — потолок 7%); CPO — рост плохо; расход — нейтрально. */
+  const met=(B,A,nB,nA)=>{
+    const ln=(k,b,a,f,d)=>`<span class="k">${k}</span><span class="v">${f(b)} → <b>${f(a)}</b></span><span class="d">${d||""}</span>`;
+    const fin=v=>v!=null&&isFinite(v);
+    return `<div class="hy-m">`
+      +ln("расход, ₽",B.sp,A.sp,f0,adDltHtml(adDeltaPct(A.sp,B.sp,nA,nB),0))
+      +ln("заказы, шт",B.oq,A.oq,f0,adDltHtml(adDeltaPct(A.oq,B.oq,nA,nB),1))
+      +ln("выручка, ₽",B.rev,A.rev,f0,adDltHtml(adDeltaPct(A.rev,B.rev,nA,nB),1))
+      +ln("ДРР",B.drr,A.drr,fD,(fin(A.drr)&&fin(B.drr))? adDltPp(A.drr,B.drr,adDrrDirCls(mp,A.drr,B.drr,A.be)) : "")
+      +ln("CPO, ₽",B.cpo,A.cpo,fC,(fin(A.cpo)&&fin(B.cpo))? adDltHtml(adDeltaPct(A.cpo,B.cpo),-1) : "")
+      +`</div>`; };
+  const rows=exps.map((e,i)=>{ const v=e.ev, A=v.A, B=v.B, ok=A&&B&&A.days&&B.days;
+    const stB = v.status==="сделано"? "good" : (v.status==="проверено"? "ordered" : "nodata");
+    const art = mp==="ozon"? "арт. Ozon "+skuLink(e.code) : "код 1С "+esc(e.code);
+    const win = v.noData? `<span class="s">правка позже последнего дня данных (${fmtDate(v.last)})</span>`
+      : (v.after? `до: ${adDM(v.before.from)}${v.before.n>1? "–"+adDM(v.before.to) : ""}<br>после: ${adDM(v.after.from)}${v.after.n>1? "–"+adDM(v.after.to) : ""} · ${adDaysTxt(v.after.n)}`
+        +(v.early? `<span class="s"><span class="badge warning"><span class="d"></span>рано судить</span></span>` : "")
+        +(ok&&A.days!==B.days? `<span class="s">данных: после ${A.days} дн, до ${B.days} дн</span>` : "")
+        +(v.after&&B&&!B.days? `<span class="s">до правки данных о рекламе нет</span>` : "") : "—");
+    // проверка — в первой колонке (таблица помещается в экран 1536 px без прокрутки вбок); исход — под правкой
+    const chk = v.outcome? `<span class="s"><span class="badge ordered"><span class="d"></span>проверено</span></span>`
+      : (v.overdue? `<span class="s">проверить ${adDM(v.dc)}</span><span class="s"><span class="badge critical"><span class="d"></span>проверка просрочена</span></span>`
+      : (v.today? `<span class="s"><span class="badge warning"><span class="d"></span>проверить сегодня</span></span>`
+      : (v.dc? `<span class="s">проверить ${adDM(v.dc)}, через ${adDaysTxt(adNDays(today,v.dc)-1)}</span>` : "")));
+    return `<tr class="${v.overdue?"over":""}${_hypSel===e.id?" sel":""}">`
+      +`<td><b>${esc(e.id)}</b><span class="s">правка ${v.d0? adDM(v.d0) : esc(e.date||"—")}</span>`
+        +(v.status? `<span class="s"><span class="badge ${stB}"><span class="d"></span>${esc(v.status)}</span></span>` : "")+chk
+        +(e.m==null? `<span class="s">площадка не указана</span>` : (e.m==="both"? `<span class="s">обе площадки</span>` : ""))
+        +(v.after&&ok? `<span class="s" style="margin-top:6px"><button type="button" class="hy-go" data-hyp-go="${i}" title="Период A = после правки, B = до, таблица — по коду ${esc(e.code)}">На цифрах →</button></span>` : "")+`</td>`
+      +`<td>${art}<span class="s">${esc((catName(e.code)||"").slice(0,40))}</span>`
+        +(A&&A.tagName? `<span class="s">склейка «${esc(A.tagName)}»</span>` : "")+`</td>`
+      +`<td class="what">${hypMd(v.what)}<span class="s">база: ${hypMd(e.base||"—")}</span>`
+        +(v.outcome? `<span class="s"><b>Исход:</b> ${hypMd(v.outcome)}</span>` : "")+`</td>`
+      +`<td>${win}</td>`
+      +`<td>${ok? met(B.code,A.code,B.days,A.days) : "—"}</td>`
+      +`<td>${ok? met(B.tag,A.tag,B.days,A.days) : "—"}</td></tr>`;
+  }).join("");
+  const goal = mp==="ozon"? `ДРР на Ozon: ${OZ_DRR_GOAL}% — минимум (соинвест по ИУ), безубыточный — потолок; зелёным — к коридору.`
+    : `ДРР на Wildberries: ${AD_DRR_GOAL}% — потолок; зелёным — снижение.`;
+  body.innerHTML=`<p class="hy-cap">Что мы меняли в рекламе ${mpName} и что из этого вышло — по журналу правок и закономерностям из ОПЫТ.md. `
+    +`«После» — от дня правки до даты проверки (или до последнего дня данных, ${fmtDate(v0last(mp))}), «до» — столько же дней перед правкой; `
+    +`цифры по коду и по его склейке — те же, что в таблице ниже. Меньше 7 дней после правки — <b>рано судить</b>: реклама даёт заказы и в следующие дни. ${goal}`
+    +(noMp? ` <b>${noMp}</b> ${plural(noMp,"запись","записи","записей")} без площадки — показаны на обеих.` : "")+`</p>`
+    +`<div class="hy-h">Закономерности — что мы уже видели в рекламе ${mpName} (подтв. — сколько раз повторилось)</div>`
+    +(pats.length? `<div class="hy-pats">`+pats.map(p=>`<div class="hy-pat"><span class="id">${esc(p.id)}</span><span>${hypMd(p.text)}</span>`
+        +`<span class="badge ${(+p.conf||0)>=3?"good":"nodata"}" title="Сколько раз подтвердилась"><span class="d"></span>подтв. ${esc(p.conf||"—")}</span>`
+        +`<span class="meta" title="${esc("Эффект: "+(p.effect||"—")+" · где замерено: "+(p.where||"—"))}"><b>Эффект:</b> ${hypMd(p.effect||"—")} · <b>где замерено:</b> ${hypMd(p.where||"—")}${p.m==null? " · площадка не указана" : ""}</span></div>`).join("")+`</div>`
+      : `<div class="hy-msg">Закономерностей по ${mpName} пока нет.</div>`)
+    +`<div class="hy-h">Опыты — журнал правок кампаний ${mpName}</div>`
+    +(exps.length? `<div class="hy-scroll"><table class="hy-t"><thead><tr><th>Опыт</th><th>Товар</th><th>Что изменено · база</th><th>Окна сравнения</th>`
+        +`<th>Товар: до → после</th><th>Его склейка: до → после</th></tr></thead>`
+        +`<tbody>${rows}</tbody></table></div>`
+      : `<div class="hy-msg">По ${mpName} правок в журнале пока нет. Записываются командой <code>node scripts/opyt.cjs change "${mp==="ozon"?"Ozon":"ВБ"}|&lt;код&gt;|&lt;что изменено&gt;|&lt;база&gt;|&lt;дата проверки&gt;"</code>.</div>`);
+  body.dataset.hypMp=mp;
+  _hypMemo={key:memoKey, opyt:_opyt, data:finRef, list:exps};
+}
+const v0last=mp=>{ const B=mp==="ozon"? ozAdBounds() : adPerfDefWin(); return B? (B.hi||B.to) : null; };
+function hypGo(i){
+  const e=_hypList[i], mp=_appliedMp==="ozon"? "ozon" : "wb"; if(!e||!e.ev||!e.ev.after) return;
+  const v=e.ev, note="столько же дней до правки "+e.id;
+  clearFocus(false);
+  if(mp==="ozon"){ ozAdFrom=v.after.from; ozAdTo=v.after.to; ozCmpOn=true; ozBFrom=v.before.from; ozBTo=v.before.to; ozBNote=note; _ozAdTagFilter=null; }
+  else { adView="perf"; adColFilters={}; adGroup=null;
+    document.querySelectorAll("#adViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v==="perf"?"true":"false"));
+    adFrom=v.after.from; adTo=v.after.to; adCmpOn=true; adBFrom=v.before.from; adBTo=v.before.to; adBNote=note; }
+  const s=document.getElementById("adSearch"); if(s) s.value=e.code;
+  _hypSel=e.id;
+  renderAdsTab();
+  const t=document.getElementById("adPNote"); (t&&!t.hidden? t : document.getElementById("adTable"))?.scrollIntoView({behavior:"smooth",block:"start"});
 }
 function renderAdHowTo(){
   const el=document.getElementById("adHowTo"); if(!el) return;
@@ -8574,7 +9362,8 @@ function renderAdHowTo(){
         `Потолок считается НА ДВУХ УРОВНЯХ: у товара — по его собственному чеку и его же проценту выкупа (он подписан под чеком; выделенный — свой, серый «общий» — по магазину), у склейки — по её чеку и выкупу, взвешенным по заказам. Разброс выкупа по товарам от 30% до 100%, и он двигает потолок сильнее, чем что-либо ещё: у товара с выкупом 42% потолок вдвое ниже, чем у соседа с 83%.`,
         `Выкуп берётся из последнего ДОЗРЕВШЕГО окна (сейчас 20.07–02.08). «В моменте» его узнать нельзя: по свежим заказам половина ещё едет, и любая цифра за последнюю неделю занижена. По августу выкуп идёт к 70–72% против июльских 75,6%, то есть потолок CPO сейчас завышен примерно на 6% — учитывайте при пограничных решениях.`,
         `Кампании с расходом меньше ${AD_MIN_SPEND} ₽ помечены «мелкий расход» и не судятся: у ВБ по многим карточкам списывается рубль-два перелива, и без этого порога они висели бы с вердиктом «разобрать» при нулевых продажах.`,
-        `Период — тот, что был в загруженной выгрузке (${P.from? fmtDateLong(P.from):"—"} – ${P.to? fmtDateLong(P.to):"—"}). Календарь периода на этот вид не влияет: он относится к отбору кандидатов.`]
+        `ПЕРИОД A — дни выгрузок XWAY внутри выбранных дат (по умолчанию все дни выгрузок: ${P.from? fmtDateLong(P.from):"—"} – ${P.to? fmtDateLong(P.to):"—"}). Выгрузка, пришедшая одним файлом за несколько дней, которую период режет, берётся пропорционально дням — так же «Главная» разносит расход XWAY по дням, поэтому расход здесь и в прибыли — одно число; ДРР и CPO такой выгрузки от этого не меняются. Выгрузка «только расход» (реклама фактически не крутилась) в ДРР не идёт.`,
+        `ПЕРИОД B — с чем сравнить (кнопка «Сравнить с периодом…»): по умолчанию предыдущий период такой же длины — неделя пн–вс с прошлой неделей, месяц ВБ с прошлым месяцем ВБ. Под каждой цифрой — значение B и изменение; при разной длине периодов расход, выручка и заказы сравниваются в среднем за день. Зелёным — к цели (ДРР ниже, заказы и выручка выше), красным — от неё.`]
         .map(x=>`<div>${esc(x)}</div>`).join("")+`</div>`;
     return;
   }
@@ -8593,8 +9382,8 @@ function renderAdHowTo(){
       `Почему именно Москва: там основной спрос и товар доезжает быстро. Остаток на Нск-1 в этот счёт не входит, хотя тоже продаётся по FBS.`,
       `Почему «хватит дней», а не «остаток больше нуля»: реклама разгоняет продажи, и позиция с запасом на пару дней встанет посреди кампании — бюджет уйдёт, а карточка просядет в выдаче. Такие показаны отдельным блоком внизу, чтобы вы их видели.`,
       `Продажи в день = заказы ÷ дней периода × % выкупа по магазину. Показы, CTR и конверсия — из воронки за тот же период, чтобы было видно, есть ли куда расти.`,
-      `Расход и ДРР в колонке «Реклама ₽» — за период ЗАГРУЖЕННОЙ ВЫГРУЗКИ рекламы${(RD.adPerf&&RD.adPerf.from)? " ("+fmtDateLong(RD.adPerf.from)+" – "+fmtDateLong(RD.adPerf.to)+")":""}, а не за выбранный календарём период: другого источника расхода нет. Поэтому выручка и расход в одной строке могут быть за разные отрезки — сравнивайте их как «что продаётся» и «что сейчас крутится», а точный ДРР смотрите в «Отдаче».`,
-      `Вкладка считает только Wildberries. Для Ozon сделаем отдельно.`]
+      `Расход и ДРР в колонке «Реклама ₽» — за тот же период, что и выручка: берутся выгрузки рекламы, лежащие внутри выбранных дат (выгрузку за несколько дней, которую период режет, — пропорционально дням). Дней, за которые выгрузок нет, в календаре видно — колонка за них пустая. Сравнение двух периодов — в «Отдаче».`,
+      `Этот вид — про Wildberries. У Ozon на этой вкладке своя цепочка ДРР (переключатель площадки сверху).`]
       .map(x=>`<div>${esc(x)}</div>`).join("")+`</div>`;
 }
 function exportAdsXLSX(){
@@ -8619,7 +9408,7 @@ function exportAdsXLSX(){
     {h:"Запас ВБ: FBO, шт", v:r=>r.fbo||0, w:19},
     {h:"Запас ВБ: Москва FBS, шт", v:r=>r.msk||0, w:24},
     {h:"Хватит дней (FBO + Москва)", v:r=>r.spd>0? adFmtD(r.coverDays):"", w:26},
-    {h:"Реклама за период выгрузки, ₽", v:r=>Math.round(r.adSpend||0), w:28, tot:"ad"},
+    {h:"Реклама за период, ₽", v:r=>Math.round(r.adSpend||0), w:22, tot:"ad"},
     {h:"ДРР в выкупе, %", v:r=>r.adDrr==null? "" : (r.adDrr===Infinity? "нет продаж" : +r.adDrr.toFixed(1)), w:17},
     {h:"Остаток на складах WB", v:r=>r.fbo, w:22},
     {h:"Показы", v:r=>r.imp, w:12},
@@ -8636,9 +9425,10 @@ function exportAdsXLSX(){
   const extra=[["Площадка","Wildberries"],
     ["Группа", adGroup||"все группы"],
     ["Период", adPeriodTxt()],
-    ["Период рекламы (расход и ДРР)", (RD.adPerf&&RD.adPerf.from)
-      ? fmtDateLong(RD.adPerf.from)+" – "+fmtDateLong(RD.adPerf.to)+" — из загруженной выгрузки, не из календаря"
-      : "выгрузка рекламы не загружена"],
+    ["Период рекламы (расход и ДРР)", (()=>{ const CR=adCandRange(), G=CR? adPerfAgg(CR.from,CR.to) : null;
+      if(!CR) return "—"; if(!G||!G.days) return "за "+adRangeTxt(CR.from,CR.to)+" выгрузок рекламы нет";
+      return "тот же, что у выручки: выгрузки внутри "+adRangeTxt(CR.from,CR.to)+" (есть за "+G.days+" из "+adNDays(CR.from,CR.to)+" дн)"
+        +(G.cut.length? "; выгрузка "+G.cut.map(x=>adDM(x.from)+"–"+adDM(x.to)).join(", ")+" — пропорционально дням" : ""); })()],
     ["Склейки на дату", (RD.meta&&RD.meta.adTagsDate)? fmtDateLong(RD.meta.adTagsDate):"—"],
     ["Склад на дату", (RD.warehouse&&RD.warehouse.date)? fmtDateLong(RD.warehouse.date):"—"],
     ["Правило отбора","категория A внутри своей склейки И запаса на ВБ хватает минимум на "+AD_MIN_STOCK_DAYS+" дней продаж"],
@@ -10200,7 +10990,7 @@ function renderAnalyticsOzon(){
   note.hidden=false;
   note.innerHTML=`<span class="ht-t">Ozon · ${perTxt(P.dates)}</span>`
     +`Прибыль, ABC и реклама — те же строки, что на «Главной» Ozon: выручка = заказано × % выкупа (по «Предельной цене»), `
-    +`площадка забирает ${fxTxt} тарифа ИУ, реклама — по факту (выгрузки XWAY и отчёт «Оплата за заказ») или по ставке юнит-экономики. `
+    +`площадка забирает ${fxTxt} тарифа ИУ, реклама — по факту (выгрузки XWAY и отчёт «Оплата за заказ»); до ${fmtDateLong(OZ_FEE_REPORT_ONLY_FROM)} без отчёта — по ставке юнит-экономики, с ${fmtDateLong(OZ_FEE_REPORT_ONLY_FROM)} день без отчёта идёт без платы за заказ. `
     +`Это оценка: отчёта о реализации у Ozon в снимке нет. Месяц — календарный.`;
 
   anTitles("ozon");
@@ -11972,8 +12762,10 @@ function recRulesWb(addAny, rs){
      ВСЕГДА по всему ассортименту: `adRows()` фильтрует по выбранной на «Рекламе»
      категории, и без этой развязки рекомендации молча сужались до неё — продавец
      выбрал «Светофоры», вернулся сюда и не увидел перерасход по «Пушкарам». */
-  let ar=[]; { const g=adGroup; adGroup=null;
-    try{ ar=adRows(); }catch(e){ ar=[]; } finally { adGroup=g; } }
+  /* И ПЕРИОД ВКЛАДКИ «РЕКЛАМА» — ПО УМОЛЧАНИЮ (19.10.2026): продажи в день для «хватит дней» считаются по окну
+     отбора, и выбранный там период двигал бы цифры этой рекомендации. */
+  let ar=[]; { const g=adGroup, f=adFrom, t=adTo; adGroup=null; adFrom=adTo=null;
+    try{ ar=adRows(); }catch(e){ ar=[]; } finally { adGroup=g; adFrom=f; adTo=t; } }
   /* ТОЛЬКО ТО, ЧТО КРУТИТСЯ СЕЙЧАС. Раньше здесь стоял `adSpend` — сумма всего
      накопителя, и кампания, выключенная неделю назад, продолжала висеть в списке со
      своим историческим расходом (продавец поймал это 10.09.2026). Берём расход по
@@ -12226,7 +13018,7 @@ function recRulesOz(addAny, rs){
   if(watch.length){ const have=new Set(); P.forEach(p=>Object.keys(p.bySup||{}).forEach(s=>have.add(s)));
     const wait=watch.filter(s=>!have.has(s));
     if(wait.length) g.push({n:wait.length+" "+plural(wait.length,"товар","товара","товаров"),
-      x:"реклама запущена, а выгрузки XWAY по ним нет — пока считаются по ставке", w:"выгрузка XWAY по этим товарам"}); }
+      x:"реклама запущена, а выгрузки XWAY по ним нет — расход их кампаний в прибыль пока не попал", w:"выгрузка XWAY по этим товарам"}); }
   const H=ozBuyoutHist();
   if(H && lastOz){ const hl=H[H.length-1]; const days=hl&&hl.to? Math.round((new Date(lastOz)-new Date(hl.to))/864e5) : 0;
     if(days>21) g.push({n:days+" "+plural(days,"день","дня","дней"), x:"столько прошло с окна замера % выкупа Ozon ("+fmt2(hl.to)+")",
@@ -13578,7 +14370,7 @@ document.getElementById("recAdTree").addEventListener("click",e=>{
     const keys=(go.dataset.keys||"").split("|").filter(Boolean);
     if(keys.length) setFocus({keys:new Set(keys), n:+(go.dataset.n||0)||keys.length,
       label:go.dataset.label||"", tab:"ads", view:"perf"});
-    adView="perf"; adColFilters={}; adGroup=null;
+    adView="perf"; adColFilters={}; adGroup=null; adResetPeriods();     // дерево гипотез считается по окну по умолчанию
     document.querySelectorAll("#adViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v==="perf"?"true":"false"));
     switchTab("ads"); window.scrollTo({top:0,behavior:"smooth"}); return; }
   const n=e.target.closest(".htn"); if(!n) return;
@@ -13700,15 +14492,19 @@ document.getElementById("stkChartSeg").addEventListener("click",e=>{
 document.getElementById("stkExportBtn").addEventListener("click",exportStockXLSX);
 // ---- Реклама ----
 document.getElementById("adGroupSel")?.addEventListener("change",e=>{ adGroup=e.target.value||null; renderAdsTab(); });
-function applyAdDates(){
-  const f=document.getElementById("adFromInp"), t=document.getElementById("adToInp");
-  if(!f||!t||!f.value||!t.value) return;
-  adFrom = f.value<=t.value? f.value : t.value;
-  adTo   = f.value<=t.value? t.value : f.value;
-  renderAdsTab();
-}
-document.getElementById("adFromInp")?.addEventListener("change",applyAdDates);
-document.getElementById("adToInp")?.addEventListener("change",applyAdDates);
+// «Гипотезы и опыты»: «На цифрах →» и «Повторить», запомнить свёрнут/развёрнут (удобство одного зрителя)
+document.getElementById("adHyp")?.addEventListener("click",e=>{
+  const g=e.target.closest("[data-hyp-go]"); if(g){ hypGo(+g.dataset.hypGo); return; }
+  if(e.target.closest("[data-hyp-retry]")){ _opytState="idle"; renderAdHyp(); } });
+{ const hb=document.getElementById("adHypBox");
+  if(hb){ try{ if(localStorage.getItem("wb_ad_hyp_open")==="0") hb.open=false; }catch(e){}
+    hb.addEventListener("toggle",()=>{ try{ localStorage.setItem("wb_ad_hyp_open",hb.open?"1":"0"); }catch(e){} }); } }
+// периоды A/B — календарь openDateRangePicker (нативные <input type=date> убраны 19.10.2026)
+document.getElementById("adRangeBtn")?.addEventListener("click",e=>adOpenPicker(e.currentTarget,"A"));
+document.getElementById("adCmpBtn")?.addEventListener("click",e=>adOpenPicker(e.currentTarget,"B"));
+document.getElementById("adCmpOff")?.addEventListener("click",()=>{
+  if(_appliedMp==="ozon"){ ozCmpOn=false; ozBFrom=ozBTo=null; ozBNote=null; } else { adCmpOn=false; adBFrom=adBTo=null; adBNote=null; }
+  renderAdsTab(); });
 document.getElementById("adSearch")?.addEventListener("input",()=>renderAdsTab());
 document.getElementById("adViewSeg")?.addEventListener("click",e=>{ const b=e.target.closest("button"); if(!b) return;
   if(adView!==b.dataset.v){ adColFilters={}; closeColFilter(); }   // ключи колонок у видов разные
@@ -13759,6 +14555,9 @@ document.getElementById("recList").addEventListener("click",e=>{
     document.querySelectorAll("#turnViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.view===view?"true":"false")); }
   if(view && tab==="ads"){ adView=view; adColFilters={};
     document.querySelectorAll("#adViewSeg button").forEach(x=>x.setAttribute("aria-pressed",x.dataset.v===view?"true":"false")); }
+  /* Правила рекламы считаются по окну ПО УМОЛЧАНИЮ (все дни выгрузок) — открываем «Рекламу» на нём же,
+     иначе выбранный там раньше период показал бы другие цифры, чем в карточке правила. */
+  if(tab==="ads"){ adResetPeriods(); clearInput("adSearch"); }
   switchTab(tab); window.scrollTo({top:0,behavior:"smooth"});
 });
 // «Всего»: кнопка карточки площадки — переключиться на неё, оставаясь на «Рекомендациях»
