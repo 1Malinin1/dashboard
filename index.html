@@ -346,8 +346,10 @@
     font-weight:700;font-style:normal;background:var(--surface-2);color:var(--muted);border:1px solid var(--border);
     margin-left:auto;align-self:flex-start;margin-top:1px;transition:background .15s,color .15s}
   .kpi.has-tip:hover .kpi-i{background:var(--accent);color:var(--on-accent);border-color:transparent}
+  /* без nowrap: разряды чисел и так не рвутся (Intl ставит неразрывный пробел), а текстовое значение
+     («Пушкары (75%)» на «Динамике») на узкой плитке переносится, а не вылезает за рамку */
   .kpi .val{font-weight:650;letter-spacing:-.022em;font-size:25px;line-height:1.08;
-    font-variant-numeric:tabular-nums;white-space:nowrap}
+    font-variant-numeric:tabular-nums}
   .kpi .delta{font-size:12px;margin-top:9px;display:inline-flex;align-items:center;gap:4px;font-weight:580;
     padding:2px 8px;border-radius:99px;background:var(--surface-2);line-height:1.45}
   .kpi .delta.up{color:var(--good-txt);background:color-mix(in srgb,var(--good) 12%,var(--surface))}
@@ -1311,9 +1313,10 @@
   .period-compare{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--grid)}
   .period-box{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:12px 15px;flex:1;min-width:240px}
   .period-box .lbl{font-size:12px;color:var(--muted);margin-bottom:7px;font-weight:620;letter-spacing:.01em}
-  .period-inputs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted)}
+  /* поля дат переносятся, а не вылезают за карточку на узком экране; схема (светлая/тёмная) — от темы на <html> */
+  .period-inputs{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--muted);flex-wrap:wrap}
   .period-inputs input[type="date"]{border:1px solid var(--border);background:var(--surface);color:var(--text-1);
-    font:inherit;font-size:13px;padding:7px 9px;border-radius:8px;color-scheme:light dark}
+    font:inherit;font-size:13px;padding:7px 9px;border-radius:8px;flex:1 1 128px;min-width:0}
   .period-inputs input[type="date"]:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring)}
   table.rnp td.delta-up{color:var(--good-txt)} table.rnp td.delta-down{color:var(--crit-txt)}
 
@@ -1393,6 +1396,12 @@
     .grid2{grid-template-columns:1fr}
     .brand h1{font-size:17px}
   }
+  /* пирамида ДРР: пять колонок не влезают уже ~700 px — название строкой, под ним расход · выручка · ДРР,
+     полоса — во всю ширину */
+  @media(max-width:720px){
+    .drrlv .lv{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:3px 10px}
+    .drrlv .lv>.lv-nm,.drrlv .lv>:nth-child(5){grid-column:1/-1}
+  }
   /* ===== Телефон (≈390 px): шапка в одну строку, кнопки — значками; KPI в две колонки ===== */
   @media(max-width:600px){
     .wrap{padding:14px 16px 72px}
@@ -1430,9 +1439,6 @@
     .focus-bar .fb-x{position:absolute;right:7px;top:50%;transform:translateY(-50%);margin:0}
     .hidnote .hn-more{display:none}
     .howto.is-fold>.hf-body{padding:1px 13px 12px 30px}
-    /* пирамида ДРР: название строкой, под ним расход · выручка · ДРР, полоса — во всю ширину */
-    .drrlv .lv{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:3px 10px}
-    .drrlv .lv>.lv-nm,.drrlv .lv>:nth-child(5){grid-column:1/-1}
     .hf-sum{align-items:flex-start}
     .hf-sum::before{margin-top:5px}
     .hf-sum .ht-t,.hf-sum .howto-t{flex:1 1 0}
@@ -2441,6 +2447,9 @@ function wireKpiLabels(){
   // свёрнутая вкладка не меряется (offsetParent=null) — пересчёт при открытии вкладки
   const tabs=document.getElementById("tabs");
   if(tabs) new MutationObserver(run).observe(tabs,{attributes:true,subtree:true,attributeFilter:["aria-selected"]});
+  // плитки, которые рендер кладёт внутрь другого блока (разбор товара на «Оборачиваемости») — тот же пересчёт
+  const itm=document.getElementById("turnItemBox");
+  if(itm) new MutationObserver(run).observe(itm,{childList:true,attributes:true,attributeFilter:["hidden"]});
 }
 wireKpiLabels();
 
