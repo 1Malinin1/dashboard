@@ -8390,18 +8390,18 @@ function renderAdDrrLevels(){
     +adLvCells(o,b,opt)+bar(o.sp)+`</div>`;
   let html=`<div class="drrlv ${cmp?"cmp":"wq"}">`+adLvHead(cmp)
     +line({...L.all,key:"Весь ассортимент"}, LB? LB.all : null, "total",
-        `${L.all.ads} кампаний на ${L.all.n} карточках · ${adRangeTxt(A.from,A.to)}`)
+        `${L.all.ads} ${plural(L.all.ads,"кампания","кампании","кампаний")} на ${L.all.n} карточках · ${adRangeTxt(A.from,A.to)}`)
     +`<div class="lv-h">Категории — по выручке, клик выбирает</div>`
     +L.groups.map(g=>line(g,pickB(gB,g.key),"clickable"+(adGroup===g.key?" sel":""),
-        g.ads+" кампаний · "+g.n+" карточек",{k:"group",v:g.key})).join("")
+        g.ads+" "+plural(g.ads,"кампания","кампании","кампаний")+" · "+g.n+" карточек",{k:"group",v:g.key})).join("")
     +`<div class="lv-h">Склейки${adGroup? " — категория «"+esc(adGroup)+"»" : " — все категории"} · клик фильтрует таблицу</div>`
     +L.tags.map(t=>line(t,pickB(tB,t.key),"clickable"+((adColFilters.tag&&adColFilters.tag.has(t.key))?" sel":""),
-        t.ads+" кампаний · "+t.n+" карточек",{k:"tag",v:t.key})).join("");
+        t.ads+" "+plural(t.ads,"кампания","кампании","кампаний")+" · "+t.n+" карточек",{k:"tag",v:t.key})).join("");
   const X=adOutSummary(A);
   if(X && X.n){ const XB=LB? adOutSummary(B) : null;
     html+=`<div class="lv-h">Не считается — товар на вывод</div>`
       +line({...X,key:Object.keys(X.groups).join(" · "),boEff:X.ord>0? X.rev/X.ord : adBuyout()}, XB||(LB? zero : null), "",
-          `${X.ads} кампаний на ${X.n} карточках · решение от ${(RD.meta&&RD.meta.adOutAt)? fmtDateLong(RD.meta.adOutAt):"—"}`)
+          `${X.ads} ${plural(X.ads,"кампания","кампании","кампаний")} на ${X.n} карточках · решение от ${(RD.meta&&RD.meta.adOutAt)? fmtDateLong(RD.meta.adOutAt):"—"}`)
         .replace('<div class="lv ">','<div class="lv" style="opacity:.62">'); }
   html+=`</div>`;
   el.innerHTML=html;
@@ -9126,8 +9126,10 @@ function hypAgg(mp,from,to,code){
       rev=l.reduce((a,r)=>a+(mp==="ozon"? (r.rev||0) : (r.revD||0)),0);
     // Ozon: безубыточный ДРР (потолок коридора) — для цвета изменения ДРР, как в пирамиде
     const cg=l.reduce((a,r)=>a+(r.cogs||0),0), revC=rev-l.reduce((a,r)=>a+(r.revNC||0),0);
-    // CPO без расхода не «0 ₽», а нет: рекламы не было (иначе «1 460 → 0 ▼ −100%» читается как удешевление заказа)
-    return {sp, oq, rev, drr: rev>0? sp/rev*100 : (sp>0? Infinity : null), cpo: sp>0? (oq>0? sp/oq : Infinity) : null,
+    // CPO без расхода не «0 ₽», а нет: рекламы не было (иначе «1 460 → 0 ▼ −100%» читается как удешевление заказа).
+    // ДРР без расхода — тоже «нет рекл.», а не «0,0%»: так и пирамида (бейдж «нет рекламы»), иначе выключенная
+    // реклама выглядела бы идеальным ДРР на ВБ и «недобором −25 п.п.» на Ozon
+    return {sp, oq, rev, drr: sp>0? (rev>0? sp/rev*100 : Infinity) : null, cpo: sp>0? (oq>0? sp/oq : Infinity) : null,
       be: (mp==="ozon" && revC>0)? 100-FXr-cg/revC*100 : null}; };
   if(mp==="ozon"){
     const W=ozAdClip(from,to,false); if(!W||!W.days) return {days:0};
@@ -9204,7 +9206,7 @@ function renderAdHyp(){
     const c=(RD.catalog||[]).find(x=>(""+(x.supplierCode||"")).trim()===code); return c? c.name : ""; };
   const f0=v=>v==null? "—" : fmt(Math.round(v));
   const fC=v=>v==null? "нет рекл." : (v===Infinity? "нет заказов" : fmt(Math.round(v)));
-  const fD=v=>v==null? "—" : (v===Infinity? "нет продаж" : adPc(v));
+  const fD=v=>v==null? "нет рекл." : (v===Infinity? "нет продаж" : adPc(v));
   /* Метрики «до → после» одним блоком: расход · заказы · выручка в выкупе · ДРР · CPO. Суммы при разной длине окон
      (окно «до» обрезано началом данных) сравниваются в среднем за день; ДРР — в п.п., цвет по цели площадки
      (Ozon — коридор «10% … безубыточный», ВБ — потолок 7%); CPO — рост плохо; расход — нейтрально. */
