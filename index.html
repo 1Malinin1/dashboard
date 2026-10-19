@@ -9143,7 +9143,11 @@ function hypAgg(mp,from,to,code){
   return {days:G.days, from:G.from, to:G.to, code:mk(own), tag:mk(tagName? rows.filter(r=>r.tag===tagName) : []), tagName:tagName||"—"};
 }
 function hypEval(mp,e){
-  const today=_drpToday(), d0=opytIso(e.date,today), dc=opytIso(e.check,today);
+  const today=_drpToday(), d0=opytIso(e.date,today);
+  /* Дата проверки без года РАНЬШЕ даты правки — это следующий год (правка 28.12, проверить 04.01): иначе проверка
+     считалась бы просроченной сразу, а окно «после» схлопывалось в один день. */
+  let dc=opytIso(e.check,today);
+  if(dc && d0 && dc<d0 && !/\d{4}/.test(e.check||"")) dc=(+dc.slice(0,4)+1)+dc.slice(4);
   const B=mp==="ozon"? ozAdBounds() : adPerfDefWin(), last=B? (B.hi||B.to) : null;
   const st=((e.what||"").match(/·\s*(сделано|предложено|проверено)\s*$/i)||[])[1]||"";
   const out=(e.outcome&&!/^[—–-]$/.test(e.outcome))? e.outcome : "";
