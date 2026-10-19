@@ -7570,23 +7570,13 @@ function wbMonthRange(key){ const [y,m]=key.split("-").map(Number);
   return {from:addDays(a.toISOString().slice(0,10),-3), to:addDays(b.toISOString().slice(0,10),3)}; }
 const adMonKey=(key,k)=>{ const [y,m]=key.split("-").map(Number); return new Date(Date.UTC(y,m-1+k,1)).toISOString().slice(0,7); };
 const adMonIdx=key=>(+key.slice(0,4))*12+(+key.slice(5,7));
-/* Предыдущий период «как A»: месяц → предыдущий месяц (Ozon — календарный, ВБ — по четвергу), иначе — те же
-   N дней прямо перед A (для недели пн–вс это и есть предыдущая неделя пн–вс). */
-function adPrevLike(from,to,mp){
-  const n=adNDays(from,to), w=n/7;
-  if(mp==="ozon" && from.slice(8)==="01" && addDays(to,1).slice(8)==="01"){
-    const k=adMonIdx(to.slice(0,7))-adMonIdx(from.slice(0,7))+1;
-    return {from:adMonKey(from.slice(0,7),-k)+"-01", to:addDays(from,-1),
-      how:k>1? "предыдущие "+k+" календарных месяца" : "предыдущий календарный месяц"}; }
-  if(mp==="wb"){ const k1=wbMonthOfWeek(mondayOf(from)).key, k2=wbMonthOfWeek(mondayOf(to)).key;
-    if(wbMonthRange(k1).from===from && wbMonthRange(k2).to===to){
-      const k=adMonIdx(k2)-adMonIdx(k1)+1;
-      return {from:wbMonthRange(adMonKey(k1,-k)).from, to:addDays(from,-1),
-        how:(k>1? "предыдущие "+k+" месяца ВБ" : "предыдущий месяц ВБ")+" (целые недели по четвергу)"}; } }
-  // целые недели пн–вс → столько же недель пн–вс прямо перед A
-  if(n%7===0 && new Date(from+"T00:00:00Z").getUTCDay()===1)
-    return {from:addDays(from,-n), to:addDays(from,-1),
-      how: w===1? "предыдущая неделя пн–вс" : "предыдущие "+w+" "+plural(w,"неделя","недели","недель")+" пн–вс"};
+/* Предыдущий период «как A»: месяц → предыдущий месяц (Ozon — календарный, ВБ — по четвергу); идущий месяц
+   длиннее недели → те же дни предыдущего месяца; целые недели пн–вс → столько же недель перед A; иначе — те же
+   N дней прямо перед A. Идущий месяц проверяется РАНЬШЕ недель: месяц ВБ начинается с понедельника, и в воскресенье
+   «окт 26 (ВБ) · идёт» (28.09–18.10, 3 целые недели) сравнивался бы с 07.09–27.09, а в среду (28.09–14.10) — с теми
+   же днями сентября ВБ. Неделя и короче (чип «нед …», один день 01.10) — с предыдущей неделей / предыдущими днями,
+   а не с теми же днями месяц назад: иначе 01.10 сравнивался бы с 01.09, а не с 30.09. */
+function adPrevRunMonth(from,to,mp,n){
   /* Идущий месяц (A начинается с начала месяца и в нём же кончается) → ТЕ ЖЕ ДНИ ПРЕДЫДУЩЕГО МЕСЯЦА, выровненные
      так же: у Ozon от 1-го числа, у ВБ — от первого понедельника месяца ВБ (тот же состав дней недели). Конец не
      выходит за предыдущий месяц; если тот короче — разница длины учтена сравнением «в среднем за день». */
@@ -7598,6 +7588,25 @@ function adPrevLike(from,to,mp){
     if(R.from===from && to<=R.to){ const P=wbMonthRange(adMonKey(k,-1));
       let t=addDays(P.from,n-1); if(t>P.to) t=P.to;
       return {from:P.from, to:t, how:"те же дни предыдущего месяца ВБ (от его первого понедельника)"}; } }
+  return null;
+}
+function adPrevLike(from,to,mp){
+  const n=adNDays(from,to), w=n/7;
+  if(mp==="ozon" && from.slice(8)==="01" && addDays(to,1).slice(8)==="01"){
+    const k=adMonIdx(to.slice(0,7))-adMonIdx(from.slice(0,7))+1;
+    return {from:adMonKey(from.slice(0,7),-k)+"-01", to:addDays(from,-1),
+      how:k>1? "предыдущие "+k+" календарных месяца" : "предыдущий календарный месяц"}; }
+  if(mp==="wb"){ const k1=wbMonthOfWeek(mondayOf(from)).key, k2=wbMonthOfWeek(mondayOf(to)).key;
+    if(wbMonthRange(k1).from===from && wbMonthRange(k2).to===to){
+      const k=adMonIdx(k2)-adMonIdx(k1)+1;
+      return {from:wbMonthRange(adMonKey(k1,-k)).from, to:addDays(from,-1),
+        how:(k>1? "предыдущие "+k+" месяца ВБ" : "предыдущий месяц ВБ")+" (целые недели по четвергу)"}; } }
+  const run=adPrevRunMonth(from,to,mp,n);
+  if(run && n>7) return run;
+  // целые недели пн–вс → столько же недель пн–вс прямо перед A
+  if(n%7===0 && new Date(from+"T00:00:00Z").getUTCDay()===1)
+    return {from:addDays(from,-n), to:addDays(from,-1),
+      how: w===1? "предыдущая неделя пн–вс" : "предыдущие "+w+" "+plural(w,"неделя","недели","недель")+" пн–вс"};
   return {from:addDays(from,-n), to:addDays(from,-1),
     how: n===1? "предыдущий день" : (n%10===1&&n%100!==11? "предыдущий " : "предыдущие ")+adDaysTxt(n)};
 }
