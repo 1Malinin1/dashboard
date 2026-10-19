@@ -476,6 +476,8 @@
     border-radius:var(--r-sm);padding:7px 11px;margin:0 0 12px;line-height:1.5}
   .ad-pnote[hidden]{display:none}
   .ad-pnote b{color:var(--text-1);font-weight:640}
+  /* на «Всего» вкладка пустая — без пустой плашки «как читать» и пустой рамки таблицы */
+  #adHowTo:empty,#tab-ads .table-card:has(#adTable:empty){display:none}
   /* ---- «Гипотезы и опыты» (из ОПЫТ.md) ---- */
   .hyp{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);box-shadow:var(--shadow);
     margin:0 0 14px;padding:0}
@@ -518,7 +520,7 @@
   .hyp .hy-msg{font-size:12.5px;color:var(--text-2);padding:10px 12px;border:1px dashed var(--border-2);border-radius:var(--r-sm)}
   @media(max-width:600px){
     .hyp>summary{padding:12px 14px} .hyp .hy-body{padding:0 12px 14px}
-    .hyp .hy-pat{grid-template-columns:44px minmax(0,1fr)} .hyp .hy-pat>.badge{grid-column:2} .hyp .hy-pat .meta{grid-column:1/3}
+    .hyp .hy-pat{grid-template-columns:44px minmax(0,1fr)} .hyp .hy-pat>.badge{grid-column:2;justify-self:start} .hyp .hy-pat .meta{grid-column:1/3}
     .ad-period{width:100%} .ad-period .drp-trigger{flex:1 1 auto;justify-content:flex-start;min-width:0}
     .ad-period .drp-trigger span{overflow:hidden;text-overflow:ellipsis}
     #tab-ads .toolbar .count{white-space:normal;margin-left:0;min-width:0}   /* длинная подпись периода не распирает страницу */
@@ -7618,8 +7620,10 @@ function adPresets(mp,lo,hi,parts,def){
   if(parts.length){ const p=parts[parts.length-1];
     add({label:"Последняя выгрузка · "+(p.from===p.to? adDM(p.to) : adDM(p.from)+"–"+adDM(p.to)), from:p.from, to:p.to}); }
   if(lo&&hi){
+    /* Последние 4 закрытые недели (месяц), старше — чипы месяцев. При 6 неделях календарь ВБ на экране продавца
+       (1536×704) вырастал выше окна, и «Применить» уезжало под прокрутку панели. */
     let m=mondayOf(hi); if(addDays(m,6)>hi) m=addDays(m,-7);
-    for(let i=0;i<6 && m>=lo; i++, m=addDays(m,-7)) add({label:"нед "+adDM(m)+"–"+adDM(addDays(m,6)), from:m, to:addDays(m,6)});
+    for(let i=0;i<4 && m>=lo; i++, m=addDays(m,-7)) add({label:"нед "+adDM(m)+"–"+adDM(addDays(m,6)), from:m, to:addDays(m,6)});
     const ks=[]; for(let k=lo.slice(0,7); k<=hi.slice(0,7); k=adMonKey(k,1)) ks.push(k);
     if(mp==="wb"){ const k0=wbMonthOfWeek(mondayOf(lo)).key; if(!ks.includes(k0)) ks.unshift(k0); }
     ks.reverse().forEach(k=>{ const R= mp==="wb"? wbMonthRange(k) : {from:k+"-01", to:addDays(adMonKey(k,1)+"-01",-1)};
@@ -7633,6 +7637,8 @@ function adPresets(mp,lo,hi,parts,def){
 /* Изменение A к B. Суммы (расход, выручка, заказы) при РАЗНОЙ длине периодов сравниваются в среднем за день —
    иначе 7 дней против 5 дали бы «рост» на ровном месте; ДРР и CPO — отношения, сравниваются как есть. */
 function adDeltaPct(a,b,na,nb){ if(b==null||a==null||!isFinite(a)||!isFinite(b)) return null;
+  // оба значения на экране — «0» (копейки расхода, доли заказа после разнесения по дням): «0 ₽ · B: 0 ₽ · ▲ +31%» — шум
+  if(Math.abs(a)<0.5 && Math.abs(b)<0.5) return null;
   const norm=na&&nb&&na!==nb, x=norm? a/na : a, y=norm? b/nb : b;
   if(!(y>0)) return x>0? Infinity : null; return (x-y)/y*100; }
 function adDltHtml(p,dir){                // dir: +1 — рост хорошо, −1 — рост плохо, 0 — нейтрально
@@ -8368,7 +8374,8 @@ function renderAdDrrLevels(){
   const A=(adView==="perf" && RD && RD.adPerf)? adPerfA() : null;
   if(!A){ card.hidden=true; return; }
   card.hidden=false;
-  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Wildberries: весь ассортимент → категория → склейка → товар. Цель ≤"+AD_DRR_GOAL+"%, хорошо "+AD_DRR_GREAT+"%, ниже — идеально. Клик по строке проваливается на уровень ниже."; }
+  { const h=document.querySelector("#adDrrTree h3"); if(h) h.textContent="Wildberries: ДРР по уровням — в выкупе"; }
+  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Весь ассортимент → категория → склейка → товар. Цель ≤"+AD_DRR_GOAL+"%, хорошо "+AD_DRR_GREAT+"%, ниже — идеально. Клик по строке проваливается на уровень ниже."; }
   if(!A.days){ el.innerHTML=`<div class="hy-msg" style="margin-top:10px">За ${esc(adRangeTxt(A.reqFrom,A.reqTo))} выгрузок рекламы Wildberries нет — считать нечего.</div>`; return; }
   const B=adPerfB(A), cmp=!!(B&&B.days);
   const L=adLevels(A), LB=cmp? adLevels(B) : null;
@@ -8618,6 +8625,7 @@ function renderAdsOzon(){
   wireKpiTips("adKpis");
   // ---- пирамида
   tree.hidden=false;
+  { const h=tree.querySelector("h3"); if(h) h.textContent="Ozon: ДРР по уровням — в выкупе"; }   // площадка — в заголовке (у ВБ своя)
   { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Кабинет Ozon → категория → склейка → товар. Цель — держать ДРР не ниже "+OZ_DRR_GOAL+"%: это минимум для поддержания соинвеста по ИУ, поэтому ниже "+OZ_DRR_GOAL+"% — недобор, а не экономия (на ВБ правило обратное, там 7% — потолок). Потолок — безубыточный ДРР уровня (подписан под ДРР): выше него реклама уводит в минус. Клик по склейке фильтрует таблицу."; }
   const maxSp=Math.max(L.all.sp,1);
   const badge=(v,sp,o)=> sp<AD_MIN_SPEND
@@ -8948,13 +8956,19 @@ function adOpenPicker(btn,which){
 function adPickerB(C,lo,hi,parts,mp,dayInfo,legend,note){
   const A=C.A; if(!A||!A.from) return null;
   const auto=adPrevLike(A.from,A.to,mp), B=C.B;
-  const pre=[{label:"Как A, но раньше · "+adDM(auto.from)+"–"+adDM(auto.to), from:auto.from, to:auto.to, auto:true,
+  /* Предыдущий период «как A» бывает целиком без данных: A = все дни выгрузок (вид по умолчанию) или идущий месяц,
+     а до первых выгрузок рекламы ничего нет. Тогда не подсовываем его выделенным в календаре (все дни заштрихованы,
+     «Применить» дало бы «сравнивать не с чем») и прямо говорим, что выбрать вместо него. */
+  const autoDays= mp==="ozon"? ((ozAdClip(auto.from,auto.to,false)||{}).days||0) : (adPerfAgg(auto.from,auto.to).days||0);
+  const autoTxt=adDM(auto.from)+(auto.from===auto.to? "" : "–"+adDM(auto.to));
+  const pre=[{label:"Как A, но раньше · "+autoTxt+(autoDays? "" : " · нет данных"), from:auto.from, to:auto.to, auto:true,
       active: !!(B&&B.auto)}]
     .concat(adPresets(mp,lo,hi,parts,null).filter(p=>!(p.from===A.from&&p.to===A.to)).map(p=>({...p, active:false})));
   if(B) pre.push({label:"Без сравнения", from:A.from, to:A.to, off:true, active:false});
-  return {from:B? B.reqFrom : auto.from, to:B? B.reqTo : auto.to, min:lo, max:hi, dayInfo, legend,
+  return {from:B? B.reqFrom : (autoDays? auto.from : null), to:B? B.reqTo : (autoDays? auto.to : null), min:lo, max:hi, dayInfo, legend,
     title:"Период B — с чем сравнить "+drpRangeText(A.from,A.to,"none"),
-    note:`По умолчанию B — <b>${esc(auto.how)}</b> (${esc(adRangeTxt(auto.from,auto.to))}). `+note,
+    note:(autoDays? `По умолчанию B — <b>${esc(auto.how)}</b> (${autoTxt}). `
+      : `По умолчанию B — ${esc(auto.how)} (${autoTxt}), но <b>данных о рекламе ${mp==="ozon"?"Ozon":"Wildberries"} за эти дни нет</b> — выберите неделю или выгрузку выше либо дни в календаре. `)+note,
     presets:pre,
     onApply:(f,t,p)=>{
       const set=(on,bf,bt)=>{ if(mp==="ozon"){ ozCmpOn=on; ozBFrom=bf; ozBTo=bt; ozBNote=null; } else { adCmpOn=on; adBFrom=bf; adBTo=bt; adBNote=null; } };
@@ -9198,9 +9212,17 @@ function renderAdHyp(){
   _hypList=exps;
   const nOver=exps.filter(e=>e.ev.overdue).length, nOpen=exps.filter(e=>!e.ev.outcome).length;
   const nDue=exps.filter(e=>!e.ev.outcome && !e.ev.overdue && e.ev.dc && e.ev.dc<=addDays(today,3)).length;
-  sum.innerHTML=`<b>${exps.length}</b> ${plural(exps.length,"опыт","опыта","опытов")} (без исхода ${nOpen}) · <b>${pats.length}</b> ${plural(pats.length,"закономерность","закономерности","закономерностей")}`
+  sum.innerHTML=`<b>${exps.length}</b> ${plural(exps.length,"опыт","опыта","опытов")}${exps.length? ` (ждут итога: ${nOpen})` : ""} · <b>${pats.length}</b> ${plural(pats.length,"закономерность","закономерности","закономерностей")}`
     +(nOver? ` · <span class="hot">проверка просрочена: ${nOver}</span>` : "")
     +(nDue? ` · проверить в ближайшие 3 дня: ${nDue}` : "")+` · из ОПЫТ.md`;
+  /* По площадке пока пусто (сейчас так у Wildberries: весь журнал — правки Ozon) — одна короткая строка вместо
+     абзаца-инструкции и двух пустых разделов: блок открыт по умолчанию и стоял стеной текста над таблицей. */
+  if(!exps.length && !pats.length){
+    body.innerHTML=`<div class="hy-msg">По ${mpName} в ОПЫТ.md пока нет ни закономерностей, ни правок кампаний. Как только правку запишут `
+      +`(<code>node scripts/opyt.cjs change "${mp==="ozon"?"Ozon":"ВБ"}|&lt;код&gt;|&lt;что изменено&gt;|&lt;база&gt;|&lt;дата проверки&gt;"</code>), `
+      +`здесь появятся цифры «до → после» по коду и его склейке.</div>`;
+    body.dataset.hypMp=mp; _hypMemo={key:memoKey, opyt:_opyt, data:finRef, list:exps}; return;
+  }
   const noMp=[...exps,...pats].filter(x=>x.m==null).length;
   const catName=code=>{ if(mp==="ozon"){ const c=((RD.ozon&&RD.ozon.catalog)||[]).find(x=>""+x.sku===code); return c? c.name : ""; }
     const c=(RD.catalog||[]).find(x=>(""+(x.supplierCode||"")).trim()===code); return c? c.name : ""; };
@@ -9235,7 +9257,8 @@ function renderAdHyp(){
       : (v.dc? `<span class="s">проверить ${adDM(v.dc)}, через ${adDaysTxt(adNDays(today,v.dc)-1)}</span>` : "")));
     return `<tr class="${v.overdue?"over":""}${_hypSel===e.id?" sel":""}">`
       +`<td><b>${esc(e.id)}</b><span class="s">правка ${v.d0? adDM(v.d0) : esc(e.date||"—")}</span>`
-        +(v.status? `<span class="s"><span class="badge ${stB}"><span class="d"></span>${esc(v.status)}</span></span>` : "")+chk
+        // «предложено» — в журнале не отмечено, что правку сделали: цифры «после» не обязательно её итог
+        +(v.status? `<span class="s"><span class="badge ${stB}"${v.status==="предложено"? ` title="В журнале не отмечено, что правку сделали: цифры «после» могут быть не её итогом"` : ""}><span class="d"></span>${esc(v.status)}</span></span>` : "")+chk
         +(e.m==null? `<span class="s">площадка не указана</span>` : (e.m==="both"? `<span class="s">обе площадки</span>` : ""))
         +(v.after&&ok? `<span class="s" style="margin-top:6px"><button type="button" class="hy-go" data-hyp-go="${i}" title="Период A = после правки, B = до, таблица — по коду ${esc(e.code)}">На цифрах →</button></span>` : "")+`</td>`
       +`<td>${art}<span class="s">${esc((catName(e.code)||"").slice(0,40))}</span>`
@@ -9277,7 +9300,10 @@ function hypGo(i){
   const s=document.getElementById("adSearch"); if(s) s.value=e.code;
   _hypSel=e.id;
   renderAdsTab();
-  const t=document.getElementById("adPNote"); (t&&!t.hidden? t : document.getElementById("adTable"))?.scrollIntoView({behavior:"smooth",block:"start"});
+  /* Прокрутка — к ТАБЛИЦЕ, где строка этого кода с A | B | изменением. Раньше вела к строке периода над пирамидой:
+     первым экраном был «Весь кабинет» (по коду не отфильтрован), а сам результат лежал ~на 3 000 px ниже, за
+     пирамидой и этим же блоком. Периоды A/B подписаны на кнопках и под каждой цифрой строки. */
+  document.getElementById("adTable")?.closest(".table-card")?.scrollIntoView({behavior:"smooth",block:"start"});
 }
 function renderAdHowTo(){
   const el=document.getElementById("adHowTo"); if(!el) return;
