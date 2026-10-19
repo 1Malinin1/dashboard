@@ -231,8 +231,9 @@
   .theme-sw::before{content:"";position:absolute;left:6px;right:6px;top:6px;height:8px;border-radius:3px;background:var(--sw-card)}
   .theme-sw::after{content:"";position:absolute;left:6px;bottom:5px;width:22px;height:4px;border-radius:2px;
     background:linear-gradient(90deg,var(--sw-1) 0 33%,var(--sw-2) 33% 66%,var(--sw-3) 66%)}
-  .theme-sw.auto{background:linear-gradient(135deg,#f2f4f7 0 50%,#0c0d0f 50%)}
-  .theme-sw.auto::before{background:linear-gradient(90deg,#fff 0 50%,#1c1d21 50%)}
+  /* «Как в системе»: левая половина — «Светлая», правая — «Графит» (страница и карточка делятся одной линией) */
+  .theme-sw.auto{background:linear-gradient(90deg,#f2f4f7 0 50%,#0c0d0f 50%)}
+  .theme-sw.auto::before{background:linear-gradient(90deg,#fff 0 50%,#26272c 50%)}
 
   /* ===== Панель фильтров / сегмент-контрол =====
      Единый вид у всех переключателей: дорожка + «поднятая» кнопка выбранного. Выбранная кнопка
@@ -333,7 +334,7 @@
      в две строки, а соседняя в одну. */
   .kpis4{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:16px}
   .kpis4>*{flex:1 1 200px;min-width:0}
-  .kpis4>.kpi.hero{flex:2 1 412px}
+  .kpis4>.kpi.hero{flex:1.6 1 380px}   /* чуть уже прежних «двух плиток»: соседним подписям («Расходы и удержания WB, ₽») хватает одной строки */
   .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--r-lg);
     padding:14px 16px 15px;box-shadow:var(--shadow),inset 0 1px 0 var(--hl);
     min-width:0;position:relative;transition:border-color .15s,box-shadow .15s}
@@ -853,8 +854,9 @@
   table.rnp .col-filter .cf-count{font-size:8.5px;font-weight:700;margin-left:1px;font-style:normal;line-height:1}
   table.rnp th.metric,table.rnp td.metric{text-align:left;position:sticky;left:0;
     background:var(--surface);z-index:1;color:var(--text-1);font-weight:520;min-width:210px}
-  /* закреплённый угол шапки — непрозрачный: под ним при прокрутке вбок проезжают другие заголовки */
-  table.rnp thead th.metric{z-index:3;background:color-mix(in srgb,var(--surface-2) 80%,var(--surface))}
+  /* закреплённый угол шапки — непрозрачный (под ним при прокрутке вбок проезжают другие заголовки),
+     но того же тона, что «стекло» соседних заголовков над карточкой: слой --glass поверх --surface */
+  table.rnp thead th.metric{z-index:3;background:linear-gradient(var(--glass),var(--glass)),var(--surface)}
   table.rnp tbody tr{transition:background .12s}
   table.rnp tbody tr:hover td{background:color-mix(in srgb,var(--accent) 5%,var(--surface))}
   table.rnp tbody tr:hover td.metric{background:color-mix(in srgb,var(--accent) 5%,var(--surface));
@@ -1272,6 +1274,9 @@
   /* родной <select> внутри обёртки не показываем никогда: код вкладок, возвращая органы управления
      через style.display="", делал его видимым рядом с кнопкой (дубль «Пушкары (109)» на «Рекламе») */
   .uisel>select{display:none!important}
+  /* кнопка без подписи (список ещё не заполнен — напр., «Реклама» открыта сразу на Ozon/«Всего») — не показываем
+     пустую «галочку» */
+  .uisel:has(>.uisel-trigger:empty){display:none}
   .uisel-trigger{font:inherit;font-size:13px;border:1px solid var(--border);background:var(--surface);overflow:hidden;text-overflow:ellipsis;
     color:var(--text-1);padding:9px 34px 9px 13px;border-radius:var(--r-sm);cursor:pointer;
     box-shadow:var(--shadow-sm);white-space:nowrap;position:relative;text-align:left;width:100%;
@@ -1419,6 +1424,10 @@
     .toolbar .count{white-space:normal;margin-left:0;flex:1 1 100%}
     .toolbar input[type="search"]{min-width:0;flex-basis:100%}
     .hidnote,.focus-bar{padding:7px 10px;gap:6px 10px;font-size:12px}
+    /* полоса фокуса: текст абзацем, кнопка «показать все» справа — две строки вместо трёх */
+    .focus-bar{display:block;position:relative;padding-right:118px;min-height:36px}
+    .focus-bar>span,.focus-bar>b{margin-right:5px}
+    .focus-bar .fb-x{position:absolute;right:7px;top:50%;transform:translateY(-50%);margin:0}
     .hidnote .hn-more{display:none}
     .howto.is-fold>.hf-body{padding:1px 13px 12px 30px}
     /* пирамида ДРР: название строкой, под ним расход · выручка · ДРР, полоса — во всю ширину */
