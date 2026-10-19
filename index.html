@@ -351,7 +351,9 @@
   .kpi .val{font-weight:650;letter-spacing:-.022em;font-size:25px;line-height:1.08;
     font-variant-numeric:tabular-nums}
   .kpi .delta{font-size:12px;margin-top:9px;display:inline-flex;align-items:center;gap:4px;font-weight:580;
-    padding:2px 8px;border-radius:99px;background:var(--surface-2);line-height:1.45}
+    padding:2px 8px;border-radius:11px;background:var(--surface-2);line-height:1.45}
+  /* радиус 11 px, а не «пилюля»: в одну строку это та же пилюля, а пояснение в две строки
+     («270 из 28 253 шт · 29.06.26 – 02.08.26» на «Аналитике») — ровный скруглённый блок, а не овал */
   .kpi .delta.up{color:var(--good-txt);background:color-mix(in srgb,var(--good) 12%,var(--surface))}
   .kpi .delta.down{color:var(--crit-txt);background:color-mix(in srgb,var(--crit) 12%,var(--surface))}
   .kpi .delta .muted{color:inherit;opacity:.75}
@@ -980,6 +982,10 @@
     background-repeat:no-repeat;background-position:right 11px center;-webkit-appearance:none;appearance:none}
   .toolbar select:focus{outline:none;border-color:var(--accent);box-shadow:var(--ring)}
   .toolbar .count{font-size:12.5px;color:var(--muted);margin-left:auto;white-space:nowrap;font-weight:500}
+  /* «Оборачиваемость»: счётчик между сегментом вида и кнопкой выгрузки занимает остаток ряда и
+     переносится сам, а не выталкивает «Скачать Excel» одну на следующую строку. Только здесь: общим
+     правилом счётчик на «Рекламе» Ozon (сегмент и кнопка там спрятаны) отъедал ширину у поиска. */
+  #turnCount{flex:1 1 240px;min-width:0;text-align:right;white-space:normal}
 
   /* ===== Бейджи статуса (никогда только цветом — всегда с текстом) ===== */
   .badge{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:600;line-height:1.35;
@@ -1430,7 +1436,7 @@
     .mp-switch[hidden]{display:none}
     .mp-btn{flex:1 1 0;padding:7px 6px}
     .mp-switch-lbl{display:none}
-    .toolbar .count{white-space:normal;margin-left:0;flex:1 1 100%}
+    .toolbar .count,#turnCount{white-space:normal;margin-left:0;flex:1 1 100%;text-align:left}
     .toolbar input[type="search"]{min-width:0;flex-basis:100%}
     .hidnote,.focus-bar{padding:7px 10px;gap:6px 10px;font-size:12px}
     /* полоса фокуса: текст абзацем, кнопка «показать все» справа — две строки вместо трёх */
@@ -1444,6 +1450,11 @@
     .hf-sum .ht-t,.hf-sum .howto-t{flex:1 1 0}
     .hf-hint{flex-basis:100%;padding-left:17px}
     .hf-hint::before{display:none}
+  }
+  /* узкий телефон (360 px): «123 050 481 ₽» не влезал в половину ряда, и ₽ уезжал на вторую строку */
+  @media(max-width:380px){
+    .kpi .val{font-size:18px}
+    .kpi.hero .val{font-size:27px}
   }
 </style>
 </head>
@@ -5533,9 +5544,11 @@ function moneySeriesForSkus(skus,isoDates){
 }
 /* ---- график: сгруппированные столбцы по дням (2 серии, много точек) ---- */
 function dailyGroupedBars(mount,isoDates,series){
-  // viewBox держим близко к реальной ширине карточки (~560), иначе SVG сжимается
-  // до 0.6× и подписи осей становятся ~6px — нечитаемо. Так шрифт рендерится ~12px.
-  const W=560,H=250,m={t:16,r:12,b:34,l:52};
+  // viewBox держим близко к реальной ширине карточки, иначе подписи осей масштабируются вместе с
+  // картинкой: в половинной карточке (~520 px) при 1000 они были ~6 px, а в карточке во всю ширину
+  // («Сумма заказов и выкупа по дням» на «Динамике») при 560 — ~22 px. Ширина — по контейнеру
+  // (400…1200; скрытый контейнер — 560), перерисовка при смене ширины окна уже есть (renderActiveTab).
+  const W=Math.min(1200,Math.max(400,Math.round(mount.clientWidth)||560)),H=250,m={t:16,r:12,b:34,l:52};
   const iw=W-m.l-m.r, ih=H-m.t-m.b, n=Math.max(1,isoDates.length);
   const allv=series.flatMap(s=>s.data);
   const sc=niceScale(Math.min(...allv,0),Math.max(...allv,0),4);
