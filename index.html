@@ -14,10 +14,13 @@
 <meta property="og:type" content="website">
 <!-- Шрифт Golos Text: кириллица, нарисованная под интерфейсы, табличные цифры (tnum), переменная
      насыщенность. Не загрузился (нет сети, блокировка) — страница остаётся на системном шрифте:
-     display=swap, размеры и веса подобраны так, чтобы и запасной шрифт выглядел ровно. -->
+     display=swap, размеры и веса подобраны так, чтобы и запасной шрифт выглядел ровно.
+     media="print" + onload: файл шрифта НЕ блокирует страницу. Обычная ссылка задерживала все скрипты
+     до ответа Google: при зависшем соединении экран кода не появлялся вовсе (проверено — >25 с пустой
+     страницы). Теперь страница рисуется сразу на системном шрифте, Golos подменяет его по загрузке. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400..800&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Golos+Text:wght@400..800&display=swap" media="print" onload="this.media='all'">
 <script>
 /* Тема — ДО первой отрисовки, иначе экран кода мигает светлой темой. wb_theme: "" — как в системе,
    light · paper · contrast · dark («Графит») · midnight. Ставит data-theme (что за тема) и
@@ -1317,6 +1320,8 @@
   .colfilter-panel .uisel-opt .cf-cnt{margin-left:auto;padding-left:12px;color:var(--muted);font-size:11px;font-weight:500}
   .colfilter-panel .uisel-opt.selected .cf-cnt{color:var(--accent)}
   .period-compare{display:flex;gap:16px;flex-wrap:wrap;margin-top:16px;padding-top:16px;border-top:1px solid var(--grid)}
+  /* display:flex сильнее браузерного [hidden]: на «Товаре» (Всего, артикул не выбран) висели пустые поля дат */
+  .period-compare[hidden]{display:none}
   .period-box{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:12px 15px;flex:1;min-width:240px}
   .period-box .lbl{font-size:12px;color:var(--muted);margin-bottom:7px;font-weight:620;letter-spacing:.01em}
   /* поля дат переносятся, а не вылезают за карточку на узком экране; схема (светлая/тёмная) — от темы на <html> */
@@ -2429,7 +2434,7 @@ function wireTabsFade(){
       if(l<t.scrollLeft+28 || r>t.scrollLeft+t.clientWidth-28) t.scrollTo({left:Math.max(0,l-(t.clientWidth-a.offsetWidth)/2),behavior:"smooth"}); }
     upd();
   }).observe(t,{attributes:true,subtree:true,attributeFilter:["aria-selected"]});
-  try{ document.fonts.ready.then(upd); }catch(e){}
+  try{ document.fonts.ready.then(upd); document.fonts.addEventListener("loadingdone",upd); }catch(e){}
   upd();
 }
 wireTabsFade();
@@ -2454,7 +2459,9 @@ function wireKpiLabels(){
     raf=requestAnimationFrame(()=>document.querySelectorAll(".kpis4").forEach(b=>{ if(b.offsetParent) kpiLabelLines(b); })); };
   boxes.forEach(b=>new MutationObserver(run).observe(b,{childList:true}));
   addEventListener("resize",run);
-  try{ document.fonts.ready.then(run); }catch(e){}
+  // шрифт подгружается без блокировки страницы (media=print) — ready может наступить ДО загрузки Golos,
+  // поэтому пересчёт и по событию «шрифты загружены»
+  try{ document.fonts.ready.then(run); document.fonts.addEventListener("loadingdone",run); }catch(e){}
   // свёрнутая вкладка не меряется (offsetParent=null) — пересчёт при открытии вкладки
   const tabs=document.getElementById("tabs");
   if(tabs) new MutationObserver(run).observe(tabs,{attributes:true,subtree:true,attributeFilter:["aria-selected"]});
@@ -3297,10 +3304,15 @@ function openColFilter(anchor,key,ctxName){
       el.style.display=(!t||el.dataset.v.toLowerCase().includes(t))?"":"none"; }); });
   document.body.appendChild(panel);
   const r=anchor.getBoundingClientRect();
-  panel.style.position="fixed"; panel.style.top=(r.bottom+6)+"px";
+  panel.style.position="fixed";
   const pw=Math.max(190,panel.offsetWidth); let left=r.left; if(left+pw>window.innerWidth-12) left=window.innerWidth-12-pw;
   panel.style.left=Math.max(12,left)+"px";
-  panel.style.maxHeight=Math.max(180,Math.min(360,window.innerHeight-r.bottom-24))+"px";
+  // места снизу мало (шапка таблицы у нижнего края окна — на «Оборачиваемости» и «Запасе и темпе» при
+  // 1536×704 сразу после открытия) — открываем ВВЕРХ: вниз низ списка уходил за край окна, а прокрутка
+  // страницы панель закрывает, и нижние значения было не выбрать
+  const below=window.innerHeight-r.bottom-24, above=r.top-24, up=below<180 && above>below;
+  panel.style.maxHeight=(up? Math.max(120,Math.min(360,above)) : Math.max(180,Math.min(360,below)))+"px";
+  panel.style.top=(up? Math.max(8,r.top-6-panel.offsetHeight) : r.bottom+6)+"px";
   _colFilterPanel=panel; _colFilterKey=key; _colFilterAt=Date.now();
   if(searchable) searchInput.focus();
 }
