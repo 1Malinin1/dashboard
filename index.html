@@ -5214,7 +5214,7 @@ function exportItemXLSX(){
   add("% выкупа Ozon",+(a.boO*100).toFixed(1));
   a.wins.forEach(w=>{
     const lbl=w.life? "весь период продаж ("+w.n+" дн)" : "последние "+w.n+" дн";
-    add("Заказов/дн — "+lbl,+w.ord.toFixed(2),"ВБ "+w.ordWb.toFixed(1)+" + Ozon "+w.ordOz.toFixed(1));
+    add("Заказов/дн — "+lbl,+w.ord.toFixed(2),"ВБ "+w.ordWb.toFixed(1).replace(".",",")+" + Ozon "+w.ordOz.toFixed(1).replace(".",","));
     add("Продаж/дн — "+lbl,+w.sell.toFixed(2));
   });
   if(a.preRate){ add("Заказов/дн — как было до провала",+a.preRate.ord.toFixed(2));
@@ -5807,8 +5807,8 @@ function renderDynamicsTab(){
   const buyWbE=mSplit&&rWb? mSplit.wb[0]*rWb : 0, buyOzE=mSplit&&rOz? mSplit.oz[0]*rOz : 0;
   const buyTotE=buyWbE+buyOzE;
   const buyTip = mSplit? `<div class="t-hd">Выкуплено на сумму — оценка по площадкам</div>`
-      +trS("Wildberries",rub(buyWbE)+(rWb?" · выкуп "+(rWb*100).toFixed(1)+"%":""))
-      +trS("Ozon",rub(buyOzE)+(rOz?" · выкуп "+(rOz*100).toFixed(1)+"%":""))
+      +trS("Wildberries",rub(buyWbE)+(rWb?" · выкуп "+(rWb*100).toFixed(1).replace(".",",")+"%":""))
+      +trS("Ozon",rub(buyOzE)+(rOz?" · выкуп "+(rOz*100).toFixed(1).replace(".",",")+"%":""))
       +`<div class="t-row" style="${sepS}"><span class="k">Всего</span><span class="v">${rub(buyTotE)}</span></div>`
       +(ordTot? `<div class="t-row" style="opacity:.75"><span class="k">Доля от заказанного</span><span class="v">${Math.round(buyTotE/ordTot*100)}%</span></div>`:"")
       +`<div class="t-row" style="opacity:.75"><span class="k">Это ОЦЕНКА: заказано × % выкупа. Факт из выгрузки не годится — он заморожен на момент выгрузки и не дозревает.</span></div>` : "";
@@ -5867,7 +5867,7 @@ function renderDynamicsTab(){
   const buyPrev = isAll? null : (moneyPrev&&rate1? moneyPrev.ordersSum*rate1 : null);
   const buyTip1 = isAll? buyTip : (`<div class="t-hd">Выкуплено на сумму — ${mpName1}, ОЦЕНКА</div>`
       +trS("Заказано",rub(moneyNow.ordersSum))
-      +trS("% выкупа",rate1? (rate1*100).toFixed(1)+"%" : "не задан")
+      +trS("% выкупа",rate1? (rate1*100).toFixed(1).replace(".",",")+"%" : "не задан")
       +`<div class="t-row" style="${sepS}"><span class="k">= выкуплено (оценка)</span><span class="v">${rub(buyNow)}</span></div>`
       +`<div class="t-row" style="opacity:.75"><span class="k">Факт из выгрузки не используем: он заморожен на момент выгрузки и задним числом не дозревает — по свежим дням даёт 0–5%.</span></div>`);
   dynKpiCards.push(
@@ -8680,7 +8680,7 @@ function renderAdsTab(){
           +tr2("Расход",fmt(Math.round(cur.spend))+" ₽")
           +tr2("Выручка в выкупе",fmt(Math.round(cur.rev))+" ₽")
           +tr2("ДРР в выкупе",cur.spend>0? adDrrTxt(cur.drr):"—")
-          +tr2("ДРР в заказах (кабинет XWAY)",cur.rev>0? (cur.spend/(cur.rev/bo)*100).toFixed(1)+"%":"—")
+          +tr2("ДРР в заказах (кабинет XWAY)",cur.rev>0? (cur.spend/(cur.rev/bo)*100).toFixed(1).replace(".",",")+"%":"—")
           +`<div class="t-hd">Весь кабинет</div>`
           +tr2("Расход",fmt(Math.round(L.all.spend))+" ₽")
           +tr2("ДРР в выкупе",L.all.spend>0? adDrrTxt(L.all.drr):"—")
@@ -8733,7 +8733,7 @@ function renderAdsTab(){
       +`<td>${fmt(r.qty)}<span class="sub2 mut">${r.spd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
       +`<td class="${r.cover?"":"d-zero"}">${r.cover? fmt(r.cover):"—"}<span class="sub2 ${r.coverDays<AD_MIN_STOCK_DAYS?"crit":"mut"}">${adCoverTxt(r)}</span></td>`
       +adCell(r)
-      +`<td>${fmt(r.imp)}</td><td>${r.ctr.toFixed(1)}</td><td>${r.cr.toFixed(2)}</td>`
+      +`<td>${fmt(r.imp)}</td><td>${r.ctr.toFixed(1).replace(".",",")}</td><td>${r.cr.toFixed(2).replace(".",",")}</td>`
       +`<td>${fmt(Math.round(r.price))}</td>`
       +`<td>${r.ok? `<span class="badge good"><span class="d"></span>Брать</span>`
            : `<span class="muted">${esc(r.why)}</span>`}</td>`;
@@ -10237,7 +10237,7 @@ function srHowTo(mp){
     return {title:"Как считается — Ozon", steps:[
       "Запас на Ozon = остаток на складах Ozon + в пути. В пути = «в поставках в пути» + большее из «в заявках» и назначенного у вас на «Ozon СФО/ЦФО»: это одна партия в двух отчётах, считаем её один раз.",
       "Продаж в день = заказы за 7 дней ÷ 7 × % выкупа Ozon"+(bi.all? " (замер "+pct(bi.all)+" за "+fmtDate(bi.from)+"–"+fmtDate(bi.to)+"; у товара с 10+ закрытыми заказами — свой)." : "."),
-      "Хватит дней = запас на Ozon ÷ продаж в день.",
+      "Хватит дней = запас на Ozon ÷ продаж в день, с учётом сезона (веса месяцев — ниже).",
       "Сравниваем с горизонтом ("+hz+"). Хватает — «Хватит до партии». Не хватает и запаса меньше чем на "+OZ_LEAD_DAYS+" дн (столько идёт поставка до продажи) — «Отгружать сейчас». Не хватает, но срок поставки перекрыт — «Кончится до партии», отгрузить через «хватит дней − "+OZ_LEAD_DAYS+"».",
       "«Склады дадут» — свободный остаток Москвы, Нск-1 и Евросиба (на Евросибе позиции меньше "+NSK2_MIN_TAKE+" шт не берём). Этот же склад кормит и Wildberries."],
       notes:["Цену на Ozon здесь не оцениваем: репрайсера там нет — Ozon следует за ценой ВБ ради индекса, поэтому рычаг один: когда и сколько отгрузить.",
@@ -10246,7 +10246,7 @@ function srHowTo(mp){
   if(mp==="all") return {title:"Как считается — Всего (бизнес по коду 1С)", steps:[
       "Товар бизнеса = склады ВБ (FBO) + в пути на ВБ + Ozon (остаток и в пути) + ваши склады. Каждая штука один раз: Клин и «Ozon СФО/ЦФО» не задваиваются — та же сумма, что «Всего товара» на вкладке «Остатки».",
       "Продаж в день = продажи ВБ + продажи Ozon (заказы за 7 дней × % выкупа своей площадки).",
-      "Хватит дней = товар бизнеса ÷ продаж в день.",
+      "Хватит дней = товар бизнеса ÷ продаж в день, с учётом сезона (веса месяцев — ниже).",
       "«До партии»: хватит дней сравниваем с горизонтом ("+hz+"). Меньше — «Не хватит»; заметно больше (темп ниже нужного больше чем на "+band+"%, та же граница, что «Разогнать» на ВБ) — «Избыток»; между — «Хватит».",
       "«Лежит / продаётся»: верхняя полоска — где лежит товар (ВБ вместе с Клином · Ozon вместе с назначенным · ваши склады), нижняя — где он продаётся (ВБ · Ozon). Перекос показывает, на какой площадке действовать."],
       notes:["«Что делать» собран из двух других видов: цена — только на ВБ (вид «Wildberries»), на Ozon — отгрузка (вид «Ozon»).", ss, wk].filter(Boolean)};
@@ -10258,7 +10258,7 @@ function srHowTo(mp){
       "Сравниваем с заказами за последние 7 дней: выше цели больше чем на "+band+"% — «Поднять цену», ниже больше чем на "+band+"% — «Разогнать», между — «Держать»."],
     notes:["План только для Wildberries: ценой вы управляете на ВБ, Ozon следует за ней ради индекса.",
       "«Не хватит и Озону» — Ozon один выберет весь ваш склад до партии: даже без продаж на ВБ товара не хватит. Поднятие цены поможет лишь частично.",
-      "«Хватит на ВБ» = база ÷ нынешние продажи в день; меньше горизонта — товар кончится раньше партии.", ss, wk].filter(Boolean)};
+      "«Хватит на ВБ» = база ÷ нынешние продажи в день с учётом сезона; меньше горизонта — товар кончится раньше партии.", ss, wk].filter(Boolean)};
 }
 function renderSrHowTo(mp){
   const el=document.getElementById("srHowTo"); if(!el) return;
@@ -10370,7 +10370,7 @@ function exportStockRateXLSX(){
    Лист «Как считается» едет вместе с цифрами — файл уходит без дашборда. */
 function exportStockXLSX(){
   const W=stkWin(); if(!W){ alert("Истории остатков пока нет."); return; }
-  const rows=stkFiltered(stkRows(W)), live=W.isNow;
+  const rows=stkFiltered(stkRows(W)).filter(r=>!r.outHidden), live=W.isNow;   // как таблица: без «На вывод» с нулём
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
   const wayH=live? "" : " (только на "+fmtDate(W.last)+")";
   const cols=[
@@ -10524,7 +10524,7 @@ function renderHomeOzon(){
     {lbl:"Выручка, ₽",val:rub(now.revenue),delta:dlt(now.revenue,prev&&prev.revenue),
      tip:`<div class="t-hd">Выручка Ozon</div>`
        +tr("Заказано за период",rub(now.ordRub))
-       +tr("× % выкупа",(bo*100).toFixed(1)+"%")
+       +tr("× % выкупа",(bo*100).toFixed(1).replace(".",",")+"%")
        +tr("= Выручка",rub(now.revenue))
        +tr("Продано (оценка)",fmt(now.qty)+" шт")
        +tr("Средний чек",now.qty?rub(now.revenue/now.qty):"—")},
@@ -10547,7 +10547,7 @@ function renderHomeOzon(){
        +tr(`${rub(now.profit)} ÷ ${rub(now.revenue)}`,now.revenue?pct(now.margin):"—")},
     {lbl:"Продано, шт (оценка)",val:fmt(now.qty),
      tip:`<div class="t-hd">Сколько продано</div>`+tr("Заказано",fmt(now.ordQty)+" шт")
-       +tr("× % выкупа",(bo*100).toFixed(1)+"%")+tr("= Продано",fmt(now.qty)+" шт")},
+       +tr("× % выкупа",(bo*100).toFixed(1).replace(".",",")+"%")+tr("= Продано",fmt(now.qty)+" шт")},
   ].map(kpiCard).join("");
   wireKpiTips("homeKpis");
   document.getElementById("homeCostWarning").hidden=true;
@@ -12226,17 +12226,17 @@ function aggregateFunnel(skuSet,from,to){
 }
 const FUNNEL_METRICS=[
   {k:"impressions",l:"Показы",f:fmt,up:true},
-  {k:"ctr",l:"CTR (переходы/показы), %",f:v=>v.toFixed(1)+"%",up:true},
+  {k:"ctr",l:"CTR (переходы/показы), %",f:v=>v.toFixed(1).replace(".",",")+"%",up:true},
   {k:"cardViews",l:"Переходы в карточку",f:fmt,up:true},
   {k:"addCart",l:"Положили в корзину",f:fmt,up:true},
-  {k:"cartConv",l:"Конверсия в корзину, %",f:v=>v.toFixed(1)+"%",up:true},
+  {k:"cartConv",l:"Конверсия в корзину, %",f:v=>v.toFixed(1).replace(".",",")+"%",up:true},
   {k:"addFav",l:"Добавили в отложенные",f:fmt,up:true},
   {k:"ordersQty",l:"Заказали, шт",f:fmt,up:true},
-  {k:"orderConv",l:"Конверсия в заказ, %",f:v=>v.toFixed(1)+"%",up:true},
+  {k:"orderConv",l:"Конверсия в заказ, %",f:v=>v.toFixed(1).replace(".",",")+"%",up:true},
   {k:"ordersSum",l:"Заказали на сумму, ₽",f:rub,up:true},
   {k:"buyoutQty",l:"Выкупили, шт",f:fmt,up:true},
   {k:"buyoutSum",l:"Выкупили на сумму, ₽",f:rub,up:true},
-  {k:"buyoutPct",l:"Процент выкупа",f:v=>v.toFixed(1)+"%",up:true},
+  {k:"buyoutPct",l:"Процент выкупа",f:v=>v.toFixed(1).replace(".",",")+"%",up:true},
   {k:"cancelQty",l:"Отменили, шт",f:fmt,up:false},
   {k:"cancelSum",l:"Отменили на сумму, ₽",f:rub,up:false},
   {k:"avgPrice",l:"Средняя цена, ₽",f:rub,up:null},
@@ -12320,9 +12320,9 @@ const CHART_METRICS={
   ordersQty:{l:"Заказы, шт",f:fmt,c:"--s1",v:a=>a.ordersQty},
   ordersSum:{l:"Заказано, ₽",f:rub,c:"--s1",v:a=>a.ordersSum},
   buyoutSum:{l:"Выкуплено, ₽",f:rub,c:"--s2",v:a=>a.buyoutSum},
-  ctr:{l:"CTR (переходы/показы), %",f:v=>v.toFixed(1)+"%",c:"--s1",v:a=>a.impressions?a.cardViews/a.impressions*100:0},
-  orderConv:{l:"Конверсия в заказ (заказы/корзина), %",f:v=>v.toFixed(1)+"%",c:"--s3",v:a=>a.addCart?a.ordersQty/a.addCart*100:0},
-  buyoutPct:{l:"Процент выкупа, %",f:v=>v.toFixed(1)+"%",c:"--s2",v:a=>(a.buyoutQty+a.cancelQty)?a.buyoutQty/(a.buyoutQty+a.cancelQty)*100:0},
+  ctr:{l:"CTR (переходы/показы), %",f:v=>v.toFixed(1).replace(".",",")+"%",c:"--s1",v:a=>a.impressions?a.cardViews/a.impressions*100:0},
+  orderConv:{l:"Конверсия в заказ (заказы/корзина), %",f:v=>v.toFixed(1).replace(".",",")+"%",c:"--s3",v:a=>a.addCart?a.ordersQty/a.addCart*100:0},
+  buyoutPct:{l:"Процент выкупа, %",f:v=>v.toFixed(1).replace(".",",")+"%",c:"--s2",v:a=>(a.buyoutQty+a.cancelQty)?a.buyoutQty/(a.buyoutQty+a.cancelQty)*100:0},
 };
 // свод воронки по каждому sku за период [from,to] (для «топ узких мест»)
 function funnelAggBySku(from,to){
@@ -12451,7 +12451,7 @@ function renderProductPeriods(){
       <td>${av!=null? m.f(av):"—"}</td>
       <td>${bv!=null? m.f(bv):"—"}</td>
       <td class="${dCls}">${has? (d>=0?"+":"")+m.f(d):"—"}</td>
-      <td class="${dCls}">${dPct!=null? (dPct>=0?"+":"")+dPct.toFixed(1)+"%":"—"}</td>
+      <td class="${dCls}">${dPct!=null? (dPct>=0?"+":"")+dPct.toFixed(1).replace(".",",")+"%":"—"}</td>
     </tr>`;
   });
   html+="</tbody>";
@@ -13070,8 +13070,10 @@ function recMonthLeg(mp, key){
 /* АВТО-ПЛАН (ДАН-04, продавец 19.10.2026: «бери с середины месяца фактические цифры и смотри по ним,
    к чему идём, а план увеличивай — цель на 30% от того, что есть по факту»). По каждой площадке:
    факт прибыли за 1–15 число × (дней в месяце ÷ 15) × 1,3. Появляется, когда в данных площадки есть
-   15-е число, и дальше не меняется (берёт только 1–15); до 15-го — только прогноз. Явный план из
-   `meta.plan` (scripts/set-plan.cjs) перекрывает расчётный — по каждой площадке отдельно. */
+   15-е число; до 15-го — только прогноз. Явный план из `meta.plan` (scripts/set-plan.cjs) перекрывает
+   расчётный — по каждой площадке отдельно. «ДАЛЬШЕ НЕ МЕНЯЕТСЯ» ДЕРЖИТ ФИКСАЦИЯ: расчёт идёт по текущим
+   данным, и поздняя выгрузка за 1–15 сдвинула бы цель, поэтому, когда 15-е появилось, авто-план
+   записывается в снимок `set-plan.cjs <месяц> --wb N --oz N --auto` (флаг `auto` — подпись «+30%» остаётся). */
 const PLAN_UPLIFT=1.3, PLAN_MID_DAY=15;
 function recAutoPlanLeg(mp,key){
   const all=planDaysOfMonth(key), first=all.slice(0,PLAN_MID_DAY), mid=first[first.length-1];
@@ -13086,7 +13088,8 @@ function recPlanCalc(){
   const P=(RD&&RD.meta&&RD.meta.plan)||{};
   const key=planMonthKey(); if(!key) return null;
   const ex=P[key]||{}, all=planDaysOfMonth(key);
-  const aw=ex.wb>0? null : recAutoPlanLeg("wb",key), ao=ex.oz>0? null : recAutoPlanLeg("ozon",key);
+  const fz=ex.auto? {frozen:ex.setAt||true} : null;     // авто-план, зафиксированный в снимке (set-plan --auto)
+  const aw=ex.wb>0? fz : recAutoPlanLeg("wb",key), ao=ex.oz>0? fz : recAutoPlanLeg("ozon",key);
   const plan={wb: ex.wb>0? ex.wb : (aw&&aw.target), oz: ex.oz>0? ex.oz : (ao&&ao.target)};
   if(!(plan.wb>0) && !(plan.oz>0)) return null;
   const wbLast=(RD.orderSeries&&RD.orderSeries.dates||[]).slice(-1)[0]||"";
@@ -14072,13 +14075,15 @@ function stkRows(W){
   /* «НА ВЫВОД» НА «ОСТАТКАХ» — СВОЁ ПРАВИЛО (ЗАП-06, продавец 19.10.2026: «всё что идёт на вывод скрой
      тогда как по ним закончатся остатки, тогда плашка не будет нужна»). Код «На вывод» (recOutSups —
      все карточки кода) виден, пока где-либо есть остаток, и скрыт, когда остатка нет нигде; флаг
-     showOut здесь не действует, плашки на этой вкладке нет (renderOutBar). Коды, которые закончились
-     за выбранный период, из таблицы уходят, но их уход не теряется: `outGone` печатается под итогом. */
+     showOut здесь не действует, плашки на этой вкладке нет (renderOutBar).
+     СКРЫВАЕТСЯ ТОЛЬКО СТРОКА, А НЕ ДВИЖЕНИЕ ТОВАРА: код, закончившийся за период, остаётся в выборке с
+     флагом `outHidden` — его минус входит в «Изменение» плиток и ИТОГО, в «Движение товара», «Приходы и
+     отгрузки» и график; не показывается он только строкой таблицы и в выгрузке. Иначе (замер 25.10.2026)
+     плитка писала «+20 659 шт с 12.10», а остаток на 12.10 давал +20 597 — 62 шт ушедшего «на вывод»
+     товара пропадали. `outGone` — сколько таких кодов и их сдвиг, для подписи. */
   const out=recOutSups(), gone={n:0,d:0};
-  const res=rows.filter(r=>{
-    if(out.has(r.sup)){ if(r.total>0) return true;
-      if(r.dTotal) { gone.n++; gone.d+=r.dTotal; } return false; }
-    return r.total>0 || (r.dTotal!=null && r.dTotal!==0); });
+  const res=rows.filter(r=>r.total>0 || (r.dTotal!=null && r.dTotal!==0));
+  res.forEach(r=>{ if(out.has(r.sup) && !(r.total>0)){ r.outHidden=true; gone.n++; gone.d+=(r.dTotal||0); } });
   res.outGone=gone;
   return res;
 }
@@ -14237,7 +14242,7 @@ function renderStockTab(){
     +(sDup? `<div class="t-note">${nf.format(sDup)} шт стоят у вас на «Ozon СФО/ЦФО», и на них Ozon уже создал заявку — это один товар, он посчитан один раз.</div>` : "")
     +chgBlock(R(sw(c1)+"Склады ВБ",dTxt(dF))+R(sw(c2)+"Склады Ozon",dTxt(dO))+R(sw(c3)+"Ваши склады",dTxt(dW)), dAll)
     +(W.same? "" : `<div class="t-note">«В пути» в изменение не входит. Слой без замера на ${fmtDate(W.start.date)} не сравнивается — иначе весь его остаток выглядел бы приходом.</div>`)
-    +((!W.same && all.outGone && all.outGone.n)? `<div class="t-note">Ещё ${all.outGone.n} ${plural(all.outGone.n,"код","кода","кодов")} «На вывод» за период закончились (${stkSigned(all.outGone.d)} шт) — остатка у них больше нет, поэтому в таблице их нет и в изменение выше они не вошли.</div>` : "");
+    +((!W.same && all.outGone && all.outGone.n)? `<div class="t-note">В изменение вошли ещё ${all.outGone.n} ${plural(all.outGone.n,"код","кода","кодов")} «На вывод», которые за период закончились (${stkSigned(all.outGone.d)} шт): остатка у них больше нет, поэтому строками в таблице их не видно.</div>` : "");
   const tipSite=`<div class="t-hd">Уже на площадках — продаётся (на ${fmtDateLong(W.to)})</div>`
     +R(sw(c1)+"Wildberries — склады ВБ (FBO)",sh(sFbo))+R(sw(c2)+"Ozon — склады Ozon",sh(sOz))
     +R("= На площадках",sh(sFbo+sOz),"t-sep")
@@ -14294,15 +14299,19 @@ function renderStockTab(){
       .map(s=>`<div>${s}</div>`).join("")+`</div>`;
 
   // ---- таблица: ИТОГО → категория → товары
+  /* Строки «На вывод» без остатка (outHidden) в таблицу не выводятся, но в суммы категорий и ИТОГО
+     входят: остаток у них 0, а сдвиг за период — настоящий, и Δ таблицы обязана сходиться с плиткой. */
   const byCat={};
   rows.forEach(r=>{ (byCat[r.cat]||(byCat[r.cat]=[])).push(r); });
   const KEYS=["fbo","oz","wh","msk","nsk1","nsk2","klin","ozAsg","wbTransit","ozTransit","total"];
-  const cats=Object.entries(byCat).map(([cat,list])=>{
+  const cats=Object.entries(byCat).map(([cat,all])=>{
+    const list=all.filter(r=>!r.outHidden);
     const a={cat,n:list.length,list};
-    KEYS.forEach(k=>a[k]=list.reduce((x,r)=>x+(r[k]||0),0));
-    a.dTotal=list.some(r=>r.dTotal!=null)? list.reduce((x,r)=>x+(r.dTotal||0),0) : null;
+    KEYS.forEach(k=>a[k]=all.reduce((x,r)=>x+(r[k]||0),0));
+    a.dTotal=all.some(r=>r.dTotal!=null)? all.reduce((x,r)=>x+(r.dTotal||0),0) : null;
     return a;
-  }).sort((a,b)=>b.total-a.total);
+  }).filter(c=>c.n>0 || c.dTotal).sort((a,b)=>b.total-a.total);
+  const nVis=rows.filter(r=>!r.outHidden).length;
 
   const wayT=live? "" : ` title="«В пути» истории не имеет — заполняется только на последний день (${fmtDate(W.last)})"`;
   const wayS=live? "" : `<span class="th-sub">только ${stkDM(W.last)}</span>`;
@@ -14321,13 +14330,13 @@ function renderStockTab(){
      Строка липнет под шапкой, поэтому видна и после прокрутки. */
   const T={}; KEYS.forEach(k=>T[k]=cats.reduce((a,c)=>a+(c[k]||0),0));
   T.dTotal=cats.some(c=>c.dTotal!=null)? cats.reduce((a,c)=>a+(c.dTotal||0),0) : null;
-  if(!rows.length){
+  if(!nVis){
     html+=`<tr><td colspan="12"><div class="empty-hint">Под текущий поиск и категории не попал ни один товар`
       +` с остатком на ${fmtDateLong(W.to)}. Очистите поиск или выберите «Все категории».</div></td></tr></tbody>`;
   } else {
     html+=`<tr class="stk-total"><td class="metric"><b>ИТОГО</b> `
       +`<span class="sub blk">${cats.length} ${plural(cats.length,"категория","категории","категорий")} · `
-      +`${rows.length} ${plural(rows.length,"товар","товара","товаров")}</span></td>`
+      +`${nVis} ${plural(nVis,"товар","товара","товаров")}</span></td>`
       +`<td><b>${stkNum(T.fbo)}</b></td><td><b>${way(T.wbTransit)}</b></td><td><b>${stkNum(T.msk)}</b></td>`
       +`<td><b>${stkNum(T.nsk1)}</b></td><td><b>${stkNum(T.nsk2)}</b></td><td><b>${stkNum(T.klin)}</b></td>`
       +`<td><b>${stkNum(T.ozAsg)}</b></td><td><b>${stkNum(T.oz)}</b></td><td><b>${way(T.ozTransit)}</b></td>`
@@ -14356,7 +14365,7 @@ function renderStockTab(){
   }
   document.getElementById("stkTable").innerHTML=html;
   document.getElementById("stkCount").textContent=
-    `${cats.length} ${plural(cats.length,"категория","категории","категорий")} · ${rows.length} ${plural(rows.length,"товар","товара","товаров")}`;
+    `${cats.length} ${plural(cats.length,"категория","категории","категорий")} · ${nVis} ${plural(nVis,"товар","товара","товаров")}`;
 }
 
 /* Блок «ушло со склада, а на площадке не появилось» — то, ради чего вкладка и делается.

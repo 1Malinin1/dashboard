@@ -22,6 +22,11 @@
 //   node scripts/set-plan.cjs 2026-09 --wb 6280000 --oz 5500000
 //   node scripts/set-plan.cjs 2026-09 --wb 6280000            (озон не трогаем)
 //   node scripts/set-plan.cjs drop 2026-09
+//   node scripts/set-plan.cjs 2026-10 --wb 5799460 --oz 8129080 --auto
+//      --auto — ЗАФИКСИРОВАТЬ авто-план (ДАН-04: прибыль 1–15 × дней/15 × 1,3), когда в данных появилось
+//      15-е число: цифры — из карточки плана на «Рекомендациях». Без фиксации план пересчитывался бы
+//      из текущих данных, и поздняя выгрузка за 1–15 молча сдвигала бы цель, которая по правилу «дальше
+//      не меняется». Карточка по-прежнему подписывает такой план «+30% к темпу 1–15».
 'use strict';
 const fs=require('fs'), vm=require('vm'), path=require('path');
 const OUT=path.join(__dirname,'..','decrypted');
@@ -42,7 +47,8 @@ function show(){
   keys.forEach(k=>{ const p=plan[k];
     console.log('   '+label(k)+'   ВБ '+F(p.wb||0).padStart(10)+' ₽ · Ozon '+F(p.oz||0).padStart(10)
       +' ₽ · вместе '+F((p.wb||0)+(p.oz||0)).padStart(11)+' ₽'
-      +(p.setAt? '   (поставлен '+p.setAt.slice(0,10)+')':'')); });
+      +(p.setAt? '   (поставлен '+p.setAt.slice(0,10)+')':'')
+      +(p.auto? '   авто-план ДАН-04, зафиксирован' : '')); });
 }
 
 const a=process.argv.slice(2);
@@ -60,6 +66,7 @@ if(a[0]==='drop'){
   const cur=plan[k]||{};
   plan[k]={ wb: wb!=null? wb : (cur.wb||0), oz: oz!=null? oz : (cur.oz||0),
     setAt: new Date().toISOString() };
+  if(a.includes('--auto')) plan[k].auto=true;
   console.log('План на '+label(k)+': ВБ '+F(plan[k].wb)+' ₽ · Ozon '+F(plan[k].oz)+' ₽ · вместе '+F(plan[k].wb+plan[k].oz)+' ₽');
 }
 
