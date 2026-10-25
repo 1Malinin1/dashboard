@@ -9158,8 +9158,11 @@ function renderAdsOzon(){
       const Bq  = noB? bl("нет данных") : (b? bl(fmt(Math.round(b.oq)), adDltHtml(adDeltaPct(r.oq,b.oq,nA,nB),1)) : "");
       const Brv = noB? bl("нет данных") : (b? bl(fmt(Math.round(b.rev)), adDltHtml(adDeltaPct(r.rev,b.rev,nA,nB),1)) : "");
       const Bsp = noB? bl("нет данных") : (b? bl(fmt(Math.round(b.spend)), adDltHtml(adDeltaPct(r.spend,b.spend,nA,nB),0)) : "");
-      const Bdr = noB? bl("нет данных") : (b? (b.spend>0? bl(adDrrTxt(b.drr), (r.spend>0&&isFinite(r.drr)&&isFinite(b.drr))? adDltPp(r.drr,b.drr,adDrrDirCls("ozon",r.drr,b.drr,r.be)) : "") : bl("—")) : "");
-      const Btg = noB? bl("нет данных") : (TB? (TB.sp>=AD_MIN_SPEND? bl(adDrrTxt(TB.drr), T.sp>=AD_MIN_SPEND? adDltPp(T.drr,TB.drr,adDrrDirCls("ozon",T.drr,TB.drr,T.be)) : "") : bl("—")) : "");
+      /* Почему в B нет ДРР — словами, как в пирамиде («мелкий расход» / «нет рекламы»), а не «—»: после «На цифрах →»
+         блок опытов показывал «склейка: ДРР 4,4% → 21,9%», а строка таблицы — «B: —» без объяснения (364 ₽ за день). */
+      const Bdr = noB? bl("нет данных") : (b? (b.spend>0? bl(adDrrTxt(b.drr), (r.spend>0&&isFinite(r.drr)&&isFinite(b.drr))? adDltPp(r.drr,b.drr,adDrrDirCls("ozon",r.drr,b.drr,r.be)) : "") : bl("нет рекламы")) : "");
+      const Btg = noB? bl("нет данных") : (TB? (TB.sp>=AD_MIN_SPEND? bl(adDrrTxt(TB.drr), T.sp>=AD_MIN_SPEND? adDltPp(T.drr,TB.drr,adDrrDirCls("ozon",T.drr,TB.drr,T.be)) : "")
+        : bl(TB.sp>0? "мелкий расход" : "нет рекламы")) : "");
       const Bcp = noB? bl("нет данных") : (b? (b.oq>0&&b.spend>0? bl(fmt(Math.round(b.cpo)), (r.oq>0&&r.spend>0)? adDltHtml(adDeltaPct(r.cpo,b.cpo),-1) : "") : bl("—")) : "");
       // безубыточный ДРР товара — под его ДРР: те же цифры, что в правиле «Ozon: реклама в убыток» на «Рекомендациях»
       const beL = !(r.spend>0)? "" : (r.be!=null? `<span class="sub2 mut">безубыт. ≤${adPc(r.be)}</span>`
@@ -9378,9 +9381,15 @@ function adPeriodUi(mp){
   rb.classList.toggle("active", !!(A&&!A.isDef));
   lbl.innerHTML=(on? '<span class="ad-ab">A</span> ' : "")+esc(A&&A.from? drpRangeText(A.from,A.to) : "Период");
   rb.title="Период A"+(A&&A.isDef? " — по умолчанию: "+defTxt : " — выбран вручную")+". Дни без данных в календаре заштрихованы";
-  cb.hidden=!C.cmpAllowed;
+  /* ВБ «Кандидаты/По склейкам»: сравнение периодов считается в «Отдаче» (расход и выручка кампаний). Кнопку не прячем —
+     вид по умолчанию «Кандидаты», и сравнения на ВБ было бы не найти; клик переключает на «Отдачу» и открывает период B. */
+  const toPerf = mp==="wb" && !C.cmpAllowed;
+  cb.hidden=!C.cmpAllowed && !toPerf;
   cb.classList.toggle("off", !on); cb.classList.toggle("active", on);
-  cl.innerHTML= on? '<span class="ad-ab">B</span> '+esc(B.from? drpRangeText(B.from,B.to) : drpRangeText(B.reqFrom,B.reqTo)+" · нет данных") : "Сравнить с периодом…";
+  cb.title= toPerf? "Сравнение двух периодов на Wildberries — в виде «Отдача»: нажмите, вид переключится и откроется календарь периода B"
+    : "Период B — с чем сравнить. По умолчанию — предыдущий период такой же длины";
+  cl.innerHTML= on? '<span class="ad-ab">B</span> '+esc(B.from? drpRangeText(B.from,B.to) : drpRangeText(B.reqFrom,B.reqTo)+" · нет данных")
+    : (toPerf? "Сравнить — в «Отдаче»…" : "Сравнить с периодом…");
   cx.hidden=!on;
   // строка «как посчитан период» — только когда есть что сказать
   const L=[], isOz=mp==="ozon";
@@ -9679,9 +9688,9 @@ function renderAdHyp(){
   /* По площадке пока пусто (сейчас так у Wildberries: весь журнал — правки Ozon) — одна короткая строка вместо
      абзаца-инструкции и двух пустых разделов: блок открыт по умолчанию и стоял стеной текста над таблицей. */
   if(!exps.length && !pats.length){
-    body.innerHTML=`<div class="hy-msg">По ${mpName} в ОПЫТ.md пока нет ни закономерностей, ни правок кампаний. Как только правку запишут `
-      +`(<code>node scripts/opyt.cjs change "${mp==="ozon"?"Ozon":"ВБ"}|&lt;код&gt;|&lt;что изменено&gt;|&lt;база&gt;|&lt;дата проверки&gt;"</code>), `
-      +`здесь появятся цифры «до → после» по коду и его склейке.</div>`;
+    // без командной строки: продавец не разработчик, правку в журнал записывает ассистент
+    body.innerHTML=`<div class="hy-msg">По ${mpName} в ОПЫТ.md пока нет ни закономерностей, ни правок кампаний. Как только правку `
+      +`рекламы ${mpName} запишем в журнал, здесь появятся цифры «до → после» по товару и его склейке.</div>`;
     body.dataset.hypMp=mp; _hypMemo={key:memoKey, opyt:_opyt, data:finRef, list:exps}; return;
   }
   const noMp=[...exps,...pats].filter(x=>x.m==null).length;
@@ -9745,7 +9754,7 @@ function renderAdHyp(){
     +(exps.length? `<div class="hy-scroll"><table class="hy-t"><thead><tr><th>Опыт</th><th>Товар</th><th>Что изменено · база</th><th>Окна сравнения</th>`
         +`<th>Товар: до → после</th><th>Его склейка: до → после</th></tr></thead>`
         +`<tbody>${rows}</tbody></table></div>`
-      : `<div class="hy-msg">По ${mpName} правок в журнале пока нет. Записываются командой <code>node scripts/opyt.cjs change "${mp==="ozon"?"Ozon":"ВБ"}|&lt;код&gt;|&lt;что изменено&gt;|&lt;база&gt;|&lt;дата проверки&gt;"</code>.</div>`);
+      : `<div class="hy-msg">По ${mpName} правок в журнале пока нет — как только запишем правку кампании, здесь появятся цифры «до → после».</div>`);
   body.dataset.hypMp=mp;
   _hypMemo={key:memoKey, opyt:_opyt, data:finRef, list:exps};
 }
@@ -14926,7 +14935,10 @@ document.getElementById("adHyp")?.addEventListener("click",e=>{
     hb.addEventListener("toggle",()=>{ try{ localStorage.setItem("wb_ad_hyp_open",hb.open?"1":"0"); }catch(e){} }); } }
 // периоды A/B — календарь openDateRangePicker (нативные <input type=date> убраны 19.10.2026)
 document.getElementById("adRangeBtn")?.addEventListener("click",e=>adOpenPicker(e.currentTarget,"A"));
-document.getElementById("adCmpBtn")?.addEventListener("click",e=>adOpenPicker(e.currentTarget,"B"));
+document.getElementById("adCmpBtn")?.addEventListener("click",e=>{ const btn=e.currentTarget;
+  // ВБ: сравнение — в «Отдаче»; с «Кандидатов/По склейкам» сперва переключаем вид (тем же обработчиком, что кнопка вида)
+  if(_appliedMp!=="ozon" && adView!=="perf") document.querySelector('#adViewSeg button[data-v="perf"]')?.click();
+  adOpenPicker(btn,"B"); });
 document.getElementById("adCmpOff")?.addEventListener("click",()=>{
   if(_appliedMp==="ozon"){ ozCmpOn=false; ozBFrom=ozBTo=null; ozBNote=null; } else { adCmpOn=false; adBFrom=adBTo=null; adBNote=null; }
   renderAdsTab(); });
