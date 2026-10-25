@@ -10437,20 +10437,20 @@ function renderHomeOzon(){
   const boH=ozBuyoutHist();
   const rbFrom=ozRevBaseFrom(), rbK=rbFrom? ozRevK(rbFrom) : 1;
   fresh.innerHTML=`<span class="dot"></span>Ozon · заказы по ${fmtDateLong(allDates[allDates.length-1])}`
-    +` · история с ${fmtDateLong(allDates[0])} · <b>ОЦЕНКА</b>: выручка = заказано × ${(bo*100).toFixed(1)}% выкупа`
+    +` · история с ${fmtDateLong(allDates[0])} · <b>ОЦЕНКА</b>: выручка = заказано × ${(bo*100).toFixed(1).replace(".",",")}% выкупа`
     +(boH? ` (замер ${fmtDateLong(boH[boH.length-1].from)} – ${fmtDateLong(boH[boH.length-1].to)}, от закрытых заказов)` : "")+`,`
     // ставка рекламы — ПРИМЕНЁННАЯ (из отчёта юнит-экономики), а не запасная T.ads из тарифа;
     // если последний день покрыт отчётом «Оплата за заказ», ставки там нет вовсе — только факт
     +(ozOrderFeeOn(allDates[allDates.length-1]) || allDates[allDates.length-1]>=OZ_FEE_REPORT_ONLY_FROM
-      ? ` площадка забирает ${ozFixedRate().toFixed(1)}% тарифа по вашим ИУ + реклама <b>по факту</b>`
+      ? ` площадка забирает ${ozFixedRate().toFixed(1).replace(".",",")}% тарифа по вашим ИУ + реклама <b>по факту</b>`
         +` (выгрузка XWAY + оплата за заказ по отчёту Ozon)`
-      : ` площадка забирает ${(ozFixedRate()+ozAdRateFor(allDates[allDates.length-1])).toFixed(1)}% по вашим ИУ`
-        +` (${ozFixedRate().toFixed(1)}% тариф + реклама ${ozAdRateFor(allDates[allDates.length-1]).toFixed(2).replace(".",",")}% по отчёту юнит-экономики)`)
+      : ` площадка забирает ${(ozFixedRate()+ozAdRateFor(allDates[allDates.length-1])).toFixed(1).replace(".",",")}% по вашим ИУ`
+        +` (${ozFixedRate().toFixed(1).replace(".",",")}% тариф + реклама ${ozAdRateFor(allDates[allDates.length-1]).toFixed(2).replace(".",",")}% по отчёту юнит-экономики)`)
     // по части товаров реклама идёт ПО ФАКТУ выгрузки XWAY — молчать об этом нельзя, у них другая экономика
     +(ozAdFactNote()||"")
     // база выручки сменилась с даты — молча этого показывать нельзя, цифры до и после несопоставимы
     +(rbFrom? ` · с ${fmtDateLong(rbFrom)} выручка считается по <b>новой методике Ozon</b>`
-        +` (${(rbK*100).toFixed(1)}% от «Предельной цены»), дни раньше — по-старому` : "");
+        +` (${(rbK*100).toFixed(1).replace(".",",")}% от «Предельной цены»), дни раньше — по-старому` : "");
 
   const catSel=document.getElementById("homeCat");
   if(catSel && !catSel.options.length) fillCategorySelect(catSel);
@@ -13441,15 +13441,16 @@ function recRulesOz(addAny, rs){
   if(P.length && lastOz){
     const miss=ozDates.filter(d=>d>=P[0].from && d<=lastOz && ozAdSpendPartIdx(d)<0);
     if(miss.length) g.push({n:miss.length+" "+plural(miss.length,"день","дня","дней"),
-      x:"нет выгрузки XWAY за "+recRangesTxt(miss)+" — расход кампаний за эти дни в прибыль не попал",
+      x:"нет выгрузки XWAY за "+recRangesTxt(miss)+" — расход кампаний за "+(miss.length>1? "эти дни":"этот день")+" в прибыль не попал",
       w:"выгрузка XWAY по Ozon"});
   }
-  const F=ozOrderFee();
-  if(F && lastOz){
-    const first=F.periods.reduce((m,p)=>(!m||p.from<m)? p.from : m, "");
-    const miss=ozDates.filter(d=>d>=first && d<=lastOz && !ozOrderFeeOn(d));
+  /* Дни с 01.10 без отчёта — тем же правилом, что строка свежести и «Реклама» (ozFeeMissDays, РЕК-23): раньше
+     счёт шёл от первого дня отчётов, и дни между 01.10 и первым отчётом (или все дни, пока отчётов нет вовсе)
+     здесь молча не назывались. */
+  if(lastOz){
+    const miss=ozFeeMissDays(null,lastOz);
     if(miss.length) g.push({n:miss.length+" "+plural(miss.length,"день","дня","дней"),
-      x:"нет отчёта «Оплата за заказ» за "+recRangesTxt(miss)+" — плата за заказ за эти дни в прибыли не учтена (берём только из ваших отчётов)",
+      x:"нет отчёта «Оплата за заказ» за "+recRangesTxt(miss)+" — плата за заказ за "+(miss.length>1? "эти дни":"этот день")+" в прибыли не учтена (берём только из ваших отчётов)",
       w:"отчёт Ozon «Оплата за заказ (все товары)»"});
   }
   // юнит-экономика — раз в месяц, лучшая проверка модели; ручные ставки отчётом не считаются
