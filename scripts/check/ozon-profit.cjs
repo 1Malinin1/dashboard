@@ -23,18 +23,29 @@ if (!CODE) { console.error('no code'); process.exit(2); }
       const s = k => r.reduce((a, x) => a + (x[k] || 0), 0);
       return { n: r.length, rev: Math.round(s('revenue')), mp: Math.round(s('mpFee')), ad: Math.round(s('ad')),
         cogs: Math.round(s('cogs')), profit: Math.round(s('profit')) }; };
-    out.oct = sum('2026-10-01', '2026-10-14');
+    /* Окно отчётов «Оплата за заказ» берём ИЗ ДАННЫХ (первый и последний день периодов отчёта), а не
+       числом: при жёстких 01–14.10 после заливки 15–18.10 проверка считала 282 строки «вне окна». */
+    const D = (RD.ozon.orderSeries.dates || []), lastOz = D[D.length - 1];
+    const FP = RD.ozon.meta.orderFee.periods;
+    const feeFrom = FP.reduce((m, p) => (!m || p.from < m) ? p.from : m, '');
+    const feeTo0 = FP.reduce((m, p) => (!m || p.to > m) ? p.to : m, ''), feeTo = feeTo0 > lastOz ? lastOz : feeTo0;
+    const octTo = lastOz < '2026-10-31' ? lastOz : '2026-10-31';
+    out.feeWin = [feeFrom, feeTo];
+    out.oct = sum('2026-10-01', octTo); out.oct.to = octTo;
+    out.oct14 = sum('2026-10-01', '2026-10-14');            // опорная цифра 15.10.2026: реклама 1 242 047
     out.sep = sum('2026-09-01', '2026-09-30');
     out.aug = sum('2026-08-01', '2026-08-31');
     // инвариант: mpFee = выручка × фикс + реклама — по каждой строке
     out.mpBad = rows.filter(r => Math.abs(r.mpFee - (r.revenue * fixed / 100 + r.ad)) > 0.01).length;
-    // инвариант: Σ ad за покрытые дни = Σ XWAY + Σ списаний отчёта
-    let xw = 0; ozAdSpendParts().forEach(p => { if (p.from >= '2026-10-01' && p.to <= '2026-10-14') Object.values(p.bySup).forEach(v => xw += v); });
-    let fee = 0; Object.entries(RD.ozon.meta.orderFee.byDate).forEach(([d, m]) => { if (d <= '2026-10-14') Object.values(m).forEach(v => fee += v); });
+    // инвариант: Σ ad за дни с отчётом = Σ XWAY + Σ списаний отчёта
+    let xw = 0; ozAdSpendParts().forEach(p => { if (p.from >= feeFrom && p.to <= feeTo) Object.values(p.bySup).forEach(v => xw += v); });
+    let fee = 0; Object.entries(RD.ozon.meta.orderFee.byDate).forEach(([d, m]) => { if (d >= feeFrom && d <= feeTo) Object.values(m).forEach(v => fee += v); });
     out.xw = Math.round(xw); out.fee = Math.round(fee);
+    out.adFeeWin = rows.filter(x => x.date >= feeFrom && x.date <= feeTo).reduce((a, x) => a + x.ad, 0);
+    out.feeChain = Math.round(out.adFeeWin - xw - fee);      // должно быть 0
     out.adOctExact = rows.filter(x => x.date >= '2026-10-01' && x.date <= '2026-10-14').reduce((a, x) => a + x.ad, 0);
     out.feeFactRows = rows.filter(x => x.feeFact).length;
-    out.feeOutside = rows.filter(x => x.feeFact && (x.date < '2026-10-01' || x.date > '2026-10-14')).length;
+    out.feeOutside = rows.filter(x => x.feeFact && (x.date < feeFrom || x.date > feeTo)).length;
     out.zeroFeeRows = rows.filter(x => x.feeFact && x.revenue === 0 && !x.ordQty).map(x => [x.date, x.sku, Math.round(x.fee)]);
     // цепочка ДРР: части сходятся
     const ar = ozAdRows(), L = ozAdLevels(ar), W = ozAdWindow();
