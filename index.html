@@ -657,10 +657,13 @@
   .hyp .hy-pat .meta{grid-column:2/4;font-size:11.5px;color:var(--muted);display:-webkit-box;-webkit-box-orient:vertical;
     -webkit-line-clamp:3;overflow:hidden}
   .hyp .hy-pat .meta b{color:var(--text-2);font-weight:600}
+  .hyp .hy-pat .tests{grid-column:2/4;font-size:11.5px;color:var(--text-2);display:flex;flex-wrap:wrap;align-items:center;gap:4px 8px}
+  .hyp .hy-pat .tests b{font-weight:600} .hyp .hy-pat .tests .mut{color:var(--muted)}
+  .hyp .hy-t .hy-tests{color:var(--text-2);margin-bottom:3px} .hyp .hy-t .hy-tests b{color:var(--accent);font-weight:650}
   .hyp .hy-msg{font-size:12.5px;color:var(--text-2);padding:10px 12px;border:1px dashed var(--border-2);border-radius:var(--r-sm)}
   @media(max-width:600px){
     .hyp>summary{padding:12px 14px} .hyp .hy-body{padding:0 12px 14px}
-    .hyp .hy-pat{grid-template-columns:44px minmax(0,1fr)} .hyp .hy-pat>.badge{grid-column:2;justify-self:start} .hyp .hy-pat .meta{grid-column:1/3}
+    .hyp .hy-pat{grid-template-columns:44px minmax(0,1fr)} .hyp .hy-pat>.badge{grid-column:2;justify-self:start} .hyp .hy-pat .meta,.hyp .hy-pat .tests{grid-column:1/3}
     .ad-period{width:100%} .ad-period .drp-trigger{flex:1 1 auto;justify-content:flex-start;min-width:0}
     .ad-period .drp-trigger span{overflow:hidden;text-overflow:ellipsis}
     #tab-ads .toolbar .count{white-space:normal;margin-left:0;min-width:0}   /* длинная подпись периода не распирает страницу */
@@ -9561,10 +9564,16 @@ function ozAdPickerOpts(which){
    min(дата проверки, последний день данных), «до» — столько же дней прямо перед правкой. Метрики — расход, заказы,
    выручка в выкупе, ДРР, CPO по коду и по его склейке. Меньше 7 дней «после» — «рано судить» (один день — не вердикт).
    Клик «На цифрах →» ставит период A = «после», B = «до» и фильтрует таблицу по коду.
+   У каждой правки — какую закономерность она проверяет (колонка «гипотеза», см. hypIdsOf ниже).
    ================================================================================================ */
-let _opyt=null, _opytState="idle", _opytErr="", _hypSel=null, _hypList=[], _hypMemo=null;
+let _opyt=null, _opytState="idle", _opytErr="", _hypSel=null, _hypList=[], _hypMemo=null, _hypPat=null;
+/* СВЯЗЬ «ПРАВКА → ЗАКОНОМЕРНОСТЬ» (25.10.2026, продавец — «да» на вопрос, записывать ли при каждой правке, какую
+   закономерность она проверяет). Колонка журнала «гипотеза»: П-xx (несколько через запятую) или «—»; пишет
+   scripts/opyt.cjs (change шестой частью, link). У правки печатается «проверяет П-01 …», у закономерности — правки,
+   которые её проверяют, с кнопкой показать только их (_hypPat). */
+const hypIdsOf=e=>(String((e&&e.hyp)||"").match(/П-\d+/g)||[]);
 const OPYT_COLS=[["id",/^id$/i],["mp",/^площадк/i],["date",/^дата/i],["code",/^код/i],["what",/^что/i],["base",/^база/i],
-  ["check",/^проверит/i],["outcome",/^исход/i],["text",/^закономерн/i],["conf",/^подтв/i],["effect",/^эффект/i],["where",/^где/i]];
+  ["check",/^проверит/i],["outcome",/^исход/i],["hyp",/^гипотез/i],["text",/^закономерн/i],["conf",/^подтв/i],["effect",/^эффект/i],["where",/^где/i]];
 function opytMap(head,rows){
   const idx={}; head.forEach((h,i)=>{ const c=OPYT_COLS.find(x=>x[1].test((h||"").trim())); if(c&&idx[c[0]]==null) idx[c[0]]=i; });
   return rows.filter(r=>r.some(c=>c&&c.trim()))
@@ -9700,27 +9709,34 @@ function renderAdHyp(){
   /* Блок не зависит от периода, поиска и фильтров вкладки — пересчитываем, только когда сменились площадка,
      выбранный опыт, сам ОПЫТ.md, данные (новые массивы после перезаливки) или день. Иначе каждый символ в поиске
      пересобирал бы цифры всех опытов. */
-  const memoKey=[mp,_hypSel,_drpToday()].join("|"), finRef=mp==="ozon"? ozFinRows() : (RD&&RD.adPerf);
+  const memoKey=[mp,_hypSel,_hypPat,_drpToday()].join("|"), finRef=mp==="ozon"? ozFinRows() : (RD&&RD.adPerf);
   if(_hypMemo && _hypMemo.key===memoKey && _hypMemo.opyt===_opyt && _hypMemo.data===finRef && body.dataset.hypMp===mp){
     _hypList=_hypMemo.list; return; }
   _hypCache.clear();
   const D=_opyt;
   const pats=D.pat.map(p=>({...p, m:opytMp(p.mp,[p.text,p.effect,p.where].join(" "))})).filter(p=>p.m===mp||p.m==="both"||p.m==null);
   const today=_drpToday();
-  const exps=D.exp.map(e=>({...e, m:opytMp(e.mp,[e.what,e.base].join(" "))})).filter(e=>e.m===mp||e.m==="both"||e.m==null)
-    .map(e=>({...e, ev:hypEval(mp,e)}));
+  const patById={}; D.pat.forEach(p=>{ patById[p.id]=p; });
+  const expsAll=D.exp.map(e=>({...e, m:opytMp(e.mp,[e.what,e.base].join(" "))})).filter(e=>e.m===mp||e.m==="both"||e.m==null);
+  // правки, которые проверяют закономерность, — по всем правкам площадки (до фильтра по закономерности)
+  const testsOf={}; expsAll.forEach(e=>hypIdsOf(e).forEach(h=>{ (testsOf[h]||(testsOf[h]=[])).push(e); }));
+  if(_hypPat && !testsOf[_hypPat]) _hypPat=null;              // закономерность без правок на этой площадке — фильтр снять
+  const exps=expsAll.filter(e=>!_hypPat || hypIdsOf(e).includes(_hypPat)).map(e=>({...e, ev:hypEval(mp,e)}));
   // порядок: просроченные проверки → по дате проверки → закрытые (с исходом) внизу
   const rk=e=> e.ev.outcome? 2 : (e.ev.overdue? 0 : 1);
   exps.sort((a,b)=>(rk(a)-rk(b)) || String(a.ev.dc||"9").localeCompare(String(b.ev.dc||"9")) || String(a.id).localeCompare(String(b.id),"ru",{numeric:true}));
   _hypList=exps;
   const nOver=exps.filter(e=>e.ev.overdue).length, nOpen=exps.filter(e=>!e.ev.outcome).length;
   const nDue=exps.filter(e=>!e.ev.outcome && !e.ev.overdue && e.ev.dc && e.ev.dc<=addDays(today,3)).length;
+  const nLinked=expsAll.filter(e=>hypIdsOf(e).length).length;
   sum.innerHTML=`<b>${exps.length}</b> ${plural(exps.length,"опыт","опыта","опытов")}${exps.length? ` (ждут итога: ${nOpen})` : ""} · <b>${pats.length}</b> ${plural(pats.length,"закономерность","закономерности","закономерностей")}`
+    +(nLinked? ` · проверяют закономерность: ${nLinked} из ${expsAll.length}` : "")
+    +(_hypPat? ` · показаны правки по ${esc(_hypPat)}` : "")
     +(nOver? ` · <span class="hot">проверка просрочена: ${nOver}</span>` : "")
     +(nDue? ` · проверить в ближайшие 3 дня: ${nDue}` : "")+` · из ОПЫТ.md`;
   /* По площадке пока пусто (сейчас так у Wildberries: весь журнал — правки Ozon) — одна короткая строка вместо
      абзаца-инструкции и двух пустых разделов: блок открыт по умолчанию и стоял стеной текста над таблицей. */
-  if(!exps.length && !pats.length){
+  if(!expsAll.length && !pats.length){
     // без командной строки: продавец не разработчик, правку в журнал записывает ассистент
     body.innerHTML=`<div class="hy-msg">По ${mpName} в ОПЫТ.md пока нет ни закономерностей, ни правок кампаний. Как только правку `
       +`рекламы ${mpName} запишем в журнал, здесь появятся цифры «до → после» по товару и его склейке.</div>`;
@@ -9766,7 +9782,9 @@ function renderAdHyp(){
         +(v.after&&ok? `<span class="s" style="margin-top:6px"><button type="button" class="hy-go" data-hyp-go="${i}" title="Период A = после правки, B = до, таблица — по коду ${esc(e.code)}">На цифрах →</button></span>` : "")+`</td>`
       +`<td>${art}<span class="s">${esc((catName(e.code)||"").slice(0,40))}</span>`
         +(A&&A.tagName? `<span class="s">склейка «${esc(A.tagName)}»</span>` : "")+`</td>`
-      +`<td class="what">${hypMd(v.what)}<span class="s">база: ${hypMd(e.base||"—")}</span>`
+      +`<td class="what">${hypIdsOf(e).map(h=>{ const p=patById[h]; const t=p? p.text : "нет такой закономерности в ОПЫТ.md";
+          return `<span class="s hy-tests" title="${esc(h+": "+t)}">проверяет <b>${esc(h)}</b> · ${esc(t.length>70? t.slice(0,68)+"…" : t)}</span>`; }).join("")}`
+        +`${hypMd(v.what)}<span class="s">база: ${hypMd(e.base||"—")}</span>`
         +(v.outcome? `<span class="s"><b>Исход:</b> ${hypMd(v.outcome)}</span>` : "")+`</td>`
       +`<td>${win}</td>`
       +`<td>${ok? met(B.code,A.code,B.days,A.days) : "—"}</td>`
@@ -9775,15 +9793,23 @@ function renderAdHyp(){
   const goal = mp==="ozon"? `ДРР на Ozon: ${OZ_DRR_GOAL}% — минимум (соинвест по ИУ), безубыточный — потолок; зелёным — к коридору.`
     : `ДРР на Wildberries: ${AD_DRR_GOAL}% — потолок; зелёным — снижение.`;
   body.innerHTML=`<p class="hy-cap">Что мы меняли в рекламе ${mpName} и что из этого вышло — по журналу правок и закономерностям из ОПЫТ.md. `
+    +`У правки написано, какую закономерность она проверяет; у закономерности — правки, которые её проверяют. `
     +`«После» — от дня правки до даты проверки (или до последнего дня данных, ${fmtDate(v0last(mp))}), «до» — столько же дней перед правкой; `
     +`цифры по коду и по его склейке — те же, что в таблице ниже. Меньше 7 дней после правки — <b>рано судить</b>: реклама даёт заказы и в следующие дни. ${goal}`
     +(noMp? ` <b>${noMp}</b> ${plural(noMp,"запись","записи","записей")} без площадки — показаны на обеих.` : "")+`</p>`
     +`<div class="hy-h">Закономерности — что мы уже видели в рекламе ${mpName} (подтв. — сколько раз повторилось)</div>`
     +(pats.length? `<div class="hy-pats">`+pats.map(p=>`<div class="hy-pat"><span class="id">${esc(p.id)}</span><span>${hypMd(p.text)}</span>`
         +`<span class="badge ${(+p.conf||0)>=3?"good":"nodata"}" title="Сколько раз подтвердилась"><span class="d"></span>подтв. ${esc(p.conf||"—")}</span>`
-        +`<span class="meta" title="${esc("Эффект: "+(p.effect||"—")+" · где замерено: "+(p.where||"—"))}"><b>Эффект:</b> ${hypMd(p.effect||"—")} · <b>где замерено:</b> ${hypMd(p.where||"—")}${p.m==null? " · площадка не указана" : ""}</span></div>`).join("")+`</div>`
+        +`<span class="meta" title="${esc("Эффект: "+(p.effect||"—")+" · где замерено: "+(p.where||"—"))}"><b>Эффект:</b> ${hypMd(p.effect||"—")} · <b>где замерено:</b> ${hypMd(p.where||"—")}${p.m==null? " · площадка не указана" : ""}</span>`
+        +(()=>{ const t=testsOf[p.id]||[]; if(!t.length) return "";
+            const out=e=>(e.outcome&&!/^[—–-]$/.test(e.outcome)); const nDone=t.filter(out).length;
+            return `<span class="tests"><b>Проверяют правки:</b> ${t.map(e=>esc(e.id)).join(" · ")}`
+              +` <span class="mut">(${nDone? "с итогом "+nDone+", " : ""}ждут итога ${t.length-nDone})</span>`
+              +` <button type="button" class="hy-go" data-hyp-pat="${esc(p.id)}">${_hypPat===p.id? "Показать все правки" : "Только эти правки ↓"}</button></span>`; })()
+        +`</div>`).join("")+`</div>`
       : `<div class="hy-msg">Закономерностей по ${mpName} пока нет.</div>`)
-    +`<div class="hy-h">Опыты — журнал правок кампаний ${mpName}</div>`
+    +`<div class="hy-h">Опыты — журнал правок кампаний ${mpName}`
+      +(_hypPat? ` · только проверяющие ${esc(_hypPat)} (${exps.length} из ${expsAll.length}) <button type="button" class="hy-go" data-hyp-pat="${esc(_hypPat)}">Показать все</button>` : "")+`</div>`
     +(exps.length? `<div class="hy-scroll"><table class="hy-t"><thead><tr><th>Опыт</th><th>Товар</th><th>Что изменено · база</th><th>Окна сравнения</th>`
         +`<th>Товар: до → после</th><th>Его склейка: до → после</th></tr></thead>`
         +`<tbody>${rows}</tbody></table></div>`
@@ -14972,6 +14998,8 @@ document.getElementById("adGroupSel")?.addEventListener("change",e=>{ adGroup=e.
 // «Гипотезы и опыты»: «На цифрах →» и «Повторить», запомнить свёрнут/развёрнут (удобство одного зрителя)
 document.getElementById("adHyp")?.addEventListener("click",e=>{
   const g=e.target.closest("[data-hyp-go]"); if(g){ hypGo(+g.dataset.hypGo); return; }
+  const hp=e.target.closest("[data-hyp-pat]");
+  if(hp){ _hypPat= _hypPat===hp.dataset.hypPat? null : hp.dataset.hypPat; renderAdHyp(); return; }
   if(e.target.closest("[data-hyp-retry]")){ _opytState="idle"; renderAdHyp(); } });
 { const hb=document.getElementById("adHypBox");
   if(hb){ try{ if(localStorage.getItem("wb_ad_hyp_open")==="0") hb.open=false; }catch(e){}

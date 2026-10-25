@@ -10,11 +10,18 @@
  *   node scripts/opyt.cjs brief <код> [площадка]   что мы уже знаем по этому товару + закономерности (площадки)
  *   node scripts/opyt.cjs due [дата]               какие правки пора проверять (по умолчанию сегодня)
  *   node scripts/opyt.cjs list                     всё кратко
- *   node scripts/opyt.cjs change "<площадка>|<код>|<что изменено>|<база>|<дата проверки>"   добавить правку
+ *   node scripts/opyt.cjs change "<площадка>|<код>|<что изменено>|<база>|<дата проверки>|<П-xx>"   добавить правку
+ *   node scripts/opyt.cjs link <И-ID> <П-ID[,П-ID]|—>   какую закономерность проверяет правка
  *   node scripts/opyt.cjs close <ID> "<исход>"     пометить исход правки
  *   node scripts/opyt.cjs pattern "<площадка>|<текст>|<эффект>|<где>"                       новая закономерность
  *   node scripts/opyt.cjs confirm <ID> "<где>"     засчитать подтверждение
  *   node scripts/opyt.cjs add-mp-column [площадка] добавить колонку «площадка» в обе таблицы (один раз)
+ *   node scripts/opyt.cjs add-hyp-column           добавить колонку «гипотеза» в журнал правок (один раз)
+ *
+ * ГИПОТЕЗА — колонка журнала «гипотеза» (25.10.2026, продавец: «да» на вопрос, записывать ли при каждой правке,
+ * какую закономерность она проверяет): номер закономерности П-xx (можно несколько через запятую) или «—», если
+ * правка ничего не проверяет. По ней блок «Гипотезы и опыты» на «Рекламе» показывает «проверяет П-01 …» у правки
+ * и список правок у закономерности. Номер проверяется по таблице закономерностей — опечатка не запишется.
  *
  * ПЛОЩАДКА — колонка «площадка» (Ozon / ВБ / обе), добавлена 19.10.2026: вкладка «Реклама» показывает блок
  * «Гипотезы и опыты» отдельно по каждой площадке и считает цифры правки по данным именно этой площадки.
@@ -33,7 +40,7 @@ const write = s => fs.writeFileSync(FILE, s);
 
 // канонические ключи колонок по заголовку (порядок колонок в файле может быть любым)
 const COLS = [["id", /^id$/i], ["mp", /^площадк/i], ["date", /^дата/i], ["code", /^код/i], ["what", /^что/i],
-  ["base", /^база/i], ["check", /^проверит/i], ["outcome", /^исход/i], ["text", /^закономерн/i],
+  ["base", /^база/i], ["check", /^проверит/i], ["outcome", /^исход/i], ["hyp", /^гипотез/i], ["text", /^закономерн/i],
   ["conf", /^подтв/i], ["effect", /^эффект/i], ["where", /^где/i]];
 const MP_DEFAULT = "Ozon";
 function normMp(s) {
@@ -71,6 +78,19 @@ const today = () => new Date().toISOString().slice(0, 10);
 const ddmm = d => d.slice(8, 10) + "." + d.slice(5, 7);
 const noOut = r => !r.outcome || r.outcome === "—";
 const mpTag = r => r.mp ? "[" + r.mp + "] " : "";
+// номера закономерностей в колонке «гипотеза» («П-01, П-11» / «—»)
+const hypIds = r => (String(r.hyp || "").match(/П-\d+/g) || []);
+const patText = id => { const p = PAT().find(x => x.id === id); return p ? p.text : "нет такой закономерности"; };
+/* «П-1, п-11» → «П-01, П-11»; «—»/пусто → «—»; неизвестный номер — ошибка (опечатка не должна записаться) */
+function normHyp(v) {
+  const s = String(v == null ? "" : v).trim();
+  if (!s || /^[—–-]$/.test(s)) return "—";
+  const ids = s.split(/[,;\s]+/).filter(Boolean).map(x => { const m = x.match(/^[пП]-?(\d+)$/); return m ? "П-" + m[1].padStart(2, "0") : null; });
+  if (ids.some(x => !x)) { console.error("гипотеза — номер закономерности П-xx (несколько через запятую) или «—»: «" + s + "»"); process.exit(1); }
+  const known = new Set(PAT().map(p => p.id)), bad = ids.filter(x => !known.has(x));
+  if (bad.length) { console.error("нет такой закономерности: " + bad.join(", ") + ". Есть: " + [...known].join(", ")); process.exit(1); }
+  return [...new Set(ids)].join(", ");
+}
 
 function cmdBrief(code, mp) {
   if (!code) { console.error("нужен код 1С"); process.exit(1); }
@@ -80,11 +100,16 @@ function cmdBrief(code, mp) {
   console.log("\n╔ ЧТО МЫ УЖЕ ЗНАЕМ — код " + code + (want ? " · " + want : ""));
   if (mine.length) {
     console.log("║ правки по этому товару:");
-    for (const r of mine) console.log("║   [" + r.id + "] " + mpTag(r) + r.date + " · " + r.what + "\n║        база: " + r.base + " · проверить " + r.check + " · исход: " + (noOut(r) ? "ещё нет" : r.outcome));
+    for (const r of mine) console.log("║   [" + r.id + "] " + mpTag(r) + r.date + " · " + r.what + "\n║        база: " + r.base + " · проверить " + r.check + " · исход: " + (noOut(r) ? "ещё нет" : r.outcome)
+      + (hypIds(r).length ? "\n║        проверяет: " + hypIds(r).map(h => h + " «" + patText(h) + "»").join("; ") : ""));
   } else console.log("║ правок по этому товару ещё не было");
   console.log("║");
   console.log("║ закономерности" + (want ? " площадки " + want : " (площадка — в скобках)") + ":");
-  for (const p of PAT().filter(okMp)) console.log("║   [" + p.id + "] " + mpTag(p) + p.text + "\n║        " + p.effect + "  (подтв. " + p.conf + ")");
+  for (const p of PAT().filter(okMp)) {
+    const t = CHG().filter(r => hypIds(r).includes(p.id));
+    console.log("║   [" + p.id + "] " + mpTag(p) + p.text + "\n║        " + p.effect + "  (подтв. " + p.conf + ")"
+      + (t.length ? "\n║        проверяют правки: " + t.map(r => r.id + (noOut(r) ? " (ждём)" : " → " + r.outcome)).join(", ") : ""));
+  }
   console.log("╚ порядок расчёта и настройки — ПРАВИЛА.md: node scripts/rules.cjs preflight реклама-озон|реклама-вб\n");
 }
 
@@ -94,7 +119,8 @@ function cmdDue(d) {
   if (!due.length) { console.log("На " + lim + " проверять нечего. Ближайшие:");
     CHG().filter(noOut).slice(0, 5).forEach(r => console.log("  " + r.check + "  " + mpTag(r) + r.code + "  " + r.what)); return; }
   console.log("ПОРА ПРОВЕРИТЬ (" + due.length + "):");
-  for (const r of due) console.log("  [" + r.id + "] " + mpTag(r) + r.code + " · " + r.what + "\n      база: " + r.base);
+  for (const r of due) console.log("  [" + r.id + "] " + mpTag(r) + r.code + " · " + r.what + "\n      база: " + r.base
+    + (hypIds(r).length ? "\n      проверяет: " + hypIds(r).map(h => h + " «" + patText(h) + "»").join("; ") : ""));
   console.log("\nПосле проверки: node scripts/opyt.cjs close <ID> \"<исход>\"");
 }
 // даты в файле вида «21.10» или «2026-10-21»
@@ -108,7 +134,8 @@ function cmdList() {
   for (const p of PAT()) console.log("  [" + p.id + "] " + mpTag(p) + "подтв. " + p.conf + " · " + p.text);
   const c = CHG();
   console.log("\nПРАВКИ (" + c.length + ", без исхода " + c.filter(noOut).length + "):");
-  for (const r of c) console.log("  [" + r.id + "] " + mpTag(r) + r.date + " " + r.code + " · " + r.what + " · проверить " + r.check + (noOut(r) ? "" : " → " + r.outcome));
+  for (const r of c) console.log("  [" + r.id + "] " + mpTag(r) + r.date + " " + r.code + " · " + r.what + " · проверить " + r.check
+    + (hypIds(r).length ? " · проверяет " + hypIds(r).join(", ") : "") + (noOut(r) ? "" : " → " + r.outcome));
 }
 
 function nextId(prefix, list) {
@@ -134,14 +161,17 @@ function rowLine(T, o) {
 
 function cmdChange(arg) {
   const t = takeMp(String(arg || "").split("|").map(s => s.trim()), 4);
-  if (!t) { console.error('нужно: "<площадка>|<код>|<что изменено>|<база>|<дата проверки>"'); process.exit(1); }
+  if (!t) { console.error('нужно: "<площадка>|<код>|<что изменено>|<база>|<дата проверки>|<П-xx или —>"'); process.exit(1); }
   const p = t.rest;
   const T = table("ЖУРНАЛ ПРАВОК КАМПАНИЙ");
   if (!T.head) { console.error("не нашёл таблицу журнала"); process.exit(1); }
+  const hyp = normHyp(p[4]);
+  if (p[4] == null) console.warn("не указано, какую закономерность проверяет правка — записано «—». Допишите: node scripts/opyt.cjs link <ID> П-xx");
+  if (T.idx.hyp == null && hyp !== "—") console.warn("в журнале нет колонки «гипотеза» — сначала: node scripts/opyt.cjs add-hyp-column");
   const id = nextId("И", T.rows.map(r => r.o));
-  const line = rowLine(T, { id, mp: t.mp, date: ddmm(today()), code: p[0], what: p[1], base: p[2], check: p[3], outcome: "—" });
+  const line = rowLine(T, { id, mp: t.mp, date: ddmm(today()), code: p[0], what: p[1], hyp, base: p[2], check: p[3], outcome: "—" });
   write(read().trimEnd() + "\n" + line + "\n");
-  console.log("Записано " + id + " [" + t.mp + "]: " + p[0] + " · " + p[1] + " · проверить " + p[3]);
+  console.log("Записано " + id + " [" + t.mp + "]: " + p[0] + " · " + p[1] + " · проверить " + p[3] + (hyp !== "—" ? " · проверяет " + hyp : ""));
 }
 
 function cmdClose(id, outcome) {
@@ -182,6 +212,34 @@ function cmdConfirm(id, where) {
   console.log(id + ": подтверждений стало больше, добавлено «" + where + "»");
 }
 
+function cmdLink(id, hypArg) {
+  if (!id || hypArg == null) { console.error("нужно: link <И-ID> <П-ID[,П-ID]|—>"); process.exit(1); }
+  const T = table("ЖУРНАЛ ПРАВОК КАМПАНИЙ");
+  if (T.idx.hyp == null) { console.error("в журнале нет колонки «гипотеза» — сначала: node scripts/opyt.cjs add-hyp-column"); process.exit(1); }
+  const r = T.rows.find(x => x.o.id === id);
+  if (!r) { console.error("Не найдена правка " + id); process.exit(1); }
+  const hyp = normHyp(hypArg), c = r.cells.slice();
+  c[T.idx.hyp] = hyp;
+  T.lines[r.line] = "| " + c.join(" | ") + " |";
+  write(T.lines.join("\n"));
+  console.log(id + " проверяет: " + (hyp === "—" ? "ничего (—)" : hyp.split(", ").map(h => h + " «" + patText(h) + "»").join("; ")));
+}
+
+/* Один раз: колонка «гипотеза» в журнал правок — после «что изменено», существующим строкам «—». */
+function cmdAddHypColumn() {
+  const T = table("ЖУРНАЛ ПРАВОК КАМПАНИЙ");
+  if (!T.head) { console.error("не нашёл таблицу журнала"); process.exit(1); }
+  if (T.idx.hyp != null) { console.log("колонка «гипотеза» уже есть"); return; }
+  const at = (T.idx.what != null ? T.idx.what : T.head.cells.length - 1) + 1;
+  const ins = (k, v) => { const c = splitRow(T.lines[k]); c.splice(at, 0, v); T.lines[k] = "| " + c.join(" | ") + " |"; };
+  ins(T.head.line, "гипотеза");
+  const sep = T.lines.findIndex((l, k) => k > T.head.line && /^\|/.test(l) && isSep(splitRow(l)));
+  if (sep > 0) T.lines[sep] = "|" + "---|".repeat(splitRow(T.lines[sep]).length + 1);
+  T.rows.forEach(r => ins(r.line, "—"));
+  write(T.lines.join("\n"));
+  console.log("журнал: колонка «гипотеза» добавлена, строк — " + T.rows.length + " («—»; заполнить: link <ID> П-xx)");
+}
+
 /* Один раз: вставить колонку «площадка» в обе таблицы (после ID у закономерностей, после «дата» у журнала),
    существующим строкам — указанная площадка. Повторный запуск ничего не меняет. */
 function cmdAddMpColumn(mpArg) {
@@ -214,5 +272,7 @@ switch (cmd) {
   case "pattern": cmdPattern(a); break;
   case "confirm": cmdConfirm(a, b); break;
   case "add-mp-column": cmdAddMpColumn(a); break;
+  case "link": cmdLink(a, b); break;
+  case "add-hyp-column": cmdAddHypColumn(); break;
   default: console.log(read().split("*/")[0].split("/**")[1].trim());
 }

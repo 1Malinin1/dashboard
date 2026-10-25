@@ -38,7 +38,7 @@ node scripts/ozon-ozz-detect.cjs <выгрузка XWAY Ozon>     # где ра�
 цена продавца вместо цены для покупателя). **Нашёл ошибку в правиле — не правь текст поверх:**
 `node scripts/rules.cjs revoke <ID> --вместо <новый ID>`, новое правило с полем `отменяет:`, потом
 `node scripts/rules.cjs check`. Иначе следующая сессия «починит» обратно. Опыт по кампаниям: перед решением
-`opyt.cjs brief <код>`, после правки `opyt.cjs change`, через неделю `opyt.cjs due` и `close <ID> "<исход>"`,
+`opyt.cjs brief <код>`, после правки `opyt.cjs change` (с номером проверяемой закономерности П-xx — ДАН-06), через неделю `opyt.cjs due` и `close <ID> "<исход>"`,
 новая закономерность — `pattern`, повтор — `confirm <ID>`.
 
 ## Что это
