@@ -224,6 +224,8 @@
     border:0;background:none;color:var(--text-1);font:inherit;text-align:left;padding:7px 9px;border-radius:9px;cursor:pointer}
   .theme-opt:hover,.theme-opt:focus-visible{background:var(--surface-2)}
   .theme-opt[aria-checked="true"]{background:var(--accent-weak)}
+  /* на подложке выбранного пункта --muted в тёмных темах не дотягивал до 4,5:1 («Графит» 4,05, «Полночь» 4,38) */
+  .theme-opt[aria-checked="true"] .to-d{color:var(--text-2)}
   .theme-opt .to-n{display:block;font-size:13px;font-weight:600;line-height:1.25}
   .theme-opt .to-d{display:block;font-size:11.5px;color:var(--muted);line-height:1.3;margin-top:1px}
   .theme-opt .to-ok{width:16px;height:16px;color:var(--accent);opacity:0}
@@ -322,13 +324,19 @@
   .drp-legend .sw-low{background:color-mix(in srgb,var(--warn) 30%,var(--surface))}
   .drp-legend .sw-none{background:repeating-linear-gradient(135deg,color-mix(in srgb,var(--muted) 34%,transparent) 0 2px,transparent 2px 6px)}
   .drp-legend .dt{width:6px;height:6px;border-radius:50%;flex:none}
-  .drp-foot{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--grid);flex-wrap:wrap}
+  /* низ с «Применить» прилипает к нижнему краю панели: на телефоне панель выше экрана (≈940 px при 844),
+     и кнопку приходилось искать прокруткой внутри календаря */
+  .drp-foot{display:flex;align-items:center;gap:8px;margin-top:12px;padding-top:10px;border-top:1px solid var(--grid);flex-wrap:wrap;
+    position:sticky;bottom:0;z-index:2;background:var(--surface);padding-bottom:12px;margin-bottom:-12px}
   .drp-hint{flex:1 1 200px;font-size:12px;color:var(--text-2);line-height:1.4}
   .drp-hint b{color:var(--text-1);font-weight:640}
   .drp-foot .btn{padding:7px 13px}
   .drp-foot .btn:disabled{opacity:.45;cursor:default}
   @media(max-width:640px){ .drp-month{width:min(252px,calc(100vw - 50px))} .drp-panel{padding:12px 10px 10px}
-    .drp-hint{flex-basis:100%} .drp-foot [data-act="cancel"]{margin-left:auto} }
+    .drp-hint{flex-basis:100%} .drp-foot [data-act="cancel"]{margin-left:auto}
+    .drp-foot{padding-bottom:10px;margin-bottom:-10px}
+    /* панель во всю ширину экрана, а не 280 px из 390: подсказки и пояснение в меньше строк */
+    .drp-panel{width:calc(100vw - 16px)} .drp-month{width:100%} }
 
   /* ===== KPI-плитки =====
      Ряд — flex с переносом: плитки растягиваются и закрывают ряд целиком (сетка auto-fit оставляла
@@ -359,7 +367,9 @@
      («270 из 28 253 шт · 29.06.26 – 02.08.26» на «Аналитике») — ровный скруглённый блок, а не овал */
   .kpi .delta.up{color:var(--good-txt);background:color-mix(in srgb,var(--good) 12%,var(--surface))}
   .kpi .delta.down{color:var(--crit-txt);background:color-mix(in srgb,var(--crit) 12%,var(--surface))}
-  .kpi .delta .muted{color:inherit;opacity:.75}
+  /* пояснение в плашке тише за счёт веса, а не прозрачности: с opacity .75 подпись «с 12.10» на зелёной
+     плашке давала 3,1:1 (нужно 4,5:1) */
+  .kpi .delta .muted{color:inherit;font-weight:450}
   .kpi .spark{margin-top:10px;height:30px;width:100%;display:block}
   /* герой-плитка: главная метрика периода — крупнее, с акцентной кромкой и тихим ореолом */
   .kpi.hero{background:
@@ -470,11 +480,13 @@
   /* Строка «ИТОГО» липнет под шапкой: сумма категорий должна быть видна всегда,
      иначе первая крупная категория читается как общий итог (см. renderStockTab). */
   #stkTable tbody tr.stk-total > td{position:sticky;top:var(--stk-th,38px);z-index:3;
-    background:color-mix(in srgb,var(--accent) 14%,var(--surface));
+    background:color-mix(in srgb,var(--accent) 12%,var(--surface));
     border-bottom:2px solid color-mix(in srgb,var(--accent) 45%,transparent);
     font-variant-numeric:tabular-nums}
   #stkTable tbody tr.stk-total > td.metric{z-index:4;
-    background:color-mix(in srgb,var(--accent) 18%,var(--surface))}
+    background:color-mix(in srgb,var(--accent) 16%,var(--surface))}
+  /* на синей подложке итога --muted и зелёное изменение не дотягивали до 4,5:1 (4,35–4,47) */
+  #stkTable tbody tr.stk-total .muted{color:var(--text-2)}
   /* ---- Карточка «что изменилось» ---- */
   .chg-card{border-radius:9px;padding:10px 12px;margin-top:6px;background:var(--surface-2);
     border-left:3px solid var(--muted)}
@@ -493,7 +505,7 @@
   .chg-nm small{display:block;font-size:10.5px;color:var(--muted);font-weight:500}
   .chg-d{font-variant-numeric:tabular-nums;font-weight:700;font-size:13.5px;text-align:right;white-space:nowrap}
   .chg-d.up{color:var(--good-txt)} .chg-d.down{color:var(--crit-txt)}
-  .chg-d small{display:block;font-size:11px;font-weight:600;opacity:.75}
+  .chg-d small{display:block;font-size:11px;font-weight:500}   /* без opacity: было 3,5–3,8:1 */
   /* факторное разложение — полосками, а не строкой текста: продавец читает вклад глазами */
   .chg-steps{margin-top:9px;padding:8px 10px;border-radius:8px;background:var(--surface)}
   .chg-steps .cs-t{font-size:10.5px;font-weight:650;letter-spacing:.06em;text-transform:uppercase;
@@ -538,7 +550,8 @@
   .htn-v{font-size:12px;font-weight:650;white-space:nowrap;padding:2px 9px;border-radius:20px}
   .htn-v.crit{color:var(--crit-txt);background:color-mix(in srgb,var(--crit-txt) 12%,transparent)}
   .htn-v.warn{color:var(--warn-txt);background:color-mix(in srgb,var(--warn-txt) 14%,transparent)}
-  .htn-v.good{color:var(--good-txt);background:color-mix(in srgb,var(--good-txt) 13%,transparent)}
+  /* текст чуть ближе к основному: на строке-категории (фон --surface-2) чистый --good-txt давал 4,24:1 */
+  .htn-v.good{color:color-mix(in srgb,var(--good-txt) 86%,var(--text-1));background:color-mix(in srgb,var(--good-txt) 13%,transparent)}
   .htn-v.info{color:var(--muted);background:var(--surface-3)}
   .htn-w{font-size:12px;line-height:1.5;color:var(--text-2);margin-top:5px}
   .htn-go{margin-top:6px;background:none;border:1px solid var(--border-2);border-radius:7px;
@@ -826,8 +839,12 @@
   .rmc-ti b{flex:0 0 auto;font-variant-numeric:tabular-nums;color:var(--crit-txt);font-weight:650}
   .rmc-go{margin-top:10px}
   /* ---- План по чистой прибыли (карточка на «Рекомендациях») ---- */
+  /* Семь колонок на телефоне шире экрана (≈625 px при 390): таблица прокручивается вбок внутри
+     карточки, страница вбок не едет (25.10.2026: «Рекомендации» на 390 px уезжали вбок на 267 px). */
+  .pl-scroll{overflow-x:auto;-webkit-overflow-scrolling:touch}
   .pl-tbl{width:100%;border-collapse:collapse;margin:10px 0 4px;font-size:13px}
   .pl-tbl th,.pl-tbl td{padding:8px 10px;text-align:right;border-bottom:1px solid var(--line)}
+  @media(max-width:600px){ .pl-tbl th,.pl-tbl td{padding:7px 7px} }
   .pl-tbl th{font-size:11px;color:var(--muted);font-weight:600;text-align:center;white-space:nowrap}
   .pl-tbl th.l,.pl-tbl td.l{text-align:left}
   .pl-tbl td.good{color:var(--good-txt)} .pl-tbl td.crit{color:var(--crit-txt)}
@@ -1214,6 +1231,8 @@
   .abc.B{background:color-mix(in srgb,var(--warn) 17%,transparent);color:var(--warn-txt);
     box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--warn) 42%,transparent)}
   .abc.C{background:var(--surface-3);color:var(--muted);box-shadow:inset 0 0 0 1px var(--border)}
+  /* «Графит»: --muted на --surface-3 — 4,46:1, чуть ниже нормы (буква C, номер в «Что двигает прибыль») */
+  :root[data-scheme="dark"] .abc.C,:root[data-scheme="dark"] .drv-rank{color:var(--text-2)}
   .abc.loss{background:color-mix(in srgb,var(--crit) 14%,transparent);color:var(--crit-txt);
     box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--crit) 40%,transparent)}
   td.pos{color:var(--good-txt);font-variant-numeric:tabular-nums}
@@ -1486,10 +1505,12 @@
     .brand h1{font-size:17px}
   }
   /* пирамида ДРР: пять колонок не влезают уже ~700 px — название строкой, под ним расход · выручка · ДРР,
-     полоса — во всю ширину */
+     полоса — во всю ширину. Пирамида «Рекламы» с колонкой заказов (.wq) и сравнением (.cmp) шириной
+     ≥720 px и прокручивается вбок внутри карточки — её строку не ломаем: иначе (25.10.2026, 390 px)
+     «заказы» уезжали отдельной строкой к правому краю, ДРР — за край, между строками зияли пустоты. */
   @media(max-width:720px){
-    .drrlv .lv{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:3px 10px}
-    .drrlv .lv>.lv-nm,.drrlv .lv>:nth-child(5){grid-column:1/-1}
+    .drrlv:not(.wq):not(.cmp) .lv{grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:3px 10px}
+    .drrlv:not(.wq):not(.cmp) .lv>.lv-nm,.drrlv:not(.wq):not(.cmp) .lv>:nth-child(5){grid-column:1/-1}
   }
   /* ===== Телефон (≈390 px): шапка в одну строку, кнопки — значками; KPI в две колонки ===== */
   @media(max-width:600px){
@@ -5935,7 +5956,7 @@ function renderDynamicsTab(){
         +`<span class="sku">${esc(r.category||"—")} · ${esc(r.sku)}</span></td>`
         +`<td class="${r.qtyWb?"":"d-zero"}">${r.qtyWb? fmt(r.qtyWb):"—"}</td>`
         +`<td class="${r.qtyOz?"":"d-zero"}">${r.qtyOz? fmt(r.qtyOz):"—"}</td>`
-        +`<td style="font-weight:650">${fmt(r.qty)}<span class="sub2 mut">${share.toFixed(1)}% всех заказов</span></td>`
+        +`<td style="font-weight:650">${fmt(r.qty)}<span class="sub2 mut">${share.toFixed(1).replace(".",",")}% всех заказов</span></td>`
         +`<td class="share-cell" title="Какая доля заказов этого товара пришлась на Ozon (остальное — ВБ)">`
           +`${oz?`<span class="share-fill" style="width:${oz}%"></span>`:""}<span class="share-val">${oz}%</span></td>`
         +`<td>${r.ordWb? rub(r.ordWb):"—"}</td><td>${r.ordOz? rub(r.ordOz):"—"}</td>`
@@ -5948,7 +5969,7 @@ function renderDynamicsTab(){
     ${thSort("Заказы, шт","qty",dynSortState)}${thSort("Доля","share",dynSortState)}${thSort("Заказано, ₽","ordersSum",dynSortState)}${thSort("Выкуплено, ₽ (оценка)","buyoutSum",dynSortState)}</tr></thead><tbody>`;
   rows.slice(0,300).forEach(r=>{
     const share=periodTotal? (r.qty/periodTotal*100):0;
-    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${share.toFixed(1)}%</td><td>${r.ordersSum?rub(r.ordersSum):"—"}</td><td>${r.buyoutSum?rub(r.buyoutSum):"—"}</td></tr>`;
+    html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td><td>${esc(r.category)}</td><td>${fmt(r.qty)}</td><td>${share.toFixed(1).replace(".",",")}%</td><td>${r.ordersSum?rub(r.ordersSum):"—"}</td><td>${r.buyoutSum?rub(r.buyoutSum):"—"}</td></tr>`;
   });
   html+="</tbody>";
   document.getElementById("dynTable").innerHTML=html;
@@ -8708,7 +8729,7 @@ function renderAdsTab(){
       +(risk? `<span class="sub2 crit">${r.cover<=0? "остатка нет" : "запас "+adFmtD(r.coverDays)+" дн"}</span>`:"")
       +`</td>`; };
   const body = r => `<td>${abcBadge(r.abc)}</td>`
-      +`<td style="font-weight:650">${fmt(Math.round(r.rub))}<span class="sub2 mut">${r.share.toFixed(1)}% склейки</span></td>`
+      +`<td style="font-weight:650">${fmt(Math.round(r.rub))}<span class="sub2 mut">${r.share.toFixed(1).replace(".",",")}% склейки</span></td>`
       +`<td>${fmt(r.qty)}<span class="sub2 mut">${r.spd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
       +`<td class="${r.cover?"":"d-zero"}">${r.cover? fmt(r.cover):"—"}<span class="sub2 ${r.coverDays<AD_MIN_STOCK_DAYS?"crit":"mut"}">${adCoverTxt(r)}</span></td>`
       +adCell(r)
@@ -10437,20 +10458,20 @@ function renderHomeOzon(){
   const boH=ozBuyoutHist();
   const rbFrom=ozRevBaseFrom(), rbK=rbFrom? ozRevK(rbFrom) : 1;
   fresh.innerHTML=`<span class="dot"></span>Ozon · заказы по ${fmtDateLong(allDates[allDates.length-1])}`
-    +` · история с ${fmtDateLong(allDates[0])} · <b>ОЦЕНКА</b>: выручка = заказано × ${(bo*100).toFixed(1)}% выкупа`
+    +` · история с ${fmtDateLong(allDates[0])} · <b>ОЦЕНКА</b>: выручка = заказано × ${(bo*100).toFixed(1).replace(".",",")}% выкупа`
     +(boH? ` (замер ${fmtDateLong(boH[boH.length-1].from)} – ${fmtDateLong(boH[boH.length-1].to)}, от закрытых заказов)` : "")+`,`
     // ставка рекламы — ПРИМЕНЁННАЯ (из отчёта юнит-экономики), а не запасная T.ads из тарифа;
     // если последний день покрыт отчётом «Оплата за заказ», ставки там нет вовсе — только факт
     +(ozOrderFeeOn(allDates[allDates.length-1]) || allDates[allDates.length-1]>=OZ_FEE_REPORT_ONLY_FROM
-      ? ` площадка забирает ${ozFixedRate().toFixed(1)}% тарифа по вашим ИУ + реклама <b>по факту</b>`
+      ? ` площадка забирает ${ozFixedRate().toFixed(1).replace(".",",")}% тарифа по вашим ИУ + реклама <b>по факту</b>`
         +` (выгрузка XWAY + оплата за заказ по отчёту Ozon)`
-      : ` площадка забирает ${(ozFixedRate()+ozAdRateFor(allDates[allDates.length-1])).toFixed(1)}% по вашим ИУ`
-        +` (${ozFixedRate().toFixed(1)}% тариф + реклама ${ozAdRateFor(allDates[allDates.length-1]).toFixed(2).replace(".",",")}% по отчёту юнит-экономики)`)
+      : ` площадка забирает ${(ozFixedRate()+ozAdRateFor(allDates[allDates.length-1])).toFixed(1).replace(".",",")}% по вашим ИУ`
+        +` (${ozFixedRate().toFixed(1).replace(".",",")}% тариф + реклама ${ozAdRateFor(allDates[allDates.length-1]).toFixed(2).replace(".",",")}% по отчёту юнит-экономики)`)
     // по части товаров реклама идёт ПО ФАКТУ выгрузки XWAY — молчать об этом нельзя, у них другая экономика
     +(ozAdFactNote()||"")
     // база выручки сменилась с даты — молча этого показывать нельзя, цифры до и после несопоставимы
     +(rbFrom? ` · с ${fmtDateLong(rbFrom)} выручка считается по <b>новой методике Ozon</b>`
-        +` (${(rbK*100).toFixed(1)}% от «Предельной цены»), дни раньше — по-старому` : "");
+        +` (${(rbK*100).toFixed(1).replace(".",",")}% от «Предельной цены»), дни раньше — по-старому` : "");
 
   const catSel=document.getElementById("homeCat");
   if(catSel && !catSel.options.length) fillCategorySelect(catSel);
@@ -10480,7 +10501,7 @@ function renderHomeOzon(){
   const tr=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
   const sep=`border-top:1px solid var(--grid);margin-top:5px;padding-top:6px`;
   const dlt=(cur,pr)=>{ if(!pr||!(pr>0)) return ""; const d=(cur-pr)/pr*100;
-    return `<div class="delta ${d>=0?"up":"down"}">${d>=0?"▲":"▼"} ${Math.abs(d).toFixed(1)}% к пред.</div>`; };
+    return `<div class="delta ${d>=0?"up":"down"}">${d>=0?"▲":"▼"} ${Math.abs(d).toFixed(1).replace(".",",")}% к пред.</div>`; };
   /* Реклама в тариф НЕ входит с 17.09.2026: фиксированная часть (32,7%) — проценты от выручки,
      реклама — рублями по факту (XWAY + отчёт «Оплата за заказ») или ставкой по дате. Прежние
      подписи «Забирает Ozon (42,7%)» и «Фиксированная плата 10%» врали. */
@@ -12253,19 +12274,19 @@ function renderFunnelDiag(A,B){
     // дней он нулевой. Считать по нему сквозную конверсию нельзя — получалось «0.00%», и это
     // читалось как «ничего не выкупают», хотя заказы есть. В таком случае ведём до «Заказов».
     if(ord>0 && buy===0){
-      lines.push({cls:"",ic:"▸",html:`Из <b>${fmt(imp)}</b> показов до заказа дошло <b>${fmt(ord)}</b> шт — сквозная конверсия <b>${(imp? ord/imp*100:0).toFixed(2)}%</b>. Средний чек заказа ${rub(A.avgPrice)}.`});
+      lines.push({cls:"",ic:"▸",html:`Из <b>${fmt(imp)}</b> показов до заказа дошло <b>${fmt(ord)}</b> шт — сквозная конверсия <b>${(imp? ord/imp*100:0).toFixed(2).replace(".",",")}%</b>. Средний чек заказа ${rub(A.avgPrice)}.`});
       const ripe=_appliedMp==="ozon"? "Доставка за этот период ещё не дозрела" : "Выкуп за этот период ещё не дозрел";
       lines.push({cls:"warn",ic:"⏳",html:`${ripe}: площадка проставляет его задним числом, поэтому у свежих дней он нулевой. Сдвиньте период A на несколько дней назад, чтобы увидеть реальный процент.`});
     } else {
-      lines.push({cls:"",ic:"▸",html:`Из <b>${fmt(imp)}</b> показов до ${fin} дошло <b>${fmt(buy)}</b> шт — сквозная конверсия <b>${overall.toFixed(2)}%</b>. Средний чек заказа ${rub(A.avgPrice)}.`});
+      lines.push({cls:"",ic:"▸",html:`Из <b>${fmt(imp)}</b> показов до ${fin} дошло <b>${fmt(buy)}</b> шт — сквозная конверсия <b>${overall.toFixed(2).replace(".",",")}%</b>. Средний чек заказа ${rub(A.avgPrice)}.`});
     } }
   if(B){
     if(weakStepIndex>=0){ const i=weakStepIndex, ca=connectorConv(A,i), cb=connectorConv(B,i);
-      lines.push({cls:"warn",ic:"⚠",html:`Сильнее всего просело: <b>${stLabel(i)} → ${stLabel(i+1)}</b> — ${ca.toFixed(1)}% против ${cb.toFixed(1)}% в периоде B (<b>${ppFmt(ca-cb)} п.п.</b>). Это узкое место периода.`}); }
+      lines.push({cls:"warn",ic:"⚠",html:`Сильнее всего просело: <b>${stLabel(i)} → ${stLabel(i+1)}</b> — ${ca.toFixed(1).replace(".",",")}% против ${cb.toFixed(1).replace(".",",")}% в периоде B (<b>${ppFmt(ca-cb)} п.п.</b>). Это узкое место периода.`}); }
     let gi=-1, best=0.05; for(let i=0;i<FUNNEL_STAGES.length-1;i++){ const ca=connectorConv(A,i), cb=connectorConv(B,i);
       if(ca==null||cb==null) continue; const dpp=ca-cb; if(dpp>best){ best=dpp; gi=i; } }
     if(gi>=0){ const ca=connectorConv(A,gi), cb=connectorConv(B,gi);
-      lines.push({cls:"good",ic:"✓",html:`Выросло: <b>${stLabel(gi)} → ${stLabel(gi+1)}</b> — ${ca.toFixed(1)}% против ${cb.toFixed(1)}% (<b>+${(ca-cb).toFixed(1)} п.п.</b>).`}); }
+      lines.push({cls:"good",ic:"✓",html:`Выросло: <b>${stLabel(gi)} → ${stLabel(gi+1)}</b> — ${ca.toFixed(1).replace(".",",")}% против ${cb.toFixed(1).replace(".",",")}% (<b>+${(ca-cb).toFixed(1).replace(".",",")} п.п.</b>).`}); }
     if(weakStepIndex<0 && gi<0){ lines.push({cls:"",ic:"▸",html:`Конверсии по шагам почти не изменились относительно периода B.`}); }
   } else { lines.push({cls:"",ic:"▸",html:`Заполните <b>Период B</b> — покажу, какой шаг воронки просел, а какой вырос.`}); }
   document.getElementById("prodDiag").innerHTML = lines.map(l=>
@@ -12276,7 +12297,7 @@ function renderFunnelVis(A,B){
   let html="";
   FUNNEL_STAGES.forEach((s,i)=>{
     const v=A[s.k]||0, w=base? Math.max(1.5,v/base*100) : 1.5, col=cssv(STAGE_COLORS[i]||"--s1");
-    let sub=`<span class="sub">${base? (v/base*100).toFixed(1)+"% от показов" : "—"}</span>`;
+    let sub=`<span class="sub">${base? (v/base*100).toFixed(1).replace(".",",")+"% от показов" : "—"}</span>`;
     if(B){ const bv=B[s.k]||0; if(bv){ const d=(v-bv)/bv*100; sub+=`<span class="dl ${d>=0?"up":"down"}">${d>=0?"▲ +":"▼ "}${d.toFixed(0)}% к пред.</span>`; } }
     html+=`<div class="fn-row">
       <div class="fn-label">${stLabel(i)}</div>
@@ -12288,7 +12309,7 @@ function renderFunnelVis(A,B){
       let cmp="";
       if(B){ const cb=connectorConv(B,i); if(cb!=null){ const dpp=conv-cb; cmp=`<span class="cmp ${dpp>=0?"up":"down"}">${ppFmt(dpp)} п.п. к B</span>`; } }
       html+=`<div class="fn-conv"><div class="fn-conv-mid${narrow?" narrow":""}">
-        <span class="arw">↓</span><span class="pct">${conv.toFixed(1)}%</span> доходят до «${stLabel(i+1)}» ${cmp}
+        <span class="arw">↓</span><span class="pct">${conv.toFixed(1).replace(".",",")}%</span> доходят до «${stLabel(i+1)}» ${cmp}
         ${narrow?'<span class="tag">узкое место</span>':''}</div></div>`;
     }
   });
@@ -12336,8 +12357,8 @@ function renderBottlenecks(){
   rows.forEach(r=>{ const i=r.step.i;
     html+=`<tr><td class="name-cell" title="${esc(r.name)}">${esc(r.name)}<span class="sku">${skuLink(r.sku)}</span></td>`
       +`<td>${stLabel(i)} → ${stLabel(i+1)}</td>`
-      +`<td class="delta-down">${(r.step.conv*100).toFixed(1)}%</td>`
-      +`<td class="muted">${(r.step.avgConv*100).toFixed(1)}%</td>`
+      +`<td class="delta-down">${(r.step.conv*100).toFixed(1).replace(".",",")}%</td>`
+      +`<td class="muted">${(r.step.avgConv*100).toFixed(1).replace(".",",")}%</td>`
       +`<td style="font-weight:640">${fmt(Math.round(r.step.lost))}</td></tr>`; });
   html+="</tbody>"; document.getElementById("prodBottleneckTable").innerHTML=html;
 }
@@ -12864,7 +12885,7 @@ function recDiag(r){
 function adHypo(o, par){
   const goal=AD_DRR_GOAL;
   const F=v=>fmt(Math.round(v));
-  const pc=(v,d)=>v.toFixed(d==null?1:d)+"%";
+  const pc=(v,d)=>v.toFixed(d==null?1:d).replace(".",",")+"%";
   if(o.spend<AD_MIN_SPEND) return {v:"skip", t:"мелкий расход",
     w:"Меньше "+F(AD_MIN_SPEND)+" ₽ за период — не судим, это перелив."};
   if(!(o.ownOrd>0)) return {v:"off", t:"выключить",
@@ -12880,14 +12901,14 @@ function adHypo(o, par){
   }
   // ---- мимо цели: ищем рычаг ----
   const parts=[];
-  if(o.cpc>0) parts.push("клик стоит "+o.cpc.toFixed(1)+" ₽, нужен "+(o.cpc/k).toFixed(1)+" ₽");
+  if(o.cpc>0) parts.push("клик стоит "+o.cpc.toFixed(1).replace(".",",")+" ₽, нужен "+(o.cpc/k).toFixed(1).replace(".",",")+" ₽");
   if(o.crClick>0) parts.push("конверсия клик→заказ "+pc(o.crClick,2)+", нужна "+pc(o.crClick*k,2));
   const need=parts.length? " Чтобы попасть в цель при прочем неизменном: "+parts.join("; или ")+"." : "";
   // сравнение с уровнем выше — что именно хуже соседей
   const cmp=[];
   if(par){
     if(par.cpc>0 && o.cpc>par.cpc*1.15) cmp.push({k:"bid", d:o.cpc/par.cpc,
-      t:"клик дороже, чем в среднем по уровню выше ("+o.cpc.toFixed(1)+" против "+par.cpc.toFixed(1)+" ₽)"});
+      t:"клик дороже, чем в среднем по уровню выше ("+o.cpc.toFixed(1).replace(".",",")+" против "+par.cpc.toFixed(1).replace(".",",")+" ₽)"});
     if(par.crClick>0 && o.crClick<par.crClick*0.85) cmp.push({k:"card", d:par.crClick/o.crClick,
       t:"карточка конвертит хуже соседей: из клика в заказ "+pc(o.crClick,2)+" против "+pc(par.crClick,2)});
     if(par.ctr>0 && o.ctr<par.ctr*0.85) cmp.push({k:"ctr", d:par.ctr/o.ctr,
@@ -12902,7 +12923,7 @@ function adHypo(o, par){
     : (par? " Все рычаги — на уровне соседей: и клик, и конверсия, и чек. Значит дело в объёме:"
         +" на эту позицию льётся больше денег, чем она отбивает своей выручкой." : "");
   const lead=cmp.length? cmp[0].k : "bid";
-  const T={bid:"снизить ставку в "+k.toFixed(1)+" раза", card:"дело в карточке, не в ставке",
+  const T={bid:"снизить ставку в "+k.toFixed(1).replace(".",",")+" раза", card:"дело в карточке, не в ставке",
     ctr:"поднимать CTR — карточку мало кликают", aov:"дешёвый товар: пересмотреть цену или ставку",
     bo:"разобраться с выкупом"}[lead];
   return {v: lead==="bid"? "bid" : "card", t:T, w:base+need+why};
@@ -12960,18 +12981,18 @@ function recAdTree(){
         const bad = h.v==="bid"||h.v==="card";
         if(bad && r.othOrd>0 && r.drrA<=AD_DRR_GOAL){
           h={v:"keep", t:"оставить — с ассоциативными окупается",
-            w:"Свой ДРР "+(ia.drr===Infinity?"—":ia.drr.toFixed(1)+"%")+" мимо цели, но эта реклама привела ещё "
+            w:"Свой ДРР "+(ia.drr===Infinity?"—":ia.drr.toFixed(1).replace(".",",")+"%")+" мимо цели, но эта реклама привела ещё "
               +fmt(r.othOrd)+" заказов соседним карточкам на "+fmt(Math.round(r.othRub))+" ₽. "
-              +"С ними ДРР "+r.drrA.toFixed(1)+"% при цели "+AD_DRR_GOAL+"%, CPO "+fmt(Math.round(r.cpoAll))
+              +"С ними ДРР "+r.drrA.toFixed(1).replace(".",",")+"% при цели "+AD_DRR_GOAL+"%, CPO "+fmt(Math.round(r.cpoAll))
               +" ₽ против потолка "+fmt(Math.round(r.maxA))+" ₽. Это «лошадка»: она тянет трафик на склейку."};
         } else if(bad && ta.drr<=AD_DRR_GOAL){
           h={v:"keep", t:"оставить — склейка в цели",
-            w:"Личный ДРР "+(ia.drr===Infinity?"—":ia.drr.toFixed(1)+"%")+", но склейка укладывается в "
-              +ta.drr.toFixed(1)+"%: заказы, которые она приводит, уходят соседним карточкам "
+            w:"Личный ДРР "+(ia.drr===Infinity?"—":ia.drr.toFixed(1).replace(".",",")+"%")+", но склейка укладывается в "
+              +ta.drr.toFixed(1).replace(".",",")+"%: заказы, которые она приводит, уходят соседним карточкам "
               +"и уже посчитаны в выручке склейки. Выключать незачем."};
         } else if(bad && r.othOrd>0){
           h={...h, w:h.w+" С ассоциативными заказами ("+fmt(r.othOrd)+" шт на "+fmt(Math.round(r.othRub))
-            +" ₽) ДРР "+r.drrA.toFixed(1)+"% — тоже мимо цели, так что дело не в них."};
+            +" ₽) ДРР "+r.drrA.toFixed(1).replace(".",",")+"% — тоже мимо цели, так что дело не в них."};
         }
         return {...r, agg:ia, hypo:h};
       }).sort((x,y)=>y.spend-x.spend);
@@ -13126,7 +13147,7 @@ function renderRecPlan(view){
       <td class="${ok?"good":"crit"}"><b>${ok?"+":"−"}${fmt(Math.abs(Math.round(x.gap)))}</b>
         <span class="sub2 mut">${ok?"с опережением":"не хватает"}</span></td>
       <td style="min-width:120px">${bar(x.pct,x.fcast/x.target)}</td></tr>`; };
-  let html=`<table class="pl-tbl"><thead><tr><th class="l">Площадка</th><th>План, ₽</th>
+  let html=`<div class="pl-scroll"><table class="pl-tbl"><thead><tr><th class="l">Площадка</th><th>План, ₽</th>
     <th>Факт, ₽</th><th>₽/день</th><th>Прогноз, ₽</th><th>Разрыв, ₽</th><th>Ход</th></tr></thead><tbody>
     ${row("Wildberries","var(--mp-wb)",p.wb)}${row("Ozon","var(--mp-oz)",p.oz)}`;
   if(p.both){ const ok=p.both.gap>=0;
@@ -13135,7 +13156,7 @@ function renderRecPlan(view){
       <td></td><td>${fmt(Math.round(p.both.fcast))}</td>
       <td class="${ok?"good":"crit"}">${ok?"+":"−"}${fmt(Math.abs(Math.round(p.both.gap)))}</td>
       <td>${bar(p.both.pct,p.both.fcast/p.both.target)}</td></tr>`; }
-  html+=`</tbody></table>`;
+  html+=`</tbody></table></div>`;
   /* Что делать с разрывом — короткая строка под таблицей. Не «мотивация», а перевод
      разрыва в ежедневную цифру: с ней рекомендации ниже становятся измеримыми. */
   const miss=[p.wb,p.oz].filter(x=>x&&x.gap<0);
@@ -13560,14 +13581,14 @@ function recMpCard(x, prio){
   const ch=x.ch;
   const wk = ch.w1? `<div class="rmc-k"><span class="k">Прибыль за неделю <small>${recWkShort(ch.w1)}, пн–вс</small></span>`
       +`<b class="v ${x.p1>=0?"good":"crit"}">${recRub(x.p1)} ₽</b>`
-      +`<small>прошлая неделя ${recWkShort(ch.w0)}: ${recRub(x.p0)} ₽ · ${sgn(x.p1-x.p0)} ₽${x.est? " · оценка по заказам" : ""}</small></div>`
+      +`<small>прошлая неделя ${recWkShort(ch.w0)}: ${recRub(x.p0)}&nbsp;₽ · ${sgn(x.p1-x.p0)}&nbsp;₽${x.est? " · оценка по заказам" : ""}</small></div>`
     : `<div class="rmc-k"><span class="k">Прибыль за неделю</span><b class="v">—</b><small>нет двух закрытых недель</small></div>`;
   const m=x.month, mName=m? MON[+m.key.slice(5)-1] : "";
   const mo = m? `<div class="rmc-k"><span class="k">${mName[0].toUpperCase()+mName.slice(1)} <small>${fmtDate(m.from)}–${fmtDate(m.last)}, календарный</small></span>`
       +`<b class="v ${m.fact>=0?"good":"crit"}">${recRub(m.fact)} ₽</b>`
-      +(x.leg? `<small>план ${fmt(Math.round(x.leg.target))} ₽${x.leg.auto? " (+"+Math.round((PLAN_UPLIFT-1)*100)+"% к темпу 1–"+PLAN_MID_DAY+")" : ""} · сделано ${Math.round(x.leg.pct*100)}% · прогноз ${recRub(x.leg.fcast)} ₽ · `
-          +`<span class="${x.leg.gap>=0?"good":"crit"}">${x.leg.gap>=0? "с опережением "+fmt(Math.round(x.leg.gap)) : "не хватает "+fmt(Math.round(-x.leg.gap))} ₽</span></small>`
-        : `<small>план на ${mName} появится, когда в данных будет ${PLAN_MID_DAY}-е число (+${Math.round((PLAN_UPLIFT-1)*100)}% к темпу 1–${PLAN_MID_DAY}) · прогноз на месяц ${recRub(m.fcast)} ₽ по темпу ${recRub(m.rate)} ₽/день</small>`)+`</div>`
+      +(x.leg? `<small>план ${fmt(Math.round(x.leg.target))}&nbsp;₽${x.leg.auto? " (+"+Math.round((PLAN_UPLIFT-1)*100)+"% к темпу 1–"+PLAN_MID_DAY+")" : ""} · сделано ${Math.round(x.leg.pct*100)}% · прогноз ${recRub(x.leg.fcast)}&nbsp;₽ · `
+          +`<span class="${x.leg.gap>=0?"good":"crit"}">${x.leg.gap>=0? "с опережением "+fmt(Math.round(x.leg.gap)) : "не хватает "+fmt(Math.round(-x.leg.gap))}&nbsp;₽</span></small>`
+        : `<small>план на ${mName} появится, когда в данных будет ${PLAN_MID_DAY}-е число (+${Math.round((PLAN_UPLIFT-1)*100)}% к темпу 1–${PLAN_MID_DAY}) · прогноз на месяц ${recRub(m.fcast)}&nbsp;₽ по темпу ${recRub(m.rate)}&nbsp;₽/день</small>`)+`</div>`
     : `<div class="rmc-k"><span class="k">Месяц</span><b class="v">—</b><small>нет данных за месяц</small></div>`;
   const ord = `<div class="rmc-k"><span class="k">Заказы за неделю, шт</span>`
     +`<b class="v">${fmt(x.q1)}</b><small>прошлая неделя ${fmt(x.q0)}`
@@ -13575,7 +13596,7 @@ function recMpCard(x, prio){
     +` · просело ${x.drop.length} ${plural(x.drop.length,"товар","товара","товаров")}</small></div>`;
   const urg = `<div class="rmc-k"><span class="k">Срочных задач</span>`
     +`<b class="v ${x.crit.length?"crit":"good"}">${x.crit.length}</b>`
-    +`<small>денег на кону ${fmt(Math.round(x.money))} ₽ · всего задач ${x.rules.length}</small></div>`;
+    +`<small>денег на кону ${fmt(Math.round(x.money))}&nbsp;₽ · всего задач ${x.rules.length}</small></div>`;
   const top = x.top.length? `<div class="rmc-top"><div class="rmc-tt">Главное сейчас</div>`
       +x.top.map(r=>`<div class="rmc-ti ${r.sev}"><i></i><span>${esc(r.title)}</span>`
         +(r.money? `<b>${fmt(Math.round(r.money))} ₽</b>` : "")+`</div>`).join("")+`</div>`
@@ -13803,7 +13824,7 @@ function renderRecAdTree(){
   const money=v=>fmt(Math.round(v));
   const vcls=h=>AD_HYPO_CLS[h.v]||"info";
   const nums=a=>`${money(a.spend)} ₽ · выручка ${money(a.rev)} ₽ · ДРР `
-    +(a.drr===Infinity?"—":a.drr.toFixed(1)+"%");
+    +(a.drr===Infinity?"—":a.drr.toFixed(1).replace(".",",")+"%");
   let html=`<div class="htree">`;
   tree.forEach(g=>{
     const openG=_recOpenG===g.group;
