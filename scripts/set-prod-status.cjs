@@ -16,6 +16,8 @@
 //   node scripts/set-prod-status.cjs "На вывод" 429598,429597,311114
 //   node scripts/set-prod-status.cjs "На вывод" --file коды.txt      (по коду в строке)
 //   node scripts/set-prod-status.cjs "В работе" --file коды.txt --except 429598,429597
+//   node scripts/set-prod-status.cjs "—" 316807,316808                 (снять статус совсем — пустой; продавец 27.10:
+//                                                                        «убрать статус на вывод» у товаров из заказа на производство)
 //   node scripts/set-prod-status.cjs list                            (сводка по статусам)
 //   node scripts/set-prod-status.cjs hold 487153 ["примечание"]      (снять «На вывод» до конца остатка)
 //   node scripts/set-prod-status.cjs hold-list                       (кто снят временно и сколько осталось)
@@ -23,7 +25,7 @@
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const OUT=path.join(__dirname,'..','decrypted');
-const KNOWN=['В работе','Новинка','На вывод'];
+const KNOWN=['В работе','Новинка','На вывод','—'];   // «—» — снять статус (пустое поле)
 
 let argv=process.argv.slice(2);
 const take=k=>{ const i=argv.indexOf(k); if(i<0) return null; const v=argv[i+1]; argv.splice(i,2); return v; };
@@ -107,8 +109,9 @@ codes.forEach(s=>{
   const cs=bySup[s];
   if(!cs){ miss.push(s); return; }
   let any=false;
+  const val=status==='—'? '' : status;
   cs.forEach(c=>{ const was=(''+(c.productionStatus||'')).trim();
-    if(was!==status){ c.productionStatus=status; cards++; any=true; } });
+    if(was!==val){ c.productionStatus=val; cards++; any=true; } });
   if(any){ changed++; list.push({s,name:cs[0].name,was:'разный'}); } else same++;
 });
 /* Статус «На вывод» мог вернуться этой заливкой коду, у которого он снят НАМЕРЕННО

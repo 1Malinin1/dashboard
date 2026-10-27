@@ -300,6 +300,9 @@ if(kind==='stock'){
     +' · всего дней '+hDays.length+' ['+hDays[0]+' … '+hDays[hDays.length-1]+']');
   // колонки «едет ко мне» из этого же файла — полная замена соответствующего слоя
   ['china','order'].forEach(t=>{ if(!inbCols[t].length) return;
+    /* С 27.10.2026 заказы на производство — ТОЛЬКО файл заказов продавца (prod-plan.cjs, ЗАП-14). Колонка
+       «заказано производству» из ведомости дала бы вторую копию тех же партий мимо файла. */
+    if(t==='order' && RD.prodOrders){ console.log('Колонка «заказано производству» пропущена: заказы — по файлу заказов (prod-plan.cjs, ЗАП-14)'); return; }
     const tot=Object.values(inbBy[t]).reduce((a,b)=>a+b,0);
     RD.inbound=RD.inbound||{};
     const was=(RD.inbound[t]&&RD.inbound[t].total)||0;
@@ -308,6 +311,7 @@ if(kind==='stock'){
       +was.toLocaleString('ru-RU')+' → '+tot.toLocaleString('ru-RU')+' шт (позиций '+Object.keys(inbBy[t]).length+')');
   });
 } else {
+  if(kind==='order' && RD.prodOrders){ console.error('«order» устарел с 27.10.2026 (ЗАП-14): заказы на производство — node scripts/prod-plan.cjs <файл заказов>'); process.exit(1); }
   RD.inbound=RD.inbound||{};
   RD.inbound[kind]={date:dateArg, total, bySup:Object.fromEntries(Object.entries(bySup).map(([k,v])=>[k,v.qty]))};
 }
