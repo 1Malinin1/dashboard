@@ -21,10 +21,10 @@
 //   node scripts/set-eta.cjs drop china                    — убрать партию целиком
 //   node scripts/set-eta.cjs list                          — показать, что сейчас задано
 'use strict';
-// УСТАРЕЛ С 27.10.2026 (ЗАП-14): заказы на производство заводит ТОЛЬКО scripts/prod-plan.cjs — весь файл
+// УСТАРЕЛ С 27.10.2026 (ЗАП-15): заказы на производство заводит ТОЛЬКО scripts/prod-plan.cjs — весь файл
 // продавца целиком. Этот скрипт добавил бы партию МИМО файла (в «Запасе и темпе» она задвоилась бы с ним),
 // поэтому без --force он только объясняет и выходит.
-if(!process.argv.includes('--force')){ console.error('Устарел с 27.10.2026 (ЗАП-14): заказы на производство — node scripts/prod-plan.cjs <файл> (весь файл заказов). Осознанно, мимо файла — добавь --force.'); process.exit(1); }
+if(!process.argv.includes('--force')){ console.error('Устарел с 27.10.2026 (ЗАП-15): заказы на производство — node scripts/prod-plan.cjs <файл> (весь файл заказов). Осознанно, мимо файла — добавь --force.'); process.exit(1); }
 const fs=require('fs'),vm=require('vm'),path=require('path');
 process.argv=process.argv.filter(a=>a!=='--force');
 const OUT=path.join(__dirname,'..','decrypted');

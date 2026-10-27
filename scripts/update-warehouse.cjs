@@ -106,6 +106,12 @@ const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
 const RD=ctx.__RD;
 const supSet=new Set(RD.catalog.map(c=>S(c.supplierCode)).filter(Boolean));
+/* Коды из файла заказов на производство без карточки ВБ (новые товары) в склад не пишем — как и раньше, —
+   но их остаток копим отдельно (`RD.prodStockHist`): по нему lib/prod-arrivals.cjs ловит приход партии
+   нового товара ещё до появления карточки (ЗАП-15). «Не для маркетплейсов» (`prodOrders.notMp`) — нет. */
+const notMpSet=new Set(((RD.prodOrders&&RD.prodOrders.notMp)||[]).map(x=>S(x.sup)));
+const prodSet=new Set(((RD.prodOrders&&RD.prodOrders.rows)||[]).map(r=>S(r.sup)).filter(k=>!supSet.has(k)&&!notMpSet.has(k)));
+const prodX={};
 const nameBySup={}; RD.catalog.forEach(c=>{ const s=S(c.supplierCode); if(s&&!nameBySup[s]) nameBySup[s]=c.name; });
 
 const wb=XLSX.read(fs.readFileSync(file),{type:'buffer',cellStyles:false,cellFormula:false});
@@ -178,7 +184,9 @@ if(layout==='A'){
       if(supSet.has(k)) inbBy[t][k]=(inbBy[t][k]||0)+v; } }));
     mpCols.forEach(c=>{ const v=num(r[c.i]); if(v>0) mpBy[c.name]=(mpBy[c.name]||0)+v; });
     if(sum<=0 && inbSum<=0) continue;
-    if(!supSet.has(k)){ skipped[k]=(skipped[k]||0)+sum+inbSum; continue; }
+    if(!supSet.has(k)){ skipped[k]=(skipped[k]||0)+sum+inbSum;
+      if(prodSet.has(k) && sum>0){ const e=prodX[k]||(prodX[k]={qty:0,wh:{}}); e.qty+=sum; Object.entries(wh).forEach(([n,v])=>{ e.wh[n]=(e.wh[n]||0)+v; }); }
+      continue; }
     if(sum<=0) continue;   // только «в пути» — склада нет, но inbound уже записан выше
     const e=bySup[k]||(bySup[k]={qty:0,wh:{}});
     e.qty+=sum; Object.entries(wh).forEach(([n,v])=>{ e.wh[n]=(e.wh[n]||0)+v; byWh[n]=(byWh[n]||0)+v; });
@@ -298,11 +306,19 @@ if(kind==='stock'){
   const hDays=Object.keys(RD.whHistory).sort();
   console.log('История своего склада: '+(wasPoint?'ОБНОВЛЕНА':'добавлена')+' точка '+dateArg
     +' · всего дней '+hDays.length+' ['+hDays[0]+' … '+hDays[hDays.length-1]+']');
+  RD.prodStockHist=RD.prodStockHist||{};
+  RD.prodStockHist[dateArg]=prodX;
+  /* ПРИХОД ПАРТИЙ ПРОИЗВОДСТВА (ЗАП-15) — пересчёт после каждой ведомости: сколько пришло по каждой
+     партии из файла заказов, `inbound` = заказано − пришло. Печатаем приходы этой ведомости — их нужно
+     сказать продавцу вместе с подсортом. */
+  if(RD.prodOrders){ const ARR=require('./lib/prod-arrivals.cjs');
+    const before=hDays.filter(d=>d<dateArg).pop()||null;
+    ARR.printArrivals(ARR.computeArrivals(RD), RD, before); }
   // колонки «едет ко мне» из этого же файла — полная замена соответствующего слоя
   ['china','order'].forEach(t=>{ if(!inbCols[t].length) return;
-    /* С 27.10.2026 заказы на производство — ТОЛЬКО файл заказов продавца (prod-plan.cjs, ЗАП-14). Колонка
+    /* С 27.10.2026 заказы на производство — ТОЛЬКО файл заказов продавца (prod-plan.cjs, ЗАП-15). Колонка
        «заказано производству» из ведомости дала бы вторую копию тех же партий мимо файла. */
-    if(t==='order' && RD.prodOrders){ console.log('Колонка «заказано производству» пропущена: заказы — по файлу заказов (prod-plan.cjs, ЗАП-14)'); return; }
+    if(t==='order' && RD.prodOrders){ console.log('Колонка «заказано производству» пропущена: заказы — по файлу заказов (prod-plan.cjs, ЗАП-15)'); return; }
     const tot=Object.values(inbBy[t]).reduce((a,b)=>a+b,0);
     RD.inbound=RD.inbound||{};
     const was=(RD.inbound[t]&&RD.inbound[t].total)||0;
@@ -311,7 +327,7 @@ if(kind==='stock'){
       +was.toLocaleString('ru-RU')+' → '+tot.toLocaleString('ru-RU')+' шт (позиций '+Object.keys(inbBy[t]).length+')');
   });
 } else {
-  if(kind==='order' && RD.prodOrders){ console.error('«order» устарел с 27.10.2026 (ЗАП-14): заказы на производство — node scripts/prod-plan.cjs <файл заказов>'); process.exit(1); }
+  if(kind==='order' && RD.prodOrders){ console.error('«order» устарел с 27.10.2026 (ЗАП-15): заказы на производство — node scripts/prod-plan.cjs <файл заказов>'); process.exit(1); }
   RD.inbound=RD.inbound||{};
   RD.inbound[kind]={date:dateArg, total, bySup:Object.fromEntries(Object.entries(bySup).map(([k,v])=>[k,v.qty]))};
 }

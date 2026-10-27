@@ -58,7 +58,9 @@
     --accent-weak:color-mix(in srgb,var(--accent) 11%,var(--surface));
     --good:#16a34a; --good-txt:#0f7a38; --crit:#dc2f2f; --crit-txt:#b32020;
     --warn:#e8a10b; --warn-txt:#875600;
-    --mp-wb:#7c3aed; --mp-oz:#b45309;          /* цвет площадки в карточках «Всего» */
+    /* ЦВЕТ МЕСТА ТОВАРА — ОДИН НА ВСЕХ ГРАФИКАХ (продавец 27.10.2026: «шкалу для вб фиолетовым, для озона
+       синим, мои склады коричневым»): карточки «Всего», полоски «Лежит / продаётся», «Остатки», «Разбор товара». */
+    --mp-wb:#7c3aed; --mp-oz:#2563eb; --mp-wh:#8b5a2b;
     --hl:rgba(255,255,255,.8);                 /* блик по верхней кромке карточек */
     --glass:color-mix(in srgb,var(--surface-2) 80%,transparent);   /* липкая шапка таблиц (под ней — размытие) */
     --shadow-sm:0 1px 2px rgba(16,24,40,.05);
@@ -83,7 +85,7 @@
     --on-accent:#ffffff;
     --good:#3b8b3b; --good-txt:#2a6b2c; --crit:#c23a2c; --crit-txt:#a12f22;
     --warn:#c88a12; --warn-txt:#755006;
-    --mp-wb:#6d3fc0; --mp-oz:#a95a0b;
+    --mp-wb:#6d3fc0; --mp-oz:#2d5fa8; --mp-wh:#7a4e24;
     --hl:rgba(255,255,255,.55);
     --glass:color-mix(in srgb,var(--surface-2) 82%,transparent);
     --shadow-sm:0 1px 2px rgba(60,40,10,.06);
@@ -102,7 +104,7 @@
     --on-accent:#ffffff;
     --good:#07843f; --good-txt:#055c2c; --crit:#c8001a; --crit-txt:#a00014;
     --warn:#b86c00; --warn-txt:#653d00;
-    --mp-wb:#5b21b6; --mp-oz:#934500;
+    --mp-wb:#5b21b6; --mp-oz:#0040a8; --mp-wh:#6b3d12;
     --hl:transparent;
     --glass:var(--surface-2);
     --shadow-sm:none; --shadow:none;
@@ -122,7 +124,7 @@
     --accent-weak:color-mix(in srgb,var(--accent) 18%,var(--surface));
     --good:#34c25a; --good-txt:#4fd172; --crit:#f05d5d; --crit-txt:#f77b7b;
     --warn:#f0b52f; --warn-txt:#f5c656;
-    --mp-wb:#a78bfa; --mp-oz:#f5a524;
+    --mp-wb:#a78bfa; --mp-oz:#60a5fa; --mp-wh:#c08a5b;
     --hl:rgba(255,255,255,.045);
     --glass:color-mix(in srgb,var(--surface-2) 78%,transparent);
     --shadow-sm:0 1px 2px rgba(0,0,0,.45);
@@ -143,7 +145,7 @@
     --accent-weak:color-mix(in srgb,var(--accent) 17%,var(--surface));
     --good:#34d399; --good-txt:#5ee3ad; --crit:#fb6f84; --crit-txt:#ff9aa9;
     --warn:#f9c13c; --warn-txt:#fcd36a;
-    --mp-wb:#b69cff; --mp-oz:#f7b04a;
+    --mp-wb:#b69cff; --mp-oz:#7cb4ff; --mp-wh:#cf9a6a;
     --hl:rgba(180,195,255,.05);
     --glass:color-mix(in srgb,var(--surface-2) 76%,transparent);
     --shadow-sm:0 1px 2px rgba(0,0,10,.5);
@@ -3118,7 +3120,7 @@ function simpleTurnList(){
     else if(covered<=0) status="critical";
     else if(daysLeft<TURN_MIN_DAYS) status="warning";
     else status="good";
-    /* «Заказать» — с 27.10.2026 СИГНАЛ ЗАКАЗА ПРОИЗВОДСТВУ по коду 1С (ЗАП-14, prodSignal): тот же, что
+    /* «Заказать» — с 27.10.2026 СИГНАЛ ЗАКАЗА ПРОИЗВОДСТВУ по коду 1С (ЗАП-15, prodSignal): тот же, что
        колонка «Заказ» в «Запасе и темпе» — весь товар бизнеса + партии из файла заказов, срок 6 месяцев.
        Раньше здесь было «хватит − 130 дн» по одной площадке, и два места давали разный срок подачи.
        `whenOrder` — число для сортировки, текст — prodShort(prod). */
@@ -3224,7 +3226,7 @@ function turnColDefs(){
     {key:"daysLeft",     val:r=> r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : String(Math.round(r.daysBase)), sortVal:dv},
     {key:"reorder",      val:r=> r.reorder>0? fmt(r.reorder)+" шт" : "—", sortVal:v=> v==="—"?0:pnum(v)},
     {key:"whenOrder",    val:r=>PROD_ST[(r.prod&&r.prod.st)||"none"].lbl,
-                         sortVal:v=>{ const i=["urgent","soon","plan","far","nosale","none"].map(k=>PROD_ST[k].lbl).indexOf(v); return i<0? 99 : i; }},
+                         sortVal:v=>{ const i=["urgent","soon","plan","wait","far","nosale","none"].map(k=>PROD_ST[k].lbl).indexOf(v); return i<0? 99 : i; }},
     {key:"pStatus",      val:r=>r.pStatus||"—", sortVal:v=>PSTATUS_RANK[v]!=null?PSTATUS_RANK[v]:9},
     {key:"status",       val:r=>TURN_STATUS[r.status], sortVal:v=>TURN_STATUS_RANK[v]!=null?TURN_STATUS_RANK[v]:9},
   ];
@@ -4753,7 +4755,7 @@ function itemAnalysis(sup){
   const whQty=Math.max(0,(whRow.qty||0)-whAsgOz);
   const inb=RD.inbound||{};
   const china=((inb.china&&inb.china.bySup)||{})[sup]||0;
-  /* Заказы производству — по файлу заказов (prodBatches, ЗАП-14), как в «Запасе и темпе»: партия,
+  /* Заказы производству — по файлу заказов (prodBatches, ЗАП-15), как в «Запасе и темпе»: партия,
      которая уже пришла к вам (она в остатке склада) или чей срок прошёл, а её нет, сюда не входит. */
   const pbI=prodBatches(sup, wbStock+wbPending+openShip+ozStock+ozTransit+whQty);
   const ordered=pbI.incoming;
@@ -4763,9 +4765,10 @@ function itemAnalysis(sup){
   /* Партий производства несколько, у каждой свой срок. Показываем их ОТДЕЛЬНЫМИ строками
      (`batches`), а не одной суммой: продавец спрашивает «хватит ли до прихода», и ответ
      зависит от того, КОГДА приедет именно эта часть. Для сводных мест берём ближайшую. */
-  const batches=pbI.pend.filter(x=>!x.arrived&&!x.late).map(x=>({key:"p"+x.mp,
-      label:x.manual? "Заказано производству · срок не указан (считаю ~"+fmtDate(x.mp)+")" : "Заказ производству · на МП "+fmtDate(x.mp),
-      qty:x.qty, eta:{toSale:x.mp, toWh:null}}));
+  const batches=pbI.pend.filter(x=>x.rem>0&&!x.late).map(x=>({key:"p"+x.mp,
+      label:(x.manual? "Заказано производству · срок не указан (считаю ~"+fmtDate(x.mp)+")" : "Заказ производству · на МП "+fmtDate(x.mp))
+        +(x.part? " · пришло "+fmt(x.got)+" из "+fmt(x.qty) : ""),
+      qty:x.rem, eta:{toSale:x.mp, toWh:null}}));
   const etaOrder=batches.length? batches[0].eta : null;
 
   const onSite=wbStock+wbPending+openShip+ozStock+ozTransit;  // на площадках или официально едет туда
@@ -4841,7 +4844,7 @@ function itemDayChart(mount,a){
   for(let v=0;v<=max+1e-6;v+=sc.step){ const y=Y(v);
     svg.appendChild(el("line",{x1:m.l,y1:y,x2:W-m.r,y2:y,stroke:cssv("--grid"),"stroke-width":1}));
     const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")}); tx.textContent=fmtAxis(v); svg.appendChild(tx); }
-  const cW=cssv("--accent"), cO=cssv("--s2")||cssv("--good-txt");
+  const cW=cssv("--mp-wb"), cO=cssv("--mp-oz");
   dates.forEach((d,i)=>{
     const cx=m.l+band*i+band/2, w=a.wbBy[d]||0, o=a.ozBy[d]||0;
     if(outSet.has(d)) svg.appendChild(el("rect",{x:cx-band/2,y:m.t,width:band,height:ih,
@@ -5038,8 +5041,8 @@ function renderTurnItem(){
 
   // ---- график
   h+=`<div class="itm-sec"><h4>Заказы по дням</h4><div class="itm-chart" id="itemChart"></div>`
-    +`<div class="itm-lg"><span><i style="background:var(--accent)"></i>Wildberries</span>`
-    +`<span><i style="background:var(--s2)"></i>Ozon</span>`
+    +`<div class="itm-lg"><span><i style="background:var(--mp-wb)"></i>Wildberries</span>`
+    +`<span><i style="background:var(--mp-oz)"></i>Ozon</span>`
     +`<span><i style="background:color-mix(in srgb,var(--crit-txt) 30%,transparent)"></i>дни без заказов (провал)</span></div></div>`;
 
   // ---- где лежит товар
@@ -5047,34 +5050,36 @@ function renderTurnItem(){
      главная новость по товару, и прятать её как пустую строку нельзя. Склады и «в пути»
      при нуле убираем, чтобы не разводить пустоту. */
   const pipe=[
-    {k:"Склады Wildberries (FBO)",v:a.wbStock,always:true},
-    {k:"Едет на Wildberries",v:a.wbPending+a.openShip},
-    {k:"Ozon, доступно к продаже",v:a.ozStock,always:!!a.ozCard},
-    {k:"Едет и назначен на Ozon",v:a.ozTransit,
+    {k:"Склады Wildberries (FBO)",v:a.wbStock,always:true,c:"var(--mp-wb)"},
+    {k:"Едет на Wildberries",v:a.wbPending+a.openShip,c:"var(--mp-wb)"},
+    {k:"Ozon, доступно к продаже",v:a.ozStock,always:!!a.ozCard,c:"var(--mp-oz)"},
+    {k:"Едет и назначен на Ozon",v:a.ozTransit,c:"var(--mp-oz)",
       sub:a.whAsgOz? "заявки и поставки Озона сверены с вашими «Ozon СФО/ЦФО» ("+fmt(a.whAsgOz)+" шт) — один и тот же товар не считается дважды" : ""},
-    {k:"Ваш склад · Клин",v:a.whBy.klin},
-    {k:"Ваш склад · Москва",v:a.whBy.msk},
-    {k:"Ваш склад · Нск-1 (FBS)",v:a.whBy.nsk1},
-    {k:"Ваш склад · Евросиб",v:a.whBy.nsk2},
-    {k:"Ваш склад · прочее",v:a.whBy.other},
+    {k:"Ваш склад · Клин",v:a.whBy.klin,c:"var(--mp-wh)"},
+    {k:"Ваш склад · Москва",v:a.whBy.msk,c:"var(--mp-wh)"},
+    {k:"Ваш склад · Нск-1 (FBS)",v:a.whBy.nsk1,c:"var(--mp-wh)"},
+    {k:"Ваш склад · Евросиб",v:a.whBy.nsk2,c:"var(--mp-wh)"},
+    {k:"Ваш склад · прочее",v:a.whBy.other,c:"var(--mp-wh)"},
   ].filter(x=>x.v>0||x.always);
   /* Партии производства — КАЖДАЯ СВОЕЙ СТРОКОЙ со своим сроком: их несколько, и приходят
      они с разницей в месяцы. Одна суммарная строка «заказано производству 3 500 шт»
      отвечала бы не на тот вопрос — продавцу важно, что 1 500 приедет в ноябре,
      а 2 000 только в январе. */
+  /* Едет к вам — бледным цветом места, куда приедет: иначе синий цвет темы читался как Ozon. */
+  const fade=c=>"color-mix(in srgb,"+c+" 45%,transparent)";
   const later=[
-    {k:"Едет к вам под Ozon (заявки «на оптовых»)",v:a.ozIncoming},
-    {k:"Едет из Китая",v:a.china,eta:a.etaChina},
-    ...(a.batches||[]).map(b=>({k:b.label,v:b.qty,eta:b.eta})),
+    {k:"Едет к вам под Ozon (заявки «на оптовых»)",v:a.ozIncoming,c:fade("var(--mp-oz)")},
+    {k:"Едет из Китая",v:a.china,eta:a.etaChina,c:fade("var(--mp-wh)")},
+    ...(a.batches||[]).map(b=>({k:b.label,v:b.qty,eta:b.eta,c:fade("var(--mp-wh)")})),
   ].filter(x=>x.v>0);
   const mx=Math.max(1,...pipe.map(x=>x.v),...later.map(x=>x.v));
-  const prow=(k,v,sub)=>`<div class="itm-pr"><span class="k">${esc(k)}${sub?`<small>${esc(sub)}</small>`:""}</span>`
-    +`<span class="v">${fmt(v)} шт</span><span class="b"><i style="width:${Math.max(2,v/mx*100)}%"></i></span></div>`;
+  const prow=(k,v,sub,c)=>`<div class="itm-pr"><span class="k">${esc(k)}${sub?`<small>${esc(sub)}</small>`:""}</span>`
+    +`<span class="v">${fmt(v)} шт</span><span class="b"><i style="width:${Math.max(2,v/mx*100)}%${c? ";background:"+c : ""}"></i></span></div>`;
   h+=`<div class="itm-sec"><h4>Где лежит товар</h4><div class="itm-pipe">`
-    +(pipe.length? pipe.map(x=>prow(x.k,x.v,x.sub)).join("") : `<div class="empty-hint" style="padding:8px 2px">Ни на площадках, ни на складе остатка нет.</div>`)
+    +(pipe.length? pipe.map(x=>prow(x.k,x.v,x.sub,x.c)).join("") : `<div class="empty-hint" style="padding:8px 2px">Ни на площадках, ни на складе остатка нет.</div>`)
     +`<div class="itm-pr sum"><span class="k">Считается в «хватит до»</span><span class="v">${fmt(a.have)} шт</span><span class="b"></span></div>`
     +(later.length? `<div style="margin-top:9px">`+later.map(x=>prow(x.k,x.v,
-        x.eta? ((x.eta.toWh? "на склад "+fmtDate(x.eta.toWh):"")+(x.eta.toSale? " · в продажу "+fmtDate(x.eta.toSale):"")) : "")).join("")+`</div>`
+        x.eta? ((x.eta.toWh? "на склад "+fmtDate(x.eta.toWh):"")+(x.eta.toSale? " · в продажу "+fmtDate(x.eta.toSale):"")) : "", x.c)).join("")+`</div>`
       : "")
     +`</div>`
     +(later.length? `<div class="itm-lg">Нижний блок — то, что ещё едет к вам: в «хватит до» он не входит, потому что до площадки этот товар доедет не скоро.</div>`:"")
@@ -7525,7 +7530,7 @@ function renderHomeWeeks(cat,q){
 
    Дни до партии берутся из КОНКРЕТНОЙ даты приезда на МП по файлу заказов на производство
    (`prodBatches`, с 27.10.2026; до того — `inbound.*.eta` и set-eta.cjs). Дата прошла, а партии
-   у вас нет — она «срок прошёл, не пришла» и в запас не идёт (ЗАП-14), а не считается молча приехавшей.
+   у вас нет — она «срок прошёл, не пришла» и в запас не идёт (ЗАП-15), а не считается молча приехавшей.
    Партии нет — горизонт PROD_LEAD (6 месяцев). */
 /* ЦЕНОЙ УПРАВЛЯЕМ ТОЛЬКО НА ВБ. У продавца условие удержания индекса цен: Wildberries —
    ведущая площадка, Ozon просто следует за её ценой (в репрайсере так и настроено).
@@ -7583,7 +7588,7 @@ function srOrdersPerDay(mp){
   });
   return out;
 }
-/* ===================== ЗАКАЗЫ НА ПРОИЗВОДСТВО (ЗАП-14, с 27.10.2026) =====================
+/* ===================== ЗАКАЗЫ НА ПРОИЗВОДСТВО (ЗАП-15, с 27.10.2026) =====================
    Источник один — ВЕСЬ файл заказов продавца (`RD.prodOrders.rows`, грузит scripts/prod-plan.cjs;
    прежние партии и ручные сроки он стёр: «всё, что было до этого, можешь удалить»).
    Строки файла: `pending` — едет, есть дата приезда на МП; `overdue` — «должен был уже придти»;
@@ -7604,14 +7609,14 @@ const PROD_MP_LOW=30;   // партия пришла к вам, а на площ
 let _prodCache=null;
 function prodIdx(){
   if(_prodCache) return _prodCache;
-  const P=(RD&&RD.prodOrders)||null, by={}, re=new Set();
+  const P=(RD&&RD.prodOrders)||null, by={}, re=new Set(), wait=new Set();
   if(P){ (P.rows||[]).forEach(r=>{ (by[r.sup]=by[r.sup]||[]).push(r); });
-    (P.reorder||[]).forEach(x=>re.add(""+(x.sup||x))); }
+    (P.reorder||[]).forEach(x=>re.add(""+(x.sup||x)));
+    (P.wait||[]).forEach(x=>wait.add(""+(x.sup||x))); }
   const wbBy={}; if(WBDATA) WBDATA.catalog.forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s) (wbBy[s]=wbBy[s]||[]).push(c.sku); });
-  const H=(RD&&RD.whHistory)||{};
-  return (_prodCache={P,by,re,wbBy,H,hd:Object.keys(H).sort()});
+  return (_prodCache={P,by,re,wait,wbBy});
 }
-// продано (выкупы ВБ + Ozon) с даты по последний день ряда — проверка «пришла ли прошлая партия»
+// продано (выкупы ВБ + Ozon) с даты по последний день ряда — запасная проверка «пришла ли прошлая партия»
 function prodSoldSince(sup,from){
   const X=prodIdx();
   const part=(ds,arr)=>{ let q=0; if(!ds||!arr) return 0; for(let i=ds.dates.length-1;i>=0&&ds.dates[i]>=from;i--) q+=arr[i]||0; return q; };
@@ -7620,42 +7625,40 @@ function prodSoldSince(sup,from){
   return Math.round(w*((buyoutInfo("wb")||{}).all||0.8)+o*((buyoutInfo("ozon")||{}).all||0.8));
 }
 /* Партии кода по файлу. `stockNow` — весь товар кода сейчас (ВБ + Ozon + ваши склады).
-   ПРИШЛА К ВАМ: свой склад (1С, `whHistory`) после даты файла вырос хотя бы на половину партии —
-   продажи и отгрузки с того же склада не дают росту дойти до полного количества. Партии идут
-   по очереди: вторая «пришла», только если рост покрыл первую и половину второй.
-   ПРОШЛЫЕ ПАРТИИ (`overdue`): заказано ≤ остаток сейчас + продано с даты готовности — значит, пришли.
-   Не сходится больше чем на max(50 шт, 10%) — «должны были прийти, их нет» (та же проверка, что в
-   сверке 27.10, по ней составлен лист «Прошлые партии не видны»). */
+   СКОЛЬКО ПРИШЛО — НЕ СЧИТАЕМ ЗДЕСЬ, А ЧИТАЕМ (ЗАП-15, продавец 27.10.2026: «товар редко приходит сразу весь,
+   может и дробно… нужно отслеживать динамику по остаткам на моих складах»). Приход ловит
+   scripts/lib/prod-arrivals.cjs по ведомостям 1С после каждой заливки склада и пишет в строки файла
+   `got` (пришло), `gotLog` ([дата, шт]), `done` (пришла целиком, хвост ≤ max(10 шт, 2%)); `inbound` у него уже
+   = заказано − пришло. Пришедшее лежит в остатке склада и в «Приедет» не идёт; срок на МП прошёл, а часть не
+   пришла — «не пришло N шт», в запас не считаем.
+   ПРОШЛЫЕ ПАРТИИ, КОТОРЫХ НЕ ВИДНО, — `prodOrders.missAt` (заморожено на дату файла, уменьшается только
+   приходом). Нет `missAt` (старый снимок) — прежняя проверка «заказано > остаток + продано с готовности». */
 function prodBatches(sup,stockNow){
-  const X=prodIdx(), rows=X.by[sup]||[];
+  const X=prodIdx(), rows=X.by[sup]||[], P=X.P;
   const today=new Date().toISOString().slice(0,10);
   const dl=iso=>Math.round((new Date(iso+"T00:00:00Z")-new Date(today+"T00:00:00Z"))/864e5);
+  const lastAt=log=>(log&&log.length)? log[log.length-1][0] : null;
   const pend=rows.filter(r=>r.st==="pending"||r.st==="manual").map(r=>{
-      const mp=r.mp||addDays(X.P.date,PROD_LEAD);
-      return {qty:r.qty, mp, left:dl(mp), manual:!r.mp, ready:r.ready||null, arrived:false, arrivedAt:null}; })
+      const mp=r.mp||addDays(r.since||P.date,PROD_LEAD), got=r.got||0, rem=r.done? 0 : Math.max(0,r.qty-got);
+      return {qty:r.qty, got, rem, gotAt:lastAt(r.gotLog), mp, left:dl(mp), manual:!r.mp, ready:r.ready||null,
+        arrived:rem<=0 && got>0, part:got>0 && rem>0}; })
     .sort((a,b)=>a.mp.localeCompare(b.mp));
-  if(pend.length && X.P){
-    const b0=X.hd.filter(d=>d<=X.P.date).pop();
-    if(b0){
-      const q=d=>(((X.H[d]||{}).bySup||{})[sup]||{}).qty||0, base=q(b0);
-      const pts=X.hd.filter(d=>d>b0).map(d=>[d,q(d)-base]);
-      const wd=RD.warehouse&&RD.warehouse.date;
-      if(wd && wd>b0 && !X.H[wd]) pts.push([wd,(((RD.warehouse.bySup||{})[sup]||{}).qty||0)-base]);
-      let got=0;
-      for(const x of pend){ const hit=pts.find(p=>p[1]>=got+x.qty*0.5); if(!hit) break;
-        x.arrived=true; x.arrivedAt=hit[0]; got+=x.qty; }
+  pend.forEach(x=>{ x.late=x.rem>0 && x.left<=0; });
+  let miss=null;
+  if(P && P.missAt){
+    const m=P.missAt[sup];
+    if(m && m.qty>0 && !m.done && m.qty-(m.got||0)>0)
+      miss={qty:m.qty-(m.got||0), ord:m.ord, ready:m.ready||null, got:m.got||0, gotAt:lastAt(m.gotLog)};
+  } else {
+    const od=rows.filter(r=>r.st==="overdue");
+    if(od.length){
+      const from=od.map(r=>r.ready||"9999-99-99").sort()[0], ord=od.reduce((a,r)=>a+r.qty,0);
+      const sold=from<"9999"? prodSoldSince(sup,from) : 0, gap=ord-(stockNow||0)-sold;
+      if(gap>Math.max(50,0.1*ord)) miss={qty:Math.min(ord,gap), ord, ready:from<"9999"? from : null, got:0};
     }
   }
-  pend.forEach(x=>{ x.late=!x.arrived && x.left<=0; });
-  let miss=null;
-  const od=rows.filter(r=>r.st==="overdue");
-  if(od.length){
-    const from=od.map(r=>r.ready||"9999-99-99").sort()[0], ord=od.reduce((a,r)=>a+r.qty,0);
-    const sold=from<"9999"? prodSoldSince(sup,from) : 0, gap=ord-(stockNow||0)-sold;
-    if(gap>Math.max(50,0.1*ord)) miss={qty:Math.min(ord,gap), ord, ready:from<"9999"? from : null, sold};
-  }
-  return {inOrder:rows.length>0, reorder:X.re.has(sup), pend, miss,
-    incoming:pend.filter(x=>!x.arrived&&!x.late).reduce((a,x)=>a+x.qty,0)};
+  return {inOrder:rows.length>0, reorder:X.re.has(sup), wait:X.wait.has(sup), pend, miss,
+    incoming:pend.filter(x=>!x.late).reduce((a,x)=>a+x.rem,0)};
 }
 /* СИГНАЛ «ПОРА ЗАКАЗЫВАТЬ» (вопрос 3, продавец согласен 27.10.2026). Запас = весь товар бизнеса
    (ВБ + Ozon + ваши склады + отгрузки в пути на ВБ) + партии, которые едут, — каждая в день выхода
@@ -7690,7 +7693,10 @@ function prodSignal(r){
   if(!pb || (!pb.inOrder && !pb.reorder)) return {st:"none"};
   const spd=r.spd||0; if(!(spd>0)) return {st:"nosale"};
   const c=srCum().c, N=c.length-1;
-  const add={}; pb.pend.filter(x=>!x.arrived&&!x.late).forEach(x=>{ const d=Math.max(0,x.left); add[d]=(add[d]||0)+x.qty; });
+  /* «Ждём партию» (продавец 27.10.2026 про 311146/316926/428248): прошлая партия не пришла, но он её ждёт —
+     новый заказ не считаем, пока она не придёт (пришла — `miss` пропадает, и сигнал снова считается). */
+  if(pb.wait && pb.miss) return {st:"wait"};
+  const add={}; pb.pend.filter(x=>x.rem>0&&!x.late).forEach(x=>{ const d=Math.max(0,x.left); add[d]=(add[d]||0)+x.rem; });
   const start=new Array(N); let st=r.bizTotal||0, D=null, pre=0;
   for(let d=0; d<N; d++){
     if(add[d]) st+=add[d];
@@ -7722,11 +7728,12 @@ function prodShort(p){ if(!p) return "нет в заказе";
     : (p.st==="soon"||p.st==="plan")? "до "+fmtDate(p.by)+(p.qty? ": "+fmt(p.qty)+" шт" : "")
     : PROD_ST[p.st].lbl.toLowerCase(); }
 // порядок: срочные сверху (больше дней без товара — выше), дальше по сроку подачи
-function prodSortVal(p){ p=p||{}; return p.st==="urgent"? -1e4-(p.pre||0) : (p.st==="soon"||p.st==="plan")? p.byIn : ({far:1e6,nosale:1e7})[p.st]||1e8; }
+function prodSortVal(p){ p=p||{}; return p.st==="urgent"? -1e4-(p.pre||0) : (p.st==="soon"||p.st==="plan")? p.byIn : ({wait:5e5,far:1e6,nosale:1e7})[p.st]||1e8; }
 const PROD_ST={
   urgent:{lbl:"Заказать срочно",cls:"critical",tip:"Даже заказ, поданный сегодня, придёт через 6 месяцев, а товар кончится раньше — будет разрыв без товара."},
   soon:{lbl:"Заказать в ближайшие "+PROD_SOON+" дн",cls:"warning",tip:"Чтобы не уйти в аут, заказ производству нужно подать в ближайший месяц: потом он не успеет за 6 месяцев."},
   plan:{lbl:"Заказать позже",cls:"good",tip:"Запаса вместе с партиями хватит больше чем на 6 месяцев — «заказать до» показывает последний день подачи заказа."},
+  wait:{lbl:"Ждём партию",cls:"nodata",tip:"Прошлая партия по файлу не пришла, вы решили ждать её — новый заказ не считаем, пока она не придёт. Пришла — сигнал считается сам."},
   far:{lbl:"Запаса на 4+ года",cls:"good",tip:"При нынешнем темпе запаса с партиями хватит больше чем на 4 года."},
   nosale:{lbl:"Нет продаж",cls:"nodata",tip:"За последние 7 дней продаж не было ни на ВБ, ни на Ozon — темпа для расчёта нет."},
   none:{lbl:"Нет в заказе",cls:"nodata",tip:"Кода нет в файле заказов на производство: либо не заказан, либо на выводе. Сигнал не считаем."}};
@@ -7741,7 +7748,7 @@ function srRows(){
      выход в продажу на площадке. Для «на сколько хватит» нужна ВТОРАЯ: пока партия лежит
      непринятой, продажи она не закрывает. С 27.10.2026 заказы производству берутся из файла
      (`prodBatches`): партия, которая уже ПРИШЛА к вам (она теперь в остатке склада) или чей срок
-     прошёл, а её нет (ЗАП-14, «в запас не считается»), горизонтом не служит. Ни ручных сроков по
+     прошёл, а её нет (ЗАП-15, «в запас не считается»), горизонтом не служит. Ни ручных сроков по
      коду, ни «общей даты партии» для кода без своей партии больше нет: такой код считается на
      6 месяцев (PROD_LEAD) — раньше новый заказ не придёт (см. srDecorate).
      `alsoQty` — сколько ещё приедет ПОСЛЕ ближайшей партии. */
@@ -7751,7 +7758,7 @@ function srRows(){
       const q=(b.bySup||{})[sup]||0; if(!q) return;
       const toWh=((b.etaBySup||{})[sup])||b.eta||null, toSale=((b.etaSaleBySup||{})[sup])||b.etaSale||null;
       list.push({kind:k,qty:q,eta:toSale||toWh,etaWh:toWh}); });
-    pb.pend.filter(x=>!x.arrived&&!x.late).forEach(x=>list.push({kind:"prod",qty:x.qty,eta:x.mp,etaWh:null,manual:x.manual}));
+    pb.pend.filter(x=>x.rem>0&&!x.late).forEach(x=>list.push({kind:"prod",qty:x.rem,eta:x.mp,etaWh:null,manual:x.manual}));
     if(!list.length) return null;
     list.sort((a,b)=>(a.eta||"9999-99-99").localeCompare(b.eta||"9999-99-99"));
     const best={...list[0], left:dleft(list[0].eta)}, tot=list.reduce((s,x)=>s+x.qty,0);
@@ -7796,7 +7803,7 @@ function srRows(){
       /* `incoming` — ВСЕ партии, которые ещё едут (не только ближайшая); дата и горизонт — по ближайшей */
       batch:b, incoming:b? b.total:0, eta:b? b.eta:null, etaWh:b? b.etaWh:null,
       etaLeft:b? b.left:null, pb};
-  /* Код без остатка, продаж и идущей партии, но с прошлой партией, которой не видно (ЗАП-14, «ждём без
+  /* Код без остатка, продаж и идущей партии, но с прошлой партией, которой не видно (ЗАП-15, «ждём без
      срока»), строку получает: иначе статус «должны были прийти — их нет» пропадал бы как раз у тех, кого он
      касается (66 кодов на сверке 27.10). */
   }).filter(r=>r.total>0 || r.spd>0 || r.incoming>0 || (r.pb&&r.pb.miss));
@@ -7838,7 +7845,7 @@ function srDecorate(rows){
     const wbAvail = hz>0 ? Math.max(0, wbBase-ozTake) : null;
     const target = hz>0 ? wbAvail/sd : null;                 // сколько можно продавать в день НА ВБ (обычный месяц)
     let verdict="none", ratio=null;
-    /* Товара нет нигде и продаж нет (строка есть только ради статуса «партия должна была прийти» — ЗАП-14):
+    /* Товара нет нигде и продаж нет (строка есть только ради статуса «партия должна была прийти» — ЗАП-15):
        судить цену не о чем, «Не хватит и Озону» здесь было бы неправдой. */
     if(target!=null && (r.total>0 || r.spd>0)){
       /* Особый случай: Озон СВОИМ спросом выбирает весь запас (ozTake >= total). Тогда «поднять
@@ -7983,7 +7990,7 @@ function srExtend(rows){
     else if(r.spd*sd<bizTotal*(1-SR_BAND)) bizSt="over";
     else bizSt="ok";
     const bizLeft = hz>0? bizTotal-r.spd*sd : null;
-    const prod=prodSignal({...r,bizTotal});            // заказ производству (ЗАП-14) — от всего товара бизнеса
+    const prod=prodSignal({...r,bizTotal});            // заказ производству (ЗАП-15) — от всего товара бизнеса
     /* Партия пришла к вам, а на площадке мало (вопрос 4): запаса на ВБ (FBO + в пути) или на Ozon
        меньше чем на PROD_MP_LOW дней их продаж — пора отгружать. */
     const mpLowWb=r.spdWb>0 && ((r.stockWb||0)+wbShip)/r.spdWb<PROD_MP_LOW, mpLowOz=r.spdOz>0 && (r.stockOz||0)/r.spdOz<PROD_MP_LOW;
@@ -8040,7 +8047,7 @@ function srColDefs(){
   } else defs.push({key:"verdict",  val:r=>SR_VERDICT[r.verdict].lbl,
     sortVal:ord(["Не хватит и Озону","Поднять цену","Разогнать","Держать"])});
   defs.push({key:"prodSt", val:r=>PROD_ST[(r.prod&&r.prod.st)||"none"].lbl,
-    sortVal:ord(["urgent","soon","plan","far","nosale","none"].map(k=>PROD_ST[k].lbl))});
+    sortVal:ord(["urgent","soon","plan","wait","far","nosale","none"].map(k=>PROD_ST[k].lbl))});
   return defs;
 }
 // строки с учётом панели (поиск/категории/сегмент) + всех колоночных фильтров, кроме exceptKey
@@ -10060,22 +10067,23 @@ function srWkCell(w,extra){
   else d= cur>0? `<span class="sub2 delta-up">было 0</span>` : `<span class="sub2 mut">заказов не было</span>`;
   return `<td>${(cur||prev)? fmt(cur) : "—"}${d}${extra||""}</td>`;
 }
-/* Статус партий кода по файлу заказов на производство (ЗАП-14) — одни строки для ячейки и выгрузки. */
+/* Статус партий кода по файлу заказов на производство (ЗАП-15) — одни строки для ячейки и выгрузки. */
 function prodBatchLines(r){
   const pb=r.pb; if(!pb) return [];
   const L=[];
   if(!pb.inOrder) L.push({t:"нет в заказе", cls:"mut"});
   if(r.batch && r.batch.kind!=="prod") L.push({t:fmt(r.batch.qty)+" шт · "+inbLabel(r.batch.kind)+(r.eta? " · в продажу "+fmtDate(r.eta) : ""), cls:"mut"});
+  const low=[r.mpLowWb? "ВБ" : "", r.mpLowOz? "Ozon" : ""].filter(Boolean);
+  const lowTxt=low.length? " · на "+low.join(" и ")+" мало — отгрузить" : " · на площадках запаса хватает";
   pb.pend.forEach(x=>{
-    if(x.arrived){
-      const low=[r.mpLowWb? "ВБ" : "", r.mpLowOz? "Ozon" : ""].filter(Boolean);
-      L.push({t:fmt(x.qty)+" шт пришли к вам "+fmtDate(x.arrivedAt)+(low.length? " · на "+low.join(" и ")+" мало — отгрузить" : " · на площадках запаса хватает"),
-        cls:low.length? "delta-down" : "mut"});
-    } else if(x.late) L.push({t:fmt(x.qty)+" шт · срок "+fmtDate(x.mp)+" прошёл, не пришли", cls:"delta-down"});
+    if(x.arrived) L.push({t:fmt(x.got)+" шт пришли к вам"+(x.gotAt? " (последний приход "+fmtDate(x.gotAt)+")" : "")+lowTxt, cls:low.length? "delta-down" : "mut"});
+    else if(x.late) L.push({t:"срок "+fmtDate(x.mp)+" прошёл: не пришло "+fmt(x.rem)+" из "+fmt(x.qty)+" шт", cls:"delta-down"});
+    else if(x.part) L.push({t:"пришло "+fmt(x.got)+" из "+fmt(x.qty)+" ("+fmtDate(x.gotAt)+") · ждём ещё "+fmt(x.rem)+" · на МП "+fmtDate(x.mp)+lowTxt, cls:low.length? "delta-down" : "mut"});
     else if(x.manual) L.push({t:fmt(x.qty)+" шт · срок не указан, считаю ~"+fmtDate(x.mp), cls:"mut"});
     else L.push({t:fmt(x.qty)+" шт · на МП "+fmtDate(x.mp), cls:"mut"});
   });
-  if(pb.miss) L.push({t:"≈"+fmt(pb.miss.qty)+" шт должны были прийти"+(pb.miss.ready? " (готовность "+fmtDate(pb.miss.ready)+")" : "")+" — их нет, ждём без срока", cls:"delta-down"});
+  if(pb.miss) L.push({t:"≈"+fmt(pb.miss.qty)+" шт должны были прийти"+(pb.miss.ready? " (готовность "+fmtDate(pb.miss.ready)+")" : "")
+    +(pb.miss.got? ", уже пришло "+fmt(pb.miss.got) : "")+" — "+(pb.wait? "вы ждёте партию" : "их нет, ждём без срока"), cls:"delta-down"});
   if(pb.inOrder && !pb.pend.length && !pb.miss) L.push({t:"прошлые партии пришли, новой нет", cls:"mut"});
   return L;
 }
@@ -10101,6 +10109,7 @@ function srProdCell(r){
     main=`<span style="font-weight:650${p.st==="soon"? ";color:var(--warn-txt)" : ""}">до ${fmtDate(p.by)}${p.qty? ": "+fmt(p.qty)+" шт" : ""}</span>`;
     sub.push("через "+fmt(p.byIn)+" дн · кончится ~"+fmtDate(p.empty)); }
   else main=`<span class="muted">${esc(s.lbl.toLowerCase())}</span>`;
+  if(p.st==="wait" && r.pb && r.pb.miss) sub.push("≈"+fmt(r.pb.miss.qty)+" шт прошлой партии ещё не пришли");
   if(p.st!=="urgent" && p.pre>0) sub.push("до партии без товара ~"+fmt(p.pre)+" дн — заказ не успеет, только ускорить партию");
   /* Товара нет нигде — продажи последних 7 дней занижены аутом, и количество от такого темпа мало
      (311146: 22 шт при заказе 6 240 шт прошлой партии). Говорим это прямо, а не прячем. */
@@ -10366,7 +10375,7 @@ function srTableAll(rows,WK){
     +`${thSort("Продаж/дн","spd",srSortState)}${thSort(srWkHead(WK),"wkAll",srSortState)}`
     +`${thSortF("До партии","bizSt",srSortState,null,"sr")}`
     +`${thSortF("Что делать","act",srSortState,null,"sr")}${thSort("Партия","etaLeft",srSortState)}${thSortF("Заказ","prodSt",srSortState,null,"sr")}</tr></thead><tbody>`;
-  const cW="var(--s1)", cO="var(--s2)", cH="var(--axis)";
+  const cW="var(--mp-wb)", cO="var(--mp-oz)", cH="var(--mp-wh)";   // ВБ · Ozon · ваши склады — как на всех графиках
   rows.forEach(r=>{
     const s=SR_BIZ_ST[r.bizSt], T=r.bizTotal||0, P=r.spd||0;
     const lw=T? r.sideWb/T:0, lo=T? r.sideOz/T:0, lh=T? r.sideWh/T:0;
@@ -10379,8 +10388,8 @@ function srTableAll(rows,WK){
     html+=`<tr class="${r.bizSt==="short"?"row-critical":""}">`+srName(r,"all")
       +`<td style="font-weight:650">${fmt(T)}<span class="sub2 mut">ВБ ${fmt(r.sideWb)} · Oz ${fmt(r.sideOz)}</span><span class="sub2 mut">ваши склады ${fmt(r.sideWh)}</span></td>`
       +`<td class="sr-dec" title="Где лежит: ВБ ${pc(lw)}% · Ozon ${pc(lo)}% · ваши склады ${pc(lh)}%&#10;Где продаётся: ВБ ${pc(pw)}% · Ozon ${pc(po)}%">`
-        +(T? srSplitBar([[lw,cW],[lo,cO],[lh,cH]])+`<span class="sub2 mut">ВБ ${pc(lw)} · Oz ${pc(lo)} · скл ${pc(lh)}%</span>` : `<span class="sub2 delta-down">товара нет нигде</span>`)
-        +(P? srSplitBar([[pw,cW],[po,cO]])+`<span class="sub2 mut">ВБ ${pc(pw)} · Oz ${pc(po)}%</span>` : `<span class="sub2 mut">продаж нет</span>`)+`</td>`
+        +(T? srSplitBar([[lw,cW],[lo,cO],[lh,cH]])+`<span class="sub2 mut"><b style="color:${cW}">ВБ</b> ${pc(lw)} · <b style="color:${cO}">Oz</b> ${pc(lo)} · <b style="color:${cH}">скл</b> ${pc(lh)}%</span>` : `<span class="sub2 delta-down">товара нет нигде</span>`)
+        +(P? srSplitBar([[pw,cW],[po,cO]])+`<span class="sub2 mut"><b style="color:${cW}">ВБ</b> ${pc(pw)} · <b style="color:${cO}">Oz</b> ${pc(po)}%</span>` : `<span class="sub2 mut">продаж нет</span>`)+`</td>`
       +`<td>${P? srNum1(P) : "—"}${P? `<span class="sub2 mut">ВБ ${srNum1(r.spdWb)} · Oz ${srNum1(r.spdOz)}</span>` : ""}</td>`
       +srWkCell(r.wkAll,(r.wkAll[0]||r.wkAll[1])? `<span class="sub2 mut">ВБ ${fmt(r.wkAllWb[0])} · Oz ${fmt(r.wkAllOz[0])}</span>` : "")
       +`<td><span class="badge ${s.cls}" title="${esc(s.tip)}"><span class="d"></span>${s.lbl}</span>${days}${sub}</td>`
@@ -10397,9 +10406,9 @@ function srTableAll(rows,WK){
 function srSeasonTxt(){ const RU={"01":"январь","02":"февраль","03":"март","04":"апрель","05":"май","06":"июнь","07":"июль","08":"август","09":"сентябрь","10":"октябрь","11":"ноябрь","12":"декабрь"};
   const L=Object.entries(SEASON_W).sort().map(([m,w])=>RU[m]+" ×"+String(w).replace(".",","));
   return "Сезон: спрос до партии считается с весами месяцев — "+L.join(", ")+", остальные ×1 (решение продавца 19.10.2026: чёрная пятница и Новый год). Нынешний темп — темп обычного месяца: «хватит дней» и цель учитывают, что в ноябре и декабре товар уходит быстрее."; }
-// заказ производству и партии (ЗАП-14) — одинаково на всех трёх видах
+// заказ производству и партии (ЗАП-15) — одинаково на всех трёх видах
 function srProdTxt(){ const P=(RD&&RD.prodOrders)||null;
-  return ["Партия — по файлу заказов на производство"+(P? " от "+fmtDate(P.date) : "")+": едет — дата приезда на маркетплейс; «пришли к вам» — ваш склад вырос хотя бы на половину партии, и если на ВБ или Ozon запаса меньше чем на "+PROD_MP_LOW+" дн — «отгрузить». Прошлые партии, которых нет ни в остатке, ни в продажах, — «должны были прийти, их нет, ждём без срока», в запас не считаются. Новой партии нет — горизонт "+PROD_LEAD+" дней: раньше новый заказ не придёт.",
+  return ["Партия — по файлу заказов на производство"+(P? " от "+fmtDate(P.date) : "")+": едет — дата приезда на маркетплейс. Приход ловим сами по росту остатков ваших складов (ведомости 1С"+(P&&P.arrivalsAt? " по "+fmtDate(P.arrivalsAt) : "")+"), в том числе частями: «пришло N из M · ждём ещё K»; пришедшее — уже в остатке склада, в «Приедет» только то, что ещё не пришло. Пришло, а на ВБ или Ozon запаса меньше чем на "+PROD_MP_LOW+" дн — «отгрузить». Прошлые партии, которых нет ни в остатке, ни в продажах, — «должны были прийти, их нет, ждём без срока», в запас не считаются. Новой партии нет — горизонт "+PROD_LEAD+" дней: раньше новый заказ не придёт.",
     "Заказ производству (колонка «Заказ»): от подачи заказа до прихода — 6 месяцев. Запас = весь товар бизнеса + партии из файла по датам выхода в продажу, расход — продажи в день с сезоном. Товар кончится раньше, чем придёт заказ, поданный сегодня, — «Заказать срочно» (и сколько дней будет без товара); иначе «подать до» = день, когда товар кончится, минус 6 месяцев (ближе "+PROD_SOON+" дн — предупреждение). Сколько = продажи за 6 месяцев после прихода − остаток к приходу − партии, которые придут в эти полгода, вверх до контейнера. Кода нет в файле — «нет в заказе», сигнал не считаем (кроме кодов, по которым вы просили рассчитать новый заказ)."]; }
 function srHowTo(mp){
   const band=Math.round(SR_BAND*100), hz=srHzTxt(), WK=srWeeks(mp), ss=srSeasonTxt(), pr=srProdTxt();
@@ -10450,7 +10459,7 @@ function exportStockRateXLSX(){
   const WK=srWeeks(mp);
   const wkH=WK? srWkShort(WK.curFrom,WK.curTo) : "", wkP=WK? srWkShort(WK.prevFrom,WK.prevTo) : "";
   const wkPct=w=>(w[1]>0)? Math.round((w[0]-w[1])/w[1]*100) : "";
-  /* Партии и заказ производству — по файлу заказов на производство (ЗАП-14), одинаково на всех видах */
+  /* Партии и заказ производству — по файлу заказов на производство (ЗАП-15), одинаково на всех видах */
   const batch=[
     {h:"Приедет (все партии), шт",v:r=>r.incoming||"",w:22},
     {h:"Ближайшая партия в продажу",v:r=>r.eta? fmtDate(r.eta):"",w:26},
@@ -13686,7 +13695,7 @@ function recRulesOz(addAny, rs){
    одна на обе площадки, себестоимость тоже ведётся одна (в каталоге ВБ, Ozon берёт её по коду 1С). */
 function recRulesBiz(addAny, rs){
   const add=o=>{ if(o){ o.mp="all"; addAny(o); } };
-  // ---- 8. Заказ производству (ЗАП-14, с 27.10.2026) ----
+  // ---- 8. Заказ производству (ЗАП-15, с 27.10.2026) ----
   /* Тот же сигнал, что колонка «Заказ» в «Запасе и темпе» (prodSignal): весь товар бизнеса + партии
      из файла заказов на производство, от подачи до прихода 6 месяцев. Прежнее правило «Дозаказать на
      фабрике» (меньше 130 дней, «до полки около 4 месяцев») заменено: срок продавец назвал 6 месяцев. */
@@ -14307,9 +14316,9 @@ const stkDM=d=>d? d.slice(8,10)+"."+d.slice(5,7) : "—";
    «чтобы я понимал, с какого числа могу смотреть, и не выбирал периоды, когда данных нет»). */
 function stkLayersInfo(){
   const S=stockSeries(), last=S.dates[S.dates.length-1];
-  const L=[{k:"fbo",l:"Склады ВБ (Wildberries)",c:cssv("--s1")},
-           {k:"oz",l:"Склады Ozon",c:cssv("--s2")},
-           {k:"wh",l:"Ваши склады (1С)",c:cssv("--s3")}];
+  const L=[{k:"fbo",l:"Склады ВБ (Wildberries)",c:cssv("--mp-wb")},
+           {k:"oz",l:"Склады Ozon",c:cssv("--mp-oz")},
+           {k:"wh",l:"Ваши склады (1С)",c:cssv("--mp-wh")}];
   L.forEach(x=>{ const ds=S.srcDays[x.k]||[]; x.first=ds[0]||null; x.lastM=ds[ds.length-1]||null; x.set=new Set(ds); x.n=ds.length; });
   return {L,first:S.dates[0],last};
 }
@@ -14407,7 +14416,7 @@ function renderStockTab(){
   const dF=cmp.fbo? sum(r=>r.dFbo) : null, dO=cmp.oz? sum(r=>r.dOz) : null, dW=cmp.wh? sum(r=>r.dWh) : null;
   const R=(k,v,cls)=>`<div class="t-row${cls?" "+cls:""}"><span class="k">${k}</span><span class="v">${v}</span></div>`;
   const sw=c=>`<i style="background:${c}"></i>`;
-  const c1=cssv("--s1"), c2=cssv("--s2"), c3=cssv("--s3");
+  const c1=cssv("--mp-wb"), c2=cssv("--mp-oz"), c3=cssv("--mp-wh");   // ВБ · Ozon · ваши склады
   const sh=v=>nf.format(v)+" шт";
   const dTxt=v=>v==null? "не сравнивается" : stkSigned(v)+" шт";
   const dChip=v=>v==null? "" : `<div class="delta ${v>=0?"up":"down"}">${v>=0?"▲":"▼"} ${stkSigned(v)} шт <span class="muted" style="font-weight:400">${W.same?"":"с "+stkDM(W.start.date)}</span></div>`;
@@ -14741,9 +14750,9 @@ function renderStockChart(codes,W){
     return;
   }
   const series=[
-    {k:"fbo", l:"Склады ВБ (FBO)", c:cssv("--s1")},
-    {k:"oz",  l:"Склады Ozon",     c:cssv("--s2")},
-    {k:"wh",  l:"Ваши склады (1С)",c:cssv("--s3")}
+    {k:"fbo", l:"Склады ВБ (FBO)", c:cssv("--mp-wb")},
+    {k:"oz",  l:"Склады Ozon",     c:cssv("--mp-oz")},
+    {k:"wh",  l:"Ваши склады (1С)",c:cssv("--mp-wh")}
   ];
   const vals=series.map(s=>snaps.map(sn=>{
     if(!sn.has[s.k]) return null;                    // слой ещё не начинался — разрыв, а не ноль
@@ -14873,7 +14882,7 @@ function renderStockEvents(codes,W){
      «+466 шт» вместо реальных ≈6 400. Сравниваем замер с ПРЕДЫДУЩИМ ЗАМЕРОМ ТОГО ЖЕ СЛОЯ. */
   const byDate={}; all.forEach(s=>byDate[s.date]=s);
   const S=stockSeries(), src=S.srcDays, brk=S.breaks||{};
-  const LAY=[{k:"fbo",l:"склады ВБ",c:cssv("--s1")},{k:"oz",l:"склады Ozon",c:cssv("--s2")},{k:"wh",l:"ваши склады",c:cssv("--s3")}];
+  const LAY=[{k:"fbo",l:"склады ВБ",c:cssv("--mp-wb")},{k:"oz",l:"склады Ozon",c:cssv("--mp-oz")},{k:"wh",l:"ваши склады",c:cssv("--mp-wh")}];
   const from=snaps[0].date, to=snaps[snaps.length-1].date, ev=[];
   LAY.forEach(L=>{
     const days=(src[L.k]||[]).filter(d=>byDate[d]), bad=brk[L.k]||new Set();
