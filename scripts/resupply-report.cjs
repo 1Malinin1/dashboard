@@ -364,9 +364,9 @@ const bySup={}; rows.forEach(r=>{ bySup[r.sup]=r; });
 /* Машина Ozon не собралась — её товар остаётся на складе ЗА OZON (`hold`): приоритет продавца,
    нужное Ozon не отдаём на ВБ ни базой, ни добором (иначе 487195 с нулём дней на Ozon «Казань»
    уезжал на ВБ при 37 днях там). Добор следующих машин Ozon этим товаром пользоваться может. */
-const shift=(r,p,pals,isTop)=>{ const d=r.D[p.k], qty=pals*capOf(r,p.k);
+const shift=(r,p,pals,isTop,quiet)=>{ const d=r.D[p.k], qty=pals*capOf(r,p.k);
   r.pool[p.wh]-=qty; d.pal[p.wh]+=pals; d.ship+=qty;
-  if(isTop) d.topUp+=qty; else if(pals<0){ d.roll-=qty; if(p.k!=='wFbo') r.hold[p.wh]+=-qty; } };
+  if(isTop) d.topUp+=qty; else if(pals<0 && !quiet){ d.roll-=qty; if(p.k!=='wFbo') r.hold[p.wh]+=-qty; } };
 function runTrucks(keys){
   const pairs=[]; WH_ORDER.forEach((wh,i)=>keys.forEach(k=>
     pairs.push({wh,k,i,total:rows.reduce((a,r)=>a+r.D[k].pal[wh],0)})));
@@ -428,7 +428,8 @@ function runTrucks(keys){
     if(!ok) return;
     t.items.forEach(x=>shift(bySup[x.sup],p,x.pal,false));
     const add=truckFill(p,{items:t.items,pallets:t.pallets});
-    if(!add){ t.items.forEach(x=>shift(bySup[x.sup],p,-x.pal,false)); return; }
+    // не добить и во второй раз — тихий откат: «не едет» и «держим за Ozon» записаны первым заходом
+    if(!add){ t.items.forEach(x=>shift(bySup[x.sup],p,-x.pal,false,true)); return; }
     const nt={pallets:t.pallets,free:PALLETS_PER_TRUCK-t.pallets,items:t.items.map(x=>({...x})),base:t.pallets};
     add.forEach((pals,r)=>{ shift(r,p,pals,true); const ex=nt.items.find(x=>x.sup===r.sup);
       if(ex) ex.pal+=pals; else nt.items.push({sup:r.sup,pal:pals}); nt.pallets+=pals; });
