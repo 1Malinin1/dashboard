@@ -468,6 +468,13 @@
   #stkTable tr.in-grp td.metric{white-space:normal;min-width:230px;max-width:280px;line-height:1.35}
   #stkTable tr.stk-total td.metric .sub.blk{margin-left:0}
   #stkTable th .th-sub{display:block;font-size:10.5px;font-weight:500;color:var(--muted);text-transform:none;letter-spacing:0}
+  /* Шапка непрозрачная: на полупрозрачной (--glass) при прокрутке сквозь неё читались строки (28.10.2026) */
+  #stkTable thead th{background:linear-gradient(var(--glass),var(--glass)),var(--surface)}
+  /* Изменение места за период — под цифрой остатка, цветом знака */
+  #stkTable .stk-d{display:block;font-size:11px;font-weight:600;line-height:1.2;margin-top:2px;font-variant-numeric:tabular-nums}
+  #stkTable .stk-d.up,#stkTable .stk-d-key.up{color:var(--good-txt)}
+  #stkTable .stk-d.dn,#stkTable .stk-d-key.dn{color:var(--crit-txt)}
+  #stkTable .stk-d-key{font-weight:700}
   /* «Движение товара» и «Приходы и отгрузки»: в ячейках длинные пояснения (склады, округа Ozon,
      список товаров), а table.rnp запрещает перенос — таблицы были 1 590 px при 1 114 доступных, и
      колонки «На Ozon», «Ждём», «Что двигалось» уезжали за правый край даже на 1920. Переносим. */
@@ -14230,6 +14237,13 @@ function stkLayerAt(k,d){ const ds=(stockSeries().srcDays||{})[k]||[]; let r=nul
    «В пути» истории не имеет вовсе (ВБ путь от отправки до приёмки не показывает, у Озона это
    заявки на поставку), поэтому берётся ТЕКУЩЕЕ значение и только при конце = последний день;
    для прошлой даты — null («истории нет»), а не ноль. */
+/* «ИТОГО» липнет ровно под шапкой: её высота зависит от подписей (две строки, перенос на узком экране),
+   а фиксированные 38 px давали наезд итога на шапку (28.10.2026: «шапка сползает при скролле»). Меряем
+   после каждой отрисовки и при смене размера окна; на скрытой вкладке высота 0 — оставляем прежнюю. */
+function stkStickTop(){ const t=document.getElementById("stkTable"), h=t&&t.querySelector("thead");
+  if(!h) return; const v=Math.round(h.getBoundingClientRect().height); if(v>0) t.style.setProperty("--stk-th",v+"px"); }
+window.addEventListener("resize",()=>requestAnimationFrame(stkStickTop));
+
 function stkRows(W){
   W=W||stkWin(); if(!W) return [];
   const now=W.end, prev=W.same? null : W.start, live=W.isNow;
@@ -14265,6 +14279,9 @@ function stkRows(W){
   const rows=codes.map(s=>{
     const a=now.sup[s]||{fbo:0,oz:0,wh:0,whBy:{}}, b=(prev&&prev.sup[s])||{fbo:0,oz:0,wh:0}, w=a.whBy||{};
     const dOf=k=>cmp[k]? a[k]-b[k] : null;
+    /* Изменение ПО КАЖДОМУ МЕСТУ (продавец 28.10.2026: «дельта, когда она общая, непонятно… нужно в разрезе
+       столбца, где прибавление, а где убыток»). Склады 1С — из разреза ведомости на обоих концах. */
+    const bw=b.whBy||{}, dWk=k=>cmp.wh? ((a.whBy||{})[k]||0)-(bw[k]||0) : null;
     const wbT=live? (ship[s]||0) : null, oT=live? (ozT[s]||0) : null;
     /* Клин и «→Ozon» — из того же среза ведомости, что и остальные склады (раньше брались из
        текущей ведомости: на прошлую дату колонки разъехались бы с «Ваши склады»). На последний
@@ -14277,6 +14294,8 @@ function stkRows(W){
       wbTransit:wbT, ozTransit:oT,
       total:a.fbo+a.oz+a.wh+(wbT||0)+(oT||0)-dup,
       dFbo:dOf("fbo"), dOz:dOf("oz"), dWh:dOf("wh"),
+      dMsk:dWk("msk"), dNsk1:dWk("nsk1"), dNsk2:dWk("nsk2"), dKlin:dWk("klin"),
+      dAsg:cmp.wh? ozA-((bw.ozsfo||0)+(bw.ozcfo||0)) : null,
       dTotal:anyCmp? ["fbo","oz","wh"].reduce((x,k)=>cmp[k]? x+(a[k]-b[k]) : x, 0) : null};
   });
   /* «НА ВЫВОД» НА «ОСТАТКАХ» — СВОЁ ПРАВИЛО (ЗАП-06, продавец 19.10.2026: «всё что идёт на вывод скрой
@@ -14520,10 +14539,22 @@ function renderStockTab(){
   const byCat={};
   rows.forEach(r=>{ (byCat[r.cat]||(byCat[r.cat]=[])).push(r); });
   const KEYS=["fbo","oz","wh","msk","nsk1","nsk2","klin","ozAsg","wbTransit","ozTransit","total"];
+  /* ИЗМЕНЕНИЕ В КАЖДОМ СТОЛБЦЕ (продавец 28.10.2026: «дельта, когда она общая, непонятно… нужно в разрезе столбца,
+     где прибавление, а где убыток, иначе не понятно, в каком из направлений был приход или уход»). Под цифрой
+     места — её сдвиг за период (зелёный — прибавилось, красный — убыло); null — место не сравнивается (замера на
+     начало периода не было). У ВБ и Ozon в подсказке ячейки — пришло / ушло / продано (`stkFlows`). */
+  const DK=["dFbo","dOz","dMsk","dNsk1","dNsk2","dKlin","dAsg"];
+  const sumD=(list,k)=>list.some(r=>r[k]!=null)? list.reduce((x,r)=>x+(r[k]||0),0) : null;
+  const flowBy={fbo:{},oz:{}};
+  ["fbo","oz"].forEach(k=>(F[k]||[]).forEach(e=>{ if(e.broken) return;
+    e.byCode.forEach(x=>{ const o=flowBy[k][x.c]||(flowBy[k][x.c]={inc:0,out:0,sold:0}); o.inc+=x.inc; o.out+=x.out; o.sold+=x.sold||0; }); }));
+  const flowOf=(list,k)=>list.reduce((o,r)=>{ const f=flowBy[k][r.sup]; if(f){ o.inc+=f.inc; o.out+=f.out; o.sold+=f.sold; o.n++; } return o; },{inc:0,out:0,sold:0,n:0});
   const cats=Object.entries(byCat).map(([cat,all])=>{
     const list=all.filter(r=>!r.outHidden);
     const a={cat,n:list.length,list};
     KEYS.forEach(k=>a[k]=all.reduce((x,r)=>x+(r[k]||0),0));
+    DK.forEach(k=>a[k]=sumD(all,k));
+    a.fW=flowOf(all,"fbo"); a.fO=flowOf(all,"oz");
     a.dTotal=all.some(r=>r.dTotal!=null)? all.reduce((x,r)=>x+(r.dTotal||0),0) : null;
     return a;
   }).filter(c=>c.n>0 || c.dTotal).sort((a,b)=>b.total-a.total);
@@ -14531,20 +14562,32 @@ function renderStockTab(){
 
   const wayT=live? "" : ` title="«В пути» истории не имеет — заполняется только на последний день (${fmtDate(W.last)})"`;
   const wayS=live? "" : `<span class="th-sub">только ${stkDM(W.last)}</span>`;
-  const dHead=W.same? `Δ<span class="th-sub">не считается</span>` : `Δ<span class="th-sub">с ${stkDM(W.start.date)}</span>`;
+  const dHead=W.same? `Δ всего<span class="th-sub">не считается</span>` : `Δ всего<span class="th-sub">с ${stkDM(W.start.date)}</span>`;
   const dTitle=W.same? ` title="${W.sameTxt[0].toUpperCase()+W.sameTxt.slice(1)} — изменение не считается"`
-    : ` title="Изменение остатка с ${fmtDate(W.start.date)} по ${fmtDate(W.end.date)}, без «в пути»${cmpOff.length&&cmpOn.length? "; сравниваются только "+cmpOn.join(", ") : ""}"`;
+    : ` title="Изменение остатка с ${fmtDate(W.start.date)} по ${fmtDate(W.end.date)}, без «в пути»${cmpOff.length&&cmpOn.length? "; сравниваются только "+cmpOn.join(", ") : ""}. По местам — под цифрой в каждом столбце."`;
   const th=(h,extra)=>`<th${extra||""}>${h}</th>`;
-  let html=`<thead><tr><th class="metric">Категория / товар<span class="th-sub">остаток на ${fmtDate(W.to)}</span></th>`
+  const subD=W.same? "" : ` · <span class="stk-d-key up">+</span>/<span class="stk-d-key dn">−</span> под цифрой — изменение с ${stkDM(W.start.date)}`;
+  let html=`<thead><tr><th class="metric">Категория / товар<span class="th-sub">остаток на ${fmtDate(W.to)}${subD}</span></th>`
     +th("Склады ВБ")+th("В пути ВБ"+wayS,wayT)+th("Москва")+th("Нск-1")+th("Евросиб")+th("Клин")
     +th("→Ozon",` title="Назначено на Ozon: лежит у вас на виртуальных складах «Ozon СФО/ЦФО» и ждёт машины. Входит в ваши склады."`)
     +th("Ozon")+th("В пути Ozon"+wayS,wayT)+th("ВСЕГО")+th(dHead,dTitle)+`</tr></thead><tbody>`;
   const way=v=>live? stkNum(v) : `<span class="muted" title="«В пути» истории не имеет">—</span>`;
+  const dSub=d=>(d==null||!d)? "" : `<span class="stk-d ${d>0?"up":"dn"}">${stkSigned(d)}</span>`;
+  const fTip=(name,f,d)=>(!f||!f.n)? "" : ` title="${name} с ${fmtDate(W.start.date)}: ${d==null?"":"изменение "+stkSigned(d)+" шт = "}пришло ≈ ${nf.format(f.inc)} − ушло ≈ ${nf.format(f.out)} (продано ≈ ${nf.format(f.sold)})"`;
+  /* Ячейки мест одной строки (итог, категория, товар): цифра остатка и под ней — её изменение. */
+  const cells=(o,bold,asgTitle)=>{ const B=v=>bold? `<b>${v}</b>` : v;
+    return `<td${fTip("Склады ВБ",o.fW,o.dFbo)}>${B(stkNum(o.fbo))}${dSub(o.dFbo)}</td><td>${B(way(o.wbTransit))}</td>`
+      +`<td>${B(stkNum(o.msk))}${dSub(o.dMsk)}</td><td>${B(stkNum(o.nsk1))}${dSub(o.dNsk1)}</td>`
+      +`<td>${B(stkNum(o.nsk2))}${dSub(o.dNsk2)}</td><td>${B(stkNum(o.klin))}${dSub(o.dKlin)}</td>`
+      +`<td class="${(o.ozAsg||o.dAsg)?"":"d-zero"}"${asgTitle||""}>${B(stkNum(o.ozAsg))}${dSub(o.dAsg)}</td>`
+      +`<td${fTip("Склады Ozon",o.fO,o.dOz)}>${B(stkNum(o.oz))}${dSub(o.dOz)}</td><td>${B(way(o.ozTransit))}</td>`; };
   /* СТРОКА «ИТОГО» ПЕРВОЙ И ЗАКРЕПЛЁННОЙ. Без неё продавец сопоставил KPI «Всего товара»
      (116 970) с первой строкой таблицы — «Пушкары» 80 942 — и решил, что цифры разъехались
      (05.10.2026). Сумма категорий ровно равна KPI, но увидеть это было негде.
      Строка липнет под шапкой, поэтому видна и после прокрутки. */
   const T={}; KEYS.forEach(k=>T[k]=cats.reduce((a,c)=>a+(c[k]||0),0));
+  DK.forEach(k=>T[k]=cats.some(c=>c[k]!=null)? cats.reduce((a,c)=>a+(c[k]||0),0) : null);
+  T.fW=flowOf(rows,"fbo"); T.fO=flowOf(rows,"oz");
   T.dTotal=cats.some(c=>c.dTotal!=null)? cats.reduce((a,c)=>a+(c.dTotal||0),0) : null;
   if(!nVis){
     html+=`<tr><td colspan="12"><div class="empty-hint">Под текущий поиск и категории не попал ни один товар`
@@ -14553,9 +14596,7 @@ function renderStockTab(){
     html+=`<tr class="stk-total"><td class="metric"><b>ИТОГО</b> `
       +`<span class="sub blk">${cats.length} ${plural(cats.length,"категория","категории","категорий")} · `
       +`${nVis} ${plural(nVis,"товар","товара","товаров")}</span></td>`
-      +`<td><b>${stkNum(T.fbo)}</b></td><td><b>${way(T.wbTransit)}</b></td><td><b>${stkNum(T.msk)}</b></td>`
-      +`<td><b>${stkNum(T.nsk1)}</b></td><td><b>${stkNum(T.nsk2)}</b></td><td><b>${stkNum(T.klin)}</b></td>`
-      +`<td><b>${stkNum(T.ozAsg)}</b></td><td><b>${stkNum(T.oz)}</b></td><td><b>${way(T.ozTransit)}</b></td>`
+      +cells(T,true)
       +`<td><b>${nf.format(T.total)}</b></td><td><b>${stkDelta(T.dTotal)}</b></td></tr>`;
     const maxTot=Math.max(...cats.map(c=>c.total),1);
     cats.forEach(c=>{
@@ -14563,23 +14604,21 @@ function renderStockTab(){
       html+=`<tr class="row-group stk-cat" data-cat="${esc(c.cat)}" style="cursor:pointer" title="${open?"Свернуть":"Показать товары категории"}">`
         +`<td class="metric"><span class="stk-caret${open?" open":""}">▸</span> <b>${esc(c.cat)}</b> `
         +`<span class="sub blk">${c.n} ${plural(c.n,"товар","товара","товаров")}</span></td>`
-        +`<td>${stkNum(c.fbo)}</td><td>${way(c.wbTransit)}</td><td>${stkNum(c.msk)}</td>`
-        +`<td>${stkNum(c.nsk1)}</td><td>${stkNum(c.nsk2)}</td><td>${stkNum(c.klin)}</td>`
-        +`<td class="${c.ozAsg?"":"d-zero"}">${stkNum(c.ozAsg)}</td><td>${stkNum(c.oz)}</td><td>${way(c.ozTransit)}</td>`
+        +cells(c,false)
         +`<td style="background:${heatBg(c.total,maxTot)}"><b>${nf.format(c.total)}</b></td>`
         +`<td>${stkDelta(c.dTotal)}</td></tr>`;
       if(open) c.list.slice().sort((a,b)=>b.total-a.total).forEach(r=>{
+        const rr=Object.assign({},r,{fW:flowOf([r],"fbo"),fO:flowOf([r],"oz")});
         html+=`<tr class="in-grp"><td class="metric">${r.sku? skuLink(r.sku) : esc(r.sup)} `
           +`<span class="sub">${esc((r.name||"").slice(0,44))}</span><br><span class="sub">1С ${esc(r.sup)}</span></td>`
-          +`<td>${stkNum(r.fbo)}</td><td>${way(r.wbTransit)}</td><td>${stkNum(r.msk)}</td>`
-          +`<td>${stkNum(r.nsk1)}</td><td>${stkNum(r.nsk2)}</td><td>${stkNum(r.klin)}</td>`
-          +`<td class="${r.ozAsg?"":"d-zero"}"${r.ozDup?` title="Из «ВСЕГО» вычтено ${r.ozDup} шт: на эту партию Ozon уже создал заявку, а в ведомости она ещё стоит здесь."`:""}>${stkNum(r.ozAsg)}</td><td>${stkNum(r.oz)}</td><td>${way(r.ozTransit)}</td>`
+          +cells(rr,false,r.ozDup?` title="Из «ВСЕГО» вычтено ${r.ozDup} шт: на эту партию Ozon уже создал заявку, а в ведомости она ещё стоит здесь."`:"")
           +`<td><b>${nf.format(r.total)}</b></td><td>${stkDelta(r.dTotal)}</td></tr>`;
       });
     });
     html+="</tbody>";
   }
   document.getElementById("stkTable").innerHTML=html;
+  stkStickTop();
   document.getElementById("stkCount").textContent=
     `${cats.length} ${plural(cats.length,"категория","категории","категорий")} · ${nVis} ${plural(nVis,"товар","товара","товаров")}`;
 }
@@ -14636,7 +14675,7 @@ function stkFlows(codes,W){
       set.forEach(c=>{ const x=(a.sup[c]||{})[k]||0, y=(b.sup[c]||{})[k]||0, dc=x-y, sc=soldBy? (soldBy[c]||0) : 0;
         if(!dc && !sc) return;
         const ic=Math.max(0, soldBy? dc+sc : dc);
-        d+=dc; inc+=ic; sold+=sc; byCode.push({c, d:dc, inc:Math.round(ic), out:Math.round(ic-dc)}); });
+        d+=dc; inc+=ic; sold+=sc; byCode.push({c, d:dc, inc:Math.round(ic), out:Math.round(ic-dc), sold:Math.round(sc)}); });
       inc=Math.round(inc);
       let reserve=null;
       if(k==="wh" && H[a.date] && H[a.date].reserve){ reserve=0;
