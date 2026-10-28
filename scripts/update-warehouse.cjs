@@ -136,6 +136,7 @@ let cols=[];   // колонки-склады из шапки (нужны и н�
 const inbCols={china:[],order:[]};   // колонки «едет ко мне» — это не склад
 const mpCols=[]; const mpBy={};      // незнакомые колонки — не считаем (белый список KNOWN_WH)
 const inbBy={china:{},order:{}};
+const reserveBy={}, reserveBySup={}; let reserveSum=0;   // резерв (товар собирают в отгрузку): печать + история по кодам
 
 if(layout==='A'){
   const H=rows[hr].map(S);
@@ -173,6 +174,22 @@ if(layout==='A'){
     if(!whForced && !KNOWN_WH.has(w)){ mpCols.push({i,name:h}); continue; }
     cols.push({i,name:w}); }
   if(!cols.length){ console.error('не нашёл колонок складов в шапке: '+JSON.stringify(H)); process.exit(1); }
+  /* С 28.10.2026 под каждым складом три подколонки: «Остаток» · «Зарезервировано» · «Свободный остаток»
+     (название склада — только над первой). Раньше в файле был один свободный остаток, и весь учёт
+     (подсорт, приход партий ЗАП-15, «в пути на ВБ») стоит на нём: резерв — это товар, который уже
+     собирают в отгрузку (ЗАП-07). Берём «Свободный остаток»; взяв «Остаток», получили бы резерв
+     как фантомный приход партии. Резерв печатаем для сведения. */
+  const SH=(rows[hr+1]||[]).map(S);
+  const reserveCols=[];
+  if(SH.some(x=>/свободн/i.test(x))){
+    const nextHdr=i=>{ for(let j=i+1;j<H.length;j++) if(H[j]) return j; return H.length; };
+    const pick=c=>{ const end=nextHdr(c.i); let free=-1;
+      for(let j=c.i;j<end;j++){ if(/свободн/i.test(SH[j])) free=j; else if(/зарезерв|резерв/i.test(SH[j])) reserveCols.push({i:j,name:c.name}); }
+      if(free<0){ console.error('у склада «'+c.name+'» нет подколонки «Свободный остаток»: '+JSON.stringify(SH.slice(c.i,end))); process.exit(1); }
+      c.i=free; };
+    cols.forEach(pick); mpCols.forEach(c=>{ const end=nextHdr(c.i); for(let j=c.i;j<end;j++) if(/свободн/i.test(SH[j])){ c.i=j; break; } });
+    console.log('подколонки складов: берём «Свободный остаток»'+(reserveCols.length?' (резерв — отдельно, в остаток не входит)':''));
+  }
   console.log('раскладка «ведомость по складам» · шапка в строке '+(hr+1)+' · склады: '+cols.map(c=>c.name).join(' · '));
   for(let i=hr+1;i<rows.length;i++){
     const r=rows[i]; const k=code(r[iCode]);
@@ -183,6 +200,8 @@ if(layout==='A'){
     ['china','order'].forEach(t=>inbCols[t].forEach(c=>{ const v=num(r[c.i]); if(v>0){ inbSum+=v;
       if(supSet.has(k)) inbBy[t][k]=(inbBy[t][k]||0)+v; } }));
     mpCols.forEach(c=>{ const v=num(r[c.i]); if(v>0) mpBy[c.name]=(mpBy[c.name]||0)+v; });
+    if(supSet.has(k)) reserveCols.forEach(c=>{ const v=num(r[c.i]); if(v>0){ reserveBy[c.name]=(reserveBy[c.name]||0)+v; reserveSum+=v;
+      const e=reserveBySup[k]||(reserveBySup[k]={qty:0,wh:{}}); e.qty+=v; e.wh[c.name]=(e.wh[c.name]||0)+v; } });
     if(sum<=0 && inbSum<=0) continue;
     if(!supSet.has(k)){ skipped[k]=(skipped[k]||0)+sum+inbSum;
       if(prodSet.has(k) && sum>0){ const e=prodX[k]||(prodX[k]={qty:0,wh:{}}); e.qty+=sum; Object.entries(wh).forEach(([n,v])=>{ e.wh[n]=(e.wh[n]||0)+v; }); }
@@ -303,6 +322,10 @@ if(kind==='stock'){
   const wasPoint=!!RD.whHistory[dateArg];
   RD.whHistory[dateArg]={byWh:JSON.parse(JSON.stringify(byWh)),
     bySup:Object.fromEntries(Object.entries(bySup).map(([k,v])=>[k,{qty:v.qty,wh:Object.assign({},v.wh)}]))};
+  /* Резерв по кодам (с 28.10.2026 ведомость его показывает): товар, который собирают в отгрузку. В остаток
+     `bySup` НЕ входит. Копим по дням — по нему видно, какая машина уже в сборке, и (когда наберётся история)
+     приход партий можно будет считать по полному остатку «свободный + резерв», не боясь снятого резерва. */
+  if(reserveSum>0) RD.whHistory[dateArg].reserve=reserveBySup;
   const hDays=Object.keys(RD.whHistory).sort();
   console.log('История своего склада: '+(wasPoint?'ОБНОВЛЕНА':'добавлена')+' точка '+dateArg
     +' · всего дней '+hDays.length+' ['+hDays[0]+' … '+hDays[hDays.length-1]+']');
@@ -343,6 +366,8 @@ const label={stock:'Остатки своих складов',china:'В пути
 const uk=Object.keys(skipped);
 console.log('\n'+label+' на '+dateArg+': позиций '+Object.keys(bySup).length+' · '+total.toLocaleString('ru-RU')+' шт');
 if(kind==='stock') Object.entries(byWh).forEach(([n,v])=>console.log('   '+n+': '+v.toLocaleString('ru-RU')+' шт'));
+if(kind==='stock' && reserveSum>0) console.log('Резерв (собирают в отгрузку, в остаток НЕ входит): '+Math.round(reserveSum).toLocaleString('ru-RU')+' шт · '
+  +Object.entries(reserveBy).map(([n,v])=>n+' '+Math.round(v).toLocaleString('ru-RU')).join(' · '));
 /* Коды не из каталога — это РОЗНИЧНЫЕ товары продавца, которых нет ни на ВБ, ни на Озоне
    (подтверждено 28.08.2026). Их пропуск — норма, а не потеря данных: связывать их с
    маркетплейсами не нужно. Формулировка мягкая специально, чтобы будущая сессия не начала
