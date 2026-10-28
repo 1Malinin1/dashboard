@@ -3234,7 +3234,7 @@ function turnColDefs(){
     {key:"daysLeft",     val:r=> r.salesPerDay<=0 ? (r.covered>0?"∞":"—") : String(Math.round(r.daysBase)), sortVal:dv},
     {key:"reorder",      val:r=> r.reorder>0? fmt(r.reorder)+" шт" : "—", sortVal:v=> v==="—"?0:pnum(v)},
     {key:"whenOrder",    val:r=>PROD_ST[(r.prod&&r.prod.st)||"none"].lbl,
-                         sortVal:v=>{ const i=["urgent","soon","plan","wait","far","nosale","none"].map(k=>PROD_ST[k].lbl).indexOf(v); return i<0? 99 : i; }},
+                         sortVal:v=>{ const i=["urgent","soon","plan","inbatch","wait","far","nosale","none"].map(k=>PROD_ST[k].lbl).indexOf(v); return i<0? 99 : i; }},
     {key:"pStatus",      val:r=>r.pStatus||"—", sortVal:v=>PSTATUS_RANK[v]!=null?PSTATUS_RANK[v]:9},
     {key:"status",       val:r=>TURN_STATUS[r.status], sortVal:v=>TURN_STATUS_RANK[v]!=null?TURN_STATUS_RANK[v]:9},
   ];
@@ -7706,6 +7706,19 @@ function prodSignal(r){
      новый заказ не считаем, пока она не придёт (пришла — `miss` пропадает, и сигнал снова считается). */
   if(pb.wait && pb.miss) return {st:"wait"};
   const add={}; pb.pend.filter(x=>x.rem>0&&!x.late).forEach(x=>{ const d=Math.max(0,x.left); add[d]=(add[d]||0)+x.rem; });
+  /* ПАРТИЯ ЕЩЁ ЕДЕТ — НОВЫЙ ЗАКАЗ НЕ СЧИТАЕМ (ЗАП-16, продавец 28.10.2026 про 487197: «до момента, пока партия не
+     придёт, ты не считаешь расчёт новой, тк после того как придёт партия, мы ещё раз посмотрим на динамику и там уже
+     более точно рассчитаем»). Ждём ПОСЛЕДНЮЮ непришедшую партию файла — и частично пришедшую, и с прошедшим сроком.
+     До её прихода считаем только разрыв: сколько дней не будет товара (это «ускорить партию», а не новый заказ). */
+  const openB=pb.pend.filter(x=>x.rem>0);
+  if(openB.length){
+    const lastLeft=Math.max(0,...openB.map(x=>x.left)), last=openB.reduce((a,x)=>x.mp>a? x.mp : a, "");
+    let st=r.bizTotal||0, pre=0;
+    for(let d=0; d<Math.min(N,lastLeft); d++){
+      if(add[d]) st+=add[d];
+      const dem=spd*(c[d+1]-c[d]); if(st<dem) pre++; st=Math.max(0,st-dem); }
+    return {st:"inbatch", pre, last, rem:openB.reduce((a,x)=>a+x.rem,0), n:openB.length};
+  }
   const start=new Array(N); let st=r.bizTotal||0, D=null, pre=0;
   for(let d=0; d<N; d++){
     if(add[d]) st+=add[d];
@@ -7735,13 +7748,15 @@ function prodSignalMap(){ if(_prodSigCache) return _prodSigCache; const m={};
 function prodShort(p){ if(!p) return "нет в заказе";
   return p.st==="urgent"? "срочно"+(p.qty? ": "+fmt(p.qty)+" шт" : "")
     : (p.st==="soon"||p.st==="plan")? "до "+fmtDate(p.by)+(p.qty? ": "+fmt(p.qty)+" шт" : "")
+    : p.st==="inbatch"? "партия едет до "+fmtDate(p.last)
     : PROD_ST[p.st].lbl.toLowerCase(); }
 // порядок: срочные сверху (больше дней без товара — выше), дальше по сроку подачи
-function prodSortVal(p){ p=p||{}; return p.st==="urgent"? -1e4-(p.pre||0) : (p.st==="soon"||p.st==="plan")? p.byIn : ({wait:5e5,far:1e6,nosale:1e7})[p.st]||1e8; }
+function prodSortVal(p){ p=p||{}; return p.st==="urgent"? -1e4-(p.pre||0) : (p.st==="soon"||p.st==="plan")? p.byIn : ({inbatch:4e5,wait:5e5,far:1e6,nosale:1e7})[p.st]||1e8; }
 const PROD_ST={
   urgent:{lbl:"Заказать срочно",cls:"critical",tip:"Даже заказ, поданный сегодня, придёт через 6 месяцев, а товар кончится раньше — будет разрыв без товара."},
   soon:{lbl:"Заказать в ближайшие "+PROD_SOON+" дн",cls:"warning",tip:"Чтобы не уйти в аут, заказ производству нужно подать в ближайший месяц: потом он не успеет за 6 месяцев."},
   plan:{lbl:"Заказать позже",cls:"good",tip:"Запаса вместе с партиями хватит больше чем на 6 месяцев — «заказать до» показывает последний день подачи заказа."},
+  inbatch:{lbl:"Партия в пути",cls:"good",tip:"По коду есть партия из файла заказов, которая ещё не пришла. Новый заказ не считаем, пока не придёт последняя: после прихода посмотрим темп заново и рассчитаем точнее (правило продавца 28.10.2026). Если до прихода товар кончится — это повод ускорить партию, а не заказывать новую."},
   wait:{lbl:"Ждём партию",cls:"nodata",tip:"Прошлая партия по файлу не пришла, вы решили ждать её — новый заказ не считаем, пока она не придёт. Пришла — сигнал считается сам."},
   far:{lbl:"Запаса на 4+ года",cls:"good",tip:"При нынешнем темпе запаса с партиями хватит больше чем на 4 года."},
   nosale:{lbl:"Нет продаж",cls:"nodata",tip:"За последние 7 дней продаж не было ни на ВБ, ни на Ozon — темпа для расчёта нет."},
@@ -8056,7 +8071,7 @@ function srColDefs(){
   } else defs.push({key:"verdict",  val:r=>SR_VERDICT[r.verdict].lbl,
     sortVal:ord(["Не хватит и Озону","Поднять цену","Разогнать","Держать"])});
   defs.push({key:"prodSt", val:r=>PROD_ST[(r.prod&&r.prod.st)||"none"].lbl,
-    sortVal:ord(["urgent","soon","plan","wait","far","nosale","none"].map(k=>PROD_ST[k].lbl))});
+    sortVal:ord(["urgent","soon","plan","inbatch","wait","far","nosale","none"].map(k=>PROD_ST[k].lbl))});
   return defs;
 }
 // строки с учётом панели (поиск/категории/сегмент) + всех колоночных фильтров, кроме exceptKey
@@ -10117,6 +10132,9 @@ function srProdCell(r){
   else if(p.st==="soon"||p.st==="plan"){
     main=`<span style="font-weight:650${p.st==="soon"? ";color:var(--warn-txt)" : ""}">до ${fmtDate(p.by)}${p.qty? ": "+fmt(p.qty)+" шт" : ""}</span>`;
     sub.push("через "+fmt(p.byIn)+" дн · кончится ~"+fmtDate(p.empty)); }
+  else if(p.st==="inbatch"){
+    main=`<span style="font-weight:650">ждём партию до ${fmtDate(p.last)}</span>`;
+    sub.push("едет "+fmt(p.rem)+" шт"+(p.n>1? " в "+p.n+" "+plural(p.n,"партии","партиях","партиях") : "")+" · новый заказ — после прихода"); }
   else main=`<span class="muted">${esc(s.lbl.toLowerCase())}</span>`;
   if(p.st==="wait" && r.pb && r.pb.miss) sub.push("≈"+fmt(r.pb.miss.qty)+" шт прошлой партии ещё не пришли");
   if(p.st!=="urgent" && p.pre>0) sub.push("до партии без товара ~"+fmt(p.pre)+" дн — заказ не успеет, только ускорить партию");
