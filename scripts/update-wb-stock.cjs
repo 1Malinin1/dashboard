@@ -4,13 +4,16 @@
 // Отчёт — полный снимок: товар, которого в отчёте нет, считаем за 0 (обнуляем, печатаем список).
 // Обновляет RD.meta.stockSnapshotDate. Дальше: node scripts/encrypt.cjs <код>.
 //
-// Использование: node scripts/update-wb-stock.cjs <stocks_report.xlsx> [YYYY-MM-DD]
+// Использование: node scripts/update-wb-stock.cjs <stocks_report.xlsx> [YYYY-MM-DD] [--history-only]
+//   --history-only — только точка истории `RD.wbStockHistory[дата]` (для старых отчётов): каталог,
+//   отгрузки и дата снимка не трогаются. Дата обязательна.
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const XLSX=require('./node_modules/xlsx');
 const OUT=path.join(__dirname,'..','decrypted');
-const file=process.argv[2], dateArg=process.argv[3];
-if(!file){console.error('usage: node scripts/update-wb-stock.cjs <stocks_report.xlsx> [YYYY-MM-DD]');process.exit(1);}
+const argv=process.argv.slice(2); const histOnly=argv.includes('--history-only');
+const pos=argv.filter(a=>a!=='--history-only'); const file=pos[0], dateArg=pos[1];
+if(!file||(histOnly&&!/^\d{4}-\d{2}-\d{2}$/.test(dateArg||''))){console.error('usage: node scripts/update-wb-stock.cjs <stocks_report.xlsx> [YYYY-MM-DD] [--history-only]  (при --history-only дата обязательна)');process.exit(1);}
 function num(v){const n=parseFloat((''+v).replace(/\s/g,'').replace(',','.'));return isNaN(n)?0:n;}
 
 const ctx={};vm.createContext(ctx);
@@ -63,6 +66,30 @@ for(let i=hr+1;i<rows.length;i++){ const r=rows[i];
   repRows++; repTotal+=s;
 }
 
+/* ИСТОРИЯ ОСТАТКОВ ВБ ПО ДНЯМ — `RD.wbStockHistory[дата] = {код 1С: шт}` (с 28.10.2026). Вкладка «Остатки»
+   берёт ВБ ТОЛЬКО отсюда (продавец 28.10: «приоритет для данного раздела — отчёты по остаткам»). Раньше ВБ по
+   дням брался из воронки, а у неё остаток — на МОМЕНТ ВЫГРУЗКИ файла, не на конец дня: дни, выгруженные разом,
+   получали одну цифру (20–24.10 — пять одинаковых 40 424), и база у неё другая (считает «СК Великий Камень»),
+   поэтому на стыке с отчётом рисовалось −1 516 вместо +1 753. Колонка та же, что у `wbStock` («Склад WB РФ»).
+   Отчёт показывает остаток на утро даты файла. XWAY-формат в историю не пишем: он FBO+FBS. */
+function histPoint(){
+  const m={};
+  RD.catalog.forEach(c=>{ const sku=''+c.sku, sup=(''+(c.supplierCode||'')).trim(); if(!sup) return;
+    const v=repByWB[sku]!=null? repByWB[sku] : (repBySup[sup]!=null? repBySup[sup] : 0);
+    if(v) m[sup]=(m[sup]||0)+v; });
+  return m; }
+if(histOnly){
+  if(isXway){ console.error('выгрузка XWAY (FBO+FBS) в историю остатков ВБ не пишется'); process.exit(1); }
+  RD.wbStockHistory=RD.wbStockHistory||{}; const m=histPoint(); RD.wbStockHistory[dateArg]=m;
+  fs.writeFileSync(path.join(OUT,'wb-data.js'),
+    '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
+    +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
+  const ds=Object.keys(RD.wbStockHistory).sort();
+  console.log('История остатков ВБ: точка '+dateArg+' · '+Object.keys(m).length+' кодов · '
+    +Object.values(m).reduce((a,b)=>a+b,0).toLocaleString('ru-RU')+' шт · всего точек '+ds.length+' ['+ds[0]+' … '+ds[ds.length-1]+']');
+  process.exit(0);
+}
+
 let matched=0, zeroed=0, oldTotal=0, newTotal=0; const zeroedHad=[];
 const grew={};   // арт.поставщика → на сколько вырос остаток (для закрытия отгрузок, см. ниже)
 RD.catalog.forEach(c=>{ const sku=''+c.sku, sup=(''+(c.supplierCode||'')).trim();
@@ -98,6 +125,7 @@ Object.keys(grew).forEach(sup=>{
    остатков — см. lib/out-when-empty.cjs (правило продавца 13.10.2026). Проверка стоит
    ПЕРЕД записью снимка, чтобы изменённый статус попал в тот же файл. */
 require('./lib/out-when-empty.cjs').check(RD);
+if(!isXway){ RD.wbStockHistory=RD.wbStockHistory||{}; RD.wbStockHistory[RD.meta.stockSnapshotDate]=histPoint(); }
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
   +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
@@ -105,7 +133,8 @@ fs.writeFileSync(path.join(OUT,'wb-data.js'),
 console.log('Отчёт остатков: строк данных '+repRows+' · суммарный остаток в отчёте '+Math.round(repTotal).toLocaleString('ru-RU')+' шт (весь аккаунт)');
 console.log('Наш каталог: '+RD.catalog.length+' товаров · совпало с отчётом '+matched+' · нет в отчёте (→0) '+zeroed);
 console.log('Остаток каталога (наши товары): было '+oldTotal.toLocaleString('ru-RU')+' → стало '+newTotal.toLocaleString('ru-RU')+' шт');
-console.log('Дата снимка остатков: '+RD.meta.stockSnapshotDate);
+console.log('Дата снимка остатков: '+RD.meta.stockSnapshotDate
+  +(isXway? ' · в историю остатков ВБ НЕ записано (XWAY = FBO+FBS)' : ' · точка истории остатков ВБ записана ('+Object.keys(RD.wbStockHistory||{}).length+' точек)'));
 if(isXway){
   // прикидываем, сколько из залитого — это FBS с нашего склада (замер 26.08: ≈80% Нск)
   const wh=(RD.warehouse&&RD.warehouse.bySup)||{};

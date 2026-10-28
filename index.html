@@ -1565,6 +1565,7 @@
     .kpi .val{font-size:18px}
     .kpi.hero .val{font-size:27px}
   }
+.nw{white-space:nowrap}
 </style>
 </head>
 <body>
@@ -6199,6 +6200,7 @@ async function fdbRefreshCache(){
   funnelIsBaked=(raw.length===0 && baked.length>0);
   funnelHasBaked=(bakedKept.length>0);
   FUNNEL_CACHE=bakedKept.concat(raw).sort((a,b)=>a.date<b.date?-1:1);
+  if(typeof _stkSeries!=="undefined") _stkSeries=null;   // «Остатки»: запасной ряд ВБ из воронки
   _buyoutWin={};   // % выкупа ВБ считается по этой воронке — пересобрать окно
   _recOutCache=null; _outSkuCache=null;  // список выведенных из ассортимента кодов — тоже производная каталога
   _wbFbsCache=null; _klinCache=null; _ozAsgCache=null; // покрытие ВБ включает FBS-запас, Клин — склад-источник, покрытие Ozon — виртуальные склады СФО/ЦФО
@@ -14067,8 +14069,9 @@ function renderRecAdTree(){
    статический остаток: сколько где лежит, как менялось, и что уже уехало, но ещё не принято.
 
    ТРИ ИСТОЧНИКА, У КАЖДОГО СВОЯ ГЛУБИНА ИСТОРИИ — это главное, что надо помнить:
-   · ВБ FBO — подённо из воронки (`FUNNEL_CACHE.wbStock`): подённый отчёт аналитики несёт
-     остаток по каждому артикулу с 14.07.2026. Самая длинная история, досталась бесплатно.
+   · ВБ FBO — `wbStockHistory`, точки копит `update-wb-stock.cjs` из отчёта
+     «Остатки на складах» («Склад WB РФ»), с 15.10.2026. До 28.10 брали воронку — она врала датой и базой,
+     см. `stockSeries()`; теперь она только запас для снимка без истории.
    · Ozon — `ozon.stockHistory`, точки копит `ozon-stock-history.cjs` из отчёта «Остатки».
      Неравномерная: сколько раз продавец прислал отчёт, столько и точек.
    · Свой склад — `whHistory`, точки копит `update-warehouse.cjs stock` (заведено 05.10.2026).
@@ -14100,15 +14103,23 @@ function stockSeries(){
   const supOf={};                                   // артикул ВБ → код 1С
   ((RD&&RD.catalog)||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s) supOf[""+c.sku]=s; });
 
-  const fboBy={};                                   // дата → {код 1С: шт на складах ВБ}
-  (typeof FUNNEL_CACHE!=="undefined"? FUNNEL_CACHE:[]).forEach(r=>{
+  /* СКЛАДЫ ВБ — ТОЛЬКО ИЗ ОТЧЁТОВ ПО ОСТАТКАМ: `RD.wbStockHistory[дата] = {код 1С: шт}`, копит
+     `update-wb-stock.cjs` с 15.10.2026, колонка та же, что у `wbStock` («Склад WB РФ»). Продавец 28.10.2026:
+     «приоритет для данного раздела — отчёты по остаткам… раздел предназначен только для отслеживания остатков».
+     Воронку сюда больше не берём: её остаток — на МОМЕНТ ВЫГРУЗКИ файла, а не на конец дня (дни, выгруженные
+     разом, получали одну цифру: 20–24.10 пять одинаковых 40 424), и база у неё шире «Склада WB РФ» (считает
+     «СК Великий Камень»). На стыке воронки 27.10 (43 230) и отчёта 28.10 (41 714) вкладка рисовала «−1 516, ушло
+     с площадки», хотя по отчётам остаток вырос на 1 753, — пополнение ВБ пропадало, и не в первый раз.
+     Воронка — только запасной источник для старого снимка, где истории ещё нет. */
+  const wbH=RD.wbStockHistory||{}, fboBy={};        // дата → {код 1С: шт на складах ВБ}
+  if(Object.keys(wbH).length) Object.entries(wbH).forEach(([d,m])=>{ fboBy[d]=Object.assign({},m); });
+  else (typeof FUNNEL_CACHE!=="undefined"? FUNNEL_CACHE:[]).forEach(r=>{
     const s=supOf[""+r.sku]; if(!s||!r.date) return;
     const d=fboBy[r.date]||(fboBy[r.date]={}); d[s]=(d[s]||0)+(r.wbStock||0); });
-  /* Свежий срез остатков ВБ приходит ОТДЕЛЬНЫМ отчётом (`update-wb-stock.cjs`) и обычно на
-     день-два новее последней подённой выгрузки — добавляем его точкой, иначе вкладка показывала
-     бы позавчерашний день, пока не доедет аналитика. */
+  /* Свежий срез остатков ВБ (`update-wb-stock.cjs`) сам пишет точку истории; для снимка без истории
+     добавляем его точкой из каталога, иначе вкладка показывала бы позавчерашний день. */
   const wbSnapD=(RD.meta&&RD.meta.stockSnapshotDate)||null;
-  if(wbSnapD){ const fresh={};
+  if(wbSnapD && !wbH[wbSnapD]){ const fresh={};
     (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s) fresh[s]=(fresh[s]||0)+(c.wbStock||0); });
     fboBy[wbSnapD]=fresh; }
 
@@ -14405,6 +14416,10 @@ function renderStockTab(){
       +(miss.length? ` На эту дату ещё не было данных: ${miss.join(", ")}.` : "");
   } else asOfBox.hidden=true;
 
+  // ---- пришло / ушло по местам за окно — один расчёт на плитки, события и график (`stkFlows`)
+  const codes=rows.map(r=>r.sup), F=stkFlows(codes,W);
+  const flowSum=k=>(F[k]||[]).filter(e=>!e.broken).reduce((a,e)=>({inc:a.inc+e.inc,out:a.out+e.out,sold:a.sold+e.sold,n:a.n+1}),{inc:0,out:0,sold:0,n:0});
+  const fW=flowSum("fbo"), fO=flowSum("oz");
   // ---- плитки: те же суммы, что строка «ИТОГО» в таблице (по строкам после фильтров)
   const sum=f=>rows.reduce((a,r)=>a+(f(r)||0),0);
   const sFbo=sum(r=>r.fbo), sOz=sum(r=>r.oz), sWh=sum(r=>r.wh);
@@ -14443,7 +14458,12 @@ function renderStockTab(){
     +R(sw(c1)+"Wildberries — склады ВБ (FBO)",sh(sFbo))+R(sw(c2)+"Ozon — склады Ozon",sh(sOz))
     +R("= На площадках",sh(sFbo+sOz),"t-sep")
     +chgBlock(R(sw(c1)+"Wildberries",dTxt(dF))+R(sw(c2)+"Ozon",dTxt(dO)), (dF==null&&dO==null)? null : (dF||0)+(dO||0))
-    +`<div class="t-note">Остаток падает от продаж и растёт от приёмки поставки. Замер: ВБ — ${fmtDate(fboAt)}, Ozon — ${fmtDate(ozAt)}.</div>`;
+    +(W.same? "" : `<div class="t-hd">Пришло и ушло ${pTxt}</div>`
+      +R(sw(c1)+"Wildberries: пришло (пополнение)",fW.n? "≈ +"+sh(fW.inc) : "нет замеров")
+      +R("&nbsp;&nbsp;ушло (продано ≈ "+nf.format(fW.sold)+")",fW.n? "≈ −"+sh(fW.out) : "—")
+      +R(sw(c2)+"Ozon: пришло (пополнение)",fO.n? "≈ +"+sh(fO.inc) : "нет замеров")
+      +R("&nbsp;&nbsp;ушло (продано ≈ "+nf.format(fO.sold)+")",fO.n? "≈ −"+sh(fO.out) : "—"))
+    +`<div class="t-note">Остаток падает от продаж и растёт от приёмки поставки: пришло ≈ изменение + продано между замерами. Замер: ВБ — ${fmtDate(fboAt)}, Ozon — ${fmtDate(ozAt)} (отчёты по остаткам).</div>`;
   const tipWh=`<div class="t-hd">Ваши склады по ведомости 1С${whAt? " на "+fmtDateLong(whAt) : ""}</div>`
     +(whAt? R("Москва (Солнечногорск)",sh(sMsk))+R("Нск-1 (FBS)",sh(sN1))+R("Евросиб",sh(sN2))
       +R("РВБ Клин",sh(sKl))+R("Назначено на Ozon (СФО/ЦФО)",sh(sAsg))
@@ -14462,7 +14482,8 @@ function renderStockTab(){
   document.getElementById("stkKpis").innerHTML=[
     {lbl:"Всего товара, шт", val:nf.format(sTot), hero:true, tip:tipAll, delta:dChip(dAll)+(dAll==null?"":dPart(["fbo","oz","wh"]))},
     {lbl:"На площадках, шт", val:nf.format(sFbo+sOz), tip:tipSite,
-      delta:(dF==null&&dO==null)? "" : dChip((dF||0)+(dO||0))+dPart(["fbo","oz"])},
+      delta:((dF==null&&dO==null)? "" : dChip((dF||0)+(dO||0))+dPart(["fbo","oz"]))
+        +((!W.same&&(fW.n||fO.n))? `<div class="stk-kpi-note">ВБ: пришло <span class="nw">≈ +${nf.format(fW.inc)}</span>, продано <span class="nw">≈ ${nf.format(fW.sold)}</span><br>Ozon: пришло <span class="nw">≈ +${nf.format(fO.inc)}</span>, продано <span class="nw">≈ ${nf.format(fO.sold)}</span></div>` : "")},
     {lbl:"На ваших складах, шт", val:whAt? nf.format(sWh) : "—", tip:tipWh,
       delta: whAt? (dW==null&&!W.same? `<div class="stk-kpi-note">изменение не считается: на ${stkDM(W.start.date)} ведомостей ещё не было</div>` : dChip(dW))
         : `<div class="stk-kpi-note">ведомостей ещё не было</div>`},
@@ -14473,10 +14494,9 @@ function renderStockTab(){
   wireKpiTips("stkKpis");
 
   // ---- блоки движения и график — по тем же строкам и тому же окну
-  const codes=rows.map(r=>r.sup);
   renderStockMove(rows,W);
-  renderStockEvents(codes,W);
-  renderStockChart(codes,W);
+  renderStockEvents(codes,W,F);
+  renderStockChart(codes,W,F);
 
   // ---- «Как читать»: коротко, шагами; детали — в сноске
   // складывание и память открытого состояния — общий компонент wireHowtoFold (data-fold="stk")
@@ -14484,13 +14504,13 @@ function renderStockTab(){
     +[`<b>Период.</b> Чипы 7 / 14 / 30 дней или календарь. Плитки и таблица — остаток на последний день периода, «Изменение» (колонка Δ) — насколько он сдвинулся с первого дня. Дни без данных в календаре заштрихованы.`,
       `<b>Где лежит товар.</b> Строка — код 1С: товар один, витрин две. Колонки — места: склады ВБ · ваши склады (Москва, Нск-1, Евросиб, Клин, «→Ozon») · склады Ozon · в пути. Клик по категории раскрывает товары.`,
       `<b>Куда уехало.</b> Блок «Движение товара»: минус на вашем складе и плюс на площадке — поставку приняли; минус без плюса — товар едет и ещё не принят (колонка «Ждём»).`,
-      `<b>Когда заходили машины.</b> «Приходы и отгрузки» и график «Движение»: столбик вверх — приёмка (машина ≈ 900 шт), вниз — отгрузка со склада.`]
+      `<b>Пришло и ушло.</b> «Приходы и отгрузки» и график «Движение» делят движение каждого места на две части: вверх — пришло (на площадке — пополнение, машина ≈ 900 шт), вниз — ушло (на площадке — продажи, у вас — отгрузка, FBS и резерв). На площадке пришло ≈ изменение остатка + продано между замерами.`]
       .map(s=>`<li>${s}</li>`).join("")+`</ol>`
     +`<div class="hf-notes">`
     +[`<b>Сейчас в «Изменении»:</b> ${esc(cmpTxt)}.`,
       `<b>«→Ozon» и «В пути Ozon»</b> бывают одной партией (контейнер распределён, Ozon создал заявку) — во «ВСЕГО» она считается один раз.`,
       `<b>«В пути»</b> истории не имеет: колонки заполнены только на последний день данных (${fmtDate(W.last)}).`,
-      `<b>Замеров:</b> склады ВБ — ${srcDays.fbo.length}, Ozon — ${srcDays.oz.length}, ваши склады — ${srcDays.wh.length}. Между замерами значение держится прежним: «нового замера не было», а не «ничего не менялось».`,
+      `<b>Замеров:</b> склады ВБ — ${srcDays.fbo.length}, Ozon — ${srcDays.oz.length}, ваши склады — ${srcDays.wh.length}. Все три — отчёты по остаткам (ВБ — «Склад WB РФ» с ${stkDM(srcDays.fbo[0])}, Ozon — отчёт остатков, ваши — ведомость 1С, свободный остаток). Между замерами значение держится прежним: «нового замера не было», а не «ничего не менялось».`,
       `<b>Смена состава отчёта</b> (площадка разом обнулила или показала четверть артикулов) — это методика, а не движение товара: такие дни помечены и в приходы не идут.`]
       .map(s=>`<div>${s}</div>`).join("")+`</div>`;
 
@@ -14575,15 +14595,58 @@ function stkSoldByCode(from,to){
   const wb={}, oz={};
   const supOf={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s) supOf[""+c.sku]=s; });
   const boW=(buyoutInfo("wb")||{}).all||0.8, boO=(buyoutInfo("ozon")||{}).all||0.8;
+  /* ИНТЕРВАЛ [от, до): отчёт по остаткам (ВБ, Ozon, ведомость 1С) — остаток НА УТРО даты файла, поэтому
+     между замерами 27.10 и 28.10 остаток сдвинули заказы 27.10, а не 28.10 (их ещё нет в данных — с прежним
+     (от, до] продажи последнего интервала были нулём, и приход занижался на дневные продажи). */
   const D=(RD.orderSeries&&RD.orderSeries.dates)||[], S=(RD.orderSeries&&RD.orderSeries.bySku)||{};
-  D.forEach((d,i)=>{ if(!(d>from&&d<=to)) return;
+  D.forEach((d,i)=>{ if(!(d>=from&&d<to)) return;
     Object.keys(S).forEach(sku=>{ const sup=supOf[sku]; const q=S[sku][i]||0;
       if(sup&&q) wb[sup]=(wb[sup]||0)+q*boW; }); });
   const Do=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[],
         So=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.byArt)||{};
-  Do.forEach((d,i)=>{ if(!(d>from&&d<=to)) return;
+  Do.forEach((d,i)=>{ if(!(d>=from&&d<to)) return;
     Object.keys(So).forEach(c=>{ const q=(So[c]||[])[i]||0; if(q) oz[c]=(oz[c]||0)+q*boO; }); });
   return {wb,oz};
+}
+
+/* ПРИШЛО И УШЛО — ПО КАЖДОМУ МЕСТУ ОТДЕЛЬНО, А НЕ ОДНОЙ ЧИСТОЙ ЦИФРОЙ (продавец 28.10.2026: «в разрезе
+   маркетплейса бралась не средняя цифра, а было деление на продажи и пополнения»). Чистое изменение прячет
+   приход: машина 2 000 шт в день, когда продали 300, видна как +1 700, а приход 300 при продажах 300 — как
+   ноль. Поэтому по каждой паре СОБСТВЕННЫХ замеров слоя и по каждому коду:
+   · площадка: пришло = max(0, Δ + продано), ушло = пришло − Δ (продажи и прочее убытие: возвраты продавцу,
+     списания); продано — `stkSoldByCode` за [прошлый замер, этот замер), в выкупе;
+   · ваши склады: продаж нет — пришло = сумма ростов по кодам (партии, возвраты), ушло = сумма падений
+     (отгрузка, FBS, РЕЗЕРВ: с 28.10 ведомость показывает «Зарезервировано», и товар в сборке машины уже не
+     в свободном остатке — ровно та цепочка, что продавец описал 26.10: «резервируют, и он пропадает с
+     остатков моих складов, дальше видим на складах маркетплейсов»). Резерв на дату — `reserve` (для подписи).
+   «Ушло» считается как пришло − Δ после округления, чтобы пришло − ушло = Δ до штуки.
+   Один источник для событий, графика и плиток — иначе они разойдутся. */
+function stkFlows(codes,W){
+  W=W||stkWin(); const S=stockSeries(), set=new Set(codes);
+  const out={fbo:[],oz:[],wh:[]}; if(!W||!S.snaps.length) return out;
+  const byDate={}; S.snaps.forEach(s=>byDate[s.date]=s);
+  const from=W.start.date, to=W.end.date, H=RD.whHistory||{};
+  ["fbo","oz","wh"].forEach(k=>{
+    const days=(S.srcDays[k]||[]).filter(d=>byDate[d]), bad=(S.breaks||{})[k]||new Set();
+    for(let i=1;i<days.length;i++){
+      const a=byDate[days[i]], b=byDate[days[i-1]];
+      if(a.date<=from || a.date>to) continue;        // изменение к первому дню окна было ДО него
+      const soldBy=k==="wh"? null : stkSoldByCode(b.date,a.date)[k==="fbo"?"wb":"oz"];
+      let d=0, inc=0, sold=0; const byCode=[];
+      set.forEach(c=>{ const x=(a.sup[c]||{})[k]||0, y=(b.sup[c]||{})[k]||0, dc=x-y, sc=soldBy? (soldBy[c]||0) : 0;
+        if(!dc && !sc) return;
+        const ic=Math.max(0, soldBy? dc+sc : dc);
+        d+=dc; inc+=ic; sold+=sc; byCode.push({c, d:dc, inc:Math.round(ic), out:Math.round(ic-dc)}); });
+      inc=Math.round(inc);
+      let reserve=null;
+      if(k==="wh" && H[a.date] && H[a.date].reserve){ reserve=0;
+        set.forEach(c=>{ const r=H[a.date].reserve[c]; if(r) reserve+=r.qty||0; }); }
+      out[k].push({k, date:a.date, from:b.date, gap:Math.round((new Date(a.date)-new Date(b.date))/864e5),
+        d, inc, out:Math.max(0,inc-d), sold:Math.round(sold), byCode, reserve,
+        broken:bad.has(days[i])||bad.has(days[i-1])});
+    }
+  });
+  return out;
 }
 
 /* ОТКУДА УБЫЛО — раскладка падения по СВОИМ складам (Евросиб / Нск-1 / Москва / РЦ / Клин).
@@ -14734,7 +14797,7 @@ function renderStockMove(rows,W){
 
 /* График слоёв по дням. ЛИНИИ, А НЕ СТОПКА: у слоёв разная глубина истории, и стопка в днях
    без замера рисовала бы ступени на всю высоту там, где просто нет данных. */
-function renderStockChart(codes,W){
+function renderStockChart(codes,W,F){
   const all=stockSeries().snaps;
   W=W||stkWin();
   /* ГРАФИК ПОКАЗЫВАЕТ ТОТ ЖЕ ОТРЕЗОК, ЧТО И КОЛОНКА Δ (просьба продавца 05.10.2026: «выбрал
@@ -14769,21 +14832,22 @@ function renderStockChart(codes,W){
     return;
   }
   if(stkChartMode==="delta"){
-    /* Δ между соседними ЗАМЕРАМИ. Первый день окна показать нечем (не с чем сравнивать),
-       поэтому он пустой. У слоя с редкими замерами всё движение между ними схлопывается
-       в день замера — это честно, и так подписано в подсказке.
-       ДНИ СО СМЕНОЙ СОСТАВА ОТЧЁТА ИЗ ГРАФИКА ВЫБРОШЕНЫ (см. `stkBreaks`): 07.08 у ВБ даёт
-       −61 522 шт, и этот столбик задаёт масштаб — реальные приходы по 900 шт становятся
-       невидимой полоской в 1,5% высоты, то есть график перестаёт работать ровно для того,
-       ради чего сделан. Выброшенные дни пересчитываются в подписи, молча не исчезают. */
-    const brk=stockSeries().breaks||{};
+    /* ДВА СТОЛБИКА У КАЖДОГО МЕСТА: вверх — пришло (пополнение), вниз — ушло (на площадках продажи, у вас
+       отгрузка и резерв). Чистое изменение одним столбиком прятало приход ВБ (продавец 28.10.2026). Считает
+       `stkFlows` по СОБСТВЕННЫМ замерам слоя: у слоя с редкими замерами всё движение между ними лежит в день
+       замера — так и подписано в подсказке. Первый день окна пустой: сравнивать не с чем.
+       ДНИ СО СМЕНОЙ СОСТАВА ОТЧЁТА ИЗ ГРАФИКА ВЫБРОШЕНЫ (см. `stkBreaks`): 07.08 у ВБ давал −61 522 шт, и этот
+       столбик задавал масштаб — реальные приходы по 900 шт становились невидимой полоской. Выброшенные дни
+       пересчитываются в подписи, молча не исчезают. */
+    F=F||stkFlows(codes,W);
+    const idx={}; dates.forEach((d,i)=>idx[d]=i);
     let skipped=0;
-    const dv=vals.map((col,si)=>{ const bad=brk[series[si].k]||new Set();
-      return col.map((v,i)=>{ if(i===0||v==null||col[i-1]==null) return null;
-        if(bad.has(dates[i])||bad.has(dates[i-1])){ skipped++; return null; }
-        return v-col[i-1]; }); });
+    const dv=series.map(s=>{ const col=dates.map(()=>null);
+      (F[s.k]||[]).forEach(e=>{ const i=idx[e.date]; if(i==null) return;
+        if(e.broken){ skipped++; return; } col[i]=e; });
+      return col; });
     document.getElementById("stkChartCap").textContent=per
-      +" · столбик = насколько изменился остаток между замерами"
+      +" · вверх — пришло (пополнение), вниз — ушло (на площадках — продажи, у вас — отгрузка и резерв)"
       +(skipped? ` · ${skipped} ${plural(skipped,"день","дня","дней")} со сменой состава отчёта не показан`:"");
     legend(document.getElementById("stkChartLegend"), series.map(s=>({name:s.l,color:s.c})));
     stockDeltaBars(document.getElementById("stkChart"),dates,series,dv);
@@ -14797,13 +14861,14 @@ function renderStockChart(codes,W){
   stockLines(document.getElementById("stkChart"),dates,series,vals);
 }
 
-/* Столбцы изменений: ноль посередине, приход вверх, расход вниз. Слои идут рядом, а не стопкой —
-   иначе приход на одной площадке гасился бы продажами на другой и движение снова исчезало. */
+/* Столбцы движения: ноль посередине, вверх — пришло, вниз — ушло (`stkFlows`). Места идут рядом, а не стопкой,
+   иначе приход на одной площадке гасился бы продажами на другой. Ячейка `dv[место][день]` — событие
+   {inc, out, d, sold, reserve} или null (в этот день у места нового замера не было). */
 function stockDeltaBars(mount,dates,series,dv){
   const W=1000,H=280,m={t:18,r:14,b:34,l:72};
   const iw=W-m.l-m.r, ih=H-m.t-m.b, n=Math.max(1,dates.length);
-  const flat=dv.flat().filter(v=>v!=null);
-  const maxAbs=Math.max(1,...flat.map(Math.abs));
+  const flat=[]; dv.forEach(col=>col.forEach(e=>{ if(e){ flat.push(e.inc,e.out); } }));
+  const maxAbs=Math.max(1,...flat);
   const sc=niceScale(0,maxAbs,3), top=sc.max||1;
   const Y=v=>m.t+ih/2-(v/top)*(ih/2);
   const band=iw/n, gw=Math.min(band*0.72,30), bw=Math.max(1.5,gw/series.length-1);
@@ -14813,21 +14878,27 @@ function stockDeltaBars(mount,dates,series,dv){
       stroke:cssv("--grid"),"stroke-width":Math.abs(v)<1e-9?1.6:1}));
     const tx=el("text",{x:m.l-8,y:y+4,"text-anchor":"end","font-size":11,fill:cssv("--muted")});
     tx.textContent=(v>0?"+":"")+fmtAxis(v); svg.appendChild(tx); }
+  const tip=i=>`<div class="t-hd">${fmtDateLong(dates[i])}</div>`+series.map((s2,j)=>{ const e=dv[j][i];
+    const head=`<span class="k"><i style="background:${s2.c}"></i>${s2.l}</span>`;
+    if(!e) return `<div class="t-row">${head}<span class="v">нет замера</span></div>`;
+    const why=s2.k==="wh"? "отгрузка и резерв" : "продано ≈ "+nf.format(e.sold)+(e.out-e.sold>=50? ", прочее ≈ "+nf.format(e.out-e.sold):"");
+    return `<div class="t-row">${head}<span class="v">${stkSigned(e.d)} шт</span></div>`
+      +`<div class="t-row"><span class="k">&nbsp;&nbsp;пришло${s2.k==="wh"?"":" (пополнение)"}</span><span class="v">+${nf.format(e.inc)}</span></div>`
+      +`<div class="t-row"><span class="k">&nbsp;&nbsp;ушло (${why})</span><span class="v">−${nf.format(e.out)}</span></div>`
+      +(e.reserve? `<div class="t-row"><span class="k">&nbsp;&nbsp;в резерве — собирают отгрузку</span><span class="v">${nf.format(e.reserve)}</span></div>` : "");
+  }).join("");
   for(let i=0;i<n;i++){
     const cx=m.l+band*i+band/2;
     series.forEach((s,si)=>{
-      const v=dv[si][i]; if(v==null||v===0) return;
+      const e=dv[si][i]; if(!e) return;
       const x=cx-gw/2+si*(gw/series.length);
-      const y=v>0? Y(v) : Y(0), h=Math.max(1.5,Math.abs(Y(v)-Y(0)));
-      const rect=el("rect",{x,y,width:bw,height:h,rx:1.5,fill:s.c,opacity:v>0?1:.55});
-      rect.style.cursor="pointer";
-      rect.addEventListener("pointermove",ev=>{
-        const body=series.map((s2,j)=>{ const v2=dv[j][i];
-          return `<div class="t-row"><span class="k"><i style="background:${s2.c}"></i>${s2.l}</span>`
-            +`<span class="v">${v2==null? "нет замера" : (v2>0?"+":"")+nf.format(v2)+" шт"}</span></div>`; }).join("");
-        showTip(`<div class="t-hd">${fmtDateLong(dates[i])}</div>${body}`,ev.clientX,ev.clientY); });
-      rect.addEventListener("pointerleave",hideTip);
-      svg.appendChild(rect);
+      [[e.inc,1],[-e.out,.55]].forEach(([v,op])=>{ if(!v) return;
+        const y=v>0? Y(v) : Y(0), h=Math.max(1.5,Math.abs(Y(v)-Y(0)));
+        const rect=el("rect",{x,y,width:bw,height:h,rx:1.5,fill:s.c,opacity:op});
+        rect.style.cursor="pointer";
+        rect.addEventListener("pointermove",ev=>showTip(tip(i),ev.clientX,ev.clientY));
+        rect.addEventListener("pointerleave",hideTip);
+        svg.appendChild(rect); });
     });
   }
   const maxLabels=n<=10?n:9, stride=Math.max(1,Math.round(n/maxLabels));
@@ -14843,7 +14914,7 @@ function stockDeltaBars(mount,dates,series,dv){
    за день. Без этой поправки машина 900 шт выглядит как +650 и читается как «пришло меньше». */
 const STK_EVENT_MIN=150;      // шт: ниже этого — обычное дневное шевеление, не событие
 const STK_MOVE_MIN=30;        // шт: минимум «ждём» в блоке отгрузок — ниже это расход по FBS
-function renderStockEvents(codes,W){
+function renderStockEvents(codes,W,F){
   const card=document.getElementById("stkArrCard"), box=document.getElementById("stkArr");
   const all=stockSeries().snaps;
   W=W||stkWin();
@@ -14852,91 +14923,59 @@ function renderStockEvents(codes,W){
   if(snaps.length<2 || !set.size){ card.hidden=false; document.getElementById("stkArrCap").textContent="";
     box.innerHTML=`<div class="empty-hint">${!set.size? "Под текущий поиск и категории не попал ни один товар."
       : (W&&W.from!==W.to? "За эти дни новых замеров не было" : "Выбран один день")+" — событий между замерами нет. Расширьте период."}</div>`; return; }
-  /* ПРОДАЖИ ПО ДНЯМ НУЖНЫ ДВАЖДЫ, И ЭТО КЛЮЧЕВОЕ.
-     1) Приход: остаток площадки одновременно падает от продаж, поэтому «пришло» ≈ Δ + продано.
-        Без поправки машина 900 шт выглядит как +650 и читается как «пришло меньше».
-     2) ОТСЕВ ШУМА: без неё падение остатка от обычных продаж (200–500 шт/день) проходит порог,
-        и в блоке оказывается почти каждый день — 24 события на 30 днях. Падение показываем,
-        только если оно ЗАМЕТНО больше дневных продаж, то есть товар реально ушёл, а не продался. */
-  const supOf={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s) supOf[""+c.sku]=s; });
-  const boW=(buyoutInfo("wb")||{}).all||0.8, boO=(buyoutInfo("ozon")||{}).all||0.8;
-  const soldWb={}, soldOz={};
-  const Dw=(RD.orderSeries&&RD.orderSeries.dates)||[], Sw=(RD.orderSeries&&RD.orderSeries.bySku)||{};
-  Dw.forEach((d,i)=>{ let q=0; Object.keys(Sw).forEach(sku=>{ const sup=supOf[sku];
-    if(sup&&set.has(sup)) q+=(Sw[sku][i]||0); }); soldWb[d]=q*boW; });
-  const Do=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.dates)||[],
-        So=(RD.ozon&&RD.ozon.orderSeries&&RD.ozon.orderSeries.byArt)||{};
-  Do.forEach((d,i)=>{ let q=0; set.forEach(c=>{ q+=((So[c]||[])[i]||0); }); soldOz[d]=q*boO; });
-  /* ПРОДАЖИ БЕРЁМ ЗА ВЕСЬ ИНТЕРВАЛ МЕЖДУ ЗАМЕРАМИ, А НЕ ЗА ОДИН ДЕНЬ. У Озона замеры редкие
-     (между 17.09 и 05.10 — 18 дней), и вся дельта за эти дни схлопывается в день замера.
-     Сравнивать её с продажами ОДНОГО дня нельзя: падение за две недели выглядело бы как
-     «ушло сверх продаж», а приход занижался бы в разы (05.10 давал «+466 пришло» вместо ≈6 400). */
-  const soldOn=(k,from,to)=>{ const src=k==="fbo"? soldWb : (k==="oz"? soldOz : null);
-    if(!src) return 0; let q=0;
-    Object.keys(src).forEach(d=>{ if(d>from && d<=to) q+=src[d]; });
-    return q; };
-
-  /* ИДЁМ ПО СОБСТВЕННЫМ ЗАМЕРАМ КАЖДОГО СЛОЯ, А НЕ ПО ОБЩЕЙ ОСИ ДАТ. На общей оси значение
-     перенесено вперёд, поэтому вся дельта Озона за 18 дней между замерами выглядит как
-     изменение за ОДИН день — и продажи к ней подставлялись однодневные: приход 05.10 выходил
-     «+466 шт» вместо реальных ≈6 400. Сравниваем замер с ПРЕДЫДУЩИМ ЗАМЕРОМ ТОГО ЖЕ СЛОЯ. */
-  const byDate={}; all.forEach(s=>byDate[s.date]=s);
-  const S=stockSeries(), src=S.srcDays, brk=S.breaks||{};
-  const LAY=[{k:"fbo",l:"склады ВБ",c:cssv("--mp-wb")},{k:"oz",l:"склады Ozon",c:cssv("--mp-oz")},{k:"wh",l:"ваши склады",c:cssv("--mp-wh")}];
-  const from=snaps[0].date, to=snaps[snaps.length-1].date, ev=[];
-  LAY.forEach(L=>{
-    const days=(src[L.k]||[]).filter(d=>byDate[d]), bad=brk[L.k]||new Set();
-    for(let i=1;i<days.length;i++){
-      const a=byDate[days[i]], b=byDate[days[i-1]];
-      /* Событие — в окне, если ЕГО замер позже начала и не позже конца: изменение на самый первый
-         день окна произошло ДО него и в «Изменение» периода не входит. */
-      if(a.date<=from || a.date>to) continue;
-      let d=0; const byCode=[];
-      set.forEach(c=>{ const x=(a.sup[c]||{})[L.k]||0, y=(b.sup[c]||{})[L.k]||0;
-        if(x-y) byCode.push([c,x-y]); d+=x-y; });
-      if(Math.abs(d)<STK_EVENT_MIN) continue;
-      const sold=Math.round(soldOn(L.k,b.date,a.date));
-      const broken=bad.has(days[i])||bad.has(days[i-1]);
-      /* Падение меньше продаж за тот же интервал — это и есть продажи, а не событие.
-         На своём складе продаж нет вовсе, поэтому там любое падение — отгрузка, и она важна. */
-      if(!broken && d<0 && Math.abs(d) < sold+STK_EVENT_MIN) continue;
-      byCode.sort((p,q)=>Math.abs(q[1])-Math.abs(p[1]));
-      ev.push({date:a.date, from:b.date, gap:Math.round((new Date(a.date)-new Date(b.date))/864e5),
-        lay:L, d, top:byCode.slice(0,3), sold, broken});
-    }
-  });
-  ev.sort((x,y)=>x.date<y.date?-1:1);
+  /* ПРИШЛО И УШЛО — ОТДЕЛЬНЫМИ КОЛОНКАМИ (продавец 28.10.2026: «деление на продажи и пополнения», а не
+     одна чистая цифра). Считает `stkFlows` по собственным замерам каждого места: у Озона между замерами
+     бывает 18 дней, и продажи берутся за весь интервал, а не за день (иначе приход 05.10 выходил «+466»
+     вместо ≈6 400). ОТСЕВ ШУМА: на площадке событие — это пополнение от STK_EVENT_MIN шт или убыль СВЕРХ
+     продаж от STK_EVENT_MIN (иначе обычные продажи 200–500 шт/день давали событие почти каждый день —
+     24 на 30 днях); на ваших складах продаж нет, любое заметное движение — событие. */
+  F=F||stkFlows(codes,W);
+  const LAY={fbo:{l:"склады ВБ"},oz:{l:"склады Ozon"},wh:{l:"ваши склады"}};
+  const ev=[];
+  ["fbo","oz","wh"].forEach(k=>(F[k]||[]).forEach(e=>{
+    const extra=e.out-e.sold;                       // убыль сверх продаж (на своём складе продаж нет)
+    const big=e.broken? Math.abs(e.d)>=STK_EVENT_MIN
+      : (e.inc>=STK_EVENT_MIN || extra>=STK_EVENT_MIN);
+    if(big) ev.push(e); }));
+  const from=W.start.date, to=W.end.date;
   if(!ev.length){
     card.hidden=false;
     document.getElementById("stkArrCap").textContent="";
-    box.innerHTML=`<div class="empty-hint">С ${fmtDate(from)} по ${fmtDate(to)} остатки между замерами менялись меньше чем на ${STK_EVENT_MIN} шт — крупных приходов и отгрузок не было.</div>`;
+    box.innerHTML=`<div class="empty-hint">С ${fmtDate(from)} по ${fmtDate(to)} крупных пополнений и отгрузок (от ${STK_EVENT_MIN} шт между замерами) не было — остатки менялись только от обычных продаж.</div>`;
     return;
   }
-  ev.reverse();                                        // свежее сверху
-  const ins=ev.filter(e=>e.d>0&&!e.broken).reduce((a,e)=>a+e.d+(e.sold>0?e.sold:0),0);
+  ev.sort((x,y)=>x.date<y.date? 1 : x.date>y.date? -1 : (x.k<y.k?-1:1));   // свежее сверху
+  /* Итоги — по ВСЕМ интервалам окна, не только по крупным событиям: те же цифры, что в плитке «На площадках». */
+  const mpAll=(F.fbo||[]).concat(F.oz||[]).filter(e=>!e.broken);
+  const inMp=mpAll.reduce((a,e)=>a+e.inc,0), soldMp=mpAll.reduce((a,e)=>a+e.sold,0);
   const nbr=ev.filter(e=>e.broken).length;
   card.hidden=false;
   document.getElementById("stkArrCap").textContent=
-    `${ev.length} ${plural(ev.length,"событие","события","событий")} крупнее ${STK_EVENT_MIN} шт между замерами`
-    +(ins? ` · пришло ≈ ${nf.format(ins)} шт` : "")
+    `${ev.length} ${plural(ev.length,"событие","события","событий")} от ${STK_EVENT_MIN} шт между замерами`
+    +(inMp? ` · на площадки пришло ≈ ${nf.format(inMp)} шт` : "")
+    +(soldMp? ` · продано за период ≈ ${nf.format(soldMp)} шт` : "")
     +(nbr? ` · ${nbr} ${plural(nbr,"день","дня","дней")} со сменой состава отчёта — не движение товара` : "");
   const nm={}; (RD.catalog||[]).forEach(c=>{ const s=(""+(c.supplierCode||"")).trim(); if(s&&!nm[s]) nm[s]=c.name||s; });
+  const top=(list,f,sign)=>list.filter(x=>f(x)>0).sort((p,q)=>f(q)-f(p)).slice(0,3)
+    .map(x=>`${esc((nm[x.c]||x.c).slice(0,26))} <b>${sign}${nf.format(f(x))}</b>`).join(" · ");
   box.innerHTML=`<div class="table-scroll"><table class="rnp"><thead><tr><th class="metric">Когда и где</th>`
-    +`<th>Изменение</th><th>Оценка прихода</th><th class="stk-what">Что двигалось</th></tr></thead><tbody>`
+    +`<th>Изменение</th><th>Пришло</th><th>Ушло</th><th class="stk-what">Что двигалось</th></tr></thead><tbody>`
     +ev.slice(0,30).map(e=>{
-      const up=e.d>0;
-      const arrival=(up&&e.sold>0)? e.d+e.sold : null;
-      const went=e.lay.k==="wh"? "отгружено со склада" : "ушло с площадки";
-      return `<tr><td class="metric"><b>${fmtDate(e.date)}</b> <span class="sub">${e.lay.l}`
+      const mp=e.k!=="wh", extra=e.out-e.sold;
+      const dCol=e.broken?"var(--muted)":(e.d>0?"var(--good-txt)":e.d<0?"var(--crit-txt)":"var(--muted)");
+      const inTxt=e.inc? `<b style="color:var(--good-txt)">${mp?"≈ ":""}+${nf.format(e.inc)}</b> <span class="sub blk">${mp?"пополнение":"приход на склад"}</span>` : `<span class="muted">—</span>`;
+      const outTxt=e.out? `<b style="color:var(--crit-txt)">${mp?"≈ ":""}−${nf.format(e.out)}</b> <span class="sub blk">`
+          +(mp? "продано ≈ "+nf.format(e.sold)+(extra>=50? " · прочее ≈ "+nf.format(extra):"") : "отгрузка, FBS, резерв")+`</span>`
+        : `<span class="muted">—</span>`;
+      const resTxt=e.reserve? `<div class="sub" style="margin-top:3px">в резерве на ${stkDM(e.date)} — <b>${nf.format(e.reserve)}</b> шт: собирают отгрузку</div>` : "";
+      const what=e.broken? "" : [e.inc>=STK_EVENT_MIN? top(e.byCode,x=>x.inc,"+") : "",
+        (mp? extra>=STK_EVENT_MIN : e.out>=STK_EVENT_MIN)? top(e.byCode,x=>mp? x.out : Math.max(0,-x.d),"−") : ""].filter(Boolean).join(" · ");
+      return `<tr><td class="metric"><b>${fmtDate(e.date)}</b> <span class="sub">${LAY[e.k].l}`
         +(e.gap>1? ` · с ${fmtDate(e.from)}, ${e.gap} ${plural(e.gap,"день","дня","дней")} без замера`:"")+`</span></td>`
-        +`<td style="color:${e.broken?"var(--muted)":(up?"var(--good-txt)":"var(--crit-txt)")};font-weight:650">${up?"+":"−"}${nf.format(Math.abs(e.d))}</td>`
-        +`<td>${e.broken? `<span class="sub">отчёт изменил состав — похоже на смену методики, а не движение товара</span>`
-            : (arrival? "<b>≈ "+nf.format(arrival)+"</b> <span class=\"sub\">шт пришло (остаток +"+nf.format(e.d)+", продано "+nf.format(e.sold)+")</span>"
-            : (up? "<b>≈ "+nf.format(e.d)+"</b> <span class=\"sub\">шт пришло</span>"
-                 : `<span class="sub">${went}${e.sold>0? ", сверх продаж "+nf.format(e.sold):""}</span>`))}</td>`
-        +`<td class="stk-what"><span class="sub">`
-        +e.top.map(([c,v])=>`${esc((nm[c]||c).slice(0,26))} <b>${v>0?"+":"−"}${nf.format(Math.abs(v))}</b>`).join(" · ")
-        +`</span></td></tr>`;
+        +`<td style="color:${dCol};font-weight:650">${stkSigned(e.d)}</td>`
+        +(e.broken? `<td colspan="2"><span class="sub">отчёт изменил состав — похоже на смену методики, а не движение товара</span></td>`
+                  : `<td>${inTxt}</td><td>${outTxt}${resTxt}</td>`)
+        +`<td class="stk-what"><span class="sub">${what}</span></td></tr>`;
     }).join("")+`</tbody></table></div>`;
 }
 
@@ -15428,6 +15467,7 @@ function hydrateData(){
   _ozCostCache=null; _ozFinCache=null;    // финансы Озона считаются из каталога и тарифа
   _ozAdMapCache=null;                     // склейки Озона тянутся из каталога ВБ по коду 1С
   _wbCostBySku=null;                      // фолбэк себестоимости ВБ по артикулу
+  _stkSeries=null;                        // «Остатки»: ряды мест хранения строятся из снимка
   OZ_FUNNEL = (RD && RD.ozon && RD.ozon.funnel) ? RD.ozon.funnel : [];
   applyOzRevBase();              // база выручки Озона с 31.08 — ДО сборки датасетов
   buildMpDatasets();
