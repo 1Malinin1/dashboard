@@ -7,12 +7,13 @@
 // Использование: node scripts/update-wb-stock.cjs <stocks_report.xlsx> [YYYY-MM-DD] [--history-only]
 //   --history-only — только точка истории `RD.wbStockHistory[дата]` (для старых отчётов): каталог,
 //   отгрузки и дата снимка не трогаются. Дата обязательна.
+//   --no-ship — не закрывать отгрузки ростом остатка (пересчёт по новой методике: рост — не приёмка).
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
 const XLSX=require('./node_modules/xlsx');
 const OUT=path.join(__dirname,'..','decrypted');
-const argv=process.argv.slice(2); const histOnly=argv.includes('--history-only');
-const pos=argv.filter(a=>a!=='--history-only'); const file=pos[0], dateArg=pos[1];
+const argv=process.argv.slice(2); const histOnly=argv.includes('--history-only'), noShip=argv.includes('--no-ship');
+const pos=argv.filter(a=>!/^--/.test(a)); const file=pos[0], dateArg=pos[1];
 if(!file||(histOnly&&!/^\d{4}-\d{2}-\d{2}$/.test(dateArg||''))){console.error('usage: node scripts/update-wb-stock.cjs <stocks_report.xlsx> [YYYY-MM-DD] [--history-only]  (при --history-only дата обязательна)');process.exit(1);}
 function num(v){const n=parseFloat((''+v).replace(/\s/g,'').replace(',','.'));return isNaN(n)?0:n;}
 
@@ -44,6 +45,10 @@ const iRF=H.findIndex(h=>/^склад wb рф/i.test(h));
 const iAll=H.findIndex(h=>/всего наход/i.test(h));
 const iXway=H.findIndex(h=>/текущий остаток/i.test(h));
 const iStock=iRF>=0? iRF : (iAll>=0? iAll : iXway);
+/* + «СК ВЕЛИКИЙ КАМЕНЬ» (продавец 28.10.2026: «его считай, тк это склад ВБ, но товар находится не в России, и поэтому
+   остатки не находятся в общей вкладке „склады РФ“»). Живой склад ВБ (Беларусь), в «Склад WB РФ» не входит:
+   на 28.10 там 1 506 шт наших (15.10 — 579). Прибавляем только к «Склад WB РФ» — в «Всего находится» он уже есть. */
+const iLive=iStock===iRF? H.map((h,i)=>/великий камень/i.test(h)? i : -1).filter(i=>i>=0) : [];
 const skippedAll=iRF>=0 && iAll>=0;   // в файле есть обе — «Всего находится» осознанно пропущен
 const onlyAll=iRF<0 && iAll>=0;       // «Склад WB РФ» нет вовсе — считаем по «Всего», но предупреждаем
 /* ОСТОРОЖНО С XWAY. Замер 26.08: XWAY дал 76 719 шт, отчёт самого ВБ на следующий день —
@@ -59,7 +64,7 @@ const repByWB={}, repBySup={}, altByWB={}; let repRows=0, repTotal=0;
 for(let i=hr+1;i<rows.length;i++){ const r=rows[i];
   const sku=(''+(r[iWB]||'')).trim(), sup=(''+(iSup>=0?r[iSup]:'')||'').trim();
   if(!/^\d+$/.test(sku) && !sup) continue;
-  const s=num(r[iStock]);
+  const s=num(r[iStock])+iLive.reduce((a,i)=>a+num(r[i]),0);
   if(/^\d+$/.test(sku)){ repByWB[sku]=(repByWB[sku]||0)+s;
     if(skippedAll) altByWB[sku]=(altByWB[sku]||0)+num(r[iAll]); }
   if(sup){ repBySup[sup]=(repBySup[sup]||0)+s; }
@@ -111,7 +116,8 @@ RD.catalog.forEach(c=>{ const sku=''+c.sku, sup=(''+(c.supplierCode||'')).trim()
 // первыми, не больше, чем вырос остаток. Печатаем, что закрылось, — продавцу на сверку.
 RD.meta=RD.meta||{}; RD.meta.stockSnapshotDate=dateArg||new Date().toISOString().slice(0,10);
 const closed=[];
-Object.keys(grew).forEach(sup=>{
+if(noShip) console.log('--no-ship: отгрузки на ВБ ростом остатка не закрываются (пересчёт по методике)');
+if(!noShip) Object.keys(grew).forEach(sup=>{
   let left=grew[sup];
   (RD.shipments||[]).filter(s=>s.mp==='wb'&&s.sup===sup&&s.left>0)
     .sort((a,b)=>a.date<b.date?-1:1)
@@ -133,6 +139,8 @@ fs.writeFileSync(path.join(OUT,'wb-data.js'),
 console.log('Отчёт остатков: строк данных '+repRows+' · суммарный остаток в отчёте '+Math.round(repTotal).toLocaleString('ru-RU')+' шт (весь аккаунт)');
 console.log('Наш каталог: '+RD.catalog.length+' товаров · совпало с отчётом '+matched+' · нет в отчёте (→0) '+zeroed);
 console.log('Остаток каталога (наши товары): было '+oldTotal.toLocaleString('ru-RU')+' → стало '+newTotal.toLocaleString('ru-RU')+' шт');
+if(iLive.length){ let vk=0; for(let i=hr+1;i<rows.length;i++){ const sku=(''+(rows[i][iWB]||'')).trim(); if(RD.catalog.some(c=>''+c.sku===sku)) iLive.forEach(j=>vk+=num(rows[i][j])); }
+  console.log('В т.ч. «'+iLive.map(i=>H[i]).join('», «')+'» (склад ВБ вне РФ): '+Math.round(vk).toLocaleString('ru-RU')+' шт наших'); }
 console.log('Дата снимка остатков: '+RD.meta.stockSnapshotDate
   +(isXway? ' · в историю остатков ВБ НЕ записано (XWAY = FBO+FBS)' : ' · точка истории остатков ВБ записана ('+Object.keys(RD.wbStockHistory||{}).length+' точек)'));
 if(isXway){

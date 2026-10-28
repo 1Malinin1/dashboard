@@ -513,6 +513,17 @@ if(plan.length){
     p.dropped.forEach(t=>console.log('      Не едет    '+t.pallets+' палл · '+t.why+': '
       +t.items.map(x=>x.sup+'×'+x.pal).join(', '))); });
   console.log('  ИТОГО: '+plan.reduce((a,p)=>a+p.trucks.length,0)+' машин · '+F(plan.reduce((a,p)=>a+p.total,0))+' палл');
+  /* РЕЗЕРВ 1С ПОД КОДАМИ ПЛАНА (с 28.10.2026). Резерв — товар, который уже собирают в отгрузку; куда он едет,
+     ведомость не говорит (продавец 28.10: способ передавать направление пока не нашёл). Пока он не виден в «в пути»
+     площадки, расчёт его не учитывает и может предложить тот же код повторно (28.10: обе машины Ozon «Москва» —
+     12 кодов из 12 в резерве). Только печать — машины не меняем; продавцу сказать перед отгрузкой. */
+  const resPt=((RD.whHistory||{})[(RD.warehouse||{}).date]||{}).reserve||{};
+  const resAt=(sup,wh)=>{ const r=resPt[sup]; if(!r) return 0; let q=0; Object.entries(r.wh||{}).forEach(([n,v])=>{ if(whKey(n)===wh) q+=v; }); return q; };
+  const warn=[];
+  plan.forEach(p=>p.trucks.forEach((t,i)=>{ const hit=t.items.map(x=>({sup:x.sup,q:resAt(x.sup,p.wh)})).filter(x=>x.q>0);
+    if(hit.length) warn.push('  '+WH_NAME[p.wh]+' → '+dirByKey[p.k].name+' · машина '+(i+1)+': '+hit.length+' из '+t.items.length
+      +' кодов уже в резерве — '+hit.map(x=>x.sup+' ('+F(x.q)+' шт)').join(', ')); }));
+  if(warn.length) console.log('\n⚠ В РЕЗЕРВЕ 1С (собирают отгрузку, в «в пути» площадки ещё не видно — проверить, не повтор ли):\n'+warn.join('\n'));
 }
 const noPal=rows.filter(r=>r.noPal);
 if(noPal.length) console.log('\nБез вместимости паллеты (везём штуками, вне машин): '+noPal.length+' позиций: '
