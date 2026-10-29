@@ -8481,7 +8481,9 @@ function adDrrBadge(v){ const c=adDrrCls(v);
    продавец снял (18.09.2026). Не заводи его обратно и не подставляй `AD_DRR_GOAL`:
    на ВБ цель остаётся 7% как потолок, площадки судят по разным линейкам и в разные
    стороны. Верхней границы продавец не задавал — пока её нет. */
-const OZ_DRR_GOAL=10;
+/* Цель ДРР Ozon в выкупе (РЕК-26, продавец 29.10.2026): 14%, раньше 10% (РЕК-10). Оплата за заказ стоит на весь
+   кабинет 10%, остальное добираем XWAY. Ниже цели — недобор, а не экономия. */
+const OZ_DRR_GOAL=14;
 const ozDrrCls = v => v===Infinity? "crit" : (v>=OZ_DRR_GOAL? "good" : "warning");
 function ozDrrBadge(v){ const c=ozDrrCls(v);
   return `<span class="badge ${c==="good"?"good":(c==="warning"?"warning":"critical")}"><span class="d"></span>${adDrrTxt(v)}</span>`; }
@@ -9242,7 +9244,7 @@ function renderAdsOzon(){
   // ---- пирамида
   tree.hidden=false;
   { const h=tree.querySelector("h3"); if(h) h.textContent="Ozon: ДРР по уровням — в выкупе"; }   // площадка — в заголовке (у ВБ своя)
-  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Кабинет Ozon → категория → склейка → товар. Цель — держать ДРР не ниже "+OZ_DRR_GOAL+"%: это минимум для поддержания соинвеста по ИУ, поэтому ниже "+OZ_DRR_GOAL+"% — недобор, а не экономия (на ВБ правило обратное, там 7% — потолок). Потолок — безубыточный ДРР уровня (подписан под ДРР): выше него реклама уводит в минус. Клик по склейке фильтрует таблицу."; }
+  { const cp=document.getElementById("adDrrCap"); if(cp) cp.textContent="Кабинет Ozon → категория → склейка → товар. Цель — держать ДРР не ниже "+OZ_DRR_GOAL+"%: оплата за заказ 10% на кабинет + XWAY, поэтому ниже "+OZ_DRR_GOAL+"% — недобор, а не экономия (на ВБ правило обратное, там 7% — потолок). Потолок — безубыточный ДРР уровня (подписан под ДРР): выше него реклама уводит в минус. Клик по склейке фильтрует таблицу."; }
   const maxSp=Math.max(L.all.sp,1);
   const badge=(v,sp,o)=> sp<AD_MIN_SPEND
     ? `<span class="badge nodata"><span class="d"></span>${sp>0? "мелкий расход":"нет рекламы"}</span>`
@@ -9910,7 +9912,7 @@ function renderAdHyp(){
       +`<td>${ok? met(B.code,A.code,B.days,A.days) : "—"}</td>`
       +`<td>${ok? met(B.tag,A.tag,B.days,A.days) : "—"}</td></tr>`;
   }).join("");
-  const goal = mp==="ozon"? `ДРР на Ozon: ${OZ_DRR_GOAL}% — минимум (соинвест по ИУ), безубыточный — потолок; зелёным — к коридору.`
+  const goal = mp==="ozon"? `ДРР на Ozon: ${OZ_DRR_GOAL}% — цель, ниже — недобор (оплата за заказ 10% на кабинет + XWAY), безубыточный — потолок; зелёным — к коридору.`
     : `ДРР на Wildberries: ${AD_DRR_GOAL}% — потолок; зелёным — снижение.`;
   body.innerHTML=`<p class="hy-cap">Что мы меняли в рекламе ${mpName} и что из этого вышло — по журналу правок и закономерностям из ОПЫТ.md. `
     +`У правки написано, какую закономерность она проверяет; у закономерности — правки, которые её проверяют. `
@@ -13653,7 +13655,7 @@ function recRulesOz(addAny, rs){
       const lowG=L.groups.filter(g=>g.rev>0 && g.drr<OZ_DRR_GOAL).sort((a,b)=>b.rev-a.rev);
       add({sev:"warn", key:"ozDrrLow",
         title:"Ozon: ДРР кабинета "+recPc(L.all.drr)+" — ниже минимума "+OZ_DRR_GOAL+"%",
-        why:`На Ozon ${OZ_DRR_GOAL}% в выкупе — МИНИМУМ для поддержания соинвеста по ИУ, а не потолок: ниже — риск потерять соинвест. За ${per} расход <b class="num">${money(L.all.sp)} ₽</b> при выручке в выкупе <b class="num">${money(L.all.rev)} ₽</b>; до минимума не хватает <b class="num">${money(short)} ₽</b> рекламы. Добирать — на товарах с остатком в ЦФО/ПФО/ЮФО и запасом от 30 дней, и не выше безубыточного ДРР товара.`,
+        why:`На Ozon ${OZ_DRR_GOAL}% в выкупе — ЦЕЛЬ (продавец 29.10.2026; оплата за заказ — 10% на кабинет, остальное добираем XWAY), а не потолок: ниже — недобор. За ${per} расход <b class="num">${money(L.all.sp)} ₽</b> при выручке в выкупе <b class="num">${money(L.all.rev)} ₽</b>; до минимума не хватает <b class="num">${money(short)} ₽</b> рекламы. Добирать — на товарах с остатком в ЦФО/ПФО/ЮФО и запасом от 30 дней, и не выше безубыточного ДРР товара.`,
         items: lowG.slice(0,6).map(g=>({n:recPc(g.drr), x:"Категория «"+g.key+"» · "+g.n+" "+plural(g.n,"карточка","карточки","карточек"),
           w:"недобор "+money(g.rev*OZ_DRR_GOAL/100-g.sp)+" ₽"})),
         tab:"ads", rank: 5});
