@@ -12718,6 +12718,11 @@ function recIsOut(r){
 }
 const recAlive = list => list.filter(r=>!recIsOut(r));
 const REC_WIN=7;                    // окно сравнения «неделя к неделе»
+/* МАРЖА НЕ НИЖЕ 10% (продавец 29.10.2026, ЦЕНА-10): товар с маржой ниже — задача
+   в «Рекомендациях» на своей площадке. Маржа = прибыль товара ÷ выручка в выкупе за последнюю закрытую
+   неделю пн–вс, прибыль — та же, что на «Главной» площадки (после рекламы и себестоимости). Выручка меньше
+   REC_MARGIN_REV_MIN за неделю — шум (одна-две продажи качают маржу на десятки процентов), не задача. */
+const REC_MARGIN_MIN=10, REC_MARGIN_REV_MIN=3000;
 const REC_PRICE_D=0.08;             // ±8% по цене — уже повод
 const REC_IMP_D=0.25;               // ±25% по показам
 const REC_CR_D=0.20;                // ±20% по конверсии
@@ -13535,6 +13540,25 @@ function recRulesWb(addAny, rs){
     items: upSr.slice(0,6).map(r=>({n:"план "+srOrd(r.targetOrders)+" в день", x:r.name,
       w:"сейчас "+srOrd(r.ordWb||0)+" в день"})),
     keys: upSr.flatMap(r=>[r.sup,r.wbSku]), n: upSr.length, tab:"stockrate", rank: 6});
+  // ---- 8. Маржа ниже 10% за последнюю закрытую неделю — Wildberries ----
+  { const WK=recWeeks(RD.orderSeries&&RD.orderSeries.dates);
+    if(WK){
+      const supOf={}; (RD.catalog||[]).forEach(c=>supOf[""+c.sku]=(""+(c.supplierCode||"")).trim());
+      const all=productPnL(WK.w1).filter(hasActivity).filter(r=>!isOutSku(r.sku));
+      const tot=all.reduce((a,r)=>({rev:a.rev+(r.revenue||0), p:a.p+r.profit}),{rev:0,p:0});
+      const low=recAlive(all.filter(r=>r.revenue>=REC_MARGIN_REV_MIN && r.margin*100<REC_MARGIN_MIN))
+        .sort((a,b)=>a.margin-b.margin);
+      const need=low.reduce((a,r)=>a+(r.revenue*REC_MARGIN_MIN/100-r.profit),0);
+      const est=WK.w1.some(d=>FINANCE_CACHE.some(x=>x.date===d && x.est));
+      if(low.length) add({sev:"warn", key:"marginW",
+        title:"Маржа ниже "+REC_MARGIN_MIN+"% на ВБ: "+low.length+" "+plural(low.length,"товар","товара","товаров")+" за неделю "+recWkShort(WK.w1),
+        why:`Правило с 29.10: маржа товара не ниже ${REC_MARGIN_MIN}% на каждой площадке. Неделя: ${recWkTxt(WK.w1)}. Маржа = прибыль ÷ выручка в выкупе, прибыль — как на «Главной» ВБ: к оплате от ВБ − себестоимость − реклама. Чтобы вытянуть все эти товары до ${REC_MARGIN_MIN}%, за неделю не хватает <b class="num">${money(need)} ₽</b> прибыли; у всего живого ассортимента ВБ маржа за неделю <b class="num">${tot.rev? recPc(tot.p/tot.rev*100) : "—"}</b>. Рычаги — цена, реклама (её доля указана у товара), себестоимость. Выручка меньше ${fmt(REC_MARGIN_REV_MIN)} ₽ за неделю не показываю — одна-две продажи дают случайную маржу.`
+          +(est? `<br><span class="mut">Удержания ВБ за эти дни — оценка одной долей выручки, а не отчёт: разница между товарами здесь от цены, себестоимости и рекламы.</span>` : ""),
+        items: low.slice(0,6).map(r=>({n:(r.margin<0? "−" : "")+recPc(Math.abs(r.margin*100)), x:(supOf[r.sku]? supOf[r.sku]+" · " : "")+r.name,
+          w:"выручка "+money(r.revenue)+" ₽ · реклама "+recPc(r.ad/r.revenue*100,0)+" · себестоимость "+recPc(r.cogs/r.revenue*100,0)})),
+        keys: low.map(r=>r.sku), n: low.length, tab:"home", dates:WK.w1, prevDates:WK.w0, rank: 4});
+    }
+  }
   // ---- 9. Чего не хватает в данных — Wildberries ----
   const gaps=[];
   const ordGap=recOrdersGap(RD.orderSeries&&RD.orderSeries.dates, "Wildberries", "подённые отчёты ВБ «Воронка продаж»");
@@ -13674,6 +13698,22 @@ function recRulesOz(addAny, rs){
       items: prod.slice(0,6).map(r=>({n:recRub(r.profit)+" ₽", x:artNm(r.sku,r.name),
         w:"выручка "+money(r.revenue)+" ₽ · реклама "+money(r.ad)+" ₽"+(r.hasCost? "" : " · нет себестоимости")})),
       keys: prod.map(r=>r.sku), n: prod.length, tab:"home", dates:WK.w1, prevDates:WK.w0, rank: 4});
+  }
+  // ---- 7. Маржа ниже 10% за ту же неделю (правило 29.10.2026) ----
+  if(WK){
+    const now=ozFinAggregate(WK.w1);
+    const low=recAlive(ozFinBySku(now.rows).filter(r=>r.revenue>=REC_MARGIN_REV_MIN && r.margin*100<REC_MARGIN_MIN))
+      .sort((a,b)=>a.margin-b.margin);
+    const need=low.reduce((a,r)=>a+(r.revenue*REC_MARGIN_MIN/100-r.profit),0);
+    const neg=low.filter(r=>r.profit<0).length;
+    if(low.length) add({sev:"warn", key:"marginO",
+      title:"Ozon: маржа ниже "+REC_MARGIN_MIN+"% — "+low.length+" "+plural(low.length,"товар","товара","товаров")+" за неделю "+recWkShort(WK.w1),
+      why:`Правило с 29.10: маржа товара не ниже ${REC_MARGIN_MIN}% на каждой площадке. Неделя календарная: ${recWkTxt(WK.w1)}. Маржа = прибыль ÷ выручка в выкупе (по «Предельной цене»), прибыль — как на «Главной» Ozon: выручка − тариф ${recPc(FX)} − реклама − себестоимость. Чтобы вытянуть эти товары до ${REC_MARGIN_MIN}%, за неделю не хватает <b class="num">${money(need)} ₽</b> прибыли; маржа всего живого ассортимента Ozon — <b class="num">${recPc(now.margin*100)}</b>. Рычаги — цена, реклама (доля у товара), себестоимость.`
+        +(neg? ` В минусе из них <b class="num">${neg}</b> — они же в задаче «в убытке».` : "")
+        +` Выручка меньше ${fmt(REC_MARGIN_REV_MIN)} ₽ за неделю не показываю — одна-две продажи дают случайную маржу.`,
+      items: low.slice(0,6).map(r=>({n:(r.margin<0? "−" : "")+recPc(Math.abs(r.margin*100)), x:artNm(r.sku,r.name),
+        w:"выручка "+money(r.revenue)+" ₽ · реклама "+recPc(r.ad/r.revenue*100,0)+" · себестоимость "+recPc(r.cogs/r.revenue*100,0)+(r.hasCost? "" : " · нет себестоимости")})),
+      keys: low.map(r=>r.sku), n: low.length, tab:"home", dates:WK.w1, prevDates:WK.w0, rank: 4});
   }
   // ---- 9. Чего не хватает в данных — Ozon ----
   const g=[], lastOz=ozDates[ozDates.length-1];
