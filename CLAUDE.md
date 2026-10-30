@@ -111,11 +111,11 @@ git add wb-secure.js data-version.json && git commit && git push
   7,3 млн «прибыли из воздуха»). Фолбэк `wbCostBySku()`, прибыль ВБ на «Всего» — через `recWithMp`. У Ozon своя
   карта `ozCostMap()` (с фолбэком `meta.costBySup`).
 - **Общие расчёты — папка `calc/`** (один файл и для сайта, и для скриптов; с 30.10.2026): прибыль Ozon — `calc/ozon-fin.js`
-  (правишь только его; на сайте обёртки `ozFinRows`/`ozCalc()`). Новый файл в `calc/` подключай в index.html как
+  (на сайте обёртки `ozFinRows`/`ozCalc()`); подсорт, машины, % выкупа для подсорта, раскладка своих складов — `calc/resupply.js`
+  (на сайте обёртки `resupplyRows`/`truckPlan`/`mpStats`/`whKey`/`rsCalc()`; `resupply-report.cjs` только печатает). Правишь только их. Новый файл в `calc/` подключай в index.html как
   `<script src="calc/ИМЯ.js?v=0">` — версию поставит хук.
 - **Логика ещё продублирована в index.html и скриптах — правишь одно, правь второе** (сверка до рубля/штуки; переносим в `calc/`):
-  подсорт (`resupplyRows`, `topUpTrucks`, `truckFill`, `truckConsolidate`, `packTrucks`, `RESUP_WH`/`RESUP_DIRS`/`resupOzSplit`, `WHS`/`whKey`, `ozTransitEff`,
-  партии `inbKeys`, выкуп `buyoutInfo`, фильтр «на вывод») ↔ `scripts/resupply-report.cjs`; дата подённого файла —
+  дата подённого файла —
   `wb-extend-orders.cjs` ↔ `bake-funnel.cjs`; имя файла с «_» — `ozon-ads-spend.cjs` ↔ `update-ads-perf.cjs`;
   фильтр `spendOnly` — `ad-part.cjs` ↔ `update-ads-perf.cjs`; «Итого к оплате» — воркер index.html ↔ `lib/parse-wb.cjs`;
   колонки `ОПЫТ.md` — `OPYT_COLS`/`opytMap` ↔ `COLS` в `scripts/opyt.cjs`.

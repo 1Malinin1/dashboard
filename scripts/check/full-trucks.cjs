@@ -18,7 +18,7 @@ const tmp = path.join(__dirname,'..','.ft-dump-tmp.cjs');
 fs.writeFileSync(tmp, src + `\nrequire('fs').writeFileSync(${JSON.stringify(dumpPath)}, JSON.stringify({
   rows: rows.map(r=>({sup:r.sup, d:Object.fromEntries(DIRS.map(d=>[d.key,{need:r.D[d.key].need,ship:r.D[d.key].ship,
     top:r.D[d.key].topUp,roll:r.D[d.key].roll,pal:r.D[d.key].pal,pcs:r.D[d.key].pcs}])), hold:r.hold, rest:r.rest})),
-  plan: plan.map(p=>({wh:p.wh,k:p.k,total:p.total,trucks:p.trucks.map(t=>t.items.map(x=>x.sup+'x'+x.pal).join(',')),
+  plan: plan.map(p=>({wh:p.whKey||p.wh,k:p.dir||p.k,total:p.total,trucks:p.trucks.map(t=>t.items.map(x=>x.sup+'x'+x.pal).join(',')),
     dropped:p.dropped.map(t=>t.items.map(x=>x.sup+'x'+x.pal).join(','))}))}));\n`);
 try { cp.execFileSync('node', [tmp, '-', '5'], { stdio: 'pipe' }); } finally { fs.unlinkSync(tmp); }
 const S = JSON.parse(fs.readFileSync(dumpPath, 'utf8'));
