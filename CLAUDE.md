@@ -110,9 +110,10 @@ git add wb-secure.js data-version.json && git commit && git push
 - **`costAt`/`costOf` смотрят в карты АКТИВНОЙ площадки**: на «Всего» себестоимость ВБ падала в ноль (стоило
   7,3 млн «прибыли из воздуха»). Фолбэк `wbCostBySku()`, прибыль ВБ на «Всего» — через `recWithMp`. У Ozon своя
   карта `ozCostMap()` (с фолбэком `meta.costBySup`).
-- **Логика продублирована в index.html и скриптах — правишь одно, правь второе** (сверка до рубля/штуки):
-  `ozFinRows`/`ozApplyAdFact`/`ozOrderFeeOn`/`ozUnitReports`/`ozBuyoutFor`/`ozCostMap`, дата РЕК-23
-  `OZ_FEE_REPORT_ONLY_FROM` (там `FEE_ONLY_FROM`) ↔ `scripts/ozon-finance.cjs`;
+- **Общие расчёты — папка `calc/`** (один файл и для сайта, и для скриптов; с 30.10.2026): прибыль Ozon — `calc/ozon-fin.js`
+  (правишь только его; на сайте обёртки `ozFinRows`/`ozCalc()`). Новый файл в `calc/` подключай в index.html как
+  `<script src="calc/ИМЯ.js?v=0">` — версию поставит хук.
+- **Логика ещё продублирована в index.html и скриптах — правишь одно, правь второе** (сверка до рубля/штуки; переносим в `calc/`):
   подсорт (`resupplyRows`, `topUpTrucks`, `truckFill`, `truckConsolidate`, `packTrucks`, `RESUP_WH`/`RESUP_DIRS`/`resupOzSplit`, `WHS`/`whKey`, `ozTransitEff`,
   партии `inbKeys`, выкуп `buyoutInfo`, фильтр «на вывод») ↔ `scripts/resupply-report.cjs`; дата подённого файла —
   `wb-extend-orders.cjs` ↔ `bake-funnel.cjs`; имя файла с «_» — `ozon-ads-spend.cjs` ↔ `update-ads-perf.cjs`;

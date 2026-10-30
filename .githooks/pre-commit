@@ -3,13 +3,13 @@
 # в data-version.json. Без этого правка интерфейса доезжает до браузера продавца
 # только когда протухнет кеш GitHub Pages (до 10 минут), и он пишет «не вижу изменений».
 # Включается один раз: git config core.hooksPath .githooks
-if git diff --cached --name-only | grep -qx 'index.html'; then
-  node scripts/stamp-build.cjs || exit 1
-  git add data-version.json
+if git diff --cached --name-only | grep -qE '^(index\.html|calc/)'; then
+  node scripts/stamp-build.cjs || exit 1      # заодно ставит ?v= у calc/*.js в index.html
+  git add data-version.json index.html
 fi
 # ПРОВЕРКИ НА КАЖДЫЙ КОММИТ сайта или данных (30.10.2026): если в окружении есть VERIFY_CODE — гоним все три
 # (scripts/check/run-all.sh, ~3 мин), провал — коммит не проходит. Кода нет — громкое напоминание, коммит идёт.
-if git diff --cached --name-only | grep -qxE 'index.html|wb-secure.js'; then
+if git diff --cached --name-only | grep -qE '^(index\.html|wb-secure\.js|calc/)'; then
   if [ -n "$VERIFY_CODE" ]; then
     sh scripts/check/run-all.sh || { echo "pre-commit: проверки не прошли — коммит остановлен"; exit 1; }
   else

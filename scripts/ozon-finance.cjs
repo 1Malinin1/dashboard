@@ -76,152 +76,31 @@ const T={ acquiring:1.3, commission:30, logistics:0, returns:0, crossdock:0,
 T.total=+(T.acquiring+T.commission+T.logistics+T.returns+T.crossdock+T.placement+T.other+T.ads).toFixed(2);
 O.meta.terms=T;
 
-/* СТАВКА РЕКЛАМЫ — ПО ДАТЕ ДНЯ, ИЗ ОТЧЁТА «ЮНИТ-ЭКОНОМИКА» (scripts/ozon-unit-report.cjs).
-   Решение продавца 17.09.2026: «то что шло и будет идти в отчетах то и считаешь». Фиксированные
-   10% занижали прибыль августа на 1 528 870 ₽ — факт отчёта 4,23%. Premium 1,4% в отчёте
-   не выделяется и остаётся в фиксированной части всегда («вот ее нужно считать по умолчанию»).
-   Правило выбора то же, что у % выкупа; ручной `--ads` перекрывает всё.
-   ДУБЛЬ — `ozAdRateFor()` в index.html, ДЕРЖИ СИНХРОННО. */
-// НЕЗРЕЛЫЕ ОТЧЁТЫ (mature===false) в выбор ставки НЕ идут — у них удержания ещё не начислены.
-/* С 01.10.2026 МОДЕЛЬНОЙ СТАВКИ НЕТ (РЕК-23, продавец 19.10.2026: «убери базовую оплату за заказ,
-   берём плату за заказ только с отчётов, которые я сам даю тебе»): плата за заказ — только из отчёта
-   «Оплата за заказ», дня без отчёта — 0. Ручные записи (src:'manual') в расчёт не идут.
-   ДУБЛЬ — OZ_FEE_REPORT_ONLY_FROM/ozUnitReports()/ozAdRateFor() в index.html, ДЕРЖИ СИНХРОННО. */
-const FEE_ONLY_FROM='2026-10-01';
-const UR=((O.meta.unitReports)||[]).filter(r=>r.mature!==false && r.src!=='manual').slice().sort((a,b)=>a.from<b.from?-1:1);
+/* ВЕСЬ РАСЧЁТ ПРИБЫЛИ — calc/ozon-fin.js (с 30.10.2026): тот же файл подключает index.html, поэтому сайт и этот
+   скрипт не могут разойтись. Раньше здесь жила вторая копия правил (adRateFor/boFor/costAt/adFact/calc)
+   с пометками «ДЕРЖИ СИНХРОННО». Ниже — только то, что нужно для печати шапки, и сложение готовых строк.
+   Правила (кратко): реклама до 01.10 — ставка зрелых отчётов «Юнит-экономика», с 01.10 — только факт «Оплаты
+   за заказ» (РЕК-23); XWAY перекрывает ставку потоварно; % выкупа — по дате замера; себестоимость — каталог ВБ. */
+const OzFin=require(path.join(__dirname,'..','calc','ozon-fin.js'));
 const adForced = arg('ads')!=null;
-const FIXED=+(T.total-T.ads).toFixed(4);
-function adRateFor(d){
-  if(adForced) return T.ads;
-  if(d>=FEE_ONLY_FROM) return 0;
-  if(!UR.length) return T.ads;
-  for(const r of UR) if(r.from<=d && d<=r.to) return r.adsRate;
-  if(d < UR[0].from) return UR[0].adsRate;
-  let last=UR[0]; for(const r of UR) if(r.to < d) last=r;
-  return last.adsRate;
-}
-/* ФАКТ РАСХОДА ПЕРЕКРЫВАЕТ СТАВКУ — ПОТОВАРНО (решение продавца 17.09.2026: «если в отчёте
-   с xway будет другая цифра — ты и берёшь её»; «изменения будет только у <8 SKU>, а у всех
-   других будет фикса как и идёт по августу»). Товар есть в части → его реклама = факт,
-   нет → ставка. Внутри части расход разносится пропорционально выручке дня.
-   Ведёт scripts/ozon-ads-spend.cjs. ДУБЛЬ — ozApplyAdFact() в index.html, ДЕРЖИ СИНХРОННО. */
-const AP=(!adForced && O.meta.adSpend && Array.isArray(O.meta.adSpend.parts))
-  ? O.meta.adSpend.parts.slice().sort((a,b)=>a.from<b.from?-1:1) : [];
-function apIdx(d){ for(let i=0;i<AP.length;i++) if(AP[i].from<=d&&d<=AP[i].to) return i; return -1; }
-
-// ---- себестоимость по коду 1С (общая с ВБ; на Озоне артикул = код 1С)
-const costHist={}, costNow={};
-(RD.catalog||[]).forEach(c=>{ const s=(''+(c.supplierCode||'')).trim(); if(!s) return;
-  if(c.costPrice!=null && costNow[s]==null) costNow[s]=c.costPrice;
-  if(c.costHistory && c.costHistory.length && !costHist[s]) costHist[s]=c.costHistory; });
-/* Фолбэк `meta.costBySup` — цена по коду 1С для товаров без карточки ВБ (куда её иначе
-   записать некуда, и товар считался бы с нулевой себестоимостью). Каталог ВБ сильнее.
-   ДЕРЖИ СИНХРОННО с `ozCostMap()` в index.html. */
-Object.entries((RD.meta&&RD.meta.costBySup)||{}).forEach(([s,v])=>{ if(!v) return;
-  const c=(typeof v==='object')? v.cost : v;
-  if(c!=null && costNow[s]==null) costNow[s]=c; });
-function costAt(sup,date){
-  const h=costHist[sup];
-  if(h){ let v=null; for(const e of h){ if(!e.from || e.from<=date) v=e.cost; } if(v!=null) return v; }
-  return costNow[sup]!=null? costNow[sup] : null;
-}
-
-/* % ВЫКУПА — КАК НА ВБ: история замеров, каждый действует С ДАТЫ ЗАМЕРА И ВПЕРЁД.
-   Формула замера — «доставлено ÷ (доставлено + отменено)» (ozon-buyout-window.cjs).
-   Дни раньше первого замера считаются по нему же — другого источника для них нет.
-   Пока замеров нет, работает старое meta.buyoutAll («не отменён ÷ все заказы»).
-   Дубль — ozBuyoutFor() в index.html, держи синхронно. */
-const BOH=(O.meta.buyoutWin&&Array.isArray(O.meta.buyoutWin.history)&&O.meta.buyoutWin.history.length)
-  ? O.meta.buyoutWin.history.slice().sort((a,b)=>(a.builtAt||'')<(b.builtAt||'')?-1:1) : null;
-const boFallback=O.meta.buyoutAll!=null? O.meta.buyoutAll : 1;
-function boFor(d){
-  if(!BOH) return boFallback;
-  let pick=null; BOH.forEach(h=>{ if((h.builtAt||'').slice(0,10)<=d) pick=h; });
-  return (pick||BOH[0]).all;
-}
-const bo=boFallback;   // справочно: для шапки и для мест, где дата не важна
-const S=O.orderSeries, dates=S.dates||[], byArt=S.byArt||{}, money=S.money||{};
+const FEE_ONLY_FROM=OzFin.FEE_REPORT_ONLY_FROM;
+// revBase (сейчас выключен) применяется к КОПИИ: этот скрипт записывает wb-data.js обратно, и пересчитанные
+// суммы или флаг moneyRebased не должны попасть в снимок
+const RDc = OzFin.revBase(RD)? JSON.parse(JSON.stringify(RD)) : RD;
+if(RDc!==RD) OzFin.applyRevBase(RDc);
+const C=OzFin.create(RDc, {forceAdRate: adForced? T.ads : null});
+const FIXED=C.fixedRate, UR=C.unitReports, AP=C.parts, OFE=C.orderFee, BOH=C.buyoutHist;
+const bo=O.meta.buyoutAll!=null? O.meta.buyoutAll : 1;   // справочно: для шапки, когда замеров нет
+const S=O.orderSeries, dates=S.dates||[];
 const from=arg('from')||dates[0], to=arg('to')||dates[dates.length-1];
-
-/* БАЗА ВЫРУЧКИ МЕНЯЕТСЯ С ДАТЫ (31.08.2026 Ozon перешёл на «цену реализации»).
-   Прошлые дни считаются по-старому, по «Предельной цене» — решение продавца 08.09.2026:
-   «не нужно пересчитывать всю историю, считай только с 31.08 по новому». Коэффициент
-   ведёт scripts/ozon-revbase.cjs, история записей — в ozon.meta.revBase.history.
-   Дубль этой функции — ozRevK() в index.html, держи синхронно.
-   ПРАВИЛО ПРИМЕНЯЕТСЯ ТОЛЬКО ПРИ applied===true (сейчас выключено — замер оставлен как факт,
-   расчёт идёт по «Предельной цене»; почему — в шапке scripts/ozon-revbase.cjs). */
-const RBon=!!(O.meta.revBase && O.meta.revBase.applied===true);
 const RBall=(O.meta.revBase&&Array.isArray(O.meta.revBase.history))? O.meta.revBase.history : [];
-const RB=RBon? RBall : [];
-function revK(d){ let k=1; RB.forEach(h=>{ if(h.from<=d) k=h.k; }); return k; }
+const RB=OzFin.revBase(RD)? RBall : [];
 
-/* выручка каждого товара ВНУТРИ каждой части — нужна, чтобы разнести итоговый расход
-   по дням пропорционально; и последний день части, куда падает расход без продаж */
-const partRev=AP.map(()=>({})), partLast=AP.map(p=>{
-  const ds=dates.filter(d=>d>=p.from&&d<=p.to); return ds.length? ds[ds.length-1] : null; });
-if(AP.length) dates.forEach(d=>{ const pi=apIdx(d); if(pi<0) return;
-  const m=money[d]||{}, k=revK(d), b=boFor(d);
-  Object.entries(m).forEach(([a,v])=>{ if((AP[pi].bySup||{})[a]==null) return;
-    partRev[pi][a]=(partRev[pi][a]||0)+(v[0]||0)*k*b; }); });
-/* БАЗОВЫЕ 5% ЗА ЗАКАЗ В ВЫГРУЗКУ XWAY НЕ ПОПАДАЮТ — добавляем их к факту (09.10.2026).
-   XWAY видит только свои кампании: у товара вовсе без кампаний она показывает расход 0
-   при живых продажах, а у 487176 за 07.10 весь её расход (3 600 ₽) меньше, чем 5% от его
-   продаж (3 667 ₽). Исключение — товары с ВКЛЮЧЁННОЙ оплатой за заказ (ozzOn): там ставка
-   10 или 23% ЗАМЕНЯЕТ базовые 5% и уже сидит в выгрузке, добавлять нельзя.
-   Список ведёт scripts/ozon-ozz.cjs. ДУБЛЬ ЛОГИКИ — ozApplyAdFact в index.html, держать синхронно. */
-const OZZ=((O.meta&&O.meta.ozzOn&&O.meta.ozzOn.bySup)||{});
-const baseOn=a=>OZZ[a]==null;                       // true → базовые 5% начисляются сверх факта
-/* ОПЛАТА ЗА ЗАКАЗ — ФАКТ ИЗ ОТЧЁТА OZON (продавец 15.10.2026: «в этих файлах идёт точное
-   списание за заказ… за клики будем брать с Xway»; «Xway не учитывает дополнительную оплату
-   за заказ, дублировать он не может»). В дни, за которые отчёт загружен, вместо модельной
-   ставки берётся списание товара из отчёта (нет товара в отчёте — 0), к нему — выгрузка XWAY
-   целиком; ozzOn в эти дни не нужен. Дни без отчёта — по-старому. Ведёт ozon-order-fee.cjs.
-   ДУБЛЬ — ozOrderFeeOn()/ozFinRows()/ozApplyAdFact() в index.html, ДЕРЖАТЬ СИНХРОННО. */
-const OFE=(!adForced && O.meta.orderFee && Array.isArray(O.meta.orderFee.periods))? O.meta.orderFee : null;
-const feeOn=d=>!!(OFE && OFE.periods.some(p=>p.from<=d&&d<=p.to));
-const feeDay=d=>(OFE&&OFE.byDate&&OFE.byDate[d])||{};
-function adFact(d,a,rv){                            // абсолютный расход товара в этот день, либо null
-  const pi=apIdx(d); if(pi<0) return null;
-  const sp=(AP[pi].bySup||{})[a]; if(sp==null) return null;
-  const tot=partRev[pi][a]||0;
-  // выручки в части нет — расход целиком кладёт блок «товар без продаж» в calc() на partLast;
-  // вернуть sp здесь значило бы посчитать его дважды, если у товара есть пустая запись money (ревью 15.10.2026)
-  return tot>0? sp*rv/tot : 0;
-}
-
+// свод за набор дат — сумма тех же подённых строк, что рисует сайт
 function calc(ds){
-  let ordRub=0, ordQty=0, rev=0, sold=0, cogs=0, noCost=0, mp=0, ads=0;
-  ds.forEach(d=>{
-    const i=dates.indexOf(d); if(i<0) return;
-    const m=money[d]||{}, k=revK(d), b=boFor(d);   // выкуп берётся ПО ДАТЕ ДНЯ
-    const ar=adRateFor(d);                         // и ставка рекламы — тоже по дате дня
-    const fo=feeOn(d), fd=fo? feeDay(d) : null;    // день покрыт отчётом «Оплата за заказ»?
-    Object.entries(m).forEach(([a,v])=>{ const r=(v[0]||0)*k, rv=r*b; ordRub+=r; rev+=rv;
-      // база за заказ: факт отчёта Ozon в покрытые дни, иначе модельная ставка
-      const base = fo? (fd[a]||0) : rv*ar/100;
-      const af=adFact(d,a,rv);                     // факт XWAY перекрывает ставку — только у своих товаров
-      if(af!=null){ const ad=af+(fo? base : (baseOn(a)? base : 0));   // сверх XWAY; ozzOn — только без отчёта
-        mp+=rv*FIXED/100+ad; ads+=ad; }
-      else { mp+=rv*FIXED/100+base; ads+=base; } });
-    // списание по товару, у которого в этот день нет денег заказов, не теряется
-    if(fo) Object.entries(fd).forEach(([a,fee])=>{ if(m[a]!=null) return; mp+=fee; ads+=fee; });
-    Object.entries(byArt).forEach(([a,s])=>{
-      const q=s[i]||0; if(!q) return;
-      ordQty+=q; sold+=q*b;
-      const c=costAt(a,d);
-      if(c!=null) cogs+=q*b*c; else noCost+=q;
-    });
-  });
-  /* РАСХОД НА ТОВАР БЕЗ ПРОДАЖ В ПЕРИОДЕ НЕ ТЕРЯЕТСЯ: цикл выше ходит по товарам с деньгами,
-     и реклама по товару, который ничего не продал, туда не попадает вовсе. Кладём её на
-     последний день части — так же, как index.html заводит строку с нулевой выручкой. */
-  const dset=new Set(ds);
-  AP.forEach((p,pi)=>{ if(!partLast[pi]||!dset.has(partLast[pi])) return;
-    Object.entries(p.bySup||{}).forEach(([a,sp])=>{ if((partRev[pi][a]||0)>0) return;
-      mp+=sp; ads+=sp; }); });
-  return {ordRub,ordQty,rev,sold,cogs,mp,ads,noCost,
-    takePct: rev? mp/rev*100 : 0,
-    profit:rev-mp-cogs, margin: rev? (rev-mp-cogs)/rev : 0};
+  const a=C.aggregate(ds);
+  return {ordRub:a.ordRub, ordQty:a.ordQty, rev:a.revenue, sold:a.qty, cogs:a.cogs, mp:a.mpFee, ads:a.ad, noCost:a.noCostQty,
+    takePct: a.revenue? a.mpFee/a.revenue*100 : 0, profit:a.profit, margin:a.margin};
 }
 const f=n=>Math.round(n).toLocaleString('ru-RU');
 const inRange=dates.filter(d=>d>=from&&d<=to);
