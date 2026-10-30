@@ -274,5 +274,5 @@ switch (cmd) {
   case "add-mp-column": cmdAddMpColumn(a); break;
   case "link": cmdLink(a, b); break;
   case "add-hyp-column": cmdAddHypColumn(); break;
-  default: console.log(read().split("*/")[0].split("/**")[1].trim());
+  default: console.log(fs.readFileSync(__filename, "utf8").replace(/^#!.*\n/, "").split("*/")[0].replace(/^\/\*+/, "").replace(/^ ?\* ?/gm, "").trim());   // справка — из шапки этого файла (раньше читал ОПЫТ.md и падал)
 }

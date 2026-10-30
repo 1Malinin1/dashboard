@@ -7,4 +7,13 @@ if git diff --cached --name-only | grep -qx 'index.html'; then
   node scripts/stamp-build.cjs || exit 1
   git add data-version.json
 fi
+# ПРОВЕРКИ НА КАЖДЫЙ КОММИТ сайта или данных (30.10.2026): если в окружении есть VERIFY_CODE — гоним все три
+# (scripts/check/run-all.sh, ~3 мин), провал — коммит не проходит. Кода нет — громкое напоминание, коммит идёт.
+if git diff --cached --name-only | grep -qxE 'index.html|wb-secure.js'; then
+  if [ -n "$VERIFY_CODE" ]; then
+    sh scripts/check/run-all.sh || { echo "pre-commit: проверки не прошли — коммит остановлен"; exit 1; }
+  else
+    echo "⚠ pre-commit: VERIFY_CODE не задан — проверки сайта НЕ запускались (sh scripts/check/run-all.sh)"
+  fi
+fi
 exit 0

@@ -102,6 +102,7 @@ git add wb-secure.js data-version.json && git commit && git push
 
 ## Капканы, которые бьют в любой задаче (подробности — в справочнике темы)
 
+- **Тихую пропажу ловит `encrypt.cjs` (с 30.10.2026):** перед записью сверяет новый снимок с текущим `wb-secure.js` — пропало поле или уменьшился счётчик (строки оценки, дни заказов, выгрузки рекламы, история остатков…) → СТОП, файл не перезаписан. Сознательное удаление — `--allow-drop`. Не обходи флагом, не разобравшись.
 - **Скрипт, переписывающий `decrypted/wb-reports.js`, обязан переносить `MODELED_FINANCE`** (и `BAKED_FUNNEL`);
   **`ozon-build.cjs` переписывает `RD.ozon` целиком** и обязан переносить из `ozon.meta`: `terms` · `revBase` ·
   `buyoutWin` · `unitReports` · `adSpend` · `clusters` · `clusterHistory` · `ozzOn` · `orderFee`. Новое поле
@@ -152,7 +153,7 @@ git add wb-secure.js data-version.json && git commit && git push
 Chromium: `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, модуль `scripts/node_modules/playwright-core`.
 Статический сервер из корня репозитория (`python3 -m http.server PORT --bind 127.0.0.1`), разблокировка:
 `page.fill('#lockInput', process.env.VERIFY_CODE)` → `click('.lock-btn')` → `waitForFunction(() => FINANCE_CACHE.length > 0)`.
-**Минимальный прогон после правок index.html — `scripts/check/`** (см. README там): все вкладки × три площадки без
+**Все три проверки одной командой: `VERIFY_CODE=… sh scripts/check/run-all.sh`** (сам поднимает сервер); git-хук гоняет её на каждый коммит `index.html`/`wb-secure.js`, если `VERIFY_CODE` задан в окружении. **Минимальный прогон после правок index.html — `scripts/check/`** (см. README там): все вкладки × три площадки без
 ошибок консоли, прибыль Ozon 01–14.10 (окно зашито), правило полных машин. Код доступа — только через `VERIFY_CODE`.
 После правок парсинга/агрегации сверяй контрольные суммы с кабинетом, которые присылает продавец.
 

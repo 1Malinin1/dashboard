@@ -1,7 +1,8 @@
 // Шифрует ../decrypted/wb-data.js + wb-reports.js обратно в ../wb-secure.js
 // (единственный файл с данными, который коммитится в репозиторий).
 //
-// Использование: node scripts/encrypt.cjs <код-доступа>
+// Использование: node scripts/encrypt.cjs <код-доступа> [--allow-drop]
+// Перед записью сверяет новый снимок с текущим wb-secure.js: пропавшее поле или уменьшившийся счётчик — остановка.
 'use strict';
 const fs = require('fs');
 const path = require('path');
@@ -27,6 +28,43 @@ vm.runInContext(
   ctx
 );
 const out = ctx.__OUT;
+
+/* ЗАЩИТА ОТ ТИХОЙ ПРОПАЖИ (30.10.2026). Скрипты переписывают снимок целиком, и забытое поле пропадает без ошибки
+   и без пустой таблицы — так однажды вышло 7,3 млн «прибыли из воздуха». Перед записью сравниваем новый снимок
+   с ТЕКУЩИМ wb-secure.js (тем же кодом): ключ, который был, а теперь пропал, или счётчик, который уменьшился, —
+   ОСТАНОВКА. Сознательное удаление (например, model-finance --clear) — флаг --allow-drop. */
+function snapshotStats(o){
+  const R=o.REAL_DATA||{}, Z=R.ozon||{}, M=Z.meta||{}, len=v=>Array.isArray(v)? v.length : (v&&typeof v==='object'? Object.keys(v).length : 0);
+  return {
+    keysRD: Object.keys(R), keysOzon: Object.keys(Z), keysOzonMeta: Object.keys(M), keysMeta: Object.keys(R.meta||{}),
+    n: { 'каталог ВБ':len(R.catalog), 'дни заказов ВБ':len(R.orderSeries&&R.orderSeries.dates), 'дни заказов Ozon':len(Z.orderSeries&&Z.orderSeries.dates),
+      'каталог Ozon':len(Z.catalog), 'фин. отчёты ВБ (строк)':len(o.BAKED_FINANCE), 'оценка финансов ВБ (строк)':len(o.MODELED_FINANCE),
+      'воронка ВБ (строк)':len(o.BAKED_FUNNEL), 'выгрузки рекламы ВБ':len(R.adPerf&&R.adPerf.parts), 'выгрузки XWAY Ozon':len(M.adSpend&&M.adSpend.parts),
+      'дни «Оплаты за заказ»':len(M.orderFee&&M.orderFee.periods), 'история остатков Ozon':len(Z.stockHistory), 'история остатков ВБ':len(R.wbStockHistory),
+      'история своего склада':len(R.whHistory), 'журнал отгрузок ВБ':len(R.shipments), 'партии производства':len(R.prodOrders&&R.prodOrders.rows) } };
+}
+if (!process.argv.includes('--allow-drop') && fs.existsSync(path.join(ROOT, 'wb-secure.js'))) {
+  let prev = null;
+  try {
+    const src = fs.readFileSync(path.join(ROOT, 'wb-secure.js'), 'utf8'); const S = JSON.parse(src.slice(src.indexOf('{'), src.lastIndexOf('}') + 1));
+    const k = crypto.pbkdf2Sync(Buffer.from(pass, 'utf8'), Buffer.from(S.salt, 'base64'), S.iter, 32, 'sha256');
+    const ct = Buffer.from(S.ct, 'base64'), d = crypto.createDecipheriv('aes-256-gcm', k, Buffer.from(S.iv, 'base64'));
+    d.setAuthTag(ct.subarray(ct.length - 16)); let b = Buffer.concat([d.update(ct.subarray(0, ct.length - 16)), d.final()]);
+    if (S.zip === 'gzip') b = zlib.gunzipSync(b); prev = JSON.parse(b.toString('utf8'));
+  } catch (e) { console.warn('⚠ прошлый снимок не прочитан этим кодом — сверку пропускаю (' + e.message + ')'); }
+  if (prev) {
+    const A = snapshotStats(prev), B = snapshotStats(out), bad = [];
+    [['keysRD','REAL_DATA'],['keysOzon','REAL_DATA.ozon'],['keysOzonMeta','ozon.meta'],['keysMeta','REAL_DATA.meta']].forEach(([f,nm]) => {
+      A[f].filter(x => !B[f].includes(x)).forEach(x => bad.push('пропало поле ' + nm + '.' + x)); });
+    Object.keys(A.n).forEach(x => { if (B.n[x] < A.n[x]) bad.push(x + ': было ' + A.n[x] + ' → стало ' + B.n[x]); });
+    if (bad.length) {
+      console.error('СТОП: новый снимок потерял данные против текущего wb-secure.js:\n  · ' + bad.join('\n  · ')
+        + '\nЕсли это сознательно (например, model-finance --clear) — повторите с --allow-drop. wb-secure.js НЕ перезаписан.');
+      process.exit(2);
+    }
+    console.log('сверка с прошлым снимком: ничего не пропало (' + Object.entries(B.n).filter(([x,v]) => v !== A.n[x]).map(([x,v]) => x + ' ' + A.n[x] + '→' + v).join(', ') + ')');
+  }
+}
 // СЖИМАЕМ до шифрования. JSON снимка — около 9,5 МБ, а base64 в файле раздувал его до
 // 12,7 МБ: на слабой связи браузер просто не догружал wb-secure.js и дашборд открывался
 // пустым. gzip даёт ~1,2 МБ (данные очень однотипные). Флаг `zip` читает страница;
