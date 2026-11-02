@@ -85,6 +85,7 @@ function idxOf(row,pred){ for(let i=0;i<row.length;i++){ if(pred((''+(row[i]||''
 
 // ---- сбор: {bySku:{art:{o,d,c}}, days:Set}
 const agg={}, days=new Set();
+let perFrom=null, perTo=null;   // период из строки «Период: …» отчёта «за период»
 function add(art,o,d,c){ const e=agg[art]||(agg[art]={o:0,d:0,c:0}); e.o+=o; e.d+=d; e.c+=c; }
 
 if(fromFunnel){
@@ -100,6 +101,11 @@ if(fromFunnel){
     const rows=XLSX.utils.sheet_to_json(sh,{header:1,raw:false,defval:''});
     let hr=-1; for(let i=0;i<25;i++){ if((''+((rows[i]||[])[0])).trim()==='Товары'){hr=i;break;} }
     if(hr<0) throw new Error('не нашёл шапку («Товары») в '+path.basename(f));
+    /* Период отчёта «за период» — из строки «Период: 12.10.2026 – 25.10.2026» над шапкой (тире любое: -, –, —).
+       Без неё скрипт требовал --win руками (02.11.2026). */
+    for(let i=0;i<hr;i++){ const m=(''+((rows[i]||[])[0]||'')).match(/Период:\s*(\d{2})\.(\d{2})\.(\d{4})\s*[-–—]\s*(\d{2})\.(\d{2})\.(\d{4})/);
+      if(m){ const a=m[3]+'-'+m[2]+'-'+m[1], b=m[6]+'-'+m[5]+'-'+m[4];
+        if(!perFrom||a<perFrom) perFrom=a; if(!perTo||b>perTo) perTo=b; break; } }
     const top=rows[hr], sub=rows[hr+1]||[];
     const cArt=idxOf(top,v=>v==='Артикул'), cDay=idxOf(top,v=>v==='День');
     const cOrd=idxOf(sub,v=>v.startsWith('Заказано товаров'));
@@ -125,6 +131,7 @@ if(fromFunnel){
 // ---- период окна
 let from=winFrom, to=winTo;
 if(days.size){ const d=[...days].sort(); from=from||d[0]; to=to||d[d.length-1]; }
+else if(perFrom){ from=from||perFrom; to=to||perTo; }
 if(!from||!to) throw new Error('не удалось определить период окна — укажите его: --win ГГГГ-ММ-ДД ГГГГ-ММ-ДД');
 
 let O_=0,D=0,C=0;
