@@ -5,6 +5,7 @@
  *   node scripts/ozon-ad-check.cjs due [дата]        все правки Ozon из ОПЫТ.md, которые пора проверять
  *   node scripts/ozon-ad-check.cjs И-24              одна правка
  *   node scripts/ozon-ad-check.cjs <код 1С> [дней]   подённо по товару (по умолчанию 10 дней)
+ *   node scripts/ozon-ad-check.cjs all [дней]        ПОЛНЫЙ ПРОХОД: все товары с рекламой + кандидаты без рекламы (новые приходы)
  *
  * ЗАЧЕМ. Продавец 02.11.2026: «если информацию которую я тебе даю — есть у тебя и она сходится — говори
  * у меня есть… Задача перейти к автоматизации». Подённые выгрузки XWAY Ozon уже несут по каждому товару
@@ -146,6 +147,35 @@ if (cmd === "due") {
   console.log("\n══ СВОДКА (" + res.length + ") ══");
   res.forEach(x => console.log("  " + x.id.padEnd(5) + " " + x.sup + "  " + x.v));
   console.log("\nИсход записать: node scripts/opyt.cjs close <ID> \"<исход>\"");
+} else if (cmd === "all") {
+  /* ПОЛНЫЙ ПРОХОД (02.11.2026, продавец: «ещё раз проходим все товары… учитывай приходы новых товаров»).
+     Последние N дней выгрузки (по умолчанию 6) по КАЖДОМУ товару Ozon: (1) с рекламой — итог и вердикт;
+     (2) без рекламы, но с остатком — кандидаты, в первую очередь новые приходы (рост остатка Ozon ≥50 шт за 21 день). */
+  const n = +(arg || 6), ds = days(addDays(LAST, -(n - 1)), LAST);
+  const SH = O.stockHistory || {}, sd = Object.keys(SH).sort(), sLast = sd[sd.length - 1], sFrom = addDays(sLast, -21);
+  const arrived = sup => { let g = 0, gd = ""; for (let i = 1; i < sd.length; i++) { if (sd[i] < sFrom) continue;
+    const x = ((SH[sd[i]] || {})[sup] || 0) - ((SH[sd[i - 1]] || {})[sup] || 0); if (x > g) { g = x; gd = sd[i]; } } return { g, gd }; };
+  const ozQ28 = sup => { const row = O.orderSeries.byArt[sup] || []; return row.slice(-28).reduce((a, b) => a + (b || 0), 0); };
+  const withAd = [], cand = [];
+  for (const c of O.catalog) {
+    const sup = String(c.sku), a = agg(sup, ds), st = (c.ozStock || 0) + (c.ozTransit || 0);
+    if (a.cl > 0 || a.spend > 0) withAd.push({ sup, a, c });
+    else if (st >= 50) { const ar = arrived(sup); cand.push({ sup, c, st, ar, q28: ozQ28(sup), qd: a.q / (a.n || 1) }); }
+  }
+  console.log("\n══ С РЕКЛАМОЙ за " + ds[0] + "…" + LAST + " (" + withAd.length + ") — по товару, обе кампании вместе ══");
+  withAd.sort((x, y) => y.a.clk - x.a.clk).forEach(({ sup, a, c }) => {
+    const e = econ(sup), pd = a.q / (a.n || 1), cover = pd > 0 ? ((c.ozStock || 0) + (c.ozTransit || 0)) / pd : Infinity;
+    let v = verdict(a, e); if (cover < 30 && /наращивать, если/.test(v)) v = v.replace(/можно наращивать, если хватает остатка/, "ДЕРЖАТЬ: остатка ~" + Math.round(cover) + " дн");
+    console.log("  " + sup + "  клики " + String(a.cl).padStart(5) + " · зак " + String(a.ord).padStart(3) + " · на клики " + F(a.clk).padStart(7) + " ₽ · остаток " + String(c.ozStock || 0).padStart(5)
+      + (isFinite(cover) ? " (~" + Math.round(cover) + " дн)" : "") + "\n      → " + v + "   · " + (c.name || "").slice(0, 40));
+  });
+  console.log("\n══ БЕЗ РЕКЛАМЫ, остаток ≥50 шт (" + cand.length + ") — сначала новые приходы за 21 день ══");
+  cand.sort((x, y) => (y.ar.g >= 50) - (x.ar.g >= 50) || y.st - x.st).forEach(({ sup, c, st, ar, q28, qd }) => {
+    const e = econ(sup);
+    const cover = qd > 0 ? Math.round(st / qd) + " дн" : "продаж нет";
+    console.log("  " + sup + (ar.g >= 50 ? "  ПРИХОД +" + ar.g + " " + ar.gd.slice(5) : "").padEnd(20) + " остаток " + String(st).padStart(5) + " · заказов за 28 дн " + String(q28).padStart(4)
+      + " · покрытие " + cover + (e && !e.missing ? " · CPO пол/безуб " + F(e.cpoFloor) + "/" + F(e.marg) + (e.reliable ? "" : " (цена ненадёжна)") : " · цены нет") + "   · " + (c.name || "").slice(0, 40));
+  });
 } else if (/^И-\d+$/i.test(cmd || "")) {
   const r = ozonRows().find(x => x.id.toUpperCase() === cmd.toUpperCase());
   if (!r) { console.error("нет такой правки Ozon: " + cmd); process.exit(1); }
