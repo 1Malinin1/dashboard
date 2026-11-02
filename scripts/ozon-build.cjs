@@ -24,6 +24,8 @@ function num(v){const n=parseFloat((''+v).replace(/[\s ]/g,'').replace(',','.')
 const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
 const RD=ctx.__RD;
+// товары продавца из выгрузки XWAY Ozon (02.11.2026) — признак «наш» для новинок без карточки ВБ
+const XW_CODES=new Set((RD.ozon&&RD.ozon.meta&&RD.ozon.meta.adSpend&&RD.ozon.meta.adSpend.codes)||[]);
 const supToWb={}, wbCatBySku={};RD.catalog.forEach(c=>{const s=(''+(c.supplierCode||'')).trim();if(s)supToWb[s]=c.sku; wbCatBySku[c.sku]=c.category;});
 
 // 2) Озон-каталог: из листа «Июль» (обычный режим) ИЛИ из существующего снимка (--reuse)
@@ -105,8 +107,17 @@ if(stockFile){
   const findCol=(re,def)=>{ for(let i=0;i<Math.max(h0.length,h1.length);i++){ if(re.test(h1[i]||'')||re.test(h0[i]||'')) return i; } return def; };
   const cAvail=findCol(/^Доступно к.продаже/i,9), cZayav=findCol(/^В.заявках на.поставку/i,18), cPath=findCol(/^В.поставках в.пути/i,19);
   for(let i=4;i<sr.length;i++){ const r=sr[i]; const art=(''+(r[0]||'')).trim(); if(!art) continue;
-    // берём только наши: уже в каталоге Озона ИЛИ есть как арт.поставщика ВБ
-    if(!byA[art] && !supToWb[art]) continue;
+    // берём наши: уже в каталоге Озона, есть как арт. поставщика ВБ ИЛИ это 6-значный код 1С.
+    /* НОВИНКИ ТЕРЯЛИСЬ МОЛЧА (поймано 02.11.2026): отчёт остатков — из СВОЕГО кабинета, но строка без
+       карточки ВБ отбрасывалась, и трансформеры 519574 (960 шт) / 519575 (455 шт) неделю лежали на Ozon,
+       а в дашборде их не было вовсе — ни в подсорте, ни в рекламе. Заказы при этом ensure() брал без фильтра.
+       Теперь 6-значный код берётся всегда (с пометкой), всё прочее отсеянное печатается списком. */
+    if(!byA[art] && !supToWb[art]){
+      // кабинет общий (в отчёте ~14 тыс. строк чужого ассортимента), поэтому «наш» новый код = есть в выгрузке XWAY
+      // продавца (adSpend.codes копит ozon-ads-spend.cjs: 163 его товара); без карточки ВБ, но с остатком
+      if(!XW_CODES.has(art)) continue;
+      (global.__newStock=global.__newStock||[]).push(art);
+    }
     const c=ensure(art); if(c.name===art){ const nm=(''+(r[1]||'')).trim(); if(nm) c.name=nm; }
     const zayav=num(r[cZayav]), path=num(r[cPath]);
     sumZayav+=zayav; sumPath+=path;
@@ -287,6 +298,7 @@ console.log('  заказы:', keepOrders
      +ozCat.filter(c=>series.byArt[c.sku]&&series.byArt[c.sku].some(x=>x>0)).length));
 if(!keepOrders) console.log('    из них из свежих отчётов: '+dates.length+' дн ('+dates[0]+'…'+dates[dates.length-1]+')'
   +' · перенесено из снимка: '+backfilled.length+' дн'+(backfilled.length? ' ('+backfilled[0]+'…'+backfilled[backfilled.length-1]+')':''));
+if(global.__newStock&&global.__newStock.length) console.log('  ⚠ НОВЫЕ КОДЫ в остатках Ozon (нет карточки ВБ, добавлены в каталог Ozon): '+[...new Set(global.__newStock)].join(', ')+' — проверь себестоимость (missing-cost-report.cjs)');
 console.log('  остатки:',stockFile?('строк '+stockRows+' · сумма «Доступно» '+stockSum+' шт · дата '+stockDate):'(файл не передан)');
 if(stockFile) console.log('  в пути на Озон:',(sumZayav+sumPath),'шт = заявки на поставку '+sumZayav+' + физически в пути '+sumPath);
 { const sh=Object.keys(RD.ozon.stockHistory||{}).sort();

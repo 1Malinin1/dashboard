@@ -77,7 +77,8 @@ function readReport(f){
   for(let i=hr+1;i<rows.length;i++){
     const r=rows[i]; const art=(''+(r[cArt]||'')).trim(); const day=(''+(r[cDay]||'')).trim();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;          // не строка данных (напр. «Итого и среднее»)
-    if(!supSet.has(art)){ skipped++; continue; }            // не наш товар
+    // наш товар: карточка ВБ, каталог Ozon или 6-значный код 1С (новинки без карточки ВБ терялись молча — 02.11.2026)
+    if(!supSet.has(art) && !ozBySku[art]){ skipped++; continue; }   // каталог Ozon теперь сам берёт новинки с остатком (ozon-build)
     if(cOzSku>=0 && !ozSkuByArt[art]){ const s=(''+(r[cOzSku]||'')).trim(); if(s) ozSkuByArt[art]=s; }
     const oz=ozBySku[art], wb=wbBySup[art];
     const name=(oz&&oz.name)||(wb&&wb.name)||(''+(r[0]||'')).trim()||art;

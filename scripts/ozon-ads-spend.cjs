@@ -72,6 +72,7 @@ function save(){
     from: parts.length? parts[0].from : null,
     to:   parts.length? parts[parts.length-1].to : null,
     loadedAt:new Date().toISOString().slice(0,10),
+    codes: A.codes||[],   // все коды 1С из выгрузок XWAY = ассортимент продавца (для новинок без карточки ВБ, ozon-build.cjs)
     note:'ФАКТ расхода на рекламу по товарам. Перекрывает ставку из unitReports ТОЛЬКО '
       +'у тех товаров и дат, что есть в частях; остальные считаются по ставке.' };
   fs.writeFileSync(DATA,'// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
@@ -214,6 +215,9 @@ if(cmd==='set'){
   // из нескольких подходящих колонок берём самую «точную»: «Расход, ₽» важнее «Расход на показы»
   const iSpend=H.findIndex(x=>/^расход/i.test(x))>=0? H.findIndex(x=>/^расход/i.test(x)) : H.findIndex(x=>SPEND.test(x));
   const keyCols=H.map((x,i)=>({x,i})).filter(o=>KEY.test(o.x)).map(o=>o.i);
+  { const ia=H.findIndex(x=>/^артикул$/i.test(x)); if(ia>=0){ const set=new Set(A.codes||[]);
+      for(let i=hr+1;i<rows.length;i++){ const a=S((rows[i]||[])[ia]); if(/^\d{6}$/.test(a)) set.add(a); }
+      A.codes=[...set].sort(); } }
   if(iSpend<0||!keyCols.length){ console.error('шапка найдена, но колонок не хватает: '+H.filter(Boolean).join(' | ')); process.exit(1); }
 
   /* ПОКАЗАТЕЛИ КАМПАНИЙ ПО ТОВАРУ ЗА ДЕНЬ (02.11.2026) — чтобы проверка правок рекламы (ozon-ad-check.cjs)
