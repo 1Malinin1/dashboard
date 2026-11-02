@@ -46,8 +46,13 @@ const FEE_SHARE = (() => {
 })();
 const BASE_EFF = FEE_SHARE ? FEE_SHARE.pct : 0;
 
-const key = String(process.argv[2] || "").trim();
-const priceArg = process.argv[3] ? Number(String(process.argv[3]).replace(/[^\d.]/g, "")) : null;
+/* --json (02.11.2026): печатает только экономику одной строкой JSON — её читает ozon-ad-check.cjs,
+   чтобы пороги CPO считались в ОДНОМ месте, а не копией формул. */
+const JSON_MODE = process.argv.includes("--json");
+const ARGV = process.argv.slice(2).filter(a => !a.startsWith("--"));
+if (JSON_MODE) console.log = () => {};
+const key = String(ARGV[0] || "").trim();
+const priceArg = ARGV[1] ? Number(String(ARGV[1]).replace(/[^\d.]/g, "")) : null;
 if (!key) { console.error("Укажи код 1С или артикул ВБ."); process.exit(1); }
 
 // --- найти товар -------------------------------------------------------------
@@ -199,6 +204,7 @@ const cost = wbCards.length ? wbCards[0].costPrice : null;
 const bo = ozBuyout();
 console.log("\n── ЭКОНОМИКА ОЗОНА (РЕК-01) ──");
 if (!price || !cost) {
+  if (JSON_MODE) { process.stdout.write(JSON.stringify({ sup, price: price || null, cost: cost || null, missing: true }) + "\n"); process.exit(0); }
   console.log("  не хватает " + (!price ? "цены" : "") + (!price && !cost ? " и " : "") + (!cost ? "себестоимости" : "") + " — считать нельзя.");
   if (!price) console.log("  передай цену вторым аргументом: node scripts/price-check.cjs " + sup + " 7480");
 } else {
@@ -209,6 +215,8 @@ if (!price || !cost) {
   const revB = price * bo;
   const marg = revB - revB * FIX / 100 - cost * bo - revB * base5 / 100;
   const cpoFloor = marg - revB * MARGIN_FLOOR / 100;
+  if (JSON_MODE) { process.stdout.write(JSON.stringify({ sup, price, cost, buyout: bo, feePct: BASE_EFF, brk, ceil, marg, cpoFloor,
+    reliable: o28.q >= FRESH_MIN_ORDERS, orders28: o28.q }) + "\n"); process.exit(0); }
   console.log("  предельная " + rub(price) + (priceArg ? " (задана аргументом)" : "") + " · себестоимость " + rub(cost) + " = " + pct(share) + " выручки");
   console.log("  % выкупа " + pct(bo * 100) + " · фикс Озона " + pct(FIX) + " · плата за заказ "
     + (FEE_SHARE ? pct(BASE_EFF) + " от заказанного ₽ (списания по отчётам «Оплата за заказ» " + FEE_SHARE.from + "…" + FEE_SHARE.to + ") = " + pct(base5) + " в выкупе"

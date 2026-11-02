@@ -262,6 +262,8 @@ function cmdAddMpColumn(mpArg) {
   if (changed) write(s);
 }
 
+/* Подключаемый модуль (02.11.2026): ozon-ad-check.cjs читает журнал правок ЭТИМ ЖЕ разбором, а не своей копией. */
+if (require.main !== module) { module.exports = { CHG, PAT, hypIds, cmp, noOut }; return; }
 const [, , cmd, a, b] = process.argv;
 switch (cmd) {
   case "brief": cmdBrief(a, b); break;

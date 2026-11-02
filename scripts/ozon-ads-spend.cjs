@@ -151,7 +151,7 @@ if(cmd==='drop'){
   console.log('\nДальше: node scripts/encrypt.cjs <код>'); process.exit(0);
 }
 
-let FROM, TO, bySup={}, src='';
+let FROM, TO, bySup={}, perf=null, src='';
 if(cmd==='set'){
   FROM=process.argv[3]; TO=process.argv[4];
   const list=process.argv.slice(5).join(' ');
@@ -216,6 +216,18 @@ if(cmd==='set'){
   const keyCols=H.map((x,i)=>({x,i})).filter(o=>KEY.test(o.x)).map(o=>o.i);
   if(iSpend<0||!keyCols.length){ console.error('шапка найдена, но колонок не хватает: '+H.filter(Boolean).join(' | ')); process.exit(1); }
 
+  /* ПОКАЗАТЕЛИ КАМПАНИЙ ПО ТОВАРУ ЗА ДЕНЬ (02.11.2026) — чтобы проверка правок рекламы (ozon-ad-check.cjs)
+     шла по снимку, а не по скринам: показы, клики, корзины, ПРИПИСАННЫЕ заказы («Заказы, шт» — по ним судим
+     кампанию, а не по «Общему ДРР»), продажи, свои заказы без соседей по склейке. Колонки — по точному имени;
+     нет колонки — показатель просто не пишется (расход от этого не зависит). На прибыль perf не влияет. */
+  const col=re=>H.findIndex(x=>re.test(x));
+  const PC={sh:col(/^показы$/i), cl:col(/^клики$/i), cart:col(/^корзины$/i), ord:col(/^заказы, шт$/i),
+    sales:col(/^продажи, руб$/i), own:col(/^заказы без учёта др\. артикулов, шт$/i)};
+  /* clk — расход ИМЕННО на клики = Клики × CPC. «Расход» в выгрузке = клики + оплата за заказ (СПРАВОЧНИК-ОЗОН,
+     ошибка 1), а оплата за заказ уже сидит в доле из отчётов «Оплата за заказ» — CPO кампании считать по clk. */
+  const iCpc=col(/^cpc, руб$/i);
+  const hasPerf=PC.cl>=0 && PC.ord>=0;
+  if(hasPerf) perf={};
   let miss=0, missKeys=new Set(), zero=[];
   for(let i=hr+1;i<rows.length;i++){
     const R=rows[i]||[]; let key=null;
@@ -229,6 +241,9 @@ if(cmd==='set'){
        никуда не делась. Такие товары остаются на СТАВКЕ. */
     if(spend<=0){ zero.push(key); continue; }
     bySup[key]=(bySup[key]||0)+spend;
+    if(hasPerf){ const P=perf[key]||(perf[key]={sh:0,cl:0,cart:0,ord:0,sales:0,own:0});
+      Object.keys(PC).forEach(k=>{ if(PC[k]>=0) P[k]+=num(R[PC[k]]); });
+      if(iCpc>=0) P.clk=(P.clk||0)+num(R[PC.cl])*num(R[iCpc]); }
   }
   if(zero.length) console.log('  строк с нулевым расходом (кампания не крутилась, остаются на ставке): '
     +zero.length+'  ('+zero.join(', ')+')');
@@ -245,7 +260,9 @@ if(FROM>TO){ const t=FROM; FROM=TO; TO=t; }
    заменяется целиком (то же правило, что у ВБ в update-ads-perf.cjs). */
 const replaced=A.parts.filter(p=>!(p.to<FROM||p.from>TO));
 A.parts=A.parts.filter(p=>(p.to<FROM||p.from>TO));
-A.parts.push({from:FROM,to:TO,loadedAt:new Date().toISOString().slice(0,10),src,bySup});
+const part={from:FROM,to:TO,loadedAt:new Date().toISOString().slice(0,10),src,bySup};
+if(perf) part.perf=perf;
+A.parts.push(part);
 save();
 
 const tot=Object.values(bySup).reduce((a,b)=>a+b,0);
