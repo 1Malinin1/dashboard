@@ -119,6 +119,7 @@ function scanFile(file,codes){
       if(r.some(x=>/артикул|sku|код/i.test(x))){ hi=i; hdr=r; break; }
     }
     const find=re=>hdr? hdr.findIndex(x=>re.test(x)) : -1;
+    const codeCols=hdr? hdr.map((x,i)=>/артикул\s*продавца|артикул\s*поставщика|код\s*1с|код\s*поставщика|^код$|^артикул$/i.test(x)?i:-1).filter(i=>i>=0) : [];
     const iWb   = find(/артикул\s*wb|артикул\s*вб|код\s*wildberries|артикул\s*wildberries/i);
     const iOz   = find(/^sku$|sku\s*озон|код\s*ozon/i);
     const iName = find(/наименование|название|номенклатура|товар$/i);
@@ -126,7 +127,11 @@ function scanFile(file,codes){
     sh.rows.forEach((r,ri)=>{
       if(!r||ri===hi) return;
       let found=null;
-      for(const cell of r){ const t=norm(cell); if(codes.has(t)){ found=t; break; } }
+      /* ИСКАТЬ КОД ТОЛЬКО В КОЛОНКАХ КОДА (03.11.2026): в воронке ВБ код 519485 «нашёлся» в строке палантина KEANU —
+         совпал с СУММОЙ продаж 519 485 ₽, и карточка чужого товара чуть не завелась под нашим кодом. Есть в шапке
+         колонка артикула продавца / кода — смотрим только её; нет — как раньше, по всей строке. */
+      const cells=codeCols.length? codeCols.map(i=>r[i]) : r;
+      for(const cell of cells){ const t=norm(cell); if(codes.has(t)){ found=t; break; } }
       if(!found) return;
       put(found,'file',path.basename(file));
       put(found,'sheet',sh.name);
