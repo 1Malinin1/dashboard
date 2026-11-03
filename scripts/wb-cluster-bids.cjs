@@ -2,7 +2,10 @@
 /**
  * wb-cluster-bids.cjs — ставка CPM по каждому кластеру кампании ВБ «Ручная ставка» под ДРР 6% по ключу (03.11.2026).
  *
- *   node scripts/wb-cluster-bids.cjs <кластеры.json> --rev <выручка в выкупе на заказ, ₽> [--drr 6] [--min-views 300]
+ *   node scripts/wb-cluster-bids.cjs <кластеры.json> --rev <выручка в выкупе на заказ, ₽> [--drr 6] [--min 220] [--min-views 300]
+ *   --min — минимальная ставка ВБ для зоны («не менее 220 ₽» в окне XWAY AI у Поиска, «не менее 90» у Рекомендаций;
+ *   своя у товара, в MCP её нет — со скрина продавца). Ставка под 6% ниже минимума → «ниже минимума ВБ»: на ручной
+ *   ставке 6% по этому ключу недостижимы — исключать ключ или пробовать «Единую ставку» (у неё минимум ниже, продавец 03.11).
  *
  * ЗАЧЕМ. Продавец 03.11.2026: «главное у нас это ставка, рассчитать необходимую ставку по каждому запросу ты можешь,
  * так что подыгрываем под ДРР по ключу на 6%». Позиции не нужны (ставка их и определяет), почасовая — тоже (время
@@ -35,7 +38,9 @@ const rows = it.map(x => {
   const v = g(x, "views"), o = g(x, "orders"), e = g(x, "expense"), bid = x.bid == null ? null : +x.bid;
   const p = (o + 3) / (v + 3 / Math.max(p0, 1e-6));
   let target = Math.round(DRR * R * p * 1000), act;
+  const MIN = opt("min");
   if (x.excluded) act = "уже исключён";
+  else if (MIN && target < MIN) act = "НИЖЕ МИНИМУМА ВБ";
   else if (!o && v >= minViews) act = "ИСКЛЮЧИТЬ";
   else if (bid && target < bid / 2) act = "СНИЗИТЬ";
   else if (bid && target > bid) { target = Math.min(target, Math.round(bid * 1.5)); act = "можно поднять"; }
@@ -48,5 +53,6 @@ console.log("\nкластер                                    показы к
 act.slice(0, +(opt("top") || 40)).forEach(r => console.log((r.n || "").slice(0, 42).padEnd(42) + String(r.v).padStart(7) + String(r.c).padStart(6) + String(r.o).padStart(4)
   + String(Math.round(r.e)).padStart(8) + (r.drr == null ? "—" : r.drr.toFixed(0)).padStart(6) + String(r.bid == null ? "—" : r.bid).padStart(8) + " → " + String(r.target).padStart(5) + "   " + r.act));
 const sum = k => act.filter(r => r.act === k);
+if (opt("min")) console.log(`ниже минимума ВБ ${opt("min")} ₽ (6% по ключу недостижимы на ручной ставке): ${sum("НИЖЕ МИНИМУМА ВБ").length} ключей, расход ${Math.round(sum("НИЖЕ МИНИМУМА ВБ").reduce((s, r) => s + r.e, 0))} ₽`);
 console.log(`\nИТОГ: исключить ${sum("ИСКЛЮЧИТЬ").length} (расход на них ${Math.round(sum("ИСКЛЮЧИТЬ").reduce((s, r) => s + r.e, 0))} ₽) · снизить ${sum("СНИЗИТЬ").length + sum("снизить").length} · поднять ${sum("можно поднять").length} · держать ${sum("держать").length}`);
 if (opt("json")) fs.writeFileSync(file.replace(/\.json$/, "") + ".bids.json", JSON.stringify(rows));
