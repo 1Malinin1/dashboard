@@ -200,7 +200,9 @@ if (tag) {
 
 // ---------------- ЭКОНОМИКА ---------------------------------------------------
 const price = priceArg || cp.price;
-const cost = wbCards.length ? wbCards[0].costPrice : null;
+// себестоимость: карточка ВБ, иначе фолбэк по коду 1С для товаров только на Ozon (meta.costBySup, new-codes.cjs cost) — 03.11.2026
+const cost = (wbCards.length && wbCards[0].costPrice != null) ? wbCards[0].costPrice
+  : ((RD.meta && RD.meta.costBySup && RD.meta.costBySup[sup] && RD.meta.costBySup[sup].cost) || null);
 const bo = ozBuyout();
 console.log("\n── ЭКОНОМИКА ОЗОНА (РЕК-01) ──");
 if (!price || !cost) {
