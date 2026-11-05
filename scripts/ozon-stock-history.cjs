@@ -59,7 +59,9 @@ const num=v=>{ const n=parseFloat(S(v).replace(/\s/g,'').replace(',','.')); retu
 
 let added=0, updated=0;
 files.forEach(f=>{
-  const wb=XLSX.readFile(f);
+  /* ЧИТАТЬ ТОЛЬКО НУЖНЫЙ ЛИСТ (05.11.2026): в отчёте остатков Ozon 5 листов, «Товар-склад» — 312 тыс. строк (весь общий кабинет);
+     полный разбор книги висел 12+ минут на 2,4 ГБ памяти. Один лист — 3–4 с. */
+  const wb=XLSX.readFile(f,{sheets:['Товары']});
   const sheet=wb.SheetNames.find(n=>/^товары$/i.test(n));
   if(!sheet) throw new Error('нет листа «Товары» в '+path.basename(f)+' (есть: '+wb.SheetNames.join(', ')+')');
   const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,raw:false,defval:''});

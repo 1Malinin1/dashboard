@@ -100,7 +100,9 @@ Object.entries(ord.byDateArtBuyRub||{}).forEach(([k,v])=>{ const d=k.slice(0,10)
 // это наши данные из файла «на оптовых» (то, что ещё только собираемся отправить).
 let stockRows=0, stockSum=0, sumZayav=0, sumPath=0;
 if(stockFile){
-  const swb=XLSX.read(fs.readFileSync(stockFile),{type:'buffer',cellStyles:false,cellFormula:false});
+  /* ЧИТАТЬ ТОЛЬКО НУЖНЫЙ ЛИСТ (05.11.2026): в отчёте остатков Ozon 5 листов, «Товар-склад» — 312 тыс. строк (весь общий кабинет);
+     полный разбор книги висел 12+ минут на 2,4 ГБ памяти. Один лист — 3–4 с. */
+  const swb=XLSX.read(fs.readFileSync(stockFile),{type:'buffer',cellStyles:false,cellFormula:false,sheets:['Товары']});
   const sr=XLSX.utils.sheet_to_json(swb.Sheets['Товары'],{header:1,raw:false,defval:''});
   // ищем колонки по имени в двухэтажной шапке (индексы «плывут» между версиями отчёта)
   const h0=(sr[0]||[]).map(x=>(''+x).replace(/\s+/g,' ').trim()), h1=(sr[1]||[]).map(x=>(''+x).replace(/\s+/g,' ').trim());

@@ -78,7 +78,7 @@ function cols(H,file){
 const byArt={}, byArtTr={}, byArtReq={}, byArtWay={}, bySup={}, byCluster={}, whs=new Set();
 let rowsAll=0, ourRows=0, alienRows=0;
 files.forEach(f=>{
-  const wb=XLSX.readFile(f);
+  const wb=XLSX.readFile(f,{sheets:0});   // только первый лист (05.11.2026: полный разбор книги остатков Ozon висел)
   const r=XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]],{header:1,raw:true,defval:''});
   const H=header(r), I=cols(H,f);
   let n=0;

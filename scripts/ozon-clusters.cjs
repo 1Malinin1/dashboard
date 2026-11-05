@@ -34,8 +34,10 @@ const RD=ctx.__RD;
 const supSet=new Set(RD.catalog.map(c=>code(c.supplierCode)).filter(Boolean));
 const nameBySup={}; RD.catalog.forEach(c=>{const s=code(c.supplierCode); if(s&&!nameBySup[s]) nameBySup[s]=c.name;});
 
-const wb=XLSX.read(fs.readFileSync(file),{type:'buffer',cellStyles:false,cellFormula:false});
+/* ЧИТАТЬ ТОЛЬКО НУЖНЫЙ ЛИСТ (05.11.2026): в отчёте остатков Ozon 5 листов, «Товар-склад» — 312 тыс. строк (весь общий кабинет);
+     полный разбор книги висел 12+ минут на 2,4 ГБ памяти. Один лист — 3–4 с. */
 const SH='Товар-кластер';
+const wb=XLSX.read(fs.readFileSync(file),{type:'buffer',cellStyles:false,cellFormula:false,sheets:[SH]});
 if(!wb.Sheets[SH]){ console.error('нет листа «'+SH+'». Есть: '+wb.SheetNames.join(', ')); process.exit(1); }
 const r=XLSX.utils.sheet_to_json(wb.Sheets[SH],{header:1,raw:false,defval:''});
 const H1=(r[1]||[]).map(nb);
