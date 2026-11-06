@@ -1,10 +1,15 @@
-// План заказов Ozon для репрайсера (ЗАП-17, 06.11.2026): заполняет колонку «План зак, шт (OrdersPlanQty)»
-// в выгрузке репрайсера «Ozon. Отчет для базового расширения_ план заказов…xlsx».
+// План заказов в день для репрайсера — Ozon (ЗАП-17) и ВБ (ЗАП-18), 06.11.2026: заполняет колонку
+// «План зак(аз), шт (OrdersPlanQty)» в выгрузке репрайсера. Площадку узнаёт по колонкам:
+//   Ozon — «Артикул Ozon (OfferId)» («Ozon. Отчет для базового расширения_ план заказов…xlsx»);
+//   ВБ   — «Арт. поставщика (SupplierArticle)» («report-….xlsx», по карточке; у кода одна карточка — иначе стоп).
 //
 // Запуск (из корня репозитория, код — только из окружения):
-//   VERIFY_CODE=… node scripts/ozon-repricer-plan.cjs <выгрузка.xlsx> [папка_для_результата]
-// Пишет две книги: <папка>/Ozon_план_заказов_ДД.ММ.ГГГГ.xlsx — исходный файл, где заполнена ТОЛЬКО колонка J
-// (правка XML листа, оформление и остальные колонки не тронуты), и …_разбор_….xlsx — откуда взялось каждое число.
+//   VERIFY_CODE=… node scripts/repricer-plan.cjs <выгрузка.xlsx> [папка_для_результата]
+// Пишет две книги: <папка>/<ВБ|Ozon>_план_заказов_ДД.ММ.ГГГГ.xlsx — исходный файл, где заполнена ТОЛЬКО колонка плана
+// (правка XML первого листа, оформление, остальные колонки и листы не тронуты), и …_разбор_….xlsx — откуда взялось число.
+//
+// ВБ: план = цель заказов «Запаса и темпа» (`targetOrders` из srDecorate: (ВБ FBO + свои склады − недостача Ozon) ÷ дней
+//     до партии ÷ % выкупа ВБ), целое, 10…30 — те же рамки, что у Ozon (продавец: «в целом одно и то же получается»).
 //
 // Цифры берём С САЙТА (srExtend(srDecorate(srRows())) — «Запас и темп»), чтобы база, партии и % выкупа были те же:
 //   ВБ заберёт со складов = max(0, min(продажи ВБ/дн × дней до партии − (ВБ FBO + отгрузки в пути на ВБ), свои склады))
@@ -20,7 +25,7 @@ const { chromium }=require('./node_modules/playwright-core');
 const ROOT=path.join(__dirname,'..');
 const [src, outDir=process.cwd()]=process.argv.slice(2);
 const CODE=process.env.VERIFY_CODE;
-if(!src||!CODE){ console.error('usage: VERIFY_CODE=… node scripts/ozon-repricer-plan.cjs <выгрузка.xlsx> [папка]'); process.exit(1); }
+if(!src||!CODE){ console.error('usage: VERIFY_CODE=… node scripts/repricer-plan.cjs <выгрузка.xlsx> [папка]'); process.exit(1); }
 const MIN=10, MAX=30, PORT=+(process.env.PORT||8791);
 
 async function dump(){
@@ -35,7 +40,8 @@ async function dump(){
     await p.waitForTimeout(1500);
     const d=await p.evaluate(()=>({
       rows:srExtend(srDecorate(srRows())).map(r=>({sup:r.sup,name:r.name,hz:r.hz,hzSrc:r.hzSrc,stockOz:r.stockOz,stockWb:r.stockWb,
-        wbShip:r.wbShip,whQty:r.whQty,spdWb:r.spdWb,ordOz:r.ordOz,spdOz:r.spdOz})),
+        wbShip:r.wbShip,whQty:r.whQty,spdWb:r.spdWb,ordWb:r.ordWb,ordOz:r.ordOz,spdOz:r.spdOz,
+        targetOrders:r.targetOrders,wbAvail:r.wbAvail,ozTake:r.ozTake,boWb:r.boWb})),
       bo:(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutWin)||null}));
     if(errs.length) throw new Error('ошибки на сайте: '+errs.join(' | '));
     return d;
@@ -48,13 +54,27 @@ async function dump(){
   const by={}; D.rows.forEach(r=>by[r.sup]=r);
   const wb=XLSX.readFile(src); const sh=wb.Sheets[wb.SheetNames[0]];
   const A=XLSX.utils.sheet_to_json(sh,{header:1,defval:''});
-  const H=A[0], iOff=H.findIndex(h=>/OfferId/.test(h)), iPlan=H.findIndex(h=>/OrdersPlanQty/.test(h)), iName=H.findIndex(h=>/\(Name\)/.test(h));
-  if(iOff<0||iPlan<0) throw new Error('нет колонок OfferId / OrdersPlanQty: '+H.join(' | '));
+  const H=A[0], iPlan=H.findIndex(h=>/OrdersPlanQty/.test(h));
+  const MP=H.some(h=>/OfferId/.test(h))? 'ozon' : H.some(h=>/SupplierArticle/.test(h))? 'wb' : null;
+  if(!MP||iPlan<0) throw new Error('не понял файл: нужна колонка OrdersPlanQty и OfferId (Ozon) или SupplierArticle (ВБ): '+H.join(' | '));
+  const iOff=H.findIndex(h=>MP==='ozon'? /OfferId/.test(h) : /SupplierArticle/.test(h));
+  const iName=H.findIndex(h=>MP==='ozon'? /\(Name\)/.test(h) : /SupplierProductId/.test(h));
+  const iNm=H.findIndex(h=>/\(SupSku\)/.test(h));
+  const MPN=MP==='ozon'? 'Ozon' : 'ВБ';
+  if(MP==='wb'){ const seen={}; for(let i=1;i<A.length;i++){ const s=''+A[i][iOff]; if(!s) continue; if(seen[s]) throw new Error('у кода '+s+' несколько карточек ВБ — план кода надо делить, скрипт этого не умеет'); seen[s]=1; } }
   const colL=XLSX.utils.encode_col(iPlan);
   const res=[];
   for(let i=1;i<A.length;i++){ const row=A[i]; if(row[iOff]==='') continue;
     const sup=''+row[iOff], r=by[sup], xr=i+1;
-    if(!r){ res.push({xr,sup,name:row[iName],J:MIN,why:'нет в данных дашборда — поставлен минимум'}); continue; }
+    if(!r){ res.push({xr,sup,nm:iNm>=0?row[iNm]:'',name:row[iName],J:MIN,was:row[iPlan],why:'нет в данных дашборда — поставлен минимум'}); continue; }
+    if(MP==='wb'){
+      const raw=r.targetOrders==null? 0 : r.targetOrders, J=Math.min(MAX,Math.max(MIN,Math.round(raw)));
+      res.push({xr,sup,nm:row[iNm],name:r.name||row[iName],J,raw,was:row[iPlan],ordNow:r.ordWb||0,stockWb:(r.stockWb||0),wh:r.whQty||0,
+        ozTake:r.ozTake||0,base:r.wbAvail||0,hz:r.hz,hzSrc:r.hzSrc,bo:r.boWb,
+        note: raw>MAX? 'товара больше, чем уйдёт при 30/дн — к партии останется' : (r.wbAvail||0)<=0? 'товара для ВБ нет — минимум для формы'
+          : Math.round(raw)<MIN? 'товара мало: даже при 10/дн кончится раньше партии' : ''});
+      continue;
+    }
     const hz=r.hz||180, wbOwn=(r.stockWb||0)+(r.wbShip||0);
     const wbTake=Math.max(0,Math.min((r.spdWb||0)*hz-wbOwn, r.whQty||0));
     const base=(r.stockOz||0)+Math.max(0,(r.whQty||0)-wbTake);
@@ -64,7 +84,7 @@ async function dump(){
       note: raw>MAX? 'товара больше, чем уйдёт при 30/дн — к партии останется' : base<=0? 'товара нет — минимум для формы'
         : Math.round(raw)<MIN? 'товара мало: даже при 10/дн кончится раньше партии' : ''});
   }
-  // правка XML листа: только ячейки колонки плана, остальное байт в байт
+  // правка XML первого листа (sheet1.xml — «Отчет»; проверка чтения ниже): только ячейки колонки плана, остальное байт в байт
   const JSZipLess=require('./node_modules/xlsx').CFB; // CFB умеет zip: читаем/пишем архив без пересборки книги
   const z=JSZipLess.read(fs.readFileSync(src),{type:'buffer'});
   const ent=JSZipLess.find(z,'/xl/worksheets/sheet1.xml'); let xml=Buffer.from(ent.content).toString('utf8');
@@ -78,26 +98,34 @@ async function dump(){
   }
   ent.content=Buffer.from(xml,'utf8');
   const dt=new Date().toISOString().slice(0,10).split('-').reverse().join('.');
-  const out=path.join(outDir,`Ozon_план_заказов_${dt}.xlsx`);
+  const out=path.join(outDir,`${MPN}_план_заказов_${dt}.xlsx`);
   fs.writeFileSync(out, JSZipLess.write(z,{type:'buffer',fileType:'zip',compression:true}));
   // проверка: файл читается, все строки заполнены целыми 10…30
   const chk=XLSX.utils.sheet_to_json(XLSX.readFile(out).Sheets[wb.SheetNames[0]],{header:1,defval:''}).slice(1).filter(r=>r[iOff]!=='');
   const bad=chk.filter(r=>!Number.isInteger(r[iPlan])||r[iPlan]<MIN||r[iPlan]>MAX);
   if(bad.length) throw new Error('незаполненные/кривые строки: '+bad.map(r=>r[iOff]).join(', '));
-  const rep=res.map(x=>({'Артикул Ozon':+x.sup,'Товар':x.name,'План, заказов/дн':x.J,'До округления':x.raw==null?null:Math.round(x.raw*10)/10,
-    'Сейчас заказов/дн (7 дн)':x.ordNow==null?null:Math.round(x.ordNow*10)/10,'Ozon + в пути':x.stockOz??null,'Свои склады':x.wh??null,
-    'Заберёт ВБ до партии':x.wbTake==null?null:Math.round(x.wbTake),'База Ozon':x.base==null?null:Math.round(x.base),'Дней до партии':x.hz??null,
+  const r1=v=>v==null?null:Math.round(v*10)/10, r0=v=>v==null?null:Math.round(v);
+  const rep=MP==='wb'? res.map(x=>({'Арт. поставщика (код 1С)':+x.sup,'Артикул ВБ':x.nm,'Товар':x.name,'План, заказов/дн':x.J,'Было в файле':x.was,
+      'До округления':r1(x.raw),'Сейчас заказов/дн (7 дн)':r1(x.ordNow),'ВБ FBO':x.stockWb??null,'Свои склады':x.wh??null,
+      'Заберёт Ozon до партии':r0(x.ozTake),'База ВБ':r0(x.base),'Дней до партии':x.hz??null,'Срок':x.hzSrc||'','% выкупа ВБ':x.bo==null?null:Math.round(x.bo*1000)/10,'Пометка':x.why||x.note}))
+    : res.map(x=>({'Артикул Ozon':+x.sup,'Товар':x.name,'План, заказов/дн':x.J,'До округления':r1(x.raw),
+    'Сейчас заказов/дн (7 дн)':r1(x.ordNow),'Ozon + в пути':x.stockOz??null,'Свои склады':x.wh??null,
+    'Заберёт ВБ до партии':r0(x.wbTake),'База Ozon':r0(x.base),'Дней до партии':x.hz??null,
     'Срок':x.hzSrc||'', '% выкупа Ozon':x.bo==null?null:Math.round(x.bo*1000)/10,'Пометка':x.why||x.note}));
   rep.sort((a,b)=>(b['Сейчас заказов/дн (7 дн)']||0)-(a['Сейчас заказов/дн (7 дн)']||0));
-  const how=[['Как считается план заказов Ozon'],[''],['База Ozon = остаток Ozon (склады + в пути) + свои склады − что со своих складов заберёт ВБ до партии'],
+  const how=MP==='wb'? [['Как считается план заказов ВБ'],[''],['База ВБ = склады ВБ (FBO) + свои склады − что со своих складов заберёт Ozon до партии'],
+    ['Ozon заберёт = его продажи в день × дней до партии − его остаток и в пути (не больше своих складов)'],
+    ['План = база ÷ дней до партии ÷ % выкупа ВБ по товару; целое, от 10 до 30 — то же, что цель на «Запасе и темпе»'],
+    ['Дней до партии — до выхода ближайшей партии в продажу по файлу заказов; партии нет — 180'],
+    ['Сезон не применён: репрайсер держит одно число заказов в день, в пик просто удержит цену выше']] : [['Как считается план заказов Ozon'],[''],['База Ozon = остаток Ozon (склады + в пути) + свои склады − что со своих складов заберёт ВБ до партии'],
     ['ВБ заберёт = его продажи в день × дней до партии − его остаток FBO и в пути (не больше своих складов)'],
     ['План = база ÷ дней до партии ÷ % выкупа Ozon по товару; целое, от 10 до 30'],
     ['Дней до партии — до выхода ближайшей партии в продажу по файлу заказов; партии нет — 180'],
     ['Сезон не применён: репрайсер держит одно число заказов в день, в пик просто удержит цену выше']];
   const W=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(W,XLSX.utils.json_to_sheet(rep),'Разбор'); XLSX.utils.book_append_sheet(W,XLSX.utils.aoa_to_sheet(how),'Как считается');
-  const out2=path.join(outDir,`Ozon_план_заказов_разбор_${dt}.xlsx`); XLSX.writeFile(W,out2);
+  const out2=path.join(outDir,`${MPN}_план_заказов_разбор_${dt}.xlsx`); XLSX.writeFile(W,out2);
   const cnt={}; res.forEach(x=>cnt[x.J]=(cnt[x.J]||0)+1);
   console.log(`строк ${res.length} · заполнено ${chk.length} · по значениям ${JSON.stringify(cnt)}`);
-  console.log(`  упёрлись в 30 (товара с запасом): ${res.filter(x=>x.raw>MAX).length} · в 10 при товаре, которого мало: ${res.filter(x=>Math.round(x.raw)<MIN&&x.base>0).length} · без товара/данных: ${res.filter(x=>x.why||x.base<=0).length}`);
+  console.log(`${MPN}: упёрлись в 30 (товара с запасом): ${res.filter(x=>x.raw>MAX).length} · в 10 при товаре, которого мало: ${res.filter(x=>Math.round(x.raw)<MIN&&x.base>0).length} · без товара/данных: ${res.filter(x=>x.why||!(x.base>0)).length}`);
   console.log('→ '+out+'\n→ '+out2);
 })().catch(e=>{ console.error(e.message||e); process.exit(1); });
