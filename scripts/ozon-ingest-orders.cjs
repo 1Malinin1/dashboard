@@ -14,11 +14,13 @@ const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+"\nglobalThis.__C=REAL_DATA.catalog;",ctx);
 const wbSup=new Set(ctx.__C.map(x=>(''+(x.supplierCode||'')).trim()).filter(Boolean));
 function num(v){const n=parseFloat((''+v).replace(/\s/g,'').replace(',','.'));return isNaN(n)?0:n;}
-function load(f){ if(f.endsWith('.csv')){const t=fs.readFileSync(f,'utf8');const sep=(t.split(/\r?\n/)[0].split(';').length>2)?';':',';return XLSX.read(t,{type:'string',FS:sep,raw:false});}
+function load(f){ if(f.endsWith('.csv')){const t=fs.readFileSync(f,'utf8');const sep=(t.split(/\r?\n/)[0].split(';').length>2)?';':',';/* raw:true — даты остаются ТЕКСТОМ. Без него SheetJS сам читает «05.11.2026 10:40» как
+     5 мая/11 мая (М.Д) ещё до detectFmt — так 06.11.2026 день 05.11 лёг 11 мая. */
+  return XLSX.read(t,{type:'string',FS:sep,raw:true});}
   return XLSX.read(fs.readFileSync(f),{type:'buffer',cellStyles:false,cellFormula:false}); }
 // Разделитель даты бывает и «/» (7/24/26), и «.» (22.07.2026) — зависит от выгрузки.
 // Порядок полей (MD/DM) определяется отдельно, пофайлово, через detectFmt.
-function parts(s,fmt){const p=(''+s).trim().split(' ')[0].split(/[/.]/);if(p.length!==3)return null;let a=+p[0],b=+p[1],y=+p[2];if(!(a>0&&b>0&&y>0))return null;if(y<100)y+=2000;const m=fmt==='MD'?a:b,d=fmt==='MD'?b:a;if(!(m>=1&&m<=12&&d>=1&&d<=31))return null;return{y,m,d};}
+function parts(s,fmt){const iso8=(''+s).trim().match(/^(\d{4})-(\d{2})-(\d{2})/);if(iso8)return{y:+iso8[1],m:+iso8[2],d:+iso8[3]};const p=(''+s).trim().split(' ')[0].split(/[/.]/);if(p.length!==3)return null;let a=+p[0],b=+p[1],y=+p[2];if(!(a>0&&b>0&&y>0))return null;if(y<100)y+=2000;const m=fmt==='MD'?a:b,d=fmt==='MD'?b:a;if(!(m>=1&&m<=12&&d>=1&&d<=31))return null;return{y,m,d};}
 function iso(o){return o.y+'-'+String(o.m).padStart(2,'0')+'-'+String(o.d).padStart(2,'0');}
 // Определяем порядок полей даты (М/Д или Д/М) ПОФАЙЛОВО. Сначала жёсткие признаки:
 // значение >12 может быть только днём. Если оба поля ≤12 (напр. «1/5/26 · 2/5/26 · 3/5/26»),
@@ -38,7 +40,12 @@ function detectFmt(strs){
       const t=Date.UTC(o.y,o.m-1,o.d); if(mn==null||t<mn)mn=t; if(mx==null||t>mx)mx=t; mons.add(o.y+'-'+o.m);}
     if(ok) r[f]={span:(mx-mn)/864e5, mons:mons.size}; }
   const k=Object.keys(r); if(!k.length) return 'MD';
-  return k.sort((a,b)=>(r[a].mons-r[b].mons)||(r[a].span-r[b].span))[0];
+  /* НИЧЬЯ (06.11.2026): файл целиком за ОДИН день «05.11.2026» — оба порядка дают 1 день,
+     и сортировка молча брала MD → 11 мая. Решаем по разделителю: у Озона «.» — всегда
+     Д.М.Г (csv), «/» — М/Д/Г (xlsx). */
+  const sep=(''+(strs[0]||'')).includes('/')?'/':'.';
+  const pref=sep==='.'?'DM':'MD';
+  return k.sort((a,b)=>(r[a].mons-r[b].mons)||(r[a].span-r[b].span)||((a===pref?0:1)-(b===pref?0:1)))[0];
 }
 // Все наши строки из переданных файлов, ключ = «номер отправления + SKU».
 // Внутри одного прогона повтор ключа отбрасывается сразу; сверка с уже загруженным —
