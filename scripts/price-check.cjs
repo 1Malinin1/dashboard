@@ -200,8 +200,15 @@ if (tag) {
 
 // ---------------- ЭКОНОМИКА ---------------------------------------------------
 // цена со слов продавца (meta.ozPriceBySup, scripts/ozon-price.cjs) — только пока у товара <5 заказов за 28 дн (ЦЕНА-03)
+/* Цена ЖИВЁТ (продавец 09.11.2026): репрайсер ведёт её за ценой ВБ, а без остатка на ВБ — под план заказов (ЗАП-17),
+   поэтому цена продавца — снимок на дату. Берём её, только если после этой даты не было ни одной продажи (иначе свежее
+   цена последней продажи); старше SELLER_PRICE_DAYS дней — считаем, но помечаем «уточнить» и ненадёжной. */
+const SELLER_PRICE_DAYS = 7;
 const sellerPrice = (RD.meta && RD.meta.ozPriceBySup && RD.meta.ozPriceBySup[sup]) || null;
-const useSeller = !priceArg && sellerPrice && o28.q < FRESH_MIN_ORDERS;
+const saleAfterSeller = sellerPrice && cp.lastDate && cp.lastDate > sellerPrice.setAt;
+const useSeller = !priceArg && sellerPrice && o28.q < FRESH_MIN_ORDERS && !saleAfterSeller;
+const sellerAge = sellerPrice ? Math.round((Date.now() - Date.parse(sellerPrice.setAt + "T00:00:00Z")) / 864e5) : null;
+const sellerStale = useSeller && sellerAge > SELLER_PRICE_DAYS;
 const price = priceArg || (useSeller ? sellerPrice.price : cp.price);
 // себестоимость: карточка ВБ, иначе фолбэк по коду 1С для товаров только на Ozon (meta.costBySup, new-codes.cjs cost) — 03.11.2026
 const cost = (wbCards.length && wbCards[0].costPrice != null) ? wbCards[0].costPrice
@@ -221,8 +228,8 @@ if (!price || !cost) {
   const marg = revB - revB * FIX / 100 - cost * bo - revB * base5 / 100;
   const cpoFloor = marg - revB * MARGIN_FLOOR / 100;
   if (JSON_MODE) { process.stdout.write(JSON.stringify({ sup, price, cost, buyout: bo, feePct: BASE_EFF, brk, ceil, marg, cpoFloor,
-    reliable: o28.q >= FRESH_MIN_ORDERS || !!useSeller || !!priceArg, priceSrc: priceArg ? "arg" : useSeller ? "seller" : "orders", orders28: o28.q }) + "\n"); process.exit(0); }
-  console.log("  предельная " + rub(price) + (priceArg ? " (задана аргументом)" : useSeller ? " (со слов продавца " + sellerPrice.setAt + ", заказов <5)" : "") + " · себестоимость " + rub(cost) + " = " + pct(share) + " выручки");
+    reliable: o28.q >= FRESH_MIN_ORDERS || (!!useSeller && !sellerStale) || !!priceArg, priceSrc: priceArg ? "arg" : useSeller ? (sellerStale ? "seller-stale" : "seller") : "orders", orders28: o28.q }) + "\n"); process.exit(0); }
+  console.log("  предельная " + rub(price) + (priceArg ? " (задана аргументом)" : useSeller ? " (со слов продавца " + sellerPrice.setAt + ", заказов <5" + (sellerStale ? ", ⚠ старше " + SELLER_PRICE_DAYS + " дн — уточнить: цену ведёт репрайсер" : "") + ")" : "") + " · себестоимость " + rub(cost) + " = " + pct(share) + " выручки");
   console.log("  % выкупа " + pct(bo * 100) + " · фикс Озона " + pct(FIX) + " · плата за заказ "
     + (FEE_SHARE ? pct(BASE_EFF) + " от заказанного ₽ (списания по отчётам «Оплата за заказ» " + FEE_SHARE.from + "…" + FEE_SHARE.to + ") = " + pct(base5) + " в выкупе"
       : "не учтена — отчётов «Оплата за заказ» нет (РЕК-23: только из отчётов)"));
