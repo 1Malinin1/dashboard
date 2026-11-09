@@ -199,7 +199,10 @@ if (tag) {
 }
 
 // ---------------- ЭКОНОМИКА ---------------------------------------------------
-const price = priceArg || cp.price;
+// цена со слов продавца (meta.ozPriceBySup, scripts/ozon-price.cjs) — только пока у товара <5 заказов за 28 дн (ЦЕНА-03)
+const sellerPrice = (RD.meta && RD.meta.ozPriceBySup && RD.meta.ozPriceBySup[sup]) || null;
+const useSeller = !priceArg && sellerPrice && o28.q < FRESH_MIN_ORDERS;
+const price = priceArg || (useSeller ? sellerPrice.price : cp.price);
 // себестоимость: карточка ВБ, иначе фолбэк по коду 1С для товаров только на Ozon (meta.costBySup, new-codes.cjs cost) — 03.11.2026
 const cost = (wbCards.length && wbCards[0].costPrice != null) ? wbCards[0].costPrice
   : ((RD.meta && RD.meta.costBySup && RD.meta.costBySup[sup] && RD.meta.costBySup[sup].cost) || null);
@@ -218,8 +221,8 @@ if (!price || !cost) {
   const marg = revB - revB * FIX / 100 - cost * bo - revB * base5 / 100;
   const cpoFloor = marg - revB * MARGIN_FLOOR / 100;
   if (JSON_MODE) { process.stdout.write(JSON.stringify({ sup, price, cost, buyout: bo, feePct: BASE_EFF, brk, ceil, marg, cpoFloor,
-    reliable: o28.q >= FRESH_MIN_ORDERS, orders28: o28.q }) + "\n"); process.exit(0); }
-  console.log("  предельная " + rub(price) + (priceArg ? " (задана аргументом)" : "") + " · себестоимость " + rub(cost) + " = " + pct(share) + " выручки");
+    reliable: o28.q >= FRESH_MIN_ORDERS || !!useSeller || !!priceArg, priceSrc: priceArg ? "arg" : useSeller ? "seller" : "orders", orders28: o28.q }) + "\n"); process.exit(0); }
+  console.log("  предельная " + rub(price) + (priceArg ? " (задана аргументом)" : useSeller ? " (со слов продавца " + sellerPrice.setAt + ", заказов <5)" : "") + " · себестоимость " + rub(cost) + " = " + pct(share) + " выручки");
   console.log("  % выкупа " + pct(bo * 100) + " · фикс Озона " + pct(FIX) + " · плата за заказ "
     + (FEE_SHARE ? pct(BASE_EFF) + " от заказанного ₽ (списания по отчётам «Оплата за заказ» " + FEE_SHARE.from + "…" + FEE_SHARE.to + ") = " + pct(base5) + " в выкупе"
       : "не учтена — отчётов «Оплата за заказ» нет (РЕК-23: только из отчётов)"));
