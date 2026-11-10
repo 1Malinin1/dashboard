@@ -88,7 +88,23 @@ async function dump(){
   const JSZipLess=require('./node_modules/xlsx').CFB; // CFB умеет zip: читаем/пишем архив без пересборки книги
   const z=JSZipLess.read(fs.readFileSync(src),{type:'buffer'});
   const ent=JSZipLess.find(z,'/xl/worksheets/sheet1.xml'); let xml=Buffer.from(ent.content).toString('utf8');
-  for(const x of res){
+  /* ДВА ФОРМАТА ЛИСТА (10.11.2026). Файл, сохранённый Excel, — ячейки с адресами (`<c r="AA2" …>`). Выгрузка прямо из репрайсера —
+     с префиксом `x:` и БЕЗ адресов: каждая строка — `<x:row>` со всеми ячейками подряд (пустые — `<x:c t="str"><x:v></x:v></x:c>`).
+     Во втором случае меняем ячейку по ПОЗИЦИИ: строка №xr по порядку, ячейка №iPlan в ней. */
+  const positional=!/<(?:\w+:)?c\s+r="/.test(xml);
+  if(positional){
+    const pre=(xml.match(/<(\w+:)?row\b/)||[])[1]||'';
+    const rowRe=new RegExp(`<${pre}row\\b[^>]*>[\\s\\S]*?</${pre}row>`,'g');
+    const cellRe=new RegExp(`<${pre}c\\b[^>]*?(?:/>|>[\\s\\S]*?</${pre}c>)`,'g');
+    const want={}; res.forEach(x=>want[x.xr]=x.J);
+    let ri=0;
+    xml=xml.replace(rowRe,row=>{ ri++; const J=want[ri]; if(J==null) return row;
+      let ci=-1, hit=false;
+      const out=row.replace(cellRe,c=>{ ci++; if(ci!==iPlan) return c; hit=true; return `<${pre}c t="n"><${pre}v>${J}</${pre}v></${pre}c>`; });
+      if(!hit) throw new Error('в строке '+ri+' нет ячейки №'+(iPlan+1)+' — формат файла другой');
+      return out; });
+  }
+  for(const x of (positional? [] : res)){
     const cell=new RegExp(`<c r="${colL}${x.xr}"([^>]*?)(?: t="s")?(?:/>|>(?:<v>[^<]*</v>)?</c>)`);
     const m=xml.match(cell);
     if(m){ const st=(m[1].match(/ s="\d+"/)||[''])[0]; xml=xml.replace(cell,`<c r="${colL}${x.xr}"${st}><v>${x.J}</v></c>`); continue; }
