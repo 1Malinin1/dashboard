@@ -132,6 +132,7 @@ for(let i=0;i<Math.min(24,rows.length);i++){
 const layout = isOrders ? 'B' : 'A';
 if(layout==='A'&&hr<0){ console.error('не нашёл строку-шапку с ячейкой «Номенклатура.Код» или «Код»'); process.exit(1); }
 const bySup={}, byWh={}; let taken=0, skipped={}, total=0;
+const dirBySup={}; let iMarker=-1;   // направление товара из колонки «Артикул для WB» (ЗАП-19)
 let cols=[];   // колонки-склады из шапки (нужны и ниже, при мерже по складам)
 const inbCols={china:[],order:[]};   // колонки «едет ко мне» — это не склад
 const mpCols=[]; const mpBy={};      // незнакомые колонки — не считаем (белый список KNOWN_WH)
@@ -141,6 +142,11 @@ const reserveBy={}, reserveBySup={}; let reserveSum=0;   // резерв (тов
 if(layout==='A'){
   const H=rows[hr].map(S);
   const iCode=iCodeFound>=0? iCodeFound : H.findIndex(x=>CODE_HDRS.includes(x));
+  /* НАПРАВЛЕНИЕ ТОВАРА — колонка «Артикул для WB (св-во Номенклатура)» (продавец 10.11.2026, ЗАП-19):
+     «RF» или пусто — только розница; «WB» — только маркетплейсы (ВБ и Ozon); «RF/WB» — и маркетплейсы, и розница.
+     Свободный Евросиб у «RF/WB» — розница (ключ `retail`), а у «WB» розницы нет — это товар маркетплейсов, он пишется
+     складом «Склад Евросиб (МП)» (whKey → `nsk2`, склад-источник как до 10.11). */
+  iMarker=H.findIndex(x=>/артикул\s+для\s+wb/i.test(x));
   // колонки складов — всё между кодом и «Итог» (сам «Итог» не берём, чтобы не задвоить)
   for(let i=iCode+1;i<H.length;i++){ const h=H[i]; if(!h) continue; if(/^Итог/i.test(h)) break;
     // «плановый запас» и прочие справочные колонки складами не являются
@@ -194,8 +200,12 @@ if(layout==='A'){
   for(let i=hr+1;i<rows.length;i++){
     const r=rows[i]; const k=code(r[iCode]);
     if(!k||!/^\d+$/.test(k)) continue;                       // «Итог» и пустые строки
+    const mk=iMarker>=0? S(r[iMarker]).toUpperCase().replace(/\s+/g,'') : '';
+    if(iMarker>=0 && supSet.has(k)) dirBySup[k]=mk||'RF';
+    const mpOnly=/WB/.test(mk) && !/RF/.test(mk);             // «WB» (и «WB ES») — только маркетплейсы
     let sum=0; const wh={};
-    cols.forEach(c=>{ const v=num(r[c.i]); if(v>0){ wh[c.name]=(wh[c.name]||0)+v; sum+=v; } });
+    cols.forEach(c=>{ const v=num(r[c.i]); if(v>0){ const nm=(mpOnly && /евросиб/i.test(c.name))? c.name+' (МП)' : c.name;
+      wh[nm]=(wh[nm]||0)+v; sum+=v; } });
     let inbSum=0;
     ['china','order'].forEach(t=>inbCols[t].forEach(c=>{ const v=num(r[c.i]); if(v>0){ inbSum+=v;
       if(supSet.has(k)) inbBy[t][k]=(inbBy[t][k]||0)+v; } }));
@@ -245,7 +255,7 @@ if(kind==='stock'){
   // Правило: склады, названные в шапке файла, перезаписываются целиком (нет строки = 0 там),
   // склады, которых в файле нет, сохраняются как были.
   const fileWh=new Set(Object.keys(byWh));
-  cols.forEach(c=>fileWh.add(c.name));                       // и те, что в шапке, но без остатков
+  cols.forEach(c=>{ fileWh.add(c.name); if(/евросиб/i.test(c.name)) fileWh.add(c.name+' (МП)'); });   // и те, что в шапке, но без остатков
   const prev=(RD.warehouse&&RD.warehouse.bySup)||{};
   const kept=new Set();
   Object.entries(prev).forEach(([k,v])=>{
@@ -307,6 +317,11 @@ if(kind==='stock'){
     }
   }
   RD.warehouse={date:dateArg, split:false, byWh, bySup};
+  if(Object.keys(dirBySup).length){ RD.warehouse.dirBySup=dirBySup;
+    const cnt={}; Object.values(dirBySup).forEach(m=>cnt[m]=(cnt[m]||0)+1);
+    let eRet=0, eMp=0; Object.values(bySup).forEach(v=>Object.entries(v.wh||{}).forEach(([n,q])=>{ if(/евросиб/i.test(n)){ if(/\(мп\)/i.test(n)) eMp+=q; else eRet+=q; } }));
+    console.log('Направление товара (колонка «Артикул для WB», ЗАП-19): '+Object.entries(cnt).map(([m,c])=>m+' '+c).join(' · ')
+      +' | Евросиб: розница (RF/WB) '+eRet.toLocaleString('ru-RU')+' шт · товар маркетплейсов (WB) '+eMp.toLocaleString('ru-RU')+' шт'); }
 
   /* ИСТОРИЯ СВОЕГО СКЛАДА ПО ДНЯМ — `RD.whHistory[дата]` (заведено 05.10.2026 под вкладку
      «Остатки»). Зачем: ведомость 1С — СНИМОК НА МОМЕНТ выгрузки, прошлые дни из неё не достать,

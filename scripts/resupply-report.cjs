@@ -149,6 +149,21 @@ if(urgent.length){
       +(r.have<=0? (r.china||r.order? '  (едет: '+(r.china?'Китай '+r.china:'')+(r.china&&r.order?' + ':'')+(r.order?'произв. '+r.order:'')+')' : '  (взять негде)') : '')
       +'  '+(r.name||'').slice(0,34)));
 }
+// ---- ПОДСОРТ С ЕВРОСИБА ВРУЧНУЮ (ЗАП-19, продавец 10.11.2026): «единственное исключение — если товара на мп осталось менее
+// чем на 30 дней… и для розницы товара хватит, пока приедет новая поставка»; динамики розницы у нас нет — только сигнал,
+// решает и везёт продавец. Запас на площадке — ПОСЛЕ машин этого плана; у кода есть розница на Евросибе.
+{ const LOW=30, dd=(cov,spd)=>spd>0? cov/spd : Infinity;
+  const lst=[];
+  rows.forEach(r=>{ const ret=r.whRetail||0; if(ret<=0) return;
+    const oD=dd((r.oCov||0)+(r.shipO||0), r.oSpd||0), wD=dd((r.wCov||0)+(r.shipW||0), r.wSpd||0);
+    if(oD<LOW || wD<LOW) lst.push({r,ret,oD,wD,min:Math.min(oD,wD)}); });
+  if(lst.length){
+    console.log('\nНА МАРКЕТПЛЕЙСЕ МЕНЬШЕ '+LOW+' ДНЕЙ — МОЖНО ПОДСОРТИРОВАТЬ С ЕВРОСИБА ВРУЧНУЮ (розница должна дожить до партии; динамики розницы нет — решаете вы):');
+    lst.sort((a,b)=>a.min-b.min).slice(0,TOP).forEach(x=>console.log('  '+x.r.sup.padEnd(9)
+      +'Ozon '+String(D(x.oD)).padStart(4)+' дн · ВБ '+String(D(x.wD)).padStart(4)+' дн (после машин плана) · Евросиб (розница) '+String(x.ret).padStart(6)+' шт'
+      +(x.r.order? ' · едет с производства '+x.r.order : '')+'  '+(x.r.name||'').slice(0,34)));
+    if(lst.length>TOP) console.log('  … ещё '+(lst.length-TOP));
+  } }
 // ---- самопроверка правил ЗАП-13 (печатает только нарушения) ----
 { const bad=[];
   rows.forEach(r=>WH_ORDER.forEach(w=>{ if(r.pool[w]<0) bad.push(r.sup+': склад '+WH_NAME[w]+' ушёл в минус '+r.pool[w]);
