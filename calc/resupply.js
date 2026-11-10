@@ -45,7 +45,10 @@
   if(/(озон|ozon)/i.test(s) && /цфо/i.test(s)) return "ozcfo";
   if(/клин/i.test(s)) return "klin";
   if(/(^|\W)fbs(\W|$)|фбс/i.test(s)) return "nsk1";
-  if(/евросиб/i.test(s)) return "nsk2";
+  /* ЕВРОСИБ — РОЗНИЦА (ЗАП-19, продавец 09–10.11.2026: «то что свободно я больше не трогаю»; партия при приходе —
+     30–40% рознице, остальное резервирует и отгружает на ВБ/Ozon). Свой ключ `retail`: НИ ОДНА сумма для маркетплейсов
+     его не берёт (подсорт, план для репрайсера, «Запас и темп», «Всего», сигнал заказа). Показывается справочно. */
+  if(/евросиб/i.test(s)) return "retail";
   if(/солнечногор|москв|(^|\W)мск(\W|$)/i.test(s)) return "msk";
   if(/новосиб|(^|\W)нск(\W|$)/i.test(s)) return "nsk2";
   return "other"; }
@@ -273,13 +276,13 @@
       const all=sups.map(sup=>{
         const w=W[sup]||zero, o=O[sup]||zero;
         const have=wh[sup]||{qty:0,wb:0,oz:0};
-        const whB=have.wh||{}; const wq={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,other:0};
+        const whB=have.wh||{}; const wq={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,retail:0,other:0};
         Object.entries(whB).forEach(([n,q])=>{ wq[whKey(n)]+=q; });
         const whMsk=wq.msk, whNsk1=wq.nsk1, whNsk2=wq.nsk2, whKlin=wq.klin, whOther=wq.other;
         const whOzS=wq.ozsfo, whOzC=wq.ozcfo, whOzAsg=whOzS+whOzC;
         /* `haveTotal` — то, что РЕАЛЬНО можно отгрузить: весь склад МИНУС виртуальные склады Ozon (товар
            уже назначен на Ozon). Клин с 27.10.2026 — обычный склад-источник (ЗАП-08), он в отгрузке. */
-        const haveTotal=Math.max(0, ((wh[sup]&&wh[sup].qty)||0) - whOzAsg);
+        const haveTotal=Math.max(0, ((wh[sup]&&wh[sup].qty)||0) - whOzAsg - wq.retail);   // розница Евросиба — не наша для МП (ЗАП-19)
         // Розничный резерв (RETAIL_RESERVE, сейчас 0): сначала Евросиб, недостающее — Нск-1
         const holdNsk2=Math.min(whNsk2,RETAIL_RESERVE);
         const holdNsk1=Math.min(whNsk1,Math.max(0,RETAIL_RESERVE-whNsk2));
@@ -304,7 +307,7 @@
           oSpd:o.spd, oCov:o.covered, oStock:o.stock, oTransit:o.transit, oDays:o.days,
           have:(split? have.wb+have.oz : haveTotal), haveShip, retailHold, availNsk1, availNsk2,
           haveWb:have.wb, haveOz:have.oz, split,
-          whBy:whB, whMsk, whNsk:whNsk1+whNsk2, whNsk1, whNsk2, whKlin, whOzS, whOzC, whOzAsg, whOther,
+          whBy:whB, whMsk, whNsk:whNsk1+whNsk2, whNsk1, whNsk2, whKlin, whOzS, whOzC, whOzAsg, whOther, whRetail:wq.retail,
           china:(chinaBy[sup]||0), onOrder:(orderBy[sup]||0),
           palOz, palWb, isLaunchO, isLaunchW, ozOutShare:sp.outShare, noPal:false,
           pool:{klin:whKlin, nsk2:availNsk2, nsk1:availNsk1, msk:whMsk}, hold:{klin:0,nsk2:0,nsk1:0,msk:0}, D,

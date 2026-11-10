@@ -2165,7 +2165,7 @@
 <!-- ОБЩИЕ РАСЧЁТЫ — один файл и для сайта, и для scripts/*.cjs (30.10.2026, «тихие ошибки»). ?v= ставит
      scripts/stamp-build.cjs (git-хук) по содержимому файла: изменился расчёт — меняется адрес и build страницы. -->
 <script src="calc/ozon-fin.js?v=79276e1bd0"></script>
-<script src="calc/resupply.js?v=54f044233f"></script>
+<script src="calc/resupply.js?v=7fd4bb16c7"></script>
 <script>
 /* =========================================================================
    ФОРМАТ ЧИСЕЛ
@@ -2815,7 +2815,11 @@ const WH_MSK="СХ Солнечногорск", WH_NSK1="Склад FBS", WH_NSK
 const WHS=[
   {key:"msk", short:"Мск", label:"Москва (СХ Солнечногорск)", fbs:true,  ozon:true, wbFbo:true},
   {key:"nsk1",short:"Нск-FBS", label:"Новосибирск-1 (Склад FBS)", fbs:true,  ozon:true, wbFbo:true},
-  {key:"nsk2",short:"Евросиб", label:"Новосибирск-2 (Склад Евросиб)", fbs:false, ozon:true, wbFbo:true},
+  {key:"nsk2",short:"Нск-2", label:"Новосибирск-2 (прочий склад)", fbs:false, ozon:true, wbFbo:true},
+  /* ЕВРОСИБ — РОЗНИЦА (ЗАП-19, продавец 09–10.11.2026): свободный остаток Евросиба — товар розничных магазинов
+     (30–40% каждой партии), на маркетплейсы с него не отгружаем, в расчёты МП он не входит нигде. Ключ `retail`
+     даёт `Resupply.whKey`; показываем справочно («Остатки», «Оборачиваемость», «Разбор товара»). */
+  {key:"retail",short:"Евросиб (розница)", label:"Склад Евросиб — розница, в расчёт маркетплейсов не идёт", fbs:false, ozon:false, wbFbo:false},
   {key:"klin",short:"Клин", label:"РВБ Клин", fbs:false, ozon:true, wbFbo:true},   // с 27.10.2026 — склад-источник на обе площадки (ЗАП-08)
   /* ВИРТУАЛЬНЫЕ СКЛАДЫ «НАЗНАЧЕНО НА OZON» (13.10.2026, объяснение продавца: «я когда
      распределяю контейнера, некоторое кол-во сразу распределяю на озон, и он перемещается
@@ -2832,6 +2836,8 @@ const WH_BY_KEY={}; WHS.forEach(w=>WH_BY_KEY[w.key]=w);
    «РВБ Клин» проверяем ПЕРВЫМ и ИМЕННО по слову «Клин»: общее `/рвб/` поймало бы
    «Склад РВБ ПФО», а это баг выгрузки 1С, который продавец велел не считать (31.08.2026). */
 function whKey(n){ return Resupply.whKey(n); }
+// сколько у кода лежит в рознице (Евросиб, ЗАП-19) — вычитается из «весь свой склад» во всех расчётах МП
+function whRetailOf(row){ let q=0; Object.entries((row&&row.wh)||{}).forEach(([n,v])=>{ if(whKey(n)==="retail") q+=v; }); return q; }
 /* СКЛАДЫ-ИСТОЧНИКИ ОТГРУЗКИ и порядок их разбора — `RESUP_WH` в блоке подсорта (Клин, Евросиб, Нск-1,
    Москва). До 27.10.2026 Клин сюда не входил («товар уже назначен на ВБ», решение 05.10) — ОТМЕНЕНО ЗАП-08. */
 /* Сколько лежит на «РВБ Клин» по коду 1С (справочно: колонки и разбивки по складам). */
@@ -2916,7 +2922,7 @@ function wbFbsBySup(){
   let O={}; try{ O=OZDATA? mpStats("ozon") : {}; }catch(e){ O={}; }
   const out={};
   Object.keys(wh).forEach(sup=>{
-    const q={msk:0,nsk1:0,nsk2:0,klin:0,other:0};
+    const q={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,retail:0,other:0};
     Object.entries(wh[sup].wh||{}).forEach(([n,v])=>{ q[whKey(n)]+=v; });
     const o=O[sup];
     const ozNeed = (o&&o.spd>0)? Math.max(0, Math.ceil(o.spd*30)-o.covered) : 0;   // прежняя оценка на 30 дней (не подсорт)
@@ -3063,12 +3069,12 @@ function simpleTurnList(){
     const w=whBySup[supCode]||null;
     /* `ozsfo`/`ozcfo` перечислены явно, чтобы товар, уже назначенный на Ozon, НЕ попал
        в «свой склад» и не выглядел доступным к отгрузке (и чтобы не получить NaN). */
-    const wq={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,other:0};
+    const wq={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,retail:0,other:0};
     if(w) Object.entries(w.wh||{}).forEach(([n,q])=>{ wq[whKey(n)]+=q; });
     const whMsk=wq.msk, whNsk1=wq.nsk1, whNsk2=wq.nsk2, whKlin=wq.klin, whOther=wq.other, whNsk=whNsk1+whNsk2;
     const whOzAsg=wq.ozsfo+wq.ozcfo;
     return {sku:c.sku,name:c.name,category:c.category,stock,transit,fbs,covered,avgD,buyout,salesPerDay,daysBase,daysLeft,reorder,containers,contQty,status,pStatus,whenOrder,prod,reorderCost,
-      whMsk,whNsk,whNsk1,whNsk2,whKlin,whOzAsg,whOther,whHave:whMsk+whNsk+whKlin+whOther};
+      whMsk,whNsk,whNsk1,whNsk2,whKlin,whOzAsg,whOther,whRetail:wq.retail,whHave:whMsk+whNsk+whKlin+whOther};
   });
 }
 // ---- Фильтры по значениям в каждой колонке (Excel-стиль): комбинируются логическим И,
@@ -3103,7 +3109,7 @@ function turnColDefs(){
     const mp=_appliedMp, showW=mp!=="ozon", showO=mp!=="wb";
     const d=[{key:"whMsk",  val:r=>r.whMsk? fmt(r.whMsk):"—", sortVal:v=>v==="—"?-1:pnum(v)},
              {key:"whNsk1", val:r=>r.whNsk1? fmt(r.whNsk1):"—", sortVal:v=>v==="—"?-1:pnum(v)},
-             {key:"whNsk2", val:r=>r.whNsk2? fmt(r.whNsk2):"—", sortVal:v=>v==="—"?-1:pnum(v)},
+             {key:"whRetail", val:r=>r.whRetail? fmt(r.whRetail):"—", sortVal:v=>v==="—"?-1:pnum(v)},
              {key:"have",  val:r=>fmt(r.have), sortVal:pnum}];
     if(showW && WB_FBO_SUPPLY) d.push(
       {key:"wDays", val:r=> r.wSpd>0? String(dTxt(r.wDays)) : "—", sortVal:dv},
@@ -3421,7 +3427,7 @@ function purchaseRows(base){
     const salesPerDay = rate*TURN_PEAK_BUYOUT;
     const need = Math.ceil(salesPerDay*TURN_COVER_DAYS);
     const sup = code1c(r.sku) || (''+r.sku);
-    const whQty=(wh[sup]&&wh[sup].qty)||0, chinaQty=chinaBy[sup]||0, orderQty=inbSum(sup,ordKeys);
+    const whQty=Math.max(0,((wh[sup]&&wh[sup].qty)||0)-whRetailOf(wh[sup])), chinaQty=chinaBy[sup]||0, orderQty=inbSum(sup,ordKeys);   // без розницы (ЗАП-19)
     const mpCov = t.covered||0;
     const covered = mpCov + whQty + chinaQty + orderQty;
     // Закуп считаем для ВСЕХ товаров, включая «На вывод»: статус справочный, решение о заказе
@@ -3633,8 +3639,8 @@ function turnHowTo(view,oz,mp){
       "Колонка «Хватит, дн»: первое число — на сколько хватит того, что уже лежит на складе "+(oz?"Ozon":"WB")+"; второе (со стрелкой) — "+(oz? "с учётом того, что едет" : "с учётом FBS-запаса на своих складах")+".",
       ...(oz? ["Колонка «Остаток Ozon» — товар УЖЕ на площадке. Колонка «Свой склад» — ваш товар, который на Ozon ещё не отгружен; в расчёт дозаказа он НЕ входит, сколько с него отгрузить — показывает «Подсорт со склада»."]
             : ["Wildberries продаётся и по FBO (остаток на складах WB), и по FBS (товар уходит покупателю прямо с вашего склада). Поэтому в покрытие ВБ входит и то и другое: остаток на складах WB + вся Москва + свободный остаток Нск-1.",
-               "Нск-1 одновременно снабжает Ozon, поэтому в покрытие ВБ он входит НЕ ЦЕЛИКОМ: сначала закрывается потребность Озона (сперва с Евросиба, недостача — с Нск-1), и только незанятая часть засчитывается ВБ. Иначе один и тот же товар считался бы дважды.",
-               "Склад Евросиб в покрытие ВБ НЕ входит — с него по FBS не торгуют, он работает на Ozon и на перемещение в Нск-1.",
+               "Нск-1 одновременно снабжает Ozon, поэтому в покрытие ВБ он входит НЕ ЦЕЛИКОМ: сначала закрывается потребность Озона (недостача — с Нск-1), и только незанятая часть засчитывается ВБ. Иначе один и тот же товар считался бы дважды.",
+               "Склад Евросиб — розница (ЗАП-19, с 10.11.2026): в покрытие ВБ и Ozon, подсорт и план заказов НЕ входит, на маркетплейсы с него не везём.",
                "Поставок на склады WB больше нет, поэтому FBO-часть покрытия только убывает. Пока она есть — считаем её."]),
       "«Заказать» — заказ производству по коду 1С, тот же расчёт, что колонка «Заказ» в «Запасе и темпе» (с 27.10.2026): весь товар бизнеса на обеих площадках и складах + партии из файла заказов на производство, срок от подачи до прихода 6 месяцев. «Дозаказать» здесь — плановый объём на "+TURN_COVER_DAYS+" дней по одной площадке, без вычета остатка.",
       "Текущий остаток из партии НЕ вычитается — это плановый объём на "+TURN_COVER_DAYS+" дней вперёд.",
@@ -3650,7 +3656,7 @@ function turnHowTo(view,oz,mp){
       ...(W? ["Покрытие ВБ FBO = остаток на складах WB + то, что уже уехало на ВБ и ещё не принято (журнал отгрузок)"] : []),
       "БАЗА: довести запас на направлении до "+RESUPPLY_DAYS+" дней (6 месяцев). Сначала Ozon — между его направлениями поровну по дням («по уровню воды»), потом ВБ FBO из того, что осталось",
       "Если товара на площадке нет и продаж нет — стартовая партия "+LAUNCH_QTY+" шт (на Ozon — в «Москву»)",
-      "Склады разбираем в порядке: РВБ Клин → Евросиб (позиции от "+NSK2_MIN_TAKE+" шт) → Нск-1 → Москва. Нск-1 и Москву — последними: что останется, продаётся по FBS на Wildberries",
+      "Склады разбираем в порядке: РВБ Клин → Нск-1 → Москва (Евросиб — розница, с него не везём, ЗАП-19). Нск-1 и Москву — последними: что останется, продаётся по FBS на Wildberries",
       "Отгружаем целыми ПАЛЛЕТАМИ (вместимость у ВБ и Ozon разная), округляем вверх",
       "МАШИНА — один склад → одно направление, ровно "+PALLETS_PER_TRUCK+" паллет и не больше "+MAX_CODES_PER_TRUCK+" кодов",
       "Последнюю неполную машину ДОБИВАЕМ, только если базы в ней от "+TOPUP_MIN_BASE+" паллет, и только товаром того же склада, которого после отгрузки хватит не больше чем на "+mon+" мес; иначе машина не едет целиком"];
@@ -3663,7 +3669,7 @@ function turnHowTo(view,oz,mp){
     notes.push("В плане машин у каждой машины видно, сколько в ней базы и сколько добора; у не едущей — почему.",
       "Товары «На вывод» в подсорт НЕ попадают, если их нет на складе — везти нечего.",
       "Статус: «Срочно» — на площадке меньше "+RESUP_URGENT_DAYS+" дней; «Подсорт» — меньше "+RESUPPLY_DAYS+"; «Нет на складе» — отгружать нечего.",
-      "Колонка «Склад» — сумма Клина, Евросиба, Нск-1 и Москвы (СХ и РЦ Солнечногорск); «→Ozon» — уже назначено на Ozon, в отгрузку не идёт.",
+      "Колонка «Склад» — сумма Клина, Нск-1 и Москвы (СХ и РЦ Солнечногорск); «Евросиб (розница)» показан справочно и в «Склад» не входит; «→Ozon» — уже назначено на Ozon, в отгрузку не идёт.",
       "Колонка «Приедет» — то, что в дороге К ВАМ: из Китая ~1 мес, заказанное производству ~3 мес до склада. Отгружать это сейчас нельзя.");
     return {title:"Как считается подсорт со склада"+(both?"":(O?" — Ozon":" — Wildberries")), steps, notes};
   }
@@ -3902,7 +3908,7 @@ function renderTurnResupply(){
   if(mp==="wb")   rows=rows.filter(r=>resupNeedW(r)>0||resupShipW(r)>0||r.have>0||r.china>0||r.onOrder>0);
   if(mp==="ozon") rows=rows.filter(r=>r.needO>0||r.shipO>0||r.have>0||r.china>0||r.onOrder>0);
   rows=sortRows(rows,turnSortState,{ name:r=>r.name, have:r=>r.have,
-    whMsk:r=>r.whMsk, whNsk1:r=>r.whNsk1, whNsk2:r=>r.whNsk2, whKlin:r=>r.whKlin,
+    whMsk:r=>r.whMsk, whNsk1:r=>r.whNsk1, whRetail:r=>r.whRetail||0, whKlin:r=>r.whKlin,
     whOzAsg:r=>r.whOzAsg,
     wDays:r=>{const v=resupWDays(r); return v===Infinity?1e9:v;}, oDays:r=>r.oDays===Infinity?1e9:r.oDays,
     nsk1Days:r=>r.nsk1Days===Infinity?1e9:r.nsk1Days, move:r=>r.move,
@@ -3983,7 +3989,7 @@ function renderTurnResupply(){
   if(!rows.length){ tbl.innerHTML=`<tbody><tr><td class="empty-hint">Нет позиций под текущие фильтры</td></tr></tbody>`; return; }
   let html=`<thead><tr>${thSort("Товар / категория","name",turnSortState,"metric")}`
     +`${thSortF("Мск","whMsk",turnSortState)}${thSortF("Нск-1","whNsk1",turnSortState)}`
-    +`${thSortF("Евросиб","whNsk2",turnSortState)}${thSortF("Клин","whKlin",turnSortState)}`
+    +`${thSortF("Евросиб (розница)","whRetail",turnSortState)}${thSortF("Клин","whKlin",turnSortState)}`
     +`${thSortF("→Ozon","whOzAsg",turnSortState)}`
     +`${thSortF("Склад","have",turnSortState)}`;
   if(showW) html+= WB_FBO_SUPPLY
@@ -4001,7 +4007,7 @@ function renderTurnResupply(){
         +(r.palNote&&(r.needO>0||(WB_FBO_SUPPLY&&r.needW>0))? `<span class="sub2 mut" title="Отгружаем только целыми паллетами">⚠ ${esc(r.palNote)}</span>`:"")+`</td>`
       +`<td class="${r.whMsk?"":"d-zero"}" title="Москва, СХ и РЦ Солнечногорск (одно место отгрузки) — FBS для Wildberries; отгружает и на Ozon, и на ВБ FBO, разбирается последней: остаток продаётся по FBS">${r.whMsk? fmt(r.whMsk) : "—"}</td>`
       +`<td class="${r.whNsk1?"":"d-zero"}" title="Новосибирск-1, Склад FBS — FBS для Wildberries и отгрузка на Ozon и ВБ FBO. ${RETAIL_RESERVE>0? `Часть остатка держим рознице: сколько не хватает Евросибу до ${RETAIL_RESERVE} шт` : `Остаток в выгрузке — уже свободный`}">${r.whNsk1? fmt(r.whNsk1) : "—"}</td>`
-      +`<td class="${r.whNsk2?"":"d-zero"}" title="Новосибирск-2, Склад Евросиб — ${RETAIL_RESERVE>0? `склад розничных магазинов: ${RETAIL_RESERVE} шт на код остаются рознице, остальное — на Ozon и ВБ FBO` : `остаток в выгрузке уже свободный — идёт на Ozon и ВБ FBO`} (позиции меньше ${NSK2_MIN_TAKE} шт не берём)">${r.whNsk2? fmt(r.whNsk2) : "—"}</td>`
+      +`<td class="d-zero" title="Склад Евросиб — розница (ЗАП-19, 10.11.2026): свободный остаток Евросиба — товар розничных магазинов, на маркетплейсы с него не везём и в «Склад» и подсорт он не входит. Показан справочно.">${r.whRetail? fmt(r.whRetail) : "—"}</td>`
       +`<td class="${r.whKlin?"":"d-zero"}" title="РВБ Клин — с 27.10.2026 обычный склад-источник: отгружает и на Ozon, и на ВБ FBO, разбирается первым (по FBS с него не продаём). Входит в «Склад».">${r.whKlin? fmt(r.whKlin) : "—"}</td>`
       +`<td class="${r.whOzAsg?"":"d-zero"}" title="Виртуальные склады «Ozon СФО» и «Ozon ЦФО» — товар уже распределён на Ozon и ждёт машину по своему направлению. В подсорте он НЕ отгружается и в «Склад» не входит, но засчитан в покрытие Ozon, поэтому на столько же уменьшает то, что надо везти с остальных складов.">${r.whOzAsg? fmt(r.whOzAsg)+(both? "" : `<span class="sub2 mut">${r.whOzS?"СФО "+fmt(r.whOzS):""}${r.whOzS&&r.whOzC?" · ":""}${r.whOzC?"ЦФО "+fmt(r.whOzC):""}</span>`) : "—"}</td>`
       +`<td style="font-weight:650">${fmt(r.have)}${r.whOther?`<span class="sub2 mut">+${fmt(r.whOther)} проч.</span>`:""}${r.split&&r.have?`<span class="sub2 mut">ВБ ${fmt(r.haveWb)} / Оз ${fmt(r.haveOz)}</span>`:""}</td>`;
@@ -4016,8 +4022,8 @@ function renderTurnResupply(){
     else if(showW) html+=`<td title="Покрытие ВБ = остаток на складах WB (FBO) + то, что уже уехало на ВБ (журнал отгрузок) + свободный FBS-запас (Москва и Нск-1 после отгрузок).">${r.wSpd>0? dTxt(r.wDaysAll) : "—"}<span class="sub2 mut">FBO ${fmt(r.wStock)}${r.wTransit?` + <b class="acc">${fmt(r.wTransit)}</b> едет на ВБ`:""}${r.wbFbsFree?` + FBS <b class="acc">${fmt(r.wbFbsFree)}</b>`:""} · ${r.wSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span></td>`
       +`<td title="На сколько дней продаж ВБ хватит остатка на складе Нск-1 — именно с него уходит FBS покупателю. Показан остаток за вычетом того, что с Нск-1 забрал Ozon.">${r.wSpd>0? dTxt(r.nsk1Days) : "—"}<span class="sub2 mut">${fmt(r.nsk1Free)} на Нск-1</span></td>`
       +`<td style="font-weight:700;${r.move?"color:var(--accent)":""}" title="Везём с Евросиба, когда на Нск-1 осталось меньше ${NSK1_MIN_DAYS} дней продаж ВБ по FBS; довозим ровно до этого минимума.">${r.move? fmt(r.move)+" шт"
-        +`<span class="sub2 mut">${fmt(r.whNsk2)} на Евросибе</span>`
-        : (r.moveNeed>0? `<span class="sub2 crit">нужно ${fmt(r.moveNeed)}, на Евросибе нет</span>` : "—")}</td>`;
+        +`<span class="sub2 mut">${fmt(r.whNsk2)} на Нск-2</span>`
+        : (r.moveNeed>0? `<span class="sub2 crit" title="Евросиб — розница (ЗАП-19), с него на Нск-1 не перемещаем">на Нск-1 мало: нужно ${fmt(r.moveNeed)}, довезти неоткуда</span>` : "—")}</td>`;
     if(showO) html+=`<td>${r.oSpd>0? dTxt(r.oDays) : "—"}<span class="sub2 mut" title="Остаток на Озоне + то, что уже едет или назначено к отправке: заявки и партии, которые показывает сам Озон, плюс товар на виртуальных складах «Ozon СФО/ЦФО» (колонка «→Ozon»).">${both? fmt(r.oCov) : fmt(r.oStock)+(r.oTransit?` +<b class="acc">${fmt(r.oTransit)}</b> в пути`:"")} · ${r.oSpd.toLocaleString("ru-RU",{maximumFractionDigits:1})}/дн</span>`
       +(r.D&&r.oSpd>0&&!both? `<span class="sub2 mut" title="Запас по направлениям отгрузки (кластеры Ozon). Вне двух направлений (Урал, Сибирь, ДВ…) — ${Math.round((r.ozOutShare||0)*100)}% спроса кода, в подсорт не входит.">Москва ${dTxt(r.D.oMsk.days)} · Казань/НН ${dTxt(r.D.oKzn.days)} дн</span>` : "")+`</td>`
       +`<td>${r.needO? fmt(r.needO)+" шт" : "—"}</td>`
@@ -4271,7 +4277,7 @@ function itemAnalysis(sup){
   let openShip=0; (RD.shipments||[]).forEach(s=>{ if(s.mp==="wb"&&s.left>0&&(""+s.sup)===sup) openShip+=s.left; });
   const ozIncoming=ozCard? (ozCard.ozIncoming||0):0;
   const whRow=((RD.warehouse&&RD.warehouse.bySup)||{})[sup]||{qty:0,wh:{}};
-  const whBy={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,other:0};
+  const whBy={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,retail:0,other:0};
   Object.entries(whRow.wh||{}).forEach(([n,q])=>{ const k=whKey(n); whBy[k]=(whBy[k]||0)+q; });
   /* Виртуальные склады «Ozon СФО/ЦФО» физически лежат у продавца, но товар на них УЖЕ НАЗНАЧЕН
      на Ozon, поэтому в трубе они идут строкой «едет на Ozon», а не «ваш склад» — как в покрытии
@@ -4281,7 +4287,7 @@ function itemAnalysis(sup){
   const whAsgOz=(whBy.ozsfo||0)+(whBy.ozcfo||0), whKlinQty=whBy.klin||0;
   const ozStock=ozCard? (ozCard.ozStock||0):0;
   const ozTransit=ozTransitEff(ozCard, whAsgOz);
-  const whQty=Math.max(0,(whRow.qty||0)-whAsgOz);
+  const whQty=Math.max(0,(whRow.qty||0)-whAsgOz-(whBy.retail||0));   // розница Евросиба в «есть» не входит (ЗАП-19)
   const inb=RD.inbound||{};
   const china=((inb.china&&inb.china.bySup)||{})[sup]||0;
   /* Заказы производству — по файлу заказов (prodBatches, ЗАП-15), как в «Запасе и темпе»: партия,
@@ -4587,7 +4593,8 @@ function renderTurnItem(){
     {k:"Ваш склад · Клин",v:a.whBy.klin,c:"var(--mp-wh)"},
     {k:"Ваш склад · Москва",v:a.whBy.msk,c:"var(--mp-wh)"},
     {k:"Ваш склад · Нск-1 (FBS)",v:a.whBy.nsk1,c:"var(--mp-wh)"},
-    {k:"Ваш склад · Евросиб",v:a.whBy.nsk2,c:"var(--mp-wh)"},
+    {k:"Ваш склад · Нск-2",v:a.whBy.nsk2,c:"var(--mp-wh)"},
+    {k:"Евросиб — розница (в расчёт не идёт)",v:a.whBy.retail,c:"var(--muted)"},
     {k:"Ваш склад · прочее",v:a.whBy.other,c:"var(--mp-wh)"},
   ].filter(x=>x.v>0||x.always);
   /* Партии производства — КАЖДАЯ СВОЕЙ СТРОКОЙ со своим сроком: их несколько, и приходят
@@ -4718,7 +4725,7 @@ function exportItemXLSX(){
   add("Ваш склад — Клин, шт",a.whBy.klin);
   add("Ваш склад — Москва, шт",a.whBy.msk);
   add("Ваш склад — Нск-1 (FBS), шт",a.whBy.nsk1);
-  add("Ваш склад — Евросиб, шт",a.whBy.nsk2);
+  add("Евросиб — розница, шт",a.whBy.retail,"в «есть» и расчёты маркетплейсов не входит (ЗАП-19)");
   add("ЕСТЬ СЕЙЧАС (в расчёте «хватит»), шт",a.have);
   add("Едет к вам под Ozon, шт",a.ozIncoming,"в «хватит» не входит");
   add("Едет из Китая, шт",a.china,"в «хватит» не входит");
@@ -4777,7 +4784,7 @@ function exportTurnoverCSV(){
     pStatus:r=>(PSTATUS_RANK[r.pStatus||"—"]!=null?PSTATUS_RANK[r.pStatus||"—"]:9)*1e9+dl(r.daysLeft) });
   if(!rows.length){ alert("Под текущие фильтры не попал ни один товар."); return; }
   const head=["Артикул","Код 1С","Код фабрики","Статус товара","Название","Категория","Остаток","В пути"];
-  head.push("Есть всего, шт","Свой склад всего, шт","Склад Нск-1 (FBS), шт","Склад Евросиб, шт","Склад Мск, шт","Склад РВБ Клин, шт",
+  head.push("Есть всего, шт","Свой склад всего, шт","Склад Нск-1 (FBS), шт","Евросиб (розница), шт","Склад Мск, шт","Склад РВБ Клин, шт",
     "Заказов в день (7 дн)","Выкуп, %","Продаж в день",
     "Хватит дней (только остаток)","Хватит дней (с учётом в пути)",
     "Дозаказать, шт","Размер контейнера, шт","Контейнеров","Сумма по себестоимости, ₽","Заказ производству (как в «Запасе и темпе»)","Статус");
@@ -4786,7 +4793,7 @@ function exportTurnoverCSV(){
   const dtxt=v=> v===Infinity? "∞" : (v>0? Math.round(v) : 0);
   rows.forEach(r=>{ totQty+=r.reorder; totSum+=r.reorderCost||0;
     const line=[r.sku,code1c(r.sku),factoryCode(r.sku),r.pStatus||"",r.name||"",r.category||"",r.stock,r.transit||0];
-    line.push(r.covered, r.whHave||0, r.whNsk1||0, r.whNsk2||0, r.whMsk||0, r.whKlin||0,
+    line.push(r.covered, r.whHave||0, r.whNsk1||0, r.whRetail||0, r.whMsk||0, r.whKlin||0,
       +r.avgD.toFixed(2), Math.round(r.buyout*100), +r.salesPerDay.toFixed(2),
       r.salesPerDay<=0? (r.covered>0?"∞":0) : dtxt(r.daysBase),
       r.salesPerDay<=0? (r.covered>0?"∞":0) : dtxt(r.daysLeft),
@@ -4830,7 +4837,7 @@ function exportResupplyXLSX(){
     {h:"Категория",        v:r=>r.category||"", w:20},
     {h:"Склад Мск, шт",        v:r=>r.whMsk,  w:14},
     {h:"Склад Нск-1 (FBS), шт",v:r=>r.whNsk1, w:20},
-    {h:"Склад Евросиб, шт",    v:r=>r.whNsk2, w:18},
+    {h:"Евросиб (розница, не в расчёте), шт", v:r=>r.whRetail||0, w:22},
     {h:"Склад РВБ Клин, шт", v:r=>r.whKlin, w:18},
     {h:"Назначено на Ozon: СФО, шт", v:r=>r.whOzS, w:26},
     {h:"Назначено на Ozon: ЦФО, шт", v:r=>r.whOzC, w:26},
@@ -4916,7 +4923,7 @@ function exportResupplyXLSX(){
     ["Кодов в машине", "не больше "+MAX_CODES_PER_TRUCK+" (паллет по-прежнему "+PALLETS_PER_TRUCK+")"],
     ["Розничный резерв", RETAIL_RESERVE>0? RETAIL_RESERVE+" шт на артикул остаётся на Евросибе и Нск-1 вместе (сначала на Евросибе, недостающее — на Нск-1); на площадки уходит только то, что сверх" : "не вычитается: в выгрузке складов из 1С уже свободный остаток (розница вычтена у продавца)"],
     ["Товары «На вывод»", "исключены из подсорта — выводим из ассортимента"],
-    ["Свои склады и маршруты", "все четыре склада отгружают на обе площадки, разбор в порядке: РВБ Клин → Евросиб (позиции от "+NSK2_MIN_TAKE+" шт) → Нск-1 (Склад FBS) → Москва (СХ и РЦ Солнечногорск — одно место). Нск-1 и Москва разбираются последними: их остаток продаётся по FBS на Wildberries"],
+    ["Свои склады и маршруты", "три склада отгружают на обе площадки, разбор в порядке: РВБ Клин → Нск-1 (Склад FBS) → Москва (СХ и РЦ Солнечногорск — одно место). Нск-1 и Москва разбираются последними: их остаток продаётся по FBS на Wildberries. Склад Евросиб — розница (ЗАП-19, с 10.11.2026): с него не везём, в расчёт он не входит"],
     ["Wildberries", "поставки на ВБ FBO — до "+RESUPPLY_DAYS+" дней запаса; что сверх, остаётся на своих складах и продаётся по FBS"],
     ["Оборачиваемость и цена", "считаются по ВСЕМУ запасу (склады WB + все свои склады + Ozon) — это отдельный вопрос от перемещения между складами"],
     ["Отгрузка", "только целыми паллетами; "+PALLETS_PER_TRUCK+" паллет и не больше "+MAX_CODES_PER_TRUCK+" кодов = машина, машина собирается с одного склада на одно направление"],
@@ -6969,6 +6976,11 @@ const PROD_LEAD=180;    // от подачи заказа до прихода н
 const PROD_COVER=180;   // новый заказ — на 6 месяцев продаж после прихода
 const PROD_SOON=30;     // «заказать до» ближе этого — предупреждение
 const PROD_MP_LOW=30;   // партия пришла к вам, а на площадке запаса меньше чем на 30 дн — «отгрузить»
+/* ДОЛЯ ПАРТИИ, КОТОРАЯ ДОСТАНЕТСЯ МАРКЕТПЛЕЙСАМ (ЗАП-19, продавец 10.11.2026: «на розницу я оставляю 30–40%, остальное
+   делю между вб и озоном 50/50»). В сигнале заказа партия, которая ещё едет, засчитывается маркетплейсам этой долей
+   (середина 30–40%). Сам заказ считается только на продажи ВБ + Ozon — динамики розницы нет, её часть продавец
+   добавляет сам. */
+const PROD_MP_SHARE=0.65;
 let _prodCache=null;
 function prodIdx(){
   if(_prodCache) return _prodCache;
@@ -7059,7 +7071,7 @@ function prodSignal(r){
   /* «Ждём партию» (продавец 27.10.2026 про 311146/316926/428248): прошлая партия не пришла, но он её ждёт —
      новый заказ не считаем, пока она не придёт (пришла — `miss` пропадает, и сигнал снова считается). */
   if(pb.wait && pb.miss) return {st:"wait"};
-  const add={}; pb.pend.filter(x=>x.rem>0&&!x.late).forEach(x=>{ const d=Math.max(0,x.left); add[d]=(add[d]||0)+x.rem; });
+  const add={}; pb.pend.filter(x=>x.rem>0&&!x.late).forEach(x=>{ const d=Math.max(0,x.left); add[d]=(add[d]||0)+x.rem*PROD_MP_SHARE; });
   /* ПАРТИЯ ЕЩЁ ЕДЕТ — НОВЫЙ ЗАКАЗ НЕ СЧИТАЕМ (ЗАП-16, продавец 28.10.2026 про 487197: «до момента, пока партия не
      придёт, ты не считаешь расчёт новой, тк после того как придёт партия, мы ещё раз посмотрим на динамику и там уже
      более точно рассчитаем»). Ждём ПОСЛЕДНЮЮ непришедшую партию файла — и частично пришедшую, и с прошедшим сроком.
@@ -7148,7 +7160,7 @@ function srRows(){
   const sups=[...new Set([...Object.keys(W),...Object.keys(O),...Object.keys(wh)])];
   return sups.map(sup=>{
     const w=W[sup]||{spd:0,stock:0,transit:0,name:""}, o=O[sup]||{spd:0,stock:0,transit:0,name:""};
-    const whB=(wh[sup]&&wh[sup].wh)||{}; const wq={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,other:0};
+    const whB=(wh[sup]&&wh[sup].wh)||{}; const wq={msk:0,nsk1:0,nsk2:0,klin:0,ozsfo:0,ozcfo:0,retail:0,other:0};
     Object.entries(whB).forEach(([n,q])=>{ wq[whKey(n)]+=q; });
     const whMsk=wq.msk, whNsk1=wq.nsk1, whNsk2=wq.nsk2, whKlin=wq.klin, whOther=wq.other, whNsk=whNsk1+whNsk2;
     /* ВИРТУАЛЬНЫЕ СКЛАДЫ OZON В `whQty` НЕ ВХОДЯТ, И ЭТО НЕ ОПИСКА. Этот товар уже учтён
@@ -13751,11 +13763,11 @@ function stkRows(W){
     const m=meta[s]||{name:s,cat:"—",sku:null};
     return {sup:s, name:m.name, cat:m.cat, sku:m.sku,
       fbo:a.fbo, oz:a.oz, wh:a.wh,
-      msk:w.msk||0, nsk1:w.nsk1||0, nsk2:w.nsk2||0, klin:w.klin||0, whOther:w.other||0, ozAsg:ozA, ozDup:dup,
+      msk:w.msk||0, nsk1:w.nsk1||0, nsk2:(w.nsk2||0)+(w.retail||0), klin:w.klin||0, whOther:w.other||0, ozAsg:ozA, ozDup:dup,
       wbTransit:wbT, ozTransit:oT,
       total:a.fbo+a.oz+a.wh+(wbT||0)+(oT||0)-dup,
       dFbo:dOf("fbo"), dOz:dOf("oz"), dWh:dOf("wh"),
-      dMsk:dWk("msk"), dNsk1:dWk("nsk1"), dNsk2:dWk("nsk2"), dKlin:dWk("klin"),
+      dMsk:dWk("msk"), dNsk1:dWk("nsk1"), dNsk2:cmp.wh? dWk("nsk2")+dWk("retail") : null, dKlin:dWk("klin"),
       dAsg:cmp.wh? ozA-((bw.ozsfo||0)+(bw.ozcfo||0)) : null,
       dTotal:anyCmp? ["fbo","oz","wh"].reduce((x,k)=>cmp[k]? x+(a[k]-b[k]) : x, 0) : null};
   });
@@ -13945,7 +13957,7 @@ function renderStockTab(){
       +R("&nbsp;&nbsp;ушло (продано ≈ "+nf.format(fO.sold)+")",fO.n? "≈ −"+sh(fO.out) : "—"))
     +`<div class="t-note">Остаток падает от продаж и растёт от приёмки поставки: пришло ≈ изменение + продано между замерами. Замер: ВБ — ${fmtDate(fboAt)}, Ozon — ${fmtDate(ozAt)} (отчёты по остаткам).</div>`;
   const tipWh=`<div class="t-hd">Ваши склады по ведомости 1С${whAt? " на "+fmtDateLong(whAt) : ""}</div>`
-    +(whAt? R("Москва (Солнечногорск)",sh(sMsk))+R("Нск-1 (FBS)",sh(sN1))+R("Евросиб",sh(sN2))
+    +(whAt? R("Москва (Солнечногорск)",sh(sMsk))+R("Нск-1 (FBS)",sh(sN1))+R("Евросиб (розница, в расчёт МП не идёт)",sh(sN2))
       +R("РВБ Клин",sh(sKl))+R("Назначено на Ozon (СФО/ЦФО)",sh(sAsg))
       +(sOth? R("Прочие склады",sh(sOth)) : "")
       +R("= Ваши склады",sh(sWh),"t-sep")
@@ -14029,7 +14041,7 @@ function renderStockTab(){
   const th=(h,extra)=>`<th${extra||""}>${h}</th>`;
   const subD=W.same? "" : ` · <span class="stk-d-key up">+</span>/<span class="stk-d-key dn">−</span> под цифрой — изменение с ${stkDM(W.start.date)}`;
   let html=`<thead><tr><th class="metric">Категория / товар<span class="th-sub">остаток на ${fmtDate(W.to)}${subD}</span></th>`
-    +th("Склады ВБ")+th("В пути ВБ"+wayS,wayT)+th("Москва")+th("Нск-1")+th("Евросиб")+th("Клин")
+    +th("Склады ВБ")+th("В пути ВБ"+wayS,wayT)+th("Москва")+th("Нск-1")+th("Евросиб",` title="Розница (ЗАП-19): товар розничных магазинов, на маркетплейсы с него не везём — в подсорт, план заказов и запас маркетплейсов не входит"`)+th("Клин")
     +th("→Ozon",` title="Назначено на Ozon: лежит у вас на виртуальных складах «Ozon СФО/ЦФО» и ждёт машины. Входит в ваши склады."`)
     +th("Ozon")+th("В пути Ozon"+wayS,wayT)+th("ВСЕГО")+th(dHead,dTitle)+`</tr></thead><tbody>`;
   const way=v=>live? stkNum(v) : `<span class="muted" title="«В пути» истории не имеет">—</span>`;
@@ -14229,7 +14241,7 @@ function renderStockMove(rows,W){
   const gapTxt=`с ${fmtDate(from)} по ${fmtDate(to)}`;
   const ordLast=((RD.orderSeries&&RD.orderSeries.dates)||[]).slice(-1)[0]||"";
 
-  const WHN={msk:"Москва",nsk1:"Нск-1",nsk2:"Евросиб",klin:"РВБ Клин"};
+  const WHN={msk:"Москва",nsk1:"Нск-1",nsk2:"Нск-2",retail:"Евросиб (розница)",klin:"РВБ Клин"};
   const whShort=n=>WHN[whKey(n)]||n;
   const mv=rows.map(r=>{
     const a=(A&&A.sup[r.sup])||{fbo:0,oz:0,wh:0}, b=(B&&B.sup[r.sup])||{fbo:0,oz:0,wh:0};

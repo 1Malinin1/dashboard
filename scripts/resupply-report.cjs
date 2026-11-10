@@ -5,7 +5,8 @@
 // Правила с 27.10.2026 (ПРАВИЛА.md: ЗАП-08, ЗАП-11, ЗАП-13). Считает calc/resupply.js — тот же файл, что у сайта:
 //   НАПРАВЛЕНИЯ: ВБ FBO; Ozon «Москва и МО» (ЦФО + Питер + Юг) и «Казань / Нижний Новгород»
 //     (Приволжье; склады НН Ozon числит в кластере «Казань»). Кластеры вне округов — не считаем.
-//   СКЛАДЫ-ИСТОЧНИКИ: Клин, Евросиб, Нск-1, Москва — в этом порядке (сначала склады без FBS).
+//   СКЛАДЫ-ИСТОЧНИКИ: Клин, Нск-1, Москва — в этом порядке (сначала склады без FBS). Евросиб — розница (ЗАП-19, 10.11.2026):
+//   не источник и не в расчёте, колонка «Евр.розн» — справочно.
 //   продаж/дн     = заказы за 7 дней ÷ 7 × % выкупа; у Ozon делится на направления по доле спроса
 //                   кластеров (лист «Товар-кластер», `ozon.clusters`);
 //   покрытие      = ВБ: остаток на складах WB + журнал отгрузок; Ozon: остаток + в пути кластеров
@@ -95,8 +96,8 @@ console.log('Требуют отгрузки: '+needAny.length+' позиций 
 { const byW={}; WH_ORDER.forEach(w=>{ byW[w]=sum(r=>r.pool[w]); });
   const tot=sum(r=>r.have);
   console.log('Останется на своих складах: '+F(sum(r=>r.rest))+' шт из '+F(tot)+' (без назначенного на Ozon): '
-    +WH_ORDER.map(w=>WH_NAME[w]+' '+F(byW[w])).join(' · ')
-    +(sum(r=>r.whNsk2>0&&r.whNsk2<NSK2_MIN_TAKE? r.whNsk2:0)? ' + мелочь Евросиба <'+NSK2_MIN_TAKE+' шт не берём' : '')); }
+    +WH_ORDER.filter(w=>w!=='nsk2'||byW[w]>0).map(w=>WH_NAME[w]+' '+F(byW[w])).join(' · ')
+    +' · Евросиб — розница, не в расчёте (ЗАП-19): '+F(sum(r=>r.whRetail||0))+' шт'); }
 { const h=sum(r=>WH_ORDER.reduce((a,w)=>a+r.hold[w],0));
   if(h) console.log('Из них держим за Ozon (машина Ozon не собралась, на ВБ не отдаём): '+F(h)+' шт'); }
 const fbsLeft=sum(r=>r.pool.nsk1+r.pool.msk);
@@ -131,11 +132,11 @@ if(noPal.length) console.log('\nБез вместимости паллеты (в
 const toShip=rows.filter(r=>r.shipO>0||r.shipW>0);
 if(toShip.length){
   console.log('\nЧТО ОТГРУЗИТЬ (топ-'+TOP+' по количеству):');
-  console.log('  код 1С    склад  →Оз.Мск →Оз.Каз   →ВБ    Клин Евросиб  Нск-1    Мск   ост.  дн Мск  дн Каз  дн ВБ  товар');
+  console.log('  код 1С    склад  →Оз.Мск →Оз.Каз   →ВБ    Клин Евр.розн  Нск-1    Мск   ост.  дн Мск  дн Каз  дн ВБ  товар');
   toShip.sort((a,b)=>(b.shipO+b.shipW)-(a.shipO+a.shipW)).slice(0,TOP).forEach(r=>
     console.log('  '+r.sup.padEnd(9)+String(r.have).padStart(6)+String(r.D.oMsk.ship||'-').padStart(8)
       +String(r.D.oKzn.ship||'-').padStart(8)+String(r.D.wFbo.ship||'-').padStart(6)
-      +String(r.whKlin).padStart(8)+String(r.whNsk2).padStart(8)+String(r.whNsk1).padStart(7)
+      +String(r.whKlin).padStart(8)+String(r.whRetail||0).padStart(8)+String(r.whNsk1).padStart(7)
       +String(r.whMsk).padStart(7)+String(r.rest).padStart(7)
       +String(D(r.D.oMsk.days)).padStart(8)+String(D(r.D.oKzn.days)).padStart(8)+String(D(r.D.wFbo.days)).padStart(7)
       +'  '+(r.name||'').slice(0,28)));
