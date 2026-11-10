@@ -42,7 +42,9 @@ async function dump(){
       rows:srExtend(srDecorate(srRows())).map(r=>({sup:r.sup,name:r.name,hz:r.hz,hzSrc:r.hzSrc,stockOz:r.stockOz,stockWb:r.stockWb,
         wbShip:r.wbShip,whQty:r.whQty,spdWb:r.spdWb,ordWb:r.ordWb,ordOz:r.ordOz,spdOz:r.spdOz,
         targetOrders:r.targetOrders,wbAvail:r.wbAvail,ozTake:r.ozTake,boWb:r.boWb})),
-      bo:(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutWin)||null}));
+      bo:(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutWin)||null,
+      ozCodes:((RD.ozon&&RD.ozon.catalog)||[]).map(c=>""+c.sku),
+      outSups:[...recOutSups()].map(String)}));
     if(errs.length) throw new Error('ошибки на сайте: '+errs.join(' | '));
     return d;
   } finally { await b.close(); srv.kill(); }
@@ -63,9 +65,16 @@ async function dump(){
   const MPN=MP==='ozon'? 'Ozon' : 'ВБ';
   if(MP==='wb'){ const seen={}; for(let i=1;i<A.length;i++){ const s=''+A[i][iOff]; if(!s) continue; if(seen[s]) throw new Error('у кода '+s+' несколько карточек ВБ — план кода надо делить, скрипт этого не умеет'); seen[s]=1; } }
   const colL=XLSX.utils.encode_col(iPlan);
+  const ozSet=new Set(D.ozCodes||[]), outSet=new Set(D.outSups||[]); let skippedForeign=0, skippedOut=0;
   const res=[];
   for(let i=1;i<A.length;i++){ const row=A[i]; if(row[iOff]==='') continue;
     const sup=''+row[iOff], r=by[sup], xr=i+1;
+    /* ТОЛЬКО ВАШИ ТОВАРЫ (продавец 10.11.2026: «заполнить только 1 поле и только по моим товарам»). Выгрузка Ozon — весь общий
+       кабинет (10.11: 21 781 строка, наших ~200): строку, которой нет в нашем каталоге Ozon, НЕ трогаем вовсе. */
+    if(MP==='ozon' && !ozSet.has(sup)){ skippedForeign++; continue; }
+    /* «На вывод» без остатка (нигде: Ozon с путём, свои склады) и без плана в файле — не ваш рабочий ассортимент, строку не трогаем
+       (10.11: 25 старых кодов 316…/311…/2…). Новинки «в пути» и всё, где план уже стоял, — заполняем. */
+    if(MP==='ozon' && iPlan>=0 && row[iPlan]==='' && outSet.has(sup) && (!r || ((r.stockOz||0)+(r.whQty||0))<=0)){ skippedOut++; continue; }
     if(!r){ res.push({xr,sup,nm:iNm>=0?row[iNm]:'',name:row[iName],J:MIN,was:row[iPlan],why:'нет в данных дашборда — поставлен минимум'}); continue; }
     if(MP==='wb'){
       const raw=r.targetOrders==null? 0 : r.targetOrders, J=Math.min(MAX,Math.max(MIN,Math.round(raw)));
@@ -117,8 +126,9 @@ async function dump(){
   const out=path.join(outDir,`${MPN}_план_заказов_${dt}.xlsx`);
   fs.writeFileSync(out, JSZipLess.write(z,{type:'buffer',fileType:'zip',compression:true}));
   // проверка: файл читается, все строки заполнены целыми 10…30
-  const chk=XLSX.utils.sheet_to_json(XLSX.readFile(out).Sheets[wb.SheetNames[0]],{header:1,defval:''}).slice(1).filter(r=>r[iOff]!=='');
-  const bad=chk.filter(r=>!Number.isInteger(r[iPlan])||r[iPlan]<MIN||r[iPlan]>MAX);
+  const chk=XLSX.utils.sheet_to_json(XLSX.readFile(out).Sheets[wb.SheetNames[0]],{header:1,defval:''}).slice(1);   // индекс k ↔ строка Excel k+2
+  const filled=new Set(res.map(x=>x.xr));
+  const bad=chk.filter((r,k)=>filled.has(k+2) && (!Number.isInteger(r[iPlan])||r[iPlan]<MIN||r[iPlan]>MAX));
   if(bad.length) throw new Error('незаполненные/кривые строки: '+bad.map(r=>r[iOff]).join(', '));
   const r1=v=>v==null?null:Math.round(v*10)/10, r0=v=>v==null?null:Math.round(v);
   const rep=MP==='wb'? res.map(x=>({'Арт. поставщика (код 1С)':+x.sup,'Артикул ВБ':x.nm,'Товар':x.name,'План, заказов/дн':x.J,'Было в файле':x.was,
@@ -141,7 +151,7 @@ async function dump(){
   const W=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(W,XLSX.utils.json_to_sheet(rep),'Разбор'); XLSX.utils.book_append_sheet(W,XLSX.utils.aoa_to_sheet(how),'Как считается');
   const out2=path.join(outDir,`${MPN}_план_заказов_разбор_${dt}.xlsx`); XLSX.writeFile(W,out2);
   const cnt={}; res.forEach(x=>cnt[x.J]=(cnt[x.J]||0)+1);
-  console.log(`строк ${res.length} · заполнено ${chk.length} · по значениям ${JSON.stringify(cnt)}`);
+  console.log(`строк заполнено ${res.length}${skippedForeign? ' · чужих строк не тронуто '+skippedForeign : ''}${skippedOut? ' · «на вывод» без остатка не тронуто '+skippedOut : ''} (проверено чтением: ${chk.filter((r,k)=>filled.has(k+2)).length}) · по значениям ${JSON.stringify(cnt)}`);
   console.log(`${MPN}: упёрлись в 30 (товара с запасом): ${res.filter(x=>x.raw>MAX).length} · в 10 при товаре, которого мало: ${res.filter(x=>Math.round(x.raw)<MIN&&x.base>0).length} · без товара/данных: ${res.filter(x=>x.why||!(x.base>0)).length}`);
   console.log('→ '+out+'\n→ '+out2);
 })().catch(e=>{ console.error(e.message||e); process.exit(1); });
