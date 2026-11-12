@@ -8,6 +8,6 @@ python3 -m http.server "$PORT" --bind 127.0.0.1 >/dev/null 2>&1 &
 SRV=$!; trap 'kill $SRV 2>/dev/null' EXIT; sleep 1
 FAIL=0
 OUT=$(node scripts/check/tabs-smoke.cjs 2>&1); echo "$OUT" | grep -q "^ERRORS 0" && echo "✓ вкладки: ошибок 0" || { echo "✗ вкладки:"; echo "$OUT" | tail -15; FAIL=1; }
-OUT=$(node scripts/check/ozon-profit.cjs 2>&1); echo "$OUT" | grep -q '"profit": 2840276' && echo "✓ прибыль Ozon 01–14.10 = 2 840 276" || { echo "✗ прибыль Ozon 01–14.10 разошлась:"; echo "$OUT" | grep -E '"(ad|profit)"' | head -4; FAIL=1; }
+OUT=$(node scripts/check/ozon-profit.cjs 2>&1); echo "$OUT" | grep -q '"profit": 2578236' && echo "✓ прибыль Ozon 01–14.10 = 2 578 236" || { echo "✗ прибыль Ozon 01–14.10 разошлась:"; echo "$OUT" | grep -E '"(ad|profit)"' | head -4; FAIL=1; }
 OUT=$(node scripts/check/full-trucks.cjs 2>&1); echo "$OUT" | grep -q "browser≠script: 0" && echo "✓ машины: сайт = скрипт" || { echo "✗ машины:"; echo "$OUT" | tail -8; FAIL=1; }
 exit $FAIL

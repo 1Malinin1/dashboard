@@ -5,6 +5,8 @@
 // себестоимость и рекламу он видит. Прибыль складывается из них по коэффициентам, снятым
 // с фактических 5 недель (`REAL_DATA.meta.model`, см. calibrate-model.cjs).
 //
+// ВНИМАНИЕ: с 12.11.2026 схема v2 — по дню ВЫКУПА, выкуп по товару, доля «к оплате» из отчёта организации
+// (см. большой комментарий «СХЕМА ОЦЕНКИ v2» ниже). Описание цепочки тут — исходная идея.
 // ЦЕПОЧКА (на каждый день и артикул):
 //   заказано ₽ (факт, дозревания не требует)         ← REAL_DATA.orderSeries.money
 //     × денежный выкуп окна                          ← moneyBuyout, по умолчанию из meta.buyoutWin
@@ -135,34 +137,84 @@ function rateFor(d){ let pick=BLOCKS[0]; BLOCKS.forEach(b=>{ if(b.to<d) pick=b; 
 const rateSeg=[];   // для отчёта: какой коэффициент к каким дням применён
 
 const dIdx={}; S.dates.forEach((d,i)=>dIdx[d]=i);
+
+/* ═══ СХЕМА ОЦЕНКИ v2 (12.11.2026) — СЧИТАЕМ КАК ОРГАНИЗАЦИЯ ═══════════════════════════════════════════════════
+   Продавец сверяет дашборд с отчётом организации «Продажи МП» (чистая прибыль менеджера за КАЛЕНДАРНЫЙ месяц, по
+   отчётам ВБ, то есть по дню ВЫКУПА). Старая оценка расходилась с ним на миллионы (сентябрь: 4,87 млн на дашборде
+   против 3,11 млн у организации). Три причины и что с каждой сделано:
+   1) ДЕНЬ. Оценка клала выручку в день ЗАКАЗА, организация и ВБ — в день ВЫКУПА (через 5–6 дней). На росте заказов
+      (сентябрь: +10% в неделю) это давало +1,3 млн ₽ за месяц. Теперь выручка, штуки и себестоимость дня заказа
+      раскладываются по дням выкупа по сроку «заказ → продажа» из последнего отчёта ВБ (`model.lag`).
+   2) ВЫКУП. Заказанные ₽ умножались на ОБЩИЙ денежный выкуп; у дорогих товаров выкуп ниже. Теперь ₽ товара × штучный
+      выкуп ЭТОГО товара (как и штуки). На двух неделях с отчётом ВБ ошибка выручки стала +0,9% и −0,1%.
+   3) ДОЛЯ «К ОПЛАТЕ». Недельные отчёты ВБ дают 61,2%, а за месяц у организации выходит меньше: возвраты товара
+      продавцу и штрафы падают неровно (в сентябре 645 тыс. ₽ на нескольких товарах). Поэтому, если есть отчёт
+      организации (`meta.ue`, scripts/ue-ingest.cjs), доля берётся из него:
+        · ВНУТРИ месяца отчёта — такая, чтобы «к оплате» за месяц сошлось с организацией до рубля;
+        · ПОСЛЕ месяца (пока нет следующего отчёта) — «к оплате организации ÷ выручка оценки за весь месяц».
+      Нет отчёта организации раньше этого дня — по-старому, по периодам отчётов ВБ (`model.blocks`).
+   Себестоимость — по ценам каталога (ue-ingest --costs кладёт туда цены из отчёта организации). */
+const LAGS=(()=>{ const k=MODEL.lag&&MODEL.lag.kernel; if(!k) return [[0,1]];
+  let a=Object.entries(k).map(([L,w])=>[+L,+w]).filter(x=>x[1]>=0.003); const s=a.reduce((x,y)=>x+y[1],0);
+  return a.map(x=>[x[0],x[1]/s]).sort((x,y)=>x[0]-y[0]); })();
+const MAXLAG=LAGS[LAGS.length-1][0];
+// оценка дня ЗАКАЗА по товарам: {sku:{qty,rev}}
+const orderCache={};
+function orderEst(d){ if(orderCache[d]) return orderCache[d];
+  const i=dIdx[d], money=M[d]||null, res={};
+  if(i==null && !money) return orderCache[d]=res;
+  const mbD=mbFor(d);
+  const skus=new Set(money? Object.keys(money) : []); if(i!=null) Object.keys(S.bySku).forEach(k=>{ if(S.bySku[k][i]) skus.add(k); });
+  skus.forEach(sku=>{ const q0=(i!=null&&S.bySku[sku])? (S.bySku[sku][i]||0) : 0, m0=(money&&money[sku])? (money[sku][0]||0) : 0;
+    if(!q0&&!m0) return;
+    const bo=boFor(d,sku);
+    const qty=q0*bo;
+    // ₽: заказано × выкуп ЭТОГО товара; ручной --buyout — общий денежный; денег за день нет — через средний чек
+    const rev=m0? m0*(manualMB? mbD : bo) : qty*(MODEL.avgTicket||0);
+    res[sku]={qty,rev}; });
+  return orderCache[d]=res; }
+// оценка дня ВЫКУПА: Σ по срокам L: (оценка дня d−L) × доля продаж со сроком L
+function saleEst(d){ const res={};
+  for(const [L,w] of LAGS){ const o=orderEst(addD(d,-L));
+    for(const sku in o){ const e=res[sku]||(res[sku]={qty:0,rev:0}); e.qty+=o[sku].qty*w; e.rev+=o[sku].rev*w; } }
+  return res; }
+const factDateSet=new Set(finDates);
+/* калибровка по отчётам организации */
+const UE=(RD.meta.ue&&RD.meta.ue.months)? Object.keys(RD.meta.ue.months).sort().map(k=>RD.meta.ue.months[k]) : [];
+const HOLDF=r=>(r.logistics||0)+(r.penalty||0)+(r.storage||0)+(r.reimb||0)+(r.deduction||0)+(r.priyomka||0)+(r.loyalty||0)+(r.loyaltyPts||0);
+UE.forEach(u=>{ let revEst=0,revAll=0,factNet=0;
+  for(let d=u.from; d<=u.to; d=addD(d,1)){ const e=saleEst(d); let r=0; for(const k in e) r+=e[k].rev; revAll+=r; if(!factDateSet.has(d)) revEst+=r; }
+  O.BAKED_FINANCE.forEach(r=>{ if(r.date>=u.from&&r.date<=u.to) factNet+=(r.payout||0)-HOLDF(r); });
+  u._kIn = revEst>0? (u.totals.net-factNet)/revEst : null;      // внутри месяца: дни без отчёта ВБ добирают до итога организации
+  u._kFwd= revAll>0? u.totals.net/revAll : null;                // после месяца: к оплате организации ÷ выручка оценки
+  u._revAll=revAll; u._revEst=revEst; u._factNet=factNet; });
+function ueFor(d){ let inM=null,prev=null,next=null; UE.forEach(u=>{ if(d>=u.from&&d<=u.to) inM=u; else if(u.to<d) prev=u; else if(!next) next=u; });
+  if(inM&&inM._kIn>0.3&&inM._kIn<0.9) return {u:inM,k:inM._kIn,kind:'in'};
+  if(prev&&prev._kFwd>0.3&&prev._kFwd<0.9) return {u:prev,k:prev._kFwd,kind:'fwd'};
+  // дни ДО первого отчёта организации: ближайший отчёт (назад), а не отчёты ВБ — оценка выручки завышена одинаково
+  if(next&&next._kFwd>0.3&&next._kFwd<0.9) return {u:next,k:next._kFwd,kind:'back'};
+  return null; }
+
 const rows=[]; let revTot=0,cogsTot=0,qtyTot=0,netTot=0,noCost=new Set();
 for(let d=FROM; d<=TO; d=addD(d,1)){
-  const i=dIdx[d]; const money=M[d]||null;
-  if(i==null && !money) continue;
-  // выручка дня по артикулам — из заказанных ₽; если денег нет, оцениваем через средний чек
-  const bySku={};
+  const bySku=saleEst(d);
+  if(!Object.keys(bySku).length) continue;
   const mbD=mbFor(d);
-  const RT=rateFor(d), commRate=RT.commRate, holdRate=RT.holdRate, factLogShare=RT.logShare;
-  { const last=rateSeg[rateSeg.length-1];
-    if(last && last.block===RT.block) last.to=d; else rateSeg.push({from:d,to:d,block:RT.block,payRate:RT.payRate}); }
+  const RT=rateFor(d), ue=ueFor(d);
+  const commRate=RT.commRate, factLogShare=RT.logShare;
+  const payRate=ue? ue.k : RT.payRate;
+  const holdRate=Math.max(0,(1-commRate)-payRate);
+  { const last=rateSeg[rateSeg.length-1]; const src=ue? ('отчёт организации '+ue.u.from.slice(0,7)+(ue.kind==='in'? ' (месяц отчёта)': ue.kind==='fwd'? ' (действует после него)':' (ближайший, дни до первого отчёта)')) : ('отчёты ВБ '+RT.block.from+'…'+RT.block.to);
+    if(last && last.src===src) last.to=d; else rateSeg.push({from:d,to:d,src,payRate}); }
   const wD=manualMB? null : winFor(d);
   byDate.push({d, mb:mbD, win:wD? ('замер '+measDay(wD)+' по окну '+wD.from+'…'+wD.to) : 'ручной',
     covered:!!(wD && measDay(wD)<=d)});
-  if(money){ Object.entries(money).forEach(([sku,v])=>{ bySku[sku]={rev:(v[0]||0)*mbD}; }); }
-  if(i!=null) Object.entries(S.bySku).forEach(([sku,arr])=>{
-    const q=arr[i]||0; if(!q) return;
-    const bo=boFor(d,sku);
-    const e=bySku[sku]||(bySku[sku]={});
-    e.qty=q*bo;
-    if(e.rev==null) e.rev=e.qty*(MODEL.avgTicket||0);      // денег за день нет — через средний чек
-  });
   Object.entries(bySku).forEach(([sku,e])=>{
-    const rev=e.rev||0; if(rev<=0 && !e.qty) return;
+    const rev=e.rev||0, qty=e.qty||0; if(rev<1 && qty<0.01) return;
     const c=catBySku[sku]; const cp=costAt(sku,d);
-    const qty=e.qty!=null? e.qty : (MODEL.avgTicket? rev/MODEL.avgTicket : 0);
     if(!cp && qty>0) noCost.add(sku);
-    const payout=rev*(1-commRate);
     const hold=rev*holdRate;
+    const payout=rev*payRate+hold;
     const log=hold*factLogShare, rest=hold-log;
     rows.push({id:d+'_'+sku, date:d, sku,
       name:(c&&c.name)||sku, category:(c&&c.category)||'',
@@ -170,7 +222,7 @@ for(let d=FROM; d<=TO; d=addD(d,1)){
       payout:+payout.toFixed(2), logistics:+log.toFixed(2), penalty:0, storage:0,
       reimb:+rest.toFixed(2), deduction:0, priyomka:0, loyalty:0, loyaltyPts:0,
       cogsEst:+(qty*cp).toFixed(2), est:true});
-    revTot+=rev; cogsTot+=qty*cp; qtyTot+=qty; netTot+=rev*RT.payRate;
+    revTot+=rev; cogsTot+=qty*cp; qtyTot+=qty; netTot+=rev*payRate;
   });
 }
 // реклама за период разносится пропорционально выручке дня (в BAKED_ADS не пишем — там факт)
@@ -190,13 +242,15 @@ if(manualMB||!HIST){
   const seg=[]; byDate.forEach(x=>{ const last=seg[seg.length-1];
     if(last && last.win===x.win && last.covered===x.covered){ last.to=x.d; }
     else seg.push({from:x.d,to:x.d,win:x.win,mb:x.mb,covered:x.covered}); });
-  console.log('  денежный выкуп — ДЕЙСТВУЕТ С ДАТЫ ЗАМЕРА И ВПЕРЁД (прошлое не трогаем):');
+  console.log('  % выкупа (замер действует с даты замера и вперёд; ₽ товара × его штучный выкуп, общий — запасной):');
   seg.forEach(s=>console.log('     '+s.from+' … '+s.to+'  '+(s.mb*100).toFixed(1)+'%'
     +'  ('+s.win+')'+(s.covered? '':'   ← дни раньше первого замера, другого источника нет')));
 }
 console.log('  выручка (оценка):         '+R(revTot));
-console.log('  «итого к оплате» ÷ выручка — ПО ПЕРИОДАМ ФАКТА (действует с конца периода и вперёд):');
-rateSeg.forEach(s=>console.log('     '+s.from+' … '+s.to+'  '+(s.payRate*100).toFixed(1)+'%  (по отчётам '+s.block.from+'…'+s.block.to+')'));
+console.log('  выручка, штуки и себестоимость — ПО ДНЮ ВЫКУПА (срок заказ → продажа в среднем '+((MODEL.lag&&MODEL.lag.mean)||0)+' дн.)');
+console.log('  «итого к оплате» ÷ выручка:');
+rateSeg.forEach(s=>console.log('     '+s.from+' … '+s.to+'  '+(s.payRate*100).toFixed(2)+'%  ('+s.src+')'));
+UE.forEach(u=>console.log('  отчёт организации '+u.from+'…'+u.to+': к оплате '+R(u.totals.net)+' · в нём по отчётам ВБ '+R(u._factNet)+' · выручка оценки за месяц '+R(u._revAll)));
 console.log('  итого к оплате:           '+R(net));
 console.log('  себестоимость проданного: '+R(cogsTot)+'  ('+Math.round(qtyTot).toLocaleString('ru-RU')+' шт)');
 console.log('  реклама:                  '+R(ADS));
