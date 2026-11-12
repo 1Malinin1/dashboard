@@ -19,7 +19,12 @@ const { aggregateFinanceRows, aggregateAdRows, controlTotals } = require('./lib/
 
 const ROOT = path.join(__dirname, '..');
 const OUT = path.join(ROOT, 'decrypted');
-const newPeriod = process.argv[2];
+const argv = process.argv.slice(2);
+const optArg = k => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : null; };
+/* --from / --to — границы недели отчёта: строки с датой вне их остаются в этой неделе
+   (см. aggregateFinanceRows в lib/parse-wb.cjs). Для недельного отчёта передавать ВСЕГДА. */
+const P_FROM = optArg('--from'), P_TO = optArg('--to');
+const newPeriod = argv.filter((a, i) => !/^--/.test(a) && !/^--(from|to)$/.test(argv[i - 1] || ''))[0];
 
 const ctx = {}; vm.createContext(ctx);
 // BAKED_FUNNEL держим отдельно и переносим КАК ЕСТЬ: воронку печёт bake-funnel.cjs,
@@ -51,7 +56,8 @@ if (!finRaw.length && !adsRaw.length) {
 const MONEY = ['payout', 'logistics', 'penalty', 'storage', 'reimb', 'deduction', 'priyomka', 'loyalty', 'loyaltyPts'];
 const isEmptyAgg = a => !a.qty && !a.returnsQty && !Math.round(a.revenue)
   && !MONEY.some(f => Math.round(a[f] || 0));
-const weekFin = aggregateFinanceRows(finRaw).filter(a => !isEmptyAgg(a));
+const weekFin = aggregateFinanceRows(finRaw, { from: P_FROM, to: P_TO }).filter(a => !isEmptyAgg(a));
+if (!P_FROM || !P_TO) console.log('  ⚠ границы недели (--from/--to) не переданы: строки с датой из прошлых недель лягут на свои даты и вытеснят там оценку.');
 const weekAds = aggregateAdRows(adsRaw);
 const wDates = [...new Set(weekFin.map(r => r.date))].sort();
 console.log('НОВЫЕ ДАННЫЕ:', JSON.stringify(controlTotals(weekFin)),

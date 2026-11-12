@@ -38,15 +38,29 @@ function headerRow(XLSX, ws) {
 const FIN_COLS = {
   sku: 'Код номенклатуры', name: 'Название', category: 'Предмет',
   docType: 'Тип документа', basis: 'Обоснование для оплаты', saleDate: 'Дата продажи', qty: 'Кол-во',
+  orderDate: 'Дата заказа покупателем',   // для срока «заказ → продажа» (wb-fin-compare.cjs)
   retail: 'Цена розничная с учетом согласованной скидки',
   payout: 'К перечислению Продавцу за реализованный Товар',
   logistics: 'Услуги по доставке товара покупателю',
   penalty: 'Общая сумма штрафов', storage: 'Хранение',
-  reimb: 'Возмещение издержек по перевозке/по складским операциям с товаром',
-  deduction: 'Удержания', priyomka: 'Операции на приемке',
+  // Массив = варианты названия одной и той же колонки: ВБ их переименовывает (отчёты 11.2026:
+  // «Возмещение издержек по перемещению и операционной обработке товара», «Услуга по обработке Товара»).
+  reimb: ['Возмещение издержек по перевозке/по складским операциям с товаром',
+          'Возмещение издержек по перемещению и операционной обработке товара'],
+  deduction: 'Удержания', priyomka: ['Операции на приемке', 'Услуга по обработке Товара'],
   loyalty: 'Стоимость участия в программе лояльности',
   loyaltyPts: 'Сумма баллов, удержанных по программе лояльности',
+  // ДОПЛАТА продавцу (строки «Компенсация скидки по программе лояльности»): ВБ возвращает скидку,
+  // которую дал покупателю по своей программе. Это доход — прибавляется к «к перечислению».
+  loyaltyComp: 'Компенсация скидки по программе лояльности',
 };
+// Колонки, которых в старых отчётах не было вовсе, — об их отсутствии не предупреждаем.
+const FIN_OPTIONAL = { loyaltyComp: 1, orderDate: 1 };
+// индекс колонки по имени или по любому из вариантов имени
+function colOf(header, names) {
+  for (const n of [].concat(names)) { const i = header.indexOf(n); if (i >= 0) return i; }
+  return -1;
+}
 
 // Разбор отчёта «О реализации товаров». Берёт ВСЕ типы строк (не только продажи) —
 // логистика/хранение/штрафы/возмещение лежат отдельными строками и это расходы.
@@ -65,14 +79,14 @@ function parseFinanceSheet(XLSX, wb, catalogSkuSet) {
   if (!ws) return null; // не отчёт о реализации — вызывающий код попробует другой парсер
   const rows = XLSX.utils.sheet_to_json(ws, { header: 1, raw: false, defval: '' });
   if (rows.length < 2) throw new Error('Лист найден, но в нём нет строк с данными.');
-  const colIdx = {}; for (const k in FIN_COLS) colIdx[k] = header.indexOf(FIN_COLS[k]);
+  const colIdx = {}; for (const k in FIN_COLS) colIdx[k] = colOf(header, FIN_COLS[k]);
   if (colIdx.sku < 0 || colIdx.payout < 0) throw new Error('Не нашёл нужные колонки — это точно отчёт о реализации WB?');
   // ВАЖНО: колонки ищутся по ТОЧНОМУ имени. Если WB переименует «Хранение» или «Удержания»,
   // indexOf вернёт -1, val() молча отдаст 0 — и целая статья расходов исчезнет из «Итого к оплате»
   // без единой ошибки. Поэтому о ненайденных колонках сообщаем вслух.
-  const missing = Object.keys(FIN_COLS).filter(k => colIdx[k] < 0);
+  const missing = Object.keys(FIN_COLS).filter(k => colIdx[k] < 0 && !FIN_OPTIONAL[k]);
   if (missing.length) console.warn('  ⚠ не нашёл колонки в отчёте (будут считаться нулём): '
-    + missing.map(k => '«' + FIN_COLS[k] + '»').join(', '));
+    + missing.map(k => '«' + [].concat(FIN_COLS[k]).join('» / «') + '»').join(', '));
   const val = (r, k) => (colIdx[k] >= 0 ? num(r[colIdx[k]]) : 0);
   const byId = {}; let matched = 0, total = 0;
   for (let i = 1; i < rows.length; i++) {
@@ -83,11 +97,21 @@ function parseFinanceSheet(XLSX, wb, catalogSkuSet) {
     matched++;
     const date = (r[colIdx.saleDate] || '').toString().trim();
     const h = rowHash(r);
+    const docType = (r[colIdx.docType] || '').toString().trim();
+    /* ВОЗВРАТ — СО ЗНАКОМ МИНУС (12.11.2026). В строках «Возврат» ВБ пишет «К перечислению» ПЛЮСОМ,
+       а в итоге недели вычитает: к перечислению = продажи − возвраты. До 12.11.2026 сумма шла в
+       свод как есть, то есть возврат ПРИБАВЛЯЛ деньги (по неделям 29.06–02.08 «итого к оплате»
+       было завышено на ≈0,9% выручки, а с ним и коэффициент оценки 62,0%). Компенсация скидки
+       лояльности — доплата продавцу, кладём её в payout с тем же знаком (у возврата — минус). */
+    const sign = docType === 'Возврат' ? -1 : 1;
+    const comp = val(r, 'loyaltyComp');
     byId[h] = {
       id: h, date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '', sku,
       name: (r[colIdx.name] || sku).toString(), category: (r[colIdx.category] || '').toString(),
-      docType: (r[colIdx.docType] || '').toString().trim(), qty: val(r, 'qty'),
-      retail: val(r, 'retail'), payout: val(r, 'payout'),
+      docType, qty: val(r, 'qty'),
+      basis: colIdx.basis >= 0 ? (r[colIdx.basis] || '').toString().trim() : '',
+      orderDate: colIdx.orderDate >= 0 ? (r[colIdx.orderDate] || '').toString().trim().slice(0, 10) : '',
+      retail: val(r, 'retail'), payout: sign * (val(r, 'payout') + comp), loyaltyComp: sign * comp,
       logistics: val(r, 'logistics'), penalty: val(r, 'penalty'), storage: val(r, 'storage'),
       reimb: val(r, 'reimb'), deduction: val(r, 'deduction'), priyomka: val(r, 'priyomka'),
       loyalty: val(r, 'loyalty'), loyaltyPts: val(r, 'loyaltyPts'),
@@ -163,7 +187,14 @@ function parseCostSheet(XLSX, wb) {
 // за день. Итог за период не меняется (это те же деньги), а подённая картина
 // перестаёт врать. Если у артикула нет ни одного дня с выручкой — кладём на maxDate.
 const MONEY_FIELDS = ['payout', 'logistics', 'penalty', 'storage', 'reimb', 'deduction', 'priyomka', 'loyalty', 'loyaltyPts'];
-function aggregateFinanceRows(raw) {
+/* opt.from / opt.to — границы недели отчёта. В недельном отчёте попадаются строки с датой ИЗ ПРОШЛЫХ
+   недель (баллы за отзывы, штрафы, корректировка эквайринга — 02–08.11.2026 таких 64 строки с датами
+   05.10–01.11). Оставь им их дату — и день из «оценки» станет «фактом» с парой рублей: сайт берёт факт
+   вместо оценки по ДАТЕ, и вся оценка этого дня пропадёт. Поэтому такие строки считаем недатированными:
+   деньги остаются в неделе отчёта и размазываются по дням артикула (как «Возмещение издержек»). */
+function aggregateFinanceRows(raw, opt) {
+  if (opt && (opt.from || opt.to)) raw = raw.map(r =>
+    (r.date && ((opt.from && r.date < opt.from) || (opt.to && r.date > opt.to))) ? Object.assign({}, r, { date: '' }) : r);
   const dated = raw.map(r => r.date).filter(Boolean).sort();
   const maxDate = dated.length ? dated[dated.length - 1] : '';
   const byKey = {};
@@ -238,7 +269,7 @@ function controlTotals(aggregatedFinRows) {
 }
 
 module.exports = {
-  num, rowHash, headerRow, FIN_COLS,
+  num, rowHash, headerRow, FIN_COLS, colOf,
   parseFinanceSheet, parseAdsSheet, parseCostSheet,
   aggregateFinanceRows, aggregateAdRows, holdings, controlTotals,
 };

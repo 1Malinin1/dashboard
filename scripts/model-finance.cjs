@@ -65,7 +65,14 @@ const finDates=[...new Set(O.BAKED_FINANCE.map(r=>r.date))].sort();
 const lastFact=finDates[finDates.length-1];
 const addD=(d,n)=>{const t=new Date(d+'T00:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10);};
 const moneyDates=Object.keys(M).sort();
-const FROM=arg('--from', addD(lastFact,1));
+/* ФАКТ ИДЁТ КУСКАМИ (с 12.11.2026: 29.06–02.08, потом неделя 02–08.11). Оценку считаем с конца ПЕРВОГО
+   куска и по всем дням подряд, ВКЛЮЧАЯ дни, за которые потом пришёл отчёт: сайт берёт факт вместо оценки
+   по дате сам (fdbRefreshFinanceCache), а оценка за эти дни остаётся в снимке для сверки
+   «оценка против отчёта» (scripts/wb-fin-compare.cjs). Раньше старт был «день после последнего факта» —
+   с новой неделей факта это стёрло бы оценку за август–октябрь. */
+let firstBlockEnd=finDates[0];
+for(let i=1;i<finDates.length;i++){ if(addD(firstBlockEnd,1)===finDates[i]) firstBlockEnd=finDates[i]; else break; }
+const FROM=arg('--from', addD(firstBlockEnd,1));
 const TO=arg('--to', moneyDates[moneyDates.length-1]||S.dates[S.dates.length-1]);
 const ADS=parseFloat(arg('--ads','0'))||0;
 /* Денежный выкуп: доля заказанных ₽, которая доходит до выручки. Берём именно ДЕНЕЖНЫЙ
@@ -112,22 +119,32 @@ const catBySku={}; RD.catalog.forEach(x=>catBySku[''+x.sku]=x);
 function costAt(sku,d){ const x=catBySku[sku]; if(!x) return 0;
   const h=x.costHistory; if(!h||!h.length) return x.costPrice||0;
   let v=x.costPrice||0; for(const e of h){ if(e.from==null||e.from<=d) v=e.cost; } return v; }
-// доли удержаний внутри выручки — из факта, чтобы вкладка «Финансы» не была пустой
-const commRate=MODEL.commissionRate, payRate=MODEL.payoutRate;
-const holdRate=Math.max(0,(1-commRate)-payRate);          // всё, что удерживают сверх комиссии
-const factLogShare=(()=>{ let log=0,hold=0;
+/* КОЭФФИЦИЕНТЫ — ПО ПЕРИОДАМ ФАКТА (`model.blocks`, calibrate-model.cjs): для дня берём ПОСЛЕДНИЙ период,
+   который закончился раньше этого дня. Тот же принцип, что у % выкупа: замер действует вперёд, прошлое
+   не переписывается. Дни 03.08–01.11 считаются по 29.06–02.08, с 09.11 — по неделе 02–08.11. */
+const BLOCKS=(Array.isArray(MODEL.blocks)&&MODEL.blocks.length)? MODEL.blocks.slice().sort((a,b)=>a.to<b.to?-1:1)
+  : [{from:MODEL.from,to:MODEL.to,payoutRate:MODEL.payoutRate,commissionRate:MODEL.commissionRate,logShare:null}];
+const factLogShareAll=(()=>{ let log=0,hold=0;
   O.BAKED_FINANCE.forEach(r=>{ log+=r.logistics||0;
     hold+=(r.logistics||0)+(r.penalty||0)+(r.storage||0)+(r.reimb||0)+(r.deduction||0)+(r.priyomka||0)+(r.loyalty||0)+(r.loyaltyPts||0); });
   return hold? log/hold : 0; })();
+function rateFor(d){ let pick=BLOCKS[0]; BLOCKS.forEach(b=>{ if(b.to<d) pick=b; });
+  const commRate=pick.commissionRate, payRate=pick.payoutRate;
+  return {block:pick, commRate, payRate, holdRate:Math.max(0,(1-commRate)-payRate),   // всё, что удерживают сверх комиссии
+    logShare: pick.logShare!=null? pick.logShare : factLogShareAll}; }
+const rateSeg=[];   // для отчёта: какой коэффициент к каким дням применён
 
 const dIdx={}; S.dates.forEach((d,i)=>dIdx[d]=i);
-const rows=[]; let revTot=0,cogsTot=0,qtyTot=0,noCost=new Set();
+const rows=[]; let revTot=0,cogsTot=0,qtyTot=0,netTot=0,noCost=new Set();
 for(let d=FROM; d<=TO; d=addD(d,1)){
   const i=dIdx[d]; const money=M[d]||null;
   if(i==null && !money) continue;
   // выручка дня по артикулам — из заказанных ₽; если денег нет, оцениваем через средний чек
   const bySku={};
   const mbD=mbFor(d);
+  const RT=rateFor(d), commRate=RT.commRate, holdRate=RT.holdRate, factLogShare=RT.logShare;
+  { const last=rateSeg[rateSeg.length-1];
+    if(last && last.block===RT.block) last.to=d; else rateSeg.push({from:d,to:d,block:RT.block,payRate:RT.payRate}); }
   const wD=manualMB? null : winFor(d);
   byDate.push({d, mb:mbD, win:wD? ('замер '+measDay(wD)+' по окну '+wD.from+'…'+wD.to) : 'ручной',
     covered:!!(wD && measDay(wD)<=d)});
@@ -153,7 +170,7 @@ for(let d=FROM; d<=TO; d=addD(d,1)){
       payout:+payout.toFixed(2), logistics:+log.toFixed(2), penalty:0, storage:0,
       reimb:+rest.toFixed(2), deduction:0, priyomka:0, loyalty:0, loyaltyPts:0,
       cogsEst:+(qty*cp).toFixed(2), est:true});
-    revTot+=rev; cogsTot+=qty*cp; qtyTot+=qty;
+    revTot+=rev; cogsTot+=qty*cp; qtyTot+=qty; netTot+=rev*RT.payRate;
   });
 }
 // реклама за период разносится пропорционально выручке дня (в BAKED_ADS не пишем — там факт)
@@ -162,7 +179,7 @@ if(ADS>0 && revTot>0) rows.forEach(r=>{ r.adEst=+(ADS*(r.revenue/revTot)).toFixe
 write(rows);
 
 const R=n=>Math.round(n).toLocaleString('ru-RU')+' ₽';
-const net=revTot*payRate, profit=net-cogsTot-ADS;
+const net=netTot, profit=net-cogsTot-ADS;
 console.log('ОЦЕНКА ФИНАНСОВ за '+FROM+' … '+TO+'  ('+rows.length+' строк, факт заканчивается '+lastFact+')');
 console.log('─'.repeat(64));
 if(manualMB||!HIST){
@@ -178,7 +195,9 @@ if(manualMB||!HIST){
     +'  ('+s.win+')'+(s.covered? '':'   ← дни раньше первого замера, другого источника нет')));
 }
 console.log('  выручка (оценка):         '+R(revTot));
-console.log('  итого к оплате ('+(payRate*100).toFixed(1)+'%):  '+R(net));
+console.log('  «итого к оплате» ÷ выручка — ПО ПЕРИОДАМ ФАКТА (действует с конца периода и вперёд):');
+rateSeg.forEach(s=>console.log('     '+s.from+' … '+s.to+'  '+(s.payRate*100).toFixed(1)+'%  (по отчётам '+s.block.from+'…'+s.block.to+')'));
+console.log('  итого к оплате:           '+R(net));
 console.log('  себестоимость проданного: '+R(cogsTot)+'  ('+Math.round(qtyTot).toLocaleString('ru-RU')+' шт)');
 console.log('  реклама:                  '+R(ADS));
 console.log('  ПРИБЫЛЬ (оценка):         '+R(profit)+'   маржа '+(revTot?(profit/revTot*100).toFixed(1):'—')+'%');

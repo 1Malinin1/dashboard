@@ -54,12 +54,28 @@ function agg(from,to){
     ordered: ordQty(from,to)};
 }
 const dates=[...new Set(FIN.map(r=>r.date))].sort();
-const total=agg(dates[0],dates[dates.length-1]);
+/* ПЕРИОДЫ ФАКТА (с 12.11.2026). Отчёты приходят не подряд: 29.06–02.08, потом перерыв (доступ закрыли
+   24.08), потом неделя 02–08.11. Между ними ВБ менял условия (в ноябре появилась «Компенсация скидки по
+   программе лояльности», комиссия выросла), поэтому один общий коэффициент на все недели — неправда.
+   Считаем по каждому непрерывному куску дат отдельно и храним в `model.blocks`; `model-finance.cjs`
+   берёт для дня коэффициенты ПОСЛЕДНЕГО куска, который закончился раньше этого дня (как % выкупа:
+   действует с даты замера и вперёд, прошлое не трогаем). Верхние поля model.* — по последнему куску. */
+const addD=(d,n)=>{const t=new Date(d+'T00:00:00Z');t.setUTCDate(t.getUTCDate()+n);return t.toISOString().slice(0,10);};
+const runs=[]; dates.forEach(d=>{ const last=runs[runs.length-1];
+  if(last && addD(last.to,1)===d) last.to=d; else runs.push({from:d,to:d}); });
+const logShareOf=(from,to)=>{ let log=0,hold=0; FIN.forEach(r=>{ if(r.date<from||r.date>to) return; log+=r.logistics||0; hold+=HOLD(r); }); return hold? log/hold : 0; };
+const blocks=runs.map(r=>{ const a=agg(r.from,r.to);
+  return {from:r.from,to:r.to,days:Math.round((Date.parse(r.to)-Date.parse(r.from))/864e5)+1,
+    payoutRate:+a.payoutRate.toFixed(4),commissionRate:+a.commissionRate.toFixed(4),holdRate:+a.holdRate.toFixed(4),
+    logShare:+logShareOf(r.from,r.to).toFixed(4),avgTicket:Math.round(a.avgTicket),rev:Math.round(a.rev),net:Math.round(a.net)}; });
+const lastRun=runs[runs.length-1];
+const total=agg(lastRun.from,lastRun.to);
 const weeks=[];
-for(let i=dates.length;i>0;i-=7){
-  const w=dates.slice(Math.max(0,i-7),i);
-  const a=agg(w[0],w[w.length-1]); if(a.rev>0) weeks.push(a);
-}
+for(const run of runs){ const ds=dates.filter(d=>d>=run.from&&d<=run.to);
+  for(let i=ds.length;i>0;i-=7){
+    const w=ds.slice(Math.max(0,i-7),i);
+    const a=agg(w[0],w[w.length-1]); if(a.rev>0) weeks.push(a);
+  } }
 const mean=a=>a.reduce((x,y)=>x+y,0)/a.length;
 const sd=a=>{const m=mean(a);return Math.sqrt(mean(a.map(x=>(x-m)**2)));};
 const st=f=>{const v=weeks.map(f);return {mean:+mean(v).toFixed(4),sd:+sd(v).toFixed(4),
@@ -68,7 +84,8 @@ const st=f=>{const v=weeks.map(f);return {mean:+mean(v).toFixed(4),sd:+sd(v).toF
 const soldPerOrd = weeks.filter(w=>w.ordered>0).map(w=>w.sold/w.ordered);
 RD.meta=RD.meta||{};
 RD.meta.model={
-  from:total.from, to:total.to, weeks:weeks.length,
+  from:total.from, to:total.to, weeks:weeks.length, blocks,
+  lag:(RD.meta.model&&RD.meta.model.lag)||null,   // срок «заказ → продажа» из последнего отчёта, пишет wb-fin-compare.cjs
   payoutRate:+total.payoutRate.toFixed(4),      // «итого к оплате» ÷ выручка — главный коэффициент
   commissionRate:+total.commissionRate.toFixed(4),
   holdRate:+total.holdRate.toFixed(4),
@@ -80,7 +97,7 @@ RD.meta.model={
            soldPerOrdered: soldPerOrd.length? {mean:+mean(soldPerOrd).toFixed(4),
              sd:+sd(soldPerOrd).toFixed(4), min:+Math.min(...soldPerOrd).toFixed(4),
              max:+Math.max(...soldPerOrd).toFixed(4)} : null },
-  note:'снято с фактических отчётов WB; доступ к финансовым отчётам закрыт 24.08.2026 — пересчитать не из чего',
+  note:'снято с фактических отчётов WB по периодам факта (blocks); верхние поля — по последнему периоду',
   builtAt:new Date().toISOString()
 };
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
@@ -89,7 +106,11 @@ fs.writeFileSync(path.join(OUT,'wb-data.js'),
 
 const R=n=>Math.round(n).toLocaleString('ru-RU')+' ₽';
 const P=n=>(n*100).toFixed(1)+'%';
-console.log('КАЛИБРОВКА МОДЕЛИ по факту '+total.from+' … '+total.to+' ('+weeks.length+' недель)');
+console.log('ПЕРИОДЫ ФАКТА (коэффициент действует с конца периода и вперёд, до следующего):');
+blocks.forEach(b=>console.log('  '+b.from+' … '+b.to+' ('+b.days+' дн.)  к оплате ÷ выручка '+P(b.payoutRate)
+  +' · комиссия '+P(b.commissionRate)+' · удержания '+P(b.holdRate)+' · чек '+b.avgTicket+' ₽ · выручка '+R(b.rev)));
+console.log('');
+console.log('ПОСЛЕДНИЙ ПЕРИОД '+total.from+' … '+total.to+' (недель всего в факте: '+weeks.length+')');
 console.log('  выручка '+R(total.rev)+' · итого к оплате '+R(total.net)+' · продано '+total.sold.toLocaleString('ru-RU')+' шт');
 console.log('');
 console.log('  «итого к оплате» ÷ выручка : '+P(total.payoutRate)

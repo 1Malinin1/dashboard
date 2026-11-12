@@ -5785,6 +5785,12 @@ let financeIsBaked=false;
 function normFinCategory(sku,fallback){ return catalogCatBySku[sku] || fallback || ""; }
 let financeHasBaked=false;   // зашитый снимок присутствует в текущем своде (в т.ч. в миксе с загрузками)
 let financeEstFrom=null, financeEstTo=null;   // даты, за которые финансы — ОЦЕНКА, а не факт
+/* ФАКТ ИДЁТ КУСКАМИ (с 12.11.2026: 29.06–02.08 и неделя 02–08.11, между ними оценка). Поэтому «день — оценка?»
+   спрашиваем у набора дат, а НЕ сравнением «d >= financeEstFrom» — иначе неделя с отчётом внутри периода оценки
+   помечалась бы оценкой. financeEstFrom/To остались как края периода оценки для подписей. */
+let financeEstDates=new Set(), financeFactRanges=[];
+const isEstDay = d => financeEstDates.has(d);
+function finFactTxt(){ return financeFactRanges.map(r=>fmtDate(r[0])+"–"+fmtDate(r[1])).join(" и "); }
 async function fdbRefreshFinanceCache(){
   const raw=await fdbGetAll(FINANCE_STORE);
   // Зашитый снимок — базовый слой, который присутствует ВСЕГДА. Ваши загрузки
@@ -5808,6 +5814,10 @@ async function fdbRefreshFinanceCache(){
   const estKept=est.filter(r=>!factDates.has(r.date));
   financeEstFrom = estKept.length? estKept.reduce((a,r)=>a<r.date?a:r.date,estKept[0].date) : null;
   financeEstTo   = estKept.length? estKept.reduce((a,r)=>a>r.date?a:r.date,estKept[0].date) : null;
+  financeEstDates = new Set(estKept.map(r=>r.date));
+  financeFactRanges = [];
+  [...factDates].sort().forEach(d=>{ const last=financeFactRanges[financeFactRanges.length-1];
+    if(last && addDays(last[1],1)===d) last[1]=d; else financeFactRanges.push([d,d]); });
   FINANCE_CACHE=bakedKept.concat(uploaded,estKept).map(r=>({...r,category:normFinCategory(r.sku,r.category)})).sort((a,b)=>a.date<b.date?-1:1);
 }
 
@@ -5996,19 +6006,23 @@ self.onmessage = function(e){
 
     } else if(type==="finance"){
       if(!wb.SheetNames.length) throw new Error("В файле не нашлось ни одного листа.");
-      // Все нужные колонки отчёта о реализации WB. Формула «Итого к оплате» (сверена на
-      // всём магазине с точностью 99,99%): К перечислению − логистика − штрафы − удержания
-      // − хранение − операции приёмки − стоимость лояльности − баллы лояльности − возмещение.
+      // Все нужные колонки отчёта о реализации WB. Формула «Итого к оплате»:
+      // К перечислению (продажи − ВОЗВРАТЫ + компенсация скидки лояльности) − логистика − штрафы
+      // − удержания − хранение − операции приёмки − стоимость лояльности − баллы лояльности − возмещение.
+      // Держать ОДИНАКОВО с scripts/lib/parse-wb.cjs (там же пояснение про знак возврата, 12.11.2026).
       const FIN_COLS={ sku:"Код номенклатуры", name:"Название", category:"Предмет",
         docType:"Тип документа", basis:"Обоснование для оплаты", saleDate:"Дата продажи", qty:"Кол-во",
         retail:"Цена розничная с учетом согласованной скидки",
         payout:"К перечислению Продавцу за реализованный Товар",
         logistics:"Услуги по доставке товара покупателю",
         penalty:"Общая сумма штрафов", storage:"Хранение",
-        reimb:"Возмещение издержек по перевозке/по складским операциям с товаром",
-        deduction:"Удержания", priyomka:"Операции на приемке",
+        reimb:["Возмещение издержек по перевозке/по складским операциям с товаром",
+               "Возмещение издержек по перемещению и операционной обработке товара"],
+        deduction:"Удержания", priyomka:["Операции на приемке","Услуга по обработке Товара"],
         loyalty:"Стоимость участия в программе лояльности",
-        loyaltyPts:"Сумма баллов, удержанных по программе лояльности" };
+        loyaltyPts:"Сумма баллов, удержанных по программе лояльности",
+        loyaltyComp:"Компенсация скидки по программе лояльности" };
+      const colOf=(hd,names)=>{ for(const n of [].concat(names)){ const i=hd.indexOf(n); if(i>=0) return i; } return -1; };
       // ищем лист по заголовкам, а не берём первый попавшийся — в больших выгрузках
       // данные иногда лежат не на первом листе (например, есть лист с пояснениями)
       let ws=null, header=null, sheetInfo=[];
@@ -6022,7 +6036,7 @@ self.onmessage = function(e){
       if(!ws) throw new Error("Не нашёл лист с колонками «Код номенклатуры»/«К перечислению…». Листы в файле: "+sheetInfo.join(", ")+". Это точно отчёт о реализации WB?");
       const rows = XLSX.utils.sheet_to_json(ws,{header:1,raw:false,defval:""});
       if(rows.length<2) throw new Error("Лист найден, но в нём нет строк с данными (только заголовок).");
-      const colIdx={}; for(const k in FIN_COLS) colIdx[k]=header.indexOf(FIN_COLS[k]);
+      const colIdx={}; for(const k in FIN_COLS) colIdx[k]=colOf(header,FIN_COLS[k]);
       if(colIdx.sku<0||colIdx.payout<0) throw new Error("Не нашёл нужные колонки («Код номенклатуры», «К перечислению…») — это точно отчёт о реализации WB?");
       // Храним ПОСТРОЧНО: одна запись = одна строка отчёта, ключ = отпечаток всей строки.
       // Повторная загрузка той же строки (тот же файл/пересекающийся кусок) перезапишет
@@ -6039,10 +6053,12 @@ self.onmessage = function(e){
         matched++;
         const date=(r[colIdx.saleDate]||"").toString().trim();
         const h=rowHash(r);
+        const docType=(r[colIdx.docType]||"").toString().trim();
+        const sign=docType==="Возврат"? -1 : 1, comp=val("loyaltyComp");   // возврат — минусом; компенсация лояльности — доплата
         byId[h]={ id:h, date:/^\d{4}-\d{2}-\d{2}$/.test(date)? date : "", sku,
           name:(r[colIdx.name]||sku).toString(), category:(r[colIdx.category]||"").toString(),
-          docType:(r[colIdx.docType]||"").toString().trim(), qty:val("qty"),
-          retail:val("retail"), payout:val("payout"),
+          docType, qty:val("qty"),
+          retail:val("retail"), payout:sign*(val("payout")+comp), loyaltyComp:sign*comp,
           logistics:val("logistics"), penalty:val("penalty"), storage:val("storage"),
           reimb:val("reimb"), deduction:val("deduction"), priyomka:val("priyomka"),
           loyalty:val("loyalty"), loyaltyPts:val("loyaltyPts") };
@@ -6274,7 +6290,7 @@ function renderFinanceHistoryInfo(){
   // основной текст — одним span: .freshness — flex с переносом, иначе хвост «· 325 товаров…» уезжал строкой с «·» в начале
   el.innerHTML=`<span class="dot"></span><span style="flex:1 1 0;min-width:0">Финансы Wildberries: ${dates.length} дн., с ${fmtDateLong(dates[0])} по ${fmtDateLong(dates[dates.length-1])}`
     + (financeEstFrom
-        ? ` · <span class="acc">факт по отчётам «О реализации» — по ${fmtDateLong(addDays(financeEstFrom,-1))}, дальше <b>ОЦЕНКА</b> (${fmtDate(financeEstFrom)} – ${fmtDate(financeEstTo)})</span>`
+        ? ` · <span class="acc">факт по отчётам «О реализации» — ${finFactTxt()}, остальные дни — <b>ОЦЕНКА</b> (в пределах ${fmtDate(financeEstFrom)} – ${fmtDate(financeEstTo)})</span>`
         : "")
     + ` · ${skuCount} товаров · ${fmt(FINANCE_ROW_COUNT)} строк отчётов учтено`
     + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : ` · хранится последние ${FUNNEL_RETENTION_DAYS} дней`)
@@ -6776,7 +6792,7 @@ function weeklyBreakdown(cat,q){
     const dates=byMon[mon];
     const now=finAggregate(dates,cat,q), ad=adAggregate(dates,cat,q);
     // неделя помечается «оценка», если хоть один её день посчитан моделью, а не отчётом
-    const est = !!financeEstFrom && dates.some(d=>d>=financeEstFrom);
+    const est = dates.some(isEstDay);
     weeks.push({from:dates[0],to:dates[dates.length-1],days:dates.length,est,
       qty:now.qty-now.returnsQty, revenue:now.revenue, wbHold:now.revenue-now.net,
       cogs:now.cogs, ad:ad.total, profit:now.net-now.cogs-ad.total,
@@ -10446,7 +10462,7 @@ function renderHomeTab(){
     return (w? w+" "+plural(w,"неделя","недели","недель") : "")+(w&&d? " ":"")+(d? d+" "+plural(d,"день","дня","дней"):"");};
   fresh.innerHTML=`<span class="dot"></span>Финансы обновлены по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])} · загружено <b>${wkTxt(allDates.length)}</b>`
     + (financeEstFrom
-        ? ` · <span class="acc" title="Отчёт «О реализации» за эти даты недоступен. Выручка посчитана от фактических заказов через % выкупа, «итого к оплате» — 62% от выручки (коэффициент снят с 5 фактических недель, ошибка 0,3%). Себестоимость точная, реклама — по факту загрузок.">факт по ${fmtDateLong(addDays(financeEstFrom,-1))}, дальше <b>ОЦЕНКА</b> (${fmtDate(financeEstFrom)}–${fmtDate(financeEstTo)})</span>`
+        ? ` · <span class="acc" title="Отчёт «О реализации» за эти даты недоступен. Выручка посчитана от фактических заказов через % выкупа, «итого к оплате» — доля от выручки, снятая с последних фактических отчётов перед этим днём (60,5% по отчётам 29.06–02.08, 61,4% по неделе 02–08.11). Себестоимость точная, реклама — по факту загрузок.">факт по отчётам: ${finFactTxt()}, остальные дни — <b>ОЦЕНКА</b></span>`
         : (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : ""))
     + (adsFromPerf>0
         ? ` · <span class="acc" title="Расход из выгрузок XWAY за даты, которых нет в «Истории затрат» ВБ. Сумма за период фактическая, по дням разнесена ровно — выгрузка даёт итог за период, а не по дням.">реклама из XWAY: <b>${fmt(Math.round(adsFromPerf))} ₽</b> за ${fmtDate(adsPerfFrom)}–${fmtDate(adsPerfTo)}</span>`
@@ -10781,7 +10797,7 @@ function renderAnalyticsTab(){
   anShow(true);
   const allDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   fresh.innerHTML=`<span class="dot"></span>Wildberries · финансы по ${fmtDateLong(allDates[allDates.length-1])} · с ${fmtDateLong(allDates[0])}`
-    + (financeEstFrom? ` · <span class="acc">факт по отчётам — по ${fmtDateLong(addDays(financeEstFrom,-1))}, дальше <b>ОЦЕНКА</b></span>` : "")
+    + (financeEstFrom? ` · <span class="acc">факт по отчётам — ${finFactTxt()}, остальные дни — <b>ОЦЕНКА</b></span>` : "")
     + (financeIsBaked? ` · <span class="muted">зашитый снимок</span>` : financeHasBaked? ` · <span class="muted">снимок + загрузки</span>` : "")
     + localDataResetLink();
   const catSel=document.getElementById("anCat"); if(!catSel.options.length) fillCategorySelect(catSel);
@@ -11109,7 +11125,7 @@ function renderAnalyticsAll(){
   const W=(wbOk && P.wDates.length)? anCalcWb(P.wDates,null,"") : null;
   const O=(ozOk && P.oDates.length)? anCalcOz(P.oDates,null,"") : null;
   fresh.innerHTML=`<span class="dot"></span><span style="flex:1 1 0;min-width:0">Обе площадки рядом · <b>месяц у каждой свой</b>: у Wildberries целыми неделями (неделя — в месяц своего четверга), у Ozon календарный`
-    +(financeEstFrom? ` · ВБ с ${fmtDate(financeEstFrom)} — оценка` : "")+` · Ozon — оценка по тарифу ИУ</span>`;
+    +(financeEstFrom? ` · ВБ: факт по отчётам ${finFactTxt()}, остальные дни — оценка` : "")+` · Ozon — оценка по тарифу ИУ</span>`;
   document.getElementById("anKpis").innerHTML="";
   const note=document.getElementById("anNote"); note.hidden=true; note.innerHTML="";
   const v=(x,cls)=>`<span class="v"${cls?` style="color:${cls}"`:""}>${x}</span>`;
@@ -13226,7 +13242,7 @@ function recMpSummary(mp, rules){
   return {mp, rules, crit:rules.filter(r=>r.sev==="crit"), money:rules.reduce((a,r)=>a+(r.money||0),0),
     ch, q1, q0, r1:sum("r1"), r0:sum("r0"), ordPct: q0>0? q1/q0-1 : null,
     drop:ch.rows.filter(r=>r.dr<0), up:ch.rows.filter(r=>r.dr>0),
-    p1, p0, est: mp==="wb" && !!financeEstFrom && !!ch.w1 && ch.w1.some(d=>d>=financeEstFrom),
+    p1, p0, est: mp==="wb" && !!ch.w1 && ch.w1.some(isEstDay),
     month: recMonthLeg(mp), leg, planKey: plan? plan.key : planMonthKey(),
     last: ((S&&S.dates)||[]).slice(-1)[0]||null,
     top: rules.slice().sort((a,b)=>(REC_SEV_RANK[a.sev]-REC_SEV_RANK[b.sev])||(a.rank-b.rank)).slice(0,3)};
