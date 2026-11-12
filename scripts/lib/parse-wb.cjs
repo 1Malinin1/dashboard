@@ -50,12 +50,24 @@ const FIN_COLS = {
   deduction: 'Удержания', priyomka: ['Операции на приемке', 'Услуга по обработке Товара'],
   loyalty: 'Стоимость участия в программе лояльности',
   loyaltyPts: 'Сумма баллов, удержанных по программе лояльности',
-  // ДОПЛАТА продавцу (строки «Компенсация скидки по программе лояльности»): ВБ возвращает скидку,
-  // которую дал покупателю по своей программе. Это доход — прибавляется к «к перечислению».
+  // СПРАВОЧНО, В ИТОГ НЕ ИДЁТ: «Компенсация скидки по программе лояльности» уже сидит внутри «Продажи» и
+  // «К перечислению» (в кабинете: «Продажа …, в том числе компенсация …»). Прибавлять её — двойной счёт.
   loyaltyComp: 'Компенсация скидки по программе лояльности',
+  // «Корректировка Вознаграждения Вайлдберриз (ВВ)» — ВЫЧИТАЕТСЯ из «Итого к оплате» (плата за разблокировку ТС и т.п.);
+  // отдельного поля не заводим — кладём в deduction.
+  vvCorr: 'Корректировка Вознаграждения Вайлдберриз (ВВ)',
 };
+/* ФОРМУЛА «ИТОГО К ОПЛАТЕ» — СВЕРЕНА С КАБИНЕТОМ ВБ ДО КОПЕЙКИ (12.11.2026, отчёт №896659722, весь кабинет:
+   196 920 592,25 ₽; второй отчёт №896659723 «по выкупам»: 6 390 661,36 ₽):
+     К перечислению за товар (продажи − ВОЗВРАТЫ)
+     − доставка − хранение − обработка товара − прочие удержания − штрафы − корректировка ВВ
+     − стоимость участия в программе лояльности − баллы лояльности.
+   НЕ ВХОДЯТ: «Возмещение издержек по перемещению…» (в тех же строках «Вознаграждение ВВ» и НДС стоят с минусом
+   на ту же сумму — это перекладка внутри комиссии, деньги продавца не меняет; до 12.11.2026 вычиталось зря)
+   и «Компенсация скидки по программе лояльности» (уже внутри «К перечислению»). Поэтому reimb в записи = 0,
+   исходная сумма лежит справочно в reimbInfo. */
 // Колонки, которых в старых отчётах не было вовсе, — об их отсутствии не предупреждаем.
-const FIN_OPTIONAL = { loyaltyComp: 1, orderDate: 1 };
+const FIN_OPTIONAL = { loyaltyComp: 1, orderDate: 1, vvCorr: 1 };
 // индекс колонки по имени или по любому из вариантов имени
 function colOf(header, names) {
   for (const n of [].concat(names)) { const i = header.indexOf(n); if (i >= 0) return i; }
@@ -101,8 +113,7 @@ function parseFinanceSheet(XLSX, wb, catalogSkuSet) {
     /* ВОЗВРАТ — СО ЗНАКОМ МИНУС (12.11.2026). В строках «Возврат» ВБ пишет «К перечислению» ПЛЮСОМ,
        а в итоге недели вычитает: к перечислению = продажи − возвраты. До 12.11.2026 сумма шла в
        свод как есть, то есть возврат ПРИБАВЛЯЛ деньги (по неделям 29.06–02.08 «итого к оплате»
-       было завышено на ≈0,9% выручки, а с ним и коэффициент оценки 62,0%). Компенсация скидки
-       лояльности — доплата продавцу, кладём её в payout с тем же знаком (у возврата — минус). */
+       было завышено на 1,45% выручки). Сверено с кабинетом: «К перечислению за товар» = продажи − возвраты. */
     const sign = docType === 'Возврат' ? -1 : 1;
     const comp = val(r, 'loyaltyComp');
     byId[h] = {
@@ -111,9 +122,9 @@ function parseFinanceSheet(XLSX, wb, catalogSkuSet) {
       docType, qty: val(r, 'qty'),
       basis: colIdx.basis >= 0 ? (r[colIdx.basis] || '').toString().trim() : '',
       orderDate: colIdx.orderDate >= 0 ? (r[colIdx.orderDate] || '').toString().trim().slice(0, 10) : '',
-      retail: val(r, 'retail'), payout: sign * (val(r, 'payout') + comp), loyaltyComp: sign * comp,
+      retail: val(r, 'retail'), payout: sign * val(r, 'payout'), loyaltyComp: sign * comp,
       logistics: val(r, 'logistics'), penalty: val(r, 'penalty'), storage: val(r, 'storage'),
-      reimb: val(r, 'reimb'), deduction: val(r, 'deduction'), priyomka: val(r, 'priyomka'),
+      reimb: 0, reimbInfo: val(r, 'reimb'), deduction: val(r, 'deduction') + val(r, 'vvCorr'), priyomka: val(r, 'priyomka'),
       loyalty: val(r, 'loyalty'), loyaltyPts: val(r, 'loyaltyPts'),
     };
   }
@@ -186,7 +197,8 @@ function parseCostSheet(XLSX, wb) {
 // Теперь расход РАЗМАЗЫВАЕТСЯ по датам того же артикула пропорционально его выручке
 // за день. Итог за период не меняется (это те же деньги), а подённая картина
 // перестаёт врать. Если у артикула нет ни одного дня с выручкой — кладём на maxDate.
-const MONEY_FIELDS = ['payout', 'logistics', 'penalty', 'storage', 'reimb', 'deduction', 'priyomka', 'loyalty', 'loyaltyPts'];
+// reimbInfo и loyaltyComp — справочные (в «Итого к оплате» не входят), но в своде их сохраняем
+const MONEY_FIELDS = ['payout', 'logistics', 'penalty', 'storage', 'reimb', 'deduction', 'priyomka', 'loyalty', 'loyaltyPts', 'reimbInfo', 'loyaltyComp'];
 /* opt.from / opt.to — границы недели отчёта. В недельном отчёте попадаются строки с датой ИЗ ПРОШЛЫХ
    недель (баллы за отзывы, штрафы, корректировка эквайринга — 02–08.11.2026 таких 64 строки с датами
    05.10–01.11). Оставь им их дату — и день из «оценки» станет «фактом» с парой рублей: сайт берёт факт
@@ -201,7 +213,7 @@ function aggregateFinanceRows(raw, opt) {
   const mkBucket = (d, r) => ({
     id: d + '_' + r.sku, date: d, sku: r.sku, name: r.name, category: r.category,
     qty: 0, returnsQty: 0, revenue: 0, payout: 0, logistics: 0, penalty: 0, storage: 0,
-    reimb: 0, deduction: 0, priyomka: 0, loyalty: 0, loyaltyPts: 0,
+    reimb: 0, deduction: 0, priyomka: 0, loyalty: 0, loyaltyPts: 0, reimbInfo: 0, loyaltyComp: 0,
   });
   const undated = [];
   for (const r of raw) {

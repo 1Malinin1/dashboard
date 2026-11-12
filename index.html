@@ -5746,8 +5746,10 @@ async function fdbRefreshCache(){
 let FINANCE_CACHE=[];      // свод по (дата+артикул), пересобирается из построчных данных
 let FINANCE_ROW_COUNT=0;   // сколько уникальных строк отчёта учтено (для контроля полноты)
 /* Свод построчных данных по (дата+артикул). Модель — как у WB:
-   чистая выплата = К перечислению − логистика − штрафы − удержания − хранение
-                    − операции приёмки − стоимость лояльности − баллы лояльности − возмещение издержек.
+   чистая выплата = К перечислению (продажи − возвраты) − логистика − штрафы − удержания − хранение
+                    − операции приёмки − стоимость лояльности − баллы лояльности.
+   «Возмещение издержек» в итог ВБ не входит (сверено с кабинетом 12.11.2026): у факта reimb = 0,
+   у оценки в reimb лежат «прочие удержания» одной суммой — поэтому слагаемое в finHoldings осталось.
    Штуки/выручка считаем только по строкам «Продажа»(+) и «Возврат»(−); служебные строки
    (логистика, возмещение и т.п.) в штуки/выручку не идут. Строки без даты (возмещения и
    прочие удержания без «Даты продажи») относим к последней дате отчёта — они периодные. */
@@ -6006,10 +6008,11 @@ self.onmessage = function(e){
 
     } else if(type==="finance"){
       if(!wb.SheetNames.length) throw new Error("В файле не нашлось ни одного листа.");
-      // Все нужные колонки отчёта о реализации WB. Формула «Итого к оплате»:
-      // К перечислению (продажи − ВОЗВРАТЫ + компенсация скидки лояльности) − логистика − штрафы
-      // − удержания − хранение − операции приёмки − стоимость лояльности − баллы лояльности − возмещение.
-      // Держать ОДИНАКОВО с scripts/lib/parse-wb.cjs (там же пояснение про знак возврата, 12.11.2026).
+      // Все нужные колонки отчёта о реализации WB. Формула «Итого к оплате» — сверена с кабинетом ВБ до копейки
+      // (12.11.2026): К перечислению (продажи − ВОЗВРАТЫ) − логистика − штрафы − удержания − корректировка ВВ
+      // − хранение − обработка товара − стоимость лояльности − баллы лояльности. «Возмещение издержек» и
+      // «Компенсация скидки лояльности» в итог НЕ входят (reimb в записи = 0, сумма справочно в reimbInfo).
+      // Держать ОДИНАКОВО с scripts/lib/parse-wb.cjs (там полное пояснение).
       const FIN_COLS={ sku:"Код номенклатуры", name:"Название", category:"Предмет",
         docType:"Тип документа", basis:"Обоснование для оплаты", saleDate:"Дата продажи", qty:"Кол-во",
         retail:"Цена розничная с учетом согласованной скидки",
@@ -6021,7 +6024,8 @@ self.onmessage = function(e){
         deduction:"Удержания", priyomka:["Операции на приемке","Услуга по обработке Товара"],
         loyalty:"Стоимость участия в программе лояльности",
         loyaltyPts:"Сумма баллов, удержанных по программе лояльности",
-        loyaltyComp:"Компенсация скидки по программе лояльности" };
+        loyaltyComp:"Компенсация скидки по программе лояльности",
+        vvCorr:"Корректировка Вознаграждения Вайлдберриз (ВВ)" };
       const colOf=(hd,names)=>{ for(const n of [].concat(names)){ const i=hd.indexOf(n); if(i>=0) return i; } return -1; };
       // ищем лист по заголовкам, а не берём первый попавшийся — в больших выгрузках
       // данные иногда лежат не на первом листе (например, есть лист с пояснениями)
@@ -6054,13 +6058,13 @@ self.onmessage = function(e){
         const date=(r[colIdx.saleDate]||"").toString().trim();
         const h=rowHash(r);
         const docType=(r[colIdx.docType]||"").toString().trim();
-        const sign=docType==="Возврат"? -1 : 1, comp=val("loyaltyComp");   // возврат — минусом; компенсация лояльности — доплата
+        const sign=docType==="Возврат"? -1 : 1, comp=val("loyaltyComp");   // возврат — минусом; компенсация лояльности — справочно
         byId[h]={ id:h, date:/^\d{4}-\d{2}-\d{2}$/.test(date)? date : "", sku,
           name:(r[colIdx.name]||sku).toString(), category:(r[colIdx.category]||"").toString(),
           docType, qty:val("qty"),
-          retail:val("retail"), payout:sign*(val("payout")+comp), loyaltyComp:sign*comp,
+          retail:val("retail"), payout:sign*val("payout"), loyaltyComp:sign*comp,
           logistics:val("logistics"), penalty:val("penalty"), storage:val("storage"),
-          reimb:val("reimb"), deduction:val("deduction"), priyomka:val("priyomka"),
+          reimb:0, reimbInfo:val("reimb"), deduction:val("deduction")+val("vvCorr"), priyomka:val("priyomka"),
           loyalty:val("loyalty"), loyaltyPts:val("loyaltyPts") };
       }
       self.postMessage({ok:true, records:Object.values(byId), matched, total});
@@ -6197,7 +6201,7 @@ async function handleFinanceFiles(fileList){
   msg.className = anyParsed? "msg ok" : "msg err";
   const summary = anyParsed
     ? `<br><b>Итого: добавлено ${batchNew} новых строк, ${batchDup} уже были загружены ранее (задвоения нет). Всего в базе: ${FINANCE_ROW_COUNT} строк.</b>`
-      + `<br><span class="muted">Учтены все типы строк. «Итого к оплате» = к перечислению − логистика − штрафы − удержания − хранение − возмещение (формула сверена с WB). Отчёты «по заказам» и «по выкупам» можно грузить оба — они суммируются.</span>`
+      + `<br><span class="muted">Учтены все типы строк. «Итого к оплате» = к перечислению (продажи − возвраты) − логистика − штрафы − удержания − хранение − лояльность (формула сверена с WB). Отчёты «по заказам» и «по выкупам» можно грузить оба — они суммируются.</span>`
     : "";
   msg.innerHTML = notes.map(n=>n).join("<br>") + summary;
   renderFinanceTab();
@@ -10503,7 +10507,7 @@ function renderHomeTab(){
     tr("Розничная цена (со скидкой) × продано, минус возвраты")+
     tr("Продано нетто",fmt(netQty)+" шт")+tr("Средняя цена",netQty?rub(now.revenue/netQty):"—")+tr("= Выручка",rub(now.revenue));
   const commission=now.revenue-now.payout;   // комиссия WB (кВВ+эквайринг) — заложена в «к перечислению за товар»
-  const expParts=[["Комиссия WB",commission],["Логистика",now.logistics],["Возмещение издержек",now.reimb],
+  const expParts=[["Комиссия WB",commission],["Логистика",now.logistics],["Прочие удержания (оценка)",now.reimb],
     ["Хранение",now.storage],["Штрафы",now.penalty],["Удержания",now.deduction],["Приёмка",now.priyomka],
     ["Программа лояльности",now.loyalty+now.loyaltyPts]].filter(x=>Math.round(x[1]));
   const expTip=`<div class="t-hd">Расходы и удержания WB — ${rub(wbHold)}</div>`+
@@ -11252,7 +11256,9 @@ function renderFinanceTab(){
   const storagePriyomka=now.storage+now.priyomka;
   const finesDed=now.penalty+now.deduction+now.loyalty+now.loyaltyPts;
   const wbHold=now.revenue-now.net;                  // всё, что WB забрала из выручки
-  const reimbLbl=hasEst? "Возмещение и прочие удержания" : "Возмещение издержек";
+  /* поле reimb у ФАКТА = 0 (возмещение издержек в «Итого к оплате» не входит, сверено с кабинетом 12.11.2026);
+     у ОЦЕНКИ в нём лежат все удержания сверх комиссии и логистики одной суммой */
+  const reimbLbl="Прочие удержания (оценка)";
   const sep=`border-top:1px solid var(--grid);margin-top:5px;padding-top:6px`;
   const tr=(k,v)=>`<div class="t-row"><span class="k">${k}</span>${v!=null?`<span class="v">${v}</span>`:""}</div>`;
   // подпись «факт · оценка» под плиткой; у чистого факта не нужна, у чистой оценки — одно слово
