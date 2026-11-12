@@ -5787,12 +5787,13 @@ let financeIsBaked=false;
 function normFinCategory(sku,fallback){ return catalogCatBySku[sku] || fallback || ""; }
 let financeHasBaked=false;   // зашитый снимок присутствует в текущем своде (в т.ч. в миксе с загрузками)
 let financeEstFrom=null, financeEstTo=null;   // даты, за которые финансы — ОЦЕНКА, а не факт
-/* ФАКТ ИДЁТ КУСКАМИ (с 12.11.2026: 29.06–02.08 и неделя 02–08.11, между ними оценка). Поэтому «день — оценка?»
+/* ФАКТ ИДЁТ КУСКАМИ (с 12.11.2026: 29.06–02.08, недели 21–27.09 и 02–08.11, между ними оценка). Поэтому «день — оценка?»
    спрашиваем у набора дат, а НЕ сравнением «d >= financeEstFrom» — иначе неделя с отчётом внутри периода оценки
    помечалась бы оценкой. financeEstFrom/To остались как края периода оценки для подписей. */
 let financeEstDates=new Set(), financeFactRanges=[];
 const isEstDay = d => financeEstDates.has(d);
-function finFactTxt(){ return financeFactRanges.map(r=>fmtDate(r[0])+"–"+fmtDate(r[1])).join(" и "); }
+function finFactTxt(){ const a=financeFactRanges.map(r=>fmtDate(r[0])+"–"+fmtDate(r[1]));
+  return a.length>1? a.slice(0,-1).join(", ")+" и "+a[a.length-1] : (a[0]||""); }
 async function fdbRefreshFinanceCache(){
   const raw=await fdbGetAll(FINANCE_STORE);
   // Зашитый снимок — базовый слой, который присутствует ВСЕГДА. Ваши загрузки
@@ -10466,7 +10467,7 @@ function renderHomeTab(){
     return (w? w+" "+plural(w,"неделя","недели","недель") : "")+(w&&d? " ":"")+(d? d+" "+plural(d,"день","дня","дней"):"");};
   fresh.innerHTML=`<span class="dot"></span>Финансы обновлены по ${fmtDateLong(allDates[allDates.length-1])} · история с ${fmtDateLong(allDates[0])} · загружено <b>${wkTxt(allDates.length)}</b>`
     + (financeEstFrom
-        ? ` · <span class="acc" title="Отчёт «О реализации» за эти даты недоступен. Выручка посчитана от фактических заказов через % выкупа, «итого к оплате» — доля от выручки, снятая с последних фактических отчётов перед этим днём (60,5% по отчётам 29.06–02.08, 61,4% по неделе 02–08.11). Себестоимость точная, реклама — по факту загрузок.">факт по отчётам: ${finFactTxt()}, остальные дни — <b>ОЦЕНКА</b></span>`
+        ? ` · <span class="acc" title="Отчёт «О реализации» за эти даты недоступен. Выручка посчитана от фактических заказов через % выкупа, «итого к оплате» — доля от выручки, снятая с последних фактических отчётов перед этим днём (61,9% по отчётам 29.06–02.08, 61,2% по неделям 21–27.09 и 02–08.11). Себестоимость точная, реклама — по факту загрузок.">факт по отчётам: ${finFactTxt()}, остальные дни — <b>ОЦЕНКА</b></span>`
         : (financeIsBaked? ` · <span class="muted">зашитый снимок за ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""}</span>` : financeHasBaked? ` · <span class="muted">снимок ${typeof BAKED_PERIOD!=="undefined"?BAKED_PERIOD:""} + ваши загрузки</span>` : ""))
     + (adsFromPerf>0
         ? ` · <span class="acc" title="Расход из выгрузок XWAY за даты, которых нет в «Истории затрат» ВБ. Сумма за период фактическая, по дням разнесена ровно — выгрузка даёт итог за период, а не по дням.">реклама из XWAY: <b>${fmt(Math.round(adsFromPerf))} ₽</b> за ${fmtDate(adsPerfFrom)}–${fmtDate(adsPerfTo)}</span>`

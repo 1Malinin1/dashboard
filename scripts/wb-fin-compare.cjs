@@ -42,47 +42,51 @@ try{
     console.log('Срок «заказ → продажа» снят с '+tq+' продаж (отчёт по '+mx+'): в среднем '+lag.mean+' дн. — записан в meta.model.lag'); }
 }catch(e){ /* накопителя нет — берём сохранённый срок */ }
 
-// ---- недели, где есть и факт, и оценка
+// ---- периоды, где есть и факт, и оценка (факт идёт кусками — каждый кусок сверяем отдельно)
 const estDates=new Set(M.map(r=>r.date));
 const factDates=[...new Set(F.map(r=>r.date))].filter(d=>estDates.has(d)).sort();
-const FROM=arg('--from',factDates[0]), TO=arg('--to',factDates[factDates.length-1]);
 if(!factDates.length){ console.log('Нет дней, где есть и отчёт, и оценка, — сверять нечего.'); process.exit(0); }
+let periods=[]; factDates.forEach(d=>{ const l=periods[periods.length-1]; if(l && addD(l[1],1)===d) l[1]=d; else periods.push([d,d]); });
+if(argv.includes('--from')||argv.includes('--to')) periods=[[arg('--from',factDates[0]),arg('--to',factDates[factDates.length-1])]];
 const cat={}; RD.catalog.forEach(x=>cat[''+x.sku]=x);
 function costAt(sku,d){ const x=cat[sku]; if(!x) return 0; const h=x.costHistory; if(!h||!h.length) return x.costPrice||0;
   let v=x.costPrice||0; for(const e of h){ if(e.from==null||e.from<=d) v=e.cost; } return v; }
 const blocks=(RD.meta.model&&RD.meta.model.blocks)||[];
 const rateFor=d=>{ let p=blocks[0]; blocks.forEach(b=>{ if(b.to<d) p=b; }); return p? p.payoutRate : RD.meta.model.payoutRate; };
-
-const fact={rev:0,net:0,qty:0,cogs:0}, est={rev:0,net:0,qty:0,cogs:0}, bySku={};
-const S=sku=>bySku[sku]||(bySku[sku]={fRev:0,fNet:0,fQty:0,fCogs:0,eRev:0,eNet:0,eQty:0,eCogs:0});
-F.forEach(r=>{ if(r.date<FROM||r.date>TO) return; const q=(r.qty||0)-(r.returnsQty||0), net=(r.payout||0)-HOLD(r), c=q*costAt(r.sku,r.date);
-  fact.rev+=r.revenue||0; fact.net+=net; fact.qty+=q; fact.cogs+=c; const s=S(r.sku); s.fRev+=r.revenue||0; s.fNet+=net; s.fQty+=q; s.fCogs+=c; });
-M.forEach(r=>{ if(r.date<FROM||r.date>TO) return; const net=(r.revenue||0)*rateFor(r.date);
-  est.rev+=r.revenue||0; est.net+=net; est.qty+=r.qty||0; est.cogs+=r.cogsEst||0; const s=S(r.sku); s.eRev+=r.revenue||0; s.eNet+=net; s.eQty+=r.qty||0; s.eCogs+=r.cogsEst||0; });
-// оценка по дню ПРОДАЖИ: выручка дня d = Σ оценка(d − L) × доля продаж со сроком L
-let estSale=null;
-if(lag&&lag.kernel){ const revByDate={}; M.forEach(r=>{ revByDate[r.date]=(revByDate[r.date]||0)+(r.revenue||0); });
-  estSale=0; let miss=0;
-  for(let d=FROM; d<=TO; d=addD(d,1)) for(const [L,w] of Object.entries(lag.kernel)){ const od=addD(d,-(+L));
-    if(revByDate[od]==null) miss+=w; else estSale+=revByDate[od]*w; }
-  if(miss>0.5) estSale=null; }
-
-console.log('\nСВЕРКА ВБ «оценка против отчёта» за '+FROM+' … '+TO);
-console.log('─'.repeat(78));
-const line=(name,e,f)=>console.log('  '+name.padEnd(30)+R(e).padStart(12)+R(f).padStart(13)+R(f-e).padStart(12)+'  '+P(f,e));
-console.log('  '+''.padEnd(30)+'оценка'.padStart(12)+'отчёт'.padStart(13)+'разница'.padStart(12));
-line('продано, шт',est.qty,fact.qty);
-line('выручка',est.rev,fact.rev);
-if(estSale!=null) line('  выручка по дню продажи*',estSale,fact.rev);
-line('итого к оплате',est.net,fact.net);
-line('себестоимость',est.cogs,fact.cogs);
-line('прибыль до рекламы',est.net-est.cogs,fact.net-fact.cogs);
-console.log('  доля «к оплате» в выручке:   оценка '+(est.net/est.rev*100).toFixed(2)+'%   отчёт '+(fact.net/fact.rev*100).toFixed(2)+'%');
-if(estSale!=null) console.log('  * та же оценка, но выручка разнесена по дням продажи (срок заказ → продажа в среднем '+lag.mean+' дн.).\n'
-  +'    Разница этой строки с отчётом — настоящая ошибка оценки; остальное — сдвиг во времени, за месяц он уходит.');
+const revByDate={}; M.forEach(r=>{ revByDate[r.date]=(revByDate[r.date]||0)+(r.revenue||0); });
 const top=+arg('--top','12');
-const L=Object.entries(bySku).map(([sku,s])=>({sku,sup:(cat[sku]||{}).supplierCode||sku,name:((cat[sku]||{}).name||'').slice(0,30),
-  d:(s.fNet-s.fCogs)-(s.eNet-s.eCogs),s})).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d)).slice(0,top);
-console.log('\n  Товары с самым большим расхождением прибыли до рекламы (отчёт − оценка):');
-L.forEach(x=>console.log('   '+String(x.sup).padEnd(8)+x.name.padEnd(31)+' шт '+String(Math.round(x.s.fQty)).padStart(4)+' / '+String(Math.round(x.s.eQty)).padStart(4)
-  +' · к оплате '+(x.s.fRev? (x.s.fNet/x.s.fRev*100).toFixed(0)+'%':'  —')+' · прибыль '+R(x.s.fNet-x.s.fCogs).padStart(9)+' / '+R(x.s.eNet-x.s.eCogs).padStart(9)+' · Δ '+R(x.d).padStart(9)));
+
+for(const [FROM,TO] of periods){
+  const fact={rev:0,net:0,qty:0,cogs:0}, est={rev:0,net:0,qty:0,cogs:0}, bySku={};
+  const S=sku=>bySku[sku]||(bySku[sku]={fRev:0,fNet:0,fQty:0,fCogs:0,eRev:0,eNet:0,eQty:0,eCogs:0});
+  F.forEach(r=>{ if(r.date<FROM||r.date>TO) return; const q=(r.qty||0)-(r.returnsQty||0), net=(r.payout||0)-HOLD(r), c=q*costAt(r.sku,r.date);
+    fact.rev+=r.revenue||0; fact.net+=net; fact.qty+=q; fact.cogs+=c; const s=S(r.sku); s.fRev+=r.revenue||0; s.fNet+=net; s.fQty+=q; s.fCogs+=c; });
+  M.forEach(r=>{ if(r.date<FROM||r.date>TO) return; const net=(r.revenue||0)*rateFor(r.date);
+    est.rev+=r.revenue||0; est.net+=net; est.qty+=r.qty||0; est.cogs+=r.cogsEst||0; const s=S(r.sku); s.eRev+=r.revenue||0; s.eNet+=net; s.eQty+=r.qty||0; s.eCogs+=r.cogsEst||0; });
+  // оценка по дню ПРОДАЖИ: выручка дня d = Σ оценка(d − L) × доля продаж со сроком L
+  let estSale=null;
+  if(lag&&lag.kernel){ estSale=0; let miss=0;
+    for(let d=FROM; d<=TO; d=addD(d,1)) for(const [L,w] of Object.entries(lag.kernel)){ const od=addD(d,-(+L));
+      if(revByDate[od]==null) miss+=w; else estSale+=revByDate[od]*w; }
+    if(miss>0.5) estSale=null; }
+
+  console.log('\nСВЕРКА ВБ «оценка против отчёта» за '+FROM+' … '+TO+'   (оценка — по коэффициенту '+(rateFor(FROM)*100).toFixed(1)+'%, действовавшему ДО этого отчёта)');
+  console.log('─'.repeat(78));
+  const line=(name,e,f)=>console.log('  '+name.padEnd(30)+R(e).padStart(12)+R(f).padStart(13)+R(f-e).padStart(12)+'  '+P(f,e));
+  console.log('  '+''.padEnd(30)+'оценка'.padStart(12)+'отчёт'.padStart(13)+'разница'.padStart(12));
+  line('продано, шт',est.qty,fact.qty);
+  line('выручка',est.rev,fact.rev);
+  if(estSale!=null) line('  выручка по дню продажи*',estSale,fact.rev);
+  line('итого к оплате',est.net,fact.net);
+  line('себестоимость',est.cogs,fact.cogs);
+  line('прибыль до рекламы',est.net-est.cogs,fact.net-fact.cogs);
+  console.log('  доля «к оплате» в выручке:   оценка '+(est.net/est.rev*100).toFixed(2)+'%   отчёт '+(fact.net/fact.rev*100).toFixed(2)+'%'
+    +'   · себестоимость ÷ выручка: оценка '+(est.cogs/est.rev*100).toFixed(1)+'%   отчёт '+(fact.cogs/fact.rev*100).toFixed(1)+'%');
+  if(estSale!=null) console.log('  * та же оценка, но выручка разнесена по дням продажи (срок заказ → продажа в среднем '+lag.mean+' дн., снят с отчёта по '+lag.reportTo+').\n'
+    +'    Разница этой строки с отчётом — настоящая ошибка оценки; остальное — сдвиг во времени, за месяц он уходит.');
+  const L=Object.entries(bySku).map(([sku,s])=>({sku,sup:(cat[sku]||{}).supplierCode||sku,name:((cat[sku]||{}).name||'').slice(0,30),
+    d:(s.fNet-s.fCogs)-(s.eNet-s.eCogs),s})).sort((a,b)=>Math.abs(b.d)-Math.abs(a.d)).slice(0,top);
+  console.log('\n  Товары с самым большим расхождением прибыли до рекламы (отчёт − оценка):');
+  L.forEach(x=>console.log('   '+String(x.sup).padEnd(8)+x.name.padEnd(31)+' шт '+String(Math.round(x.s.fQty)).padStart(4)+' / '+String(Math.round(x.s.eQty)).padStart(4)
+    +' · к оплате '+(x.s.fRev? (x.s.fNet/x.s.fRev*100).toFixed(0)+'%':'  —')+' · прибыль '+R(x.s.fNet-x.s.fCogs).padStart(9)+' / '+R(x.s.eNet-x.s.eCogs).padStart(9)+' · Δ '+R(x.d).padStart(9)));
+}
