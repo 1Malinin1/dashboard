@@ -14,8 +14,14 @@
 // «Код ВБ» — артикул ВБ. Сумма товаров сверяется со строкой менеджера — не сошлось, ничего не пишем.
 //
 // Использование: node scripts/ue-ingest.cjs <файл.xlsx> [--manager "Юдин"] [--costs] [--dry]
-//   --costs  записать себестоимость за штуку из отчёта в каталог с 1-го числа месяца отчёта (costHistory);
-//            берётся у товаров от 5 проданных штук. Себестоимость одна на код для ВБ и Ozon — прибыль Ozon тоже изменится.
+//   --costs  записать себестоимость за штуку из отчёта в каталог с 1-го числа месяца отчёта (costHistory, src:'ue').
+//            ПО УМОЛЧАНИЮ НЕ ДЕЛАТЬ: 12.11.2026 продавец проверил расхождения сентября и доказал, что ошибка в
+//            себестоимости — у организации («впредь мы будем подобные расхождения разбирать… подсвечивай мне их»).
+//            Правильная цена — та, что дал продавец; отчёт организации её не перезаписывает, а сверяется с ней.
+//   --drop-costs  убрать из каталога все цены, взятые из отчётов организации (src:'ue'), и выйти.
+// ПОДСВЕТКА (печатается всегда и хранится в meta.ue.months[..].flags): где цифры организации расходятся с дашбордом
+// или выглядят как ошибка — себестоимость за штуку, комиссия не как у остальных, тяжёлые логистика и штрафы, товар без
+// карточки. Это список «что спросить у бухгалтерии», а не поправки к расчёту.
 // Дальше: node scripts/model-finance.cjs → node scripts/encrypt.cjs <код>
 'use strict';
 const fs=require('fs'),vm=require('vm'),path=require('path');
@@ -24,6 +30,13 @@ const OUT=path.join(__dirname,'..','decrypted');
 const argv=process.argv.slice(2);const file=argv.find(a=>!/^--/.test(a)&&argv[argv.indexOf(a)-1]!=='--manager');
 const arg=(k,d)=>{const i=argv.indexOf(k);return i>=0&&argv[i+1]?argv[i+1]:d;};
 const MANAGER=arg('--manager','Юдин'), COSTS=argv.includes('--costs'), DRY=argv.includes('--dry');
+if(argv.includes('--drop-costs')){
+  const cx={};vm.createContext(cx);vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',cx);
+  const rd=cx.__RD; let k=0;
+  for(const x of rd.catalog){ const h=x.costHistory; if(!h||!h.some(e=>e.src==='ue')) continue;
+    x.costHistory=h.filter(e=>e.src!=='ue'); if(x.costHistory.length) x.costPrice=x.costHistory[x.costHistory.length-1].cost; k++; }
+  fs.writeFileSync(path.join(OUT,'wb-data.js'),'// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'+'const REAL_DATA = '+JSON.stringify(rd)+';\n');
+  console.log('Цены из отчётов организации убраны у '+k+' карточек — действуют цены продавца. Дальше: model-finance.cjs → encrypt.cjs'); process.exit(0); }
 if(!file){ console.error('usage: node scripts/ue-ingest.cjs <файл.xlsx> [--manager "Юдин"] [--costs] [--dry]'); process.exit(1); }
 const n=v=>typeof v==='number'?v:(parseFloat((''+v).replace(/\s/g,'').replace(',','.'))||0);
 const R=x=>Math.round(x).toLocaleString('ru-RU');
@@ -75,6 +88,28 @@ for(const o of Object.values(bySku)) for(const k of ['rev','net','cost','promo',
 console.log('  в каталоге дашборда: '+Object.keys(bySku).length+' карточек · нет в каталоге: '+noCard.length
   +(noCard.length? ' ('+noCard.map(x=>x.code+' '+R(x.profit)+' ₽').join(', ')+')' : ''));
 
+// ---- ПОДСВЕТКА расхождений с дашбордом и подозрительных строк
+const costAtCat=(x,d)=>{ const h=x.costHistory; if(!h||!h.length) return x.costPrice||0; let v=x.costPrice||0; for(const e of h){ if(e.src==='ue') continue; if(e.from==null||e.from<=d) v=e.cost; } return v; };
+const flags={cost:[],comm:[],hold:[],noCard:noCard.map(x=>({code:x.code,name:x.name.slice(0,50),qty:x.qty,profit:Math.round(x.profit)}))};
+const perSku={}; for(const x of items){ const sku=x.sku&&bySkuCat.has(x.sku)? x.sku : (bySup.has(x.code)? ''+bySup.get(x.code).sku : ''); if(!sku) continue;
+  const o=perSku[sku]||(perSku[sku]={qty:0,rev:0,cost:0,comm:0,log:0,fines:0,codes:[],name:x.name}); o.qty+=x.qty; o.rev+=x.sales-x.spp; o.cost+=x.cost; o.comm+=x.comm; o.log+=x.log; o.fines+=x.fines; o.codes.push(x.code); }
+const commAll=tot.comm/rev; let costDiff=0;
+for(const [sku,o] of Object.entries(perSku)){ const x=bySkuCat.get(sku), sup=''+x.supplierCode;
+  if(o.qty>=5&&o.cost>0){ const u=o.cost/o.qty, mine=costAtCat(x,TO); if(mine>0){ const d=(u-mine)*o.qty; costDiff+=d;
+    if(Math.abs(u/mine-1)>0.03&&Math.abs(d)>=3000) flags.cost.push({sup,name:o.name.slice(0,44),qty:o.qty,theirs:Math.round(u),ours:Math.round(mine),diff:Math.round(d)}); } }
+  if(o.rev>30000){ const c=o.comm/o.rev; if(Math.abs(c-commAll)>0.03) flags.comm.push({sup,name:o.name.slice(0,44),rev:Math.round(o.rev),pct:+(c*100).toFixed(1),money:Math.round((c-commAll)*o.rev)});
+    const hshare=(o.log+o.fines)/o.rev; if(o.log+o.fines>=15000&&hshare>0.04) flags.hold.push({sup,name:o.name.slice(0,44),log:Math.round(o.log),fines:Math.round(o.fines),pct:+(hshare*100).toFixed(1)}); } }
+flags.cost.sort((a,b)=>Math.abs(b.diff)-Math.abs(a.diff)); flags.comm.sort((a,b)=>Math.abs(b.money)-Math.abs(a.money)); flags.hold.sort((a,b)=>(b.log+b.fines)-(a.log+a.fines));
+flags.costDiffTotal=Math.round(costDiff);
+console.log('\nПОДСВЕТКА — что расходится с дашбордом или похоже на ошибку (спросить у организации):');
+console.log('  Себестоимость: у организации на '+R(costDiff)+' ₽ '+(costDiff>=0?'БОЛЬШЕ':'МЕНЬШЕ')+', чем по ценам продавца на те же штуки · товаров с отличием >3%: '+flags.cost.length);
+flags.cost.slice(0,15).forEach(f=>console.log('     '+f.sup.padEnd(7)+f.name.padEnd(45)+' у них '+R(f.theirs).padStart(6)+' · у нас '+R(f.ours).padStart(6)+' · '+String(f.qty).padStart(4)+' шт · '+(f.diff>=0?'+':'')+R(f.diff)+' ₽'));
+console.log('  Комиссия не как у остальных (в среднем '+(commAll*100).toFixed(1)+'%): '+flags.comm.length);
+flags.comm.slice(0,8).forEach(f=>console.log('     '+f.sup.padEnd(7)+f.name.padEnd(45)+' '+f.pct+'% · выручка '+R(f.rev)+' · '+(f.money>=0?'+':'')+R(f.money)+' ₽ к среднему'));
+console.log('  Логистика и штрафы больше 4% выручки товара: '+flags.hold.length);
+flags.hold.slice(0,8).forEach(f=>console.log('     '+f.sup.padEnd(7)+f.name.padEnd(45)+' логистика '+R(f.log)+' · штрафы '+R(f.fines)+' · '+f.pct+'% выручки'));
+if(flags.noCard.length) console.log('  Нет карточки в дашборде: '+flags.noCard.map(f=>f.code+' ('+f.qty+' шт, '+R(f.profit)+' ₽)').join(', '));
+
 let costNote='';
 if(COSTS){ let ch=0,same=0,few=0; const big=[];
   for(const [sku,o] of Object.entries(bySku)){ if(!(o.qty>=5)||!(o.cost>0)){ few++; continue; }
@@ -94,7 +129,7 @@ RD.meta.ue=RD.meta.ue||{months:{}};
 RD.meta.ue.months[MONTH]={from:FROM,to:TO,manager:(''+A[iMan][0]).trim(),loadedAt:new Date().toISOString().slice(0,10),file:path.basename(file).slice(0,60),
   totals:{qty:tot.qty,rev:+rev.toFixed(2),net:+net.toFixed(2),comm:+tot.comm.toFixed(2),log:+tot.log.toFixed(2),fines:+tot.fines.toFixed(2),stor:+tot.stor.toFixed(2),
     other:+tot.other.toFixed(2),vozm:+tot.vozm.toFixed(2),cost:+tot.cost.toFixed(2),promo:+tot.promo.toFixed(2),profit:+tot.profit.toFixed(2)},
-  noCard:noCard.map(x=>({code:x.code,name:x.name.slice(0,60),qty:x.qty,profit:+x.profit.toFixed(2)})), bySku};
+  noCard:noCard.map(x=>({code:x.code,name:x.name.slice(0,60),qty:x.qty,profit:+x.profit.toFixed(2)})), flags, bySku};
 if(DRY){ console.log('(сухой прогон, ничего не записано)'); process.exit(0); }
 fs.writeFileSync(path.join(OUT,'wb-data.js'),'// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
   +'const REAL_DATA = '+JSON.stringify(RD)+';\n');

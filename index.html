@@ -6353,7 +6353,7 @@ function renderPeriodSeg(segId,curN,daysAvail,months,curMonth){
 let homeMonth=null;
 function wbMonthDatesOf(key){
   return [...new Set(FINANCE_CACHE.map(r=>r.date))].sort()
-    .filter(d=>wbMonthOfWeek(mondayOf(d)).key===key);
+    .filter(d=>wbMonthOfWeek(d).key===key);
 }
 function ozMonthDatesOf(key){
   return [...new Set(ozFinRows().map(r=>r.date))].sort().filter(d=>d.slice(0,7)===key);
@@ -6384,13 +6384,13 @@ function openMonthEntry(dates,closed,keyOf,what){
 function wbClosedMonths(){
   const all=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   if(!all.length) return [];
-  const by={}; all.forEach(d=>{ const k=wbMonthOfWeek(mondayOf(d)).key;
-    (by[k]||(by[k]=new Set())).add(mondayOf(d)); });
+  const by={}; all.forEach(d=>{ const k=wbMonthOfWeek(d).key;
+    (by[k]||(by[k]=new Set())).add(d); });
   return Object.keys(by).sort().reverse()
-    .filter(k=>by[k].size===wbWeeksInMonth(k))
+    .filter(k=>by[k].size>=wbMonthDays(k))
     .map(k=>{ const ds=wbMonthDatesOf(k);
       return {key:k, lbl:monLabel(k),
-        title:"Wildberries, месяц целыми неделями: "+fmtDate(ds[0])+" – "+fmtDate(ds[ds.length-1])+" · "+ds.length+" дн."}; });
+        title:"Wildberries, месяц как в отчётах организации: "+fmtDate(ds[0])+" – "+fmtDate(ds[ds.length-1])+" · "+ds.length+" дн."}; });
 }
 function ozClosedMonths(){
   const all=[...new Set(ozFinRows().map(r=>r.date))].sort();
@@ -6409,7 +6409,7 @@ function allClosedMonths(){
   return o.filter(m=>w.has(m.key)).map(m=>{
     const wd=wbMonthDatesOf(m.key), od=ozMonthDatesOf(m.key);
     return {key:m.key, lbl:monLabel(m.key),
-      title:"ВБ "+fmtDate(wd[0])+" – "+fmtDate(wd[wd.length-1])+" (целыми неделями) · "
+      title:"ВБ "+fmtDate(wd[0])+" – "+fmtDate(wd[wd.length-1])+" (как у организации) · "
         +"Ozon "+fmtDate(od[0])+" – "+fmtDate(od[od.length-1])+" (календарный)"};
   });
 }
@@ -6419,7 +6419,7 @@ function allClosedMonths(){
    renderHomeTab / renderHomeOzon / renderHomeAll, собрана в одном месте, чтобы вкладки не
    разъехались между собой:
      · кнопки недель — только по открытому хвосту после последнего закрытого месяца (openTailDays);
-     · закрытые месяцы: у ВБ целыми неделями по четвергу, у Ozon календарные;
+     · закрытые месяцы: у ВБ по интервалам организации (wbMonthOfWeek), у Ozon календарные;
      · идущий месяц — кнопкой «… · идёт» (openMonthEntry);
      · «Весь период».
    «К ПРЕД.» — ТОЛЬКО К ПОЛНОМУ ОКНУ ТОГО ЖЕ ВИДА: закрытый месяц сравнивается с предыдущим
@@ -6428,18 +6428,18 @@ function allClosedMonths(){
    На «Всего» месяц — два разных набора дат (ВБ по неделям, Ozon календарный), поэтому
    возвращаются раздельные даты площадок (wDates/oDates). */
 function mpPeriodPick(mp,segId,curN,curMonth){
-  const wbKey=d=>wbMonthOfWeek(mondayOf(d)).key, ozKey=d=>d.slice(0,7);
+  const wbKey=d=>wbMonthOfWeek(d).key, ozKey=d=>d.slice(0,7);
   const wbDates=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   const ozDates=(mp==="wb")? [] : [...new Set(ozFinRows().map(r=>r.date))].sort();
   let all, closed, keyOf, what;
   if(mp==="ozon"){ all=ozDates; closed=ozClosedMonths(); keyOf=ozKey; what="Ozon, календарный"; }
   else if(mp==="all"){ all=[...new Set([...wbDates,...ozDates])].sort(); closed=allClosedMonths(); keyOf=wbKey; what="обе площадки"; }
-  else { all=wbDates; closed=wbClosedMonths(); keyOf=wbKey; what="Wildberries, целыми неделями"; }
+  else { all=wbDates; closed=wbClosedMonths(); keyOf=wbKey; what="Wildberries, месяц как у организации"; }
   const open=openMonthEntry(all,closed,keyOf,what);
   if(open && mp==="all"){   // у «Всего» в подсказке ОБА отрезка — один диапазон читался бы как общий
     const wd=wbMonthDatesOf(open.key), od=ozMonthDatesOf(open.key);
     open.title="месяц ещё не закончился · "
-      +(wd.length? "ВБ "+fmtDate(wd[0])+" – "+fmtDate(wd[wd.length-1])+" ("+wd.length+" дн., целыми неделями)" : "ВБ нет данных")
+      +(wd.length? "ВБ "+fmtDate(wd[0])+" – "+fmtDate(wd[wd.length-1])+" ("+wd.length+" дн., как у организации)" : "ВБ нет данных")
       +" · "+(od.length? "Ozon "+fmtDate(od[0])+" – "+fmtDate(od[od.length-1])+" ("+od.length+" дн., календарный)" : "Ozon нет данных");
   }
   const ms=(open? [open] : []).concat(closed);
@@ -6791,7 +6791,9 @@ function mondayOf(iso){
 function weeklyBreakdown(cat,q){
   const all=[...new Set(FINANCE_CACHE.map(r=>r.date))].sort();
   const byMon={};
-  all.forEach(d=>{ const m=mondayOf(d); (byMon[m]||(byMon[m]=[])).push(d); });
+  /* неделя, через которую проходит граница месяца организации (31.08–06.09, 28.09–04.10), режется на два куска —
+     каждый уходит в свой месяц и показывается как «N дней»; до августа 2026 границы совпадают с неделями */
+  all.forEach(d=>{ const m=mondayOf(d)+"|"+wbMonthOfWeek(d).key; (byMon[m]||(byMon[m]=[])).push(d); });
   const weeks=[];
   for(const mon of Object.keys(byMon).sort().reverse()){
     const dates=byMon[mon];
@@ -6814,10 +6816,20 @@ function weeklyBreakdown(cat,q){
    заканчивается 30.08. Не заменяй на «месяц первого дня недели» — 31.08 уехало бы в август. */
 const RU_MONTHS_FULL=["Январь","Февраль","Март","Апрель","Май","Июнь",
   "Июль","Август","Сентябрь","Октябрь","Ноябрь","Декабрь"];
-function wbMonthOfWeek(fromIso){
-  const t=new Date(fromIso+"T00:00:00Z"); t.setUTCDate(t.getUTCDate()+3);   // четверг недели
-  return {key:t.toISOString().slice(0,7), y:t.getUTCFullYear(), m:t.getUTCMonth()};
+/* МЕСЯЦ ВБ — КАК В ОТЧЁТАХ ОРГАНИЗАЦИИ «ПРОДАЖИ МП» (ДАН-12, продавец 12.11.2026: «определи, как считается, и выбери
+   такой же интервал, чтобы всё сходилось»). По названиям её файлов: до июля включительно — целыми неделями по правилу
+   четверга (29.06–02.08 = июль); АВГУСТ — 03.08–31.08; С СЕНТЯБРЯ — КАЛЕНДАРНЫЙ месяц (01.09–30.09). Функция принимает
+   ЛЮБОЙ день (не только понедельник) — не оборачивай аргумент в mondayOf(): 01.09 (вторник) уехало бы в август. */
+const WB_AUG_FROM="2026-08-03", WB_CAL_FROM="2026-09-01";
+function wbMonthOfWeek(iso){
+  let key;
+  if(iso>=WB_CAL_FROM) key=iso.slice(0,7);
+  else if(iso>=WB_AUG_FROM) key="2026-08";
+  else { const t=new Date(mondayOf(iso)+"T00:00:00Z"); t.setUTCDate(t.getUTCDate()+3); key=t.toISOString().slice(0,7); }   // четверг недели
+  return {key, y:+key.slice(0,4), m:+key.slice(5,7)-1};
 }
+// сколько дней в месяце ВБ (по интервалу организации) — чтобы честно пометить неполный
+function wbMonthDays(key){ const R=wbMonthRange(key); return Math.round((Date.parse(R.to)-Date.parse(R.from))/864e5)+1; }
 // сколько ЦЕЛЫХ недель по этому правилу вообще в месяце — чтобы честно пометить неполный
 function wbWeeksInMonth(key){
   const [y,m]=key.split("-").map(Number);
@@ -6842,7 +6854,7 @@ function groupWeeksByWbMonth(weeks){
     g.from=g.weeks[g.weeks.length-1].from; g.to=g.weeks[0].to;
     // месяц полный, только если пришли ВСЕ его недели И каждая целиком (7 дней):
     // иначе один загруженный понедельник выдавал август за закрытый месяц
-    g.full=g.weeks.length>=wbWeeksInMonth(g.key) && g.weeks.every(w=>w.days===7); });
+    g.full=g.weeks.reduce((a,w)=>a+w.days,0)>=wbMonthDays(g.key); });
   return out;
 }
 let homeWeeksOpen={};        // какие месяцы развёрнуты (ключ «ГГГГ-ММ»)
@@ -7575,6 +7587,8 @@ const adRangeTxt=(a,b)=>!a? "—" : (a===b? fmtDateLong(a) : fmtDateLong(a)+" �
 const adDaysTxt=n=>n+" "+plural(n,"день","дня","дней");
 /* Месяц ВБ — целые недели пн–вс; неделя относится к месяцу своего ЧЕТВЕРГА (то же правило, что wbMonthOfWeek). */
 function wbMonthRange(key){ const [y,m]=key.split("-").map(Number);
+  if(key>=WB_CAL_FROM.slice(0,7)) return {from:key+"-01", to:new Date(Date.UTC(y,m,0)).toISOString().slice(0,10)};   // с сентября 2026 — календарный
+  if(key===WB_AUG_FROM.slice(0,7)) return {from:WB_AUG_FROM, to:"2026-08-31"};
   const a=new Date(Date.UTC(y,m-1,1)); while(a.getUTCDay()!==4) a.setUTCDate(a.getUTCDate()+1);
   const b=new Date(Date.UTC(y,m,0));   while(b.getUTCDay()!==4) b.setUTCDate(b.getUTCDate()-1);
   return {from:addDays(a.toISOString().slice(0,10),-3), to:addDays(b.toISOString().slice(0,10),3)}; }
@@ -7594,7 +7608,7 @@ function adPrevRunMonth(from,to,mp,n){
     const pf=adMonKey(from.slice(0,7),-1)+"-01", pe=addDays(from,-1);
     let t=addDays(pf,n-1); if(t>pe) t=pe;
     return {from:pf, to:t, how:"те же дни предыдущего календарного месяца"}; }
-  if(mp==="wb"){ const k=wbMonthOfWeek(mondayOf(from)).key, R=wbMonthRange(k);
+  if(mp==="wb"){ const k=wbMonthOfWeek(from).key, R=wbMonthRange(k);
     if(R.from===from && to<=R.to){ const P=wbMonthRange(adMonKey(k,-1));
       let t=addDays(P.from,n-1); if(t>P.to) t=P.to;
       return {from:P.from, to:t, how:"те же дни предыдущего месяца ВБ (от его первого понедельника)"}; } }
@@ -7606,11 +7620,11 @@ function adPrevLike(from,to,mp){
     const k=adMonIdx(to.slice(0,7))-adMonIdx(from.slice(0,7))+1;
     return {from:adMonKey(from.slice(0,7),-k)+"-01", to:addDays(from,-1),
       how:k>1? "предыдущие "+k+" календарных месяца" : "предыдущий календарный месяц"}; }
-  if(mp==="wb"){ const k1=wbMonthOfWeek(mondayOf(from)).key, k2=wbMonthOfWeek(mondayOf(to)).key;
+  if(mp==="wb"){ const k1=wbMonthOfWeek(from).key, k2=wbMonthOfWeek(to).key;
     if(wbMonthRange(k1).from===from && wbMonthRange(k2).to===to){
       const k=adMonIdx(k2)-adMonIdx(k1)+1;
       return {from:wbMonthRange(adMonKey(k1,-k)).from, to:addDays(from,-1),
-        how:(k>1? "предыдущие "+k+" месяца ВБ" : "предыдущий месяц ВБ")+" (целые недели по четвергу)"}; } }
+        how:(k>1? "предыдущие "+k+" месяца ВБ" : "предыдущий месяц ВБ")+" (как в отчётах организации)"}; } }
   const run=adPrevRunMonth(from,to,mp,n);
   if(run && n>7) return run;
   // целые недели пн–вс → столько же недель пн–вс прямо перед A
@@ -7633,7 +7647,7 @@ function adPresets(mp,lo,hi,parts,def){
     let m=mondayOf(hi); if(addDays(m,6)>hi) m=addDays(m,-7);
     for(let i=0;i<4 && m>=lo; i++, m=addDays(m,-7)) add({label:"нед "+adDM(m)+"–"+adDM(addDays(m,6)), from:m, to:addDays(m,6)});
     const ks=[]; for(let k=lo.slice(0,7); k<=hi.slice(0,7); k=adMonKey(k,1)) ks.push(k);
-    if(mp==="wb"){ const k0=wbMonthOfWeek(mondayOf(lo)).key; if(!ks.includes(k0)) ks.unshift(k0); }
+    if(mp==="wb"){ const k0=wbMonthOfWeek(lo).key; if(!ks.includes(k0)) ks.unshift(k0); }
     ks.reverse().forEach(k=>{ const R= mp==="wb"? wbMonthRange(k) : {from:k+"-01", to:addDays(adMonKey(k,1)+"-01",-1)};
       const nm=RU_MONTHS[+k.slice(5,7)-1]+" "+k.slice(2,4)+(mp==="wb"? " (ВБ)" : "");
       if(R.from>=lo && R.to<=hi) add({label:nm, from:R.from, to:R.to});
@@ -10299,7 +10313,7 @@ function combinedMonths(cat,q){
     e.cogs+=w.cogs; e.ad+=w.ad; e.profit+=w.profit; e.est=e.est||!!w.est;
   });
   Object.values(wbM).forEach(e=>{ e.margin=e.revenue? e.profit/e.revenue : 0;
-    e.full = e.weeks===wbWeeksInMonth(e.key); });
+    e.full = e.days>=wbMonthDays(e.key); });
   const ozM={}; ozMonthly(cat,q).forEach(m=>{ ozM[m.key]=m; m.full=m.days>=28; });
   const keys=[...new Set([...Object.keys(wbM),...Object.keys(ozM)])].sort().reverse();
   return keys.map(k=>{
@@ -10331,21 +10345,21 @@ function renderHomeAll(){
   document.getElementById("homeContent").hidden=false;
   const all=[...new Set([...wbDates,...ozDates])].sort();
   fresh.innerHTML=`<span class="dot"></span>Обе площадки · ${fmtDateLong(all[0])} – ${fmtDateLong(all[all.length-1])}`
-    +` · <b>месяц у каждой площадки свой</b>: у Ozon календарный, у ВБ целыми неделями`
-    +` (неделя относится к месяцу своего четверга). ВБ после 2 авг — оценка, Ozon — оценка по тарифу ИУ.`;
+    +` · <b>месяц у каждой площадки свой</b>: у Ozon календарный, у ВБ — как в отчётах организации`
+    +` (до июля целыми неделями, август 03–31.08, с сентября календарный). ВБ после 2 авг — оценка, Ozon — оценка по тарифу ИУ.`;
 
   const catSel=document.getElementById("homeCat");
   if(catSel && !catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
   const allClosed=allClosedMonths();
-  const allOpen=openMonthEntry(all,allClosed,d=>wbMonthOfWeek(mondayOf(d)).key,"обе площадки");
+  const allOpen=openMonthEntry(all,allClosed,d=>wbMonthOfWeek(d).key,"обе площадки");
   /* У «Всего» подсказка обязана показывать ОБА отрезка: у ВБ и Озона месяц кончается в разные
      дни, и один диапазон читался бы как общий. Базовый openMonthEntry считает по ВБ-правилу,
      поэтому заголовок здесь пересобираем. */
   if(allOpen){
     const wd=wbMonthDatesOf(allOpen.key), od=ozMonthDatesOf(allOpen.key);
     allOpen.title="месяц ещё не закончился · "
-      +(wd.length? "ВБ "+fmtDate(wd[0])+" – "+fmtDate(wd[wd.length-1])+" ("+wd.length+" дн., целыми неделями)" : "ВБ нет данных")
+      +(wd.length? "ВБ "+fmtDate(wd[0])+" – "+fmtDate(wd[wd.length-1])+" ("+wd.length+" дн., как у организации)" : "ВБ нет данных")
       +" · "
       +(od.length? "Ozon "+fmtDate(od[0])+" – "+fmtDate(od[od.length-1])+" ("+od.length+" дн., календарный)" : "Ozon нет данных");
   }
@@ -10353,7 +10367,7 @@ function renderHomeAll(){
   /* Хвост на «Всего»: дни, которые не попали ни в один общий закрытый месяц. Считаем по
      ВБ-правилу — его месяц кончается позже календарного (август у ВБ до 30.08, у Озона
      до 31.08), поэтому по нему хвост получается не длиннее реального. */
-  const allTail=openTailDays(all,allClosed,d=>wbMonthOfWeek(mondayOf(d)).key);
+  const allTail=openTailDays(all,allClosed,d=>wbMonthOfWeek(d).key);
   homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,allTail,allMs,homeMonth);
   /* На «Всего» месяц — это ДВА разных набора дат (у ВБ по неделям, у Озона календарный),
      поэтому общий `set` тут не годится: каждая площадка берёт свои дни. */
@@ -10410,7 +10424,7 @@ function renderHomeAll(){
   card.hidden=!mo.length;
   document.getElementById("homeWeeksTitle").textContent="Каждый месяц отдельно";
   document.getElementById("homeWeeksCap").textContent=
-    "Месяц у площадок считается по-разному: у Ozon календарный, у ВБ целыми неделями (неделя относится к месяцу своего четверга). Поэтому строка месяца — это сумма двух РАЗНЫХ отрезков, и период каждой площадки написан рядом.";
+    "Месяц у площадок считается по-разному: у Ozon календарный, у ВБ — как в отчётах организации (до июля 2026 целыми неделями, август 03–31.08, с сентября календарный). Поэтому строка месяца — это сумма двух РАЗНЫХ отрезков, и период каждой площадки написан рядом.";
   document.getElementById("homeWeeksNote").textContent=
     mo.length+" "+plural(mo.length,"месяц","месяца","месяцев")+" · ВБ + Ozon";
   const RU=["","янв","фев","мар","апр","май","июн","июл","авг","сен","окт","ноя","дек"];
@@ -10426,7 +10440,7 @@ function renderHomeAll(){
   mo.forEach(m=>{
     const part=m.full? "" : ' <span class="badge nodata"><span class="d"></span>неполный</span>';
     html+=line(nm(m.key)+part,"обе площадки",m,"row-group");
-    if(m.wb) html+=line("Wildberries","целыми неделями · "+per(m.wb)+(m.est?" · оценка":""),
+    if(m.wb) html+=line("Wildberries","как у организации · "+per(m.wb)+(m.est?" · оценка":""),
       {qty:m.wb.qty,revenue:m.wb.revenue,hold:m.wb.hold,cogs:m.wb.cogs,ad:m.wb.ad,
        profit:m.wb.profit,margin:m.wb.margin},"in-grp");
     if(m.oz) html+=line("Ozon","календарный · "+per(m.oz),
@@ -10478,9 +10492,9 @@ function renderHomeTab(){
   if(!catSel.options.length) fillCategorySelect(catSel);
   const cat=selCats("homeCat"), q=document.getElementById("homeSearch").value.trim().toLowerCase();
   const wbClosed=wbClosedMonths();
-  const wbOpen=openMonthEntry(allDates,wbClosed,d=>wbMonthOfWeek(mondayOf(d)).key,"Wildberries, целыми неделями");
+  const wbOpen=openMonthEntry(allDates,wbClosed,d=>wbMonthOfWeek(d).key,"Wildberries, месяц как у организации");
   const wbMs=(wbOpen? [wbOpen] : []).concat(wbClosed);
-  const wbTail=openTailDays(allDates,wbClosed,d=>wbMonthOfWeek(mondayOf(d)).key);
+  const wbTail=openTailDays(allDates,wbClosed,d=>wbMonthOfWeek(d).key);
   homePeriodN=renderPeriodSeg("homePeriodSeg",homePeriodN,wbTail,wbMs,homeMonth);
   let dates, prevDates;
   if(homeMonth && wbMs.some(m=>m.key===homeMonth)){
@@ -11129,7 +11143,7 @@ function renderAnalyticsAll(){
   analyticsPeriodN=P.n;
   const W=(wbOk && P.wDates.length)? anCalcWb(P.wDates,null,"") : null;
   const O=(ozOk && P.oDates.length)? anCalcOz(P.oDates,null,"") : null;
-  fresh.innerHTML=`<span class="dot"></span><span style="flex:1 1 0;min-width:0">Обе площадки рядом · <b>месяц у каждой свой</b>: у Wildberries целыми неделями (неделя — в месяц своего четверга), у Ozon календарный`
+  fresh.innerHTML=`<span class="dot"></span><span style="flex:1 1 0;min-width:0">Обе площадки рядом · <b>месяц у каждой свой</b>: у Wildberries как в отчётах организации (до июля 2026 целыми неделями, август 03–31.08, с сентября календарный), у Ozon календарный`
     +(financeEstFrom? ` · ВБ: факт по отчётам ${finFactTxt()}, остальные дни — оценка` : "")+` · Ozon — оценка по тарифу ИУ</span>`;
   document.getElementById("anKpis").innerHTML="";
   const note=document.getElementById("anNote"); note.hidden=true; note.innerHTML="";

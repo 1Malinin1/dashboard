@@ -190,7 +190,10 @@ UE.forEach(u=>{ let revEst=0,revAll=0,factNet=0;
   u._revAll=revAll; u._revEst=revEst; u._factNet=factNet; });
 function ueFor(d){ let inM=null,prev=null,next=null; UE.forEach(u=>{ if(d>=u.from&&d<=u.to) inM=u; else if(u.to<d) prev=u; else if(!next) next=u; });
   if(inM&&inM._kIn>0.3&&inM._kIn<0.9) return {u:inM,k:inM._kIn,kind:'in'};
-  if(prev&&prev._kFwd>0.3&&prev._kFwd<0.9) return {u:prev,k:prev._kFwd,kind:'fwd'};
+  /* после месяца — СВОДНАЯ доля по последним трём отчётам организации (к оплате ÷ выручка оценки), а не по одному:
+     от месяца к месяцу она гуляет (август 57,3%, сентябрь 59,2%), и один месяц вслепую промахивается на ~700 тыс. ₽ */
+  if(prev){ const last=UE.filter(u=>u.to<d).slice(-3); const n=last.reduce((a,u)=>a+u.totals.net,0), r=last.reduce((a,u)=>a+u._revAll,0);
+    const k=r>0? n/r : 0; if(k>0.3&&k<0.9) return {u:prev,k,kind:'fwd',n:last.length}; }
   // дни ДО первого отчёта организации: ближайший отчёт (назад), а не отчёты ВБ — оценка выручки завышена одинаково
   if(next&&next._kFwd>0.3&&next._kFwd<0.9) return {u:next,k:next._kFwd,kind:'back'};
   return null; }
@@ -204,7 +207,7 @@ for(let d=FROM; d<=TO; d=addD(d,1)){
   const commRate=RT.commRate, factLogShare=RT.logShare;
   const payRate=ue? ue.k : RT.payRate;
   const holdRate=Math.max(0,(1-commRate)-payRate);
-  { const last=rateSeg[rateSeg.length-1]; const src=ue? ('отчёт организации '+ue.u.from.slice(0,7)+(ue.kind==='in'? ' (месяц отчёта)': ue.kind==='fwd'? ' (действует после него)':' (ближайший, дни до первого отчёта)')) : ('отчёты ВБ '+RT.block.from+'…'+RT.block.to);
+  { const last=rateSeg[rateSeg.length-1]; const src=ue? ('отчёт организации '+ue.u.from.slice(0,7)+(ue.kind==='in'? ' (месяц отчёта)': ue.kind==='fwd'? ' и раньше, всего отчётов '+ue.n+' (действует после них)':' (ближайший, дни до первого отчёта)')) : ('отчёты ВБ '+RT.block.from+'…'+RT.block.to);
     if(last && last.src===src) last.to=d; else rateSeg.push({from:d,to:d,src,payRate}); }
   const wD=manualMB? null : winFor(d);
   byDate.push({d, mb:mbD, win:wD? ('замер '+measDay(wD)+' по окну '+wD.from+'…'+wD.to) : 'ручной',
@@ -250,7 +253,22 @@ console.log('  выручка (оценка):         '+R(revTot));
 console.log('  выручка, штуки и себестоимость — ПО ДНЮ ВЫКУПА (срок заказ → продажа в среднем '+((MODEL.lag&&MODEL.lag.mean)||0)+' дн.)');
 console.log('  «итого к оплате» ÷ выручка:');
 rateSeg.forEach(s=>console.log('     '+s.from+' … '+s.to+'  '+(s.payRate*100).toFixed(2)+'%  ('+s.src+')'));
-UE.forEach(u=>console.log('  отчёт организации '+u.from+'…'+u.to+': к оплате '+R(u.totals.net)+' · в нём по отчётам ВБ '+R(u._factNet)+' · выручка оценки за месяц '+R(u._revAll)));
+UE.forEach(u=>console.log('  отчёт организации '+u.from+'…'+u.to+': к оплате '+R(u.totals.net)+' · в нём по отчётам ВБ '+R(u._factNet)+' · выручка оценки за месяц '+R(u._revAll)
+  +' · доля в месяце '+(u._kIn*100).toFixed(2)+'% · после месяца '+(u._kFwd*100).toFixed(2)+'%'));
+/* ПРОВЕРКА «ВСЛЕПУЮ»: что показала бы оценка за месяц, если бы отчёта организации за него ещё не было
+   (доля «к оплате» — из ПРЕДЫДУЩЕГО отчёта). Это и есть точность для текущего месяца — её и говорить продавцу. */
+if(UE.length>1){ console.log('\n  ПРОВЕРКА ВСЛЕПУЮ (месяц считаем по коэффициенту предыдущего отчёта организации):');
+  const adsOf=(a,b)=>{ let x=0; ((RD.adPerf&&RD.adPerf.parts)||[]).forEach(p=>{ if(p.from>=a&&p.to<=b) Object.values(p.bySku).forEach(v=>x+=v.spend||0); }); return x; };
+  for(let i=1;i<UE.length;i++){ const u=UE[i], pv=UE[i-1];
+    let cg=0,q=0; for(let d=u.from; d<=u.to; d=addD(d,1)){ const e=saleEst(d); for(const k in e){ cg+=e[k].qty*costAt(k,d); q+=e[k].qty; } }
+    const netP=u._revAll*pv._kFwd, ads=adsOf(u.from,u.to), cd=(u.flags&&u.flags.costDiffTotal)||0;
+    const profP=netP-cg-ads, profOrg=u.totals.profit+cd;      // прибыль организации при ценах продавца
+    console.log('     '+u.from.slice(0,7)+': к оплате оценка '+R(netP)+' против '+R(u.totals.net)+' ('+R(netP-u.totals.net)+')'
+      +' · штук '+Math.round(q)+' против '+u.totals.qty
+      +' · себестоимость '+R(cg)+' против '+R(u.totals.cost-cd)+' по ценам продавца ('+R(cg-(u.totals.cost-cd))+')'
+      +' · реклама '+R(ads)+' против '+R(u.totals.promo)+' ('+R(ads-u.totals.promo)+')');
+    console.log('              ПРИБЫЛЬ оценка '+R(profP)+' против '+R(profOrg)+' у организации при ценах продавца → ошибка '+R(profP-profOrg)
+      +(cd? '   (в отчёте организации '+R(u.totals.profit)+'; её себестоимость отличается на '+R(cd)+')' : '')); } }
 console.log('  итого к оплате:           '+R(net));
 console.log('  себестоимость проданного: '+R(cogsTot)+'  ('+Math.round(qtyTot).toLocaleString('ru-RU')+' шт)');
 console.log('  реклама:                  '+R(ADS));
