@@ -70,12 +70,19 @@ function readReport(f){
      дня урезанным файлом молча обнулила бы дозревшую доставку. Поэтому такие строки помечаются
      `noDeliv`, и при мерже прежние `buyoutQty`/`buyoutSum`/`cancelQty` СОХРАНЯЮТСЯ. */
   const noDeliv=cDeliv<0;
-  if([cArt,cDay,cImp,cCard,cCart,cOrd].some(x=>x<0))
+  /* ОТЧЁТ ЗА ОДИН ДЕНЬ БЕЗ КОЛОНКИ «ДЕНЬ» (13.11.2026: «analytics_report_…» вместо «…_daily_…» — тот же лист «По товарам»,
+     но строка на товар за период). Если в шапке «Период: ДД.ММ.ГГГГ – ДД.ММ.ГГГГ» и даты совпадают — это подённый отчёт за
+     один день, дату берём из шапки. Период длиннее дня — не воронка по дням, такой файл не берём. */
+  let fixedDay=null;
+  if(cDay<0){ const per=rows.slice(0,hr).map(r=>(''+(r[0]||''))).join(' ').match(/Период:\s*(\d{2})\.(\d{2})\.(\d{4})\s*[–-]\s*(\d{2})\.(\d{2})\.(\d{4})/);
+    if(per && per[1]===per[4] && per[2]===per[5] && per[3]===per[6]) fixedDay=per[3]+'-'+per[2]+'-'+per[1];
+    else throw new Error('в '+f+' нет колонки «День», а период в шапке не один день — нужен отчёт «По товарам, подённо»'); }
+  if([cArt,cImp,cCard,cCart,cOrd].some(x=>x<0))
     throw new Error('не нашёл ключевые колонки воронки в '+f+' (арт='+cArt+' день='+cDay+' показы='+cImp+' карточка='+cCard+' корзина='+cCart+' заказы='+cOrd+')');
   const recs=[]; let matched=0, skipped=0; const ozSkuByArt={};   // артикул продавца → числовой SKU Озона (для ссылки)
   const tot={imp:0,card:0,cart:0,ord:0,deliv:0,sum:0,sumReal:0,base:sumBase,noDeliv,bothCols:cSumReal>=0&&sumBase==='предельная цена'};
   for(let i=hr+1;i<rows.length;i++){
-    const r=rows[i]; const art=(''+(r[cArt]||'')).trim(); const day=(''+(r[cDay]||'')).trim();
+    const r=rows[i]; const art=(''+(r[cArt]||'')).trim(); const day=fixedDay? (art? fixedDay : '') : (''+(r[cDay]||'')).trim();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;          // не строка данных (напр. «Итого и среднее»)
     // наш товар: карточка ВБ, каталог Ozon или 6-значный код 1С (новинки без карточки ВБ терялись молча — 02.11.2026)
     if(!supSet.has(art) && !ozBySku[art]){ skipped++; continue; }   // каталог Ozon теперь сам берёт новинки с остатком (ozon-build)
