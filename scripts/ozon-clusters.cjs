@@ -31,7 +31,7 @@ const code=v=>nb(v).replace(/[\s,]/g,'');
 const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
 const RD=ctx.__RD;
-const supSet=new Set(RD.catalog.map(c=>code(c.supplierCode)).filter(Boolean));
+const OUR=require('./lib/our-codes.cjs')(RD), supSet=OUR.all;   // единый признак «наш» (16.11.2026): раньше только карточки ВБ
 const nameBySup={}; RD.catalog.forEach(c=>{const s=code(c.supplierCode); if(s&&!nameBySup[s]) nameBySup[s]=c.name;});
 
 /* ЧИТАТЬ ТОЛЬКО НУЖНЫЙ ЛИСТ (05.11.2026): в отчёте остатков Ozon 5 листов, «Товар-склад» — 312 тыс. строк (весь общий кабинет);
@@ -73,7 +73,7 @@ if(missing.length){
 const bySup={}, byCluster={}; let ours=0, alien=0;
 for(let i=4;i<r.length;i++){
   const x=r[i]||[]; const a=code(x[I.art]); if(!a) continue;
-  if(!supSet.has(a)){ alien++; continue; }
+  if(!OUR.take(a)){ alien++; continue; }
   ours++;
   const cl=nb(x[I.cluster])||'(без кластера)';
   const rec={ avail:num(x[I.avail]), spd:num(x[I.spd]), req:num(x[I.req]), road:num(x[I.road]),
@@ -116,6 +116,7 @@ const F=n=>Math.round(n).toLocaleString('ru-RU');
 const list=Object.entries(byCluster).map(([cl,e])=>({cl,...e})).sort((a,b)=>b.spd-a.spd);
 const tot=list.reduce((s,e)=>({avail:s.avail+e.avail,spd:s.spd+e.spd,req:s.req+e.req,road:s.road+e.road}),{avail:0,spd:0,req:0,road:0});
 console.log('лист «'+SH+'» · наших строк '+ours+' · чужих пропущено '+alien);
+{ const rep=OUR.report('кластеры Ozon'); if(rep) console.log('  '+rep); }
 console.log('кластеров: '+list.length+' · дата '+dateArg);
 const hd=Object.keys(RD.ozon.clusterHistory).sort();
 console.log('история по кластерам: '+hd.length+' '+(hd.length===1?'точка':'точек')+' ['+hd[0]+' … '+hd[hd.length-1]+']'

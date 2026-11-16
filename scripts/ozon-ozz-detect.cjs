@@ -38,7 +38,7 @@ const ozzBox = O.meta.ozzOn || {};
 const prev = Object.assign({}, ozzBox.bySup || {});
 
 // наши = артикул ∈ supplierCode каталога ВБ
-const ours = new Set(RD.catalog.map(c => String(c.supplierCode || "").trim()).filter(Boolean));
+const ours = require('./lib/our-codes.cjs')(RD).all;   // единый признак «наш» (16.11.2026): раньше только карточки ВБ
 const nameBySup = {};
 (O.catalog || []).forEach(c => { nameBySup[String(c.sku)] = c.name || ""; });
 

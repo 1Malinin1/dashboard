@@ -122,3 +122,11 @@ console.log('wb-secure.js записан:', (js.length / 1024 | 0), 'KB · ка�
   '· строк воронки', out.BAKED_FUNNEL.length,
   '· период', out.BAKED_PERIOD, '· roundtrip', ok ? 'OK' : 'FAILED');
 if (!ok) process.exit(1);
+
+// АУДИТ ПОЛНОТЫ ДАННЫХ (16.11.2026) — после каждой записи печатает молчаливые пропажи: новинка не считается нашей,
+// воронка видит заказы, а ряд нет, дни без части данных, продажи без себестоимости. Ничего не меняет и не блокирует —
+// но читать обязательно и разбирать в том же заходе (scripts/data-audit.cjs).
+try {
+  const res = require('./data-audit.cjs')({ __RD: out.REAL_DATA, BAKED_FUNNEL: out.BAKED_FUNNEL }, { days: 14 });
+  console.log(res.length ? '\nАУДИТ ПОЛНОТЫ ДАННЫХ:\n' + res.join('\n') : '\nАУДИТ ПОЛНОТЫ ДАННЫХ: пропаж не найдено.');
+} catch (e) { console.log('\n(аудит полноты не выполнился: ' + e.message + ')'); }

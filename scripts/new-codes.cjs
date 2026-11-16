@@ -92,8 +92,14 @@ function show(){
   });
   const ready=list.filter(it=>{const w=where(it.code);return (it.wbSku&&!w.wb)||(it.ozonSku&&!w.oz);});
   if(ready.length) console.log('\nГОТОВЫ К ЗАВЕДЕНИЮ: '+ready.map(x=>x.code).join(', '));
-  const live=list.filter(it=>{const w=where(it.code);return w.wb||w.oz;});
-  if(live.length) console.log('УЖЕ В КАТАЛОГЕ (можно убрать drop): '+live.map(x=>x.code).join(', '));
+  /* «УЖЕ В КАТАЛОГЕ» — ТОЛЬКО ЕСЛИ ЗАВЕДЕНО ВСЁ, ЧТО ИЗВЕСТНО (16.11.2026). Раньше хватало каталога Ozon, и 23 кода
+     с карточкой ВБ, которой не было в каталоге ВБ, печатались как «уже в каталоге, можно убрать» — их заказы, остатки
+     и реклама ВБ не загружались (519574: 479 шт на складах ВБ не видно). */
+  const live=list.filter(it=>{const w=where(it.code);return (w.wb||w.oz)&&!(it.wbSku&&!w.wb)&&!(it.ozonSku&&!w.oz);});
+  if(live.length) console.log('УЖЕ В КАТАЛОГЕ ВБ и Ozon (можно убрать drop): '+live.map(x=>x.code).join(', '));
+  const noWb=list.filter(it=>it.wbSku&&!where(it.code).wb);
+  if(noWb.length) console.log('\n⚠ КАРТОЧКА ВБ ЕСТЬ, В КАТАЛОГЕ ВБ ДАШБОРДА НЕТ — '+noWb.length+': '+noWb.map(x=>x.code).join(', ')
+    +'\n  их заказы, остатки и реклама ВБ НЕ загружаются → node scripts/new-codes.cjs wb-cards --apply');
 }
 
 // ── поиск кодов в произвольном отчёте ────────────────────────────────────────
@@ -294,6 +300,32 @@ if(cmd==='oz-bulk'){
   process.exit(0);
 }
 
+/* wb-cards — ЗАВЕСТИ В КАТАЛОГ ВБ карточки из реестра, у которых известен артикул ВБ (16.11.2026).
+   Раньше это был ручной шаг «собери xlsx и запусти add-catalog-cards.cjs», и его пропускали: 23 кода висели
+   неделями. Категория дашборда — по предмету ВБ (CAT_MAP), неизвестный предмет → по названию, иначе «Без категории»
+   (печатается, поправить руками). Сам файл собирается здесь, заводит его add-catalog-cards.cjs (там все проверки). */
+if(cmd==='wb-cards'){
+  const CAT_MAP={'роботы':'Трансформеры','трансформеры':'Трансформеры','игрушечные парковки':'Парковки','парковки':'Парковки',
+    'автотреки':'Машинки','машинки':'Машинки','пушкары':'Пушкары','каталки':'Пушкары','тренажеры для бокса':'Тренажеры',
+    'груши боксерские':'Груши боксерские','игровые наборы':'Игровой набор'};
+  const byName=n=>{ n=String(n||'').toLowerCase();
+    if(/трансформ|робот/.test(n)) return 'Трансформеры'; if(/парковк/.test(n)) return 'Парковки';
+    if(/автотрек|машинк/.test(n)) return 'Машинки'; if(/толокар|каталк/.test(n)) return 'Пушкары';
+    if(/тренажер.*бокс|бокс.*тренажер/.test(n)) return 'Тренажеры';
+    if(/(^|[^а-яё])груш/.test(n)) return 'Груши боксерские';   // не «иГРУШка»
+    if(/самол|катапульт|выстрел/.test(n)) return 'Игровой набор'; return null; };
+  const todo=list.filter(it=>it.wbSku&&/^\d{6,}$/.test(String(it.wbSku))&&!where(it.code).wb);
+  if(!todo.length){ console.log('Все карточки ВБ из реестра уже в каталоге.'); process.exit(0); }
+  const rows=[['Артикул ВБ','Код 1С','Наименование','Категория','Себестоимость','Статус']];
+  todo.forEach(it=>{ const cat=CAT_MAP[String(it.cat||'').toLowerCase()]||byName(it.name)||'Без категории';
+    rows.push([String(it.wbSku), it.code, it.name||it.code, cat, it.cost||'', 'Новинка']);
+    console.log('   '+it.code+' · ВБ '+it.wbSku+' · '+cat+(it.cost? ' · '+it.cost+' ₽':' · СЕБЕСТОИМОСТИ НЕТ')+' · '+String(it.name||'').slice(0,40)); });
+  const os=require('os'); const tmp=path.join(os.tmpdir(),'wb-cards-from-registry.xlsx');
+  const wbk=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wbk, XLSX.utils.aoa_to_sheet(rows), 'cards'); XLSX.writeFile(wbk, tmp);
+  const r=require('child_process').spawnSync(process.execPath,[path.join(__dirname,'add-catalog-cards.cjs'),tmp,'cards'].concat(argv.includes('--apply')?['--apply']:[]),{stdio:'inherit'});
+  process.exit(r.status||0);
+}
+
 if(cmd==='check'){
   const files=argv.slice(1).filter(x=>!x.startsWith('--'));
   if(!files.length){ console.error('usage: node scripts/new-codes.cjs check <файл.xlsx|csv> [ещё…]'); process.exit(1); }
@@ -324,7 +356,7 @@ if(cmd==='check'){
   const ready=list.filter(it=>{const w=where(it.code);return (it.wbSku&&!w.wb)||(it.ozonSku&&!w.oz);});
   if(ready.length){
     console.log('ГОТОВЫ К ЗАВЕДЕНИЮ — '+ready.map(x=>x.code).join(', '));
-    console.log('  с артикулом ВБ → node scripts/add-catalog-cards.cjs <файл.xlsx> --apply');
+    console.log('  с артикулом ВБ → node scripts/new-codes.cjs wb-cards --apply   (сам соберёт файл для add-catalog-cards.cjs)');
     console.log('  только Озон    → node scripts/new-codes.cjs oz <код> <ozonSku> --name "…" --cat "…"');
   }
   process.exit(0);

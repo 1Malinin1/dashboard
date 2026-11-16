@@ -192,7 +192,7 @@ const OTH=['Обработка отправления','Логистика','Д�
   'Операционные ошибки'].map(opt).filter(i=>i>=0);
 
 const N=v=>{ const x=typeof v==='number'?v:parseFloat(String(v==null?0:v).replace(/\s/g,'').replace(',','.')); return isNaN(x)?0:x; };
-const sup=new Set((RD.catalog||[]).map(c=>String(c.supplierCode||'').trim()).filter(Boolean));
+const OUR=require('./lib/our-codes.cjs')(RD), sup=OUR.all;   // единый признак «наш» (16.11.2026): раньше только карточки ВБ
 if(!sup.size){ console.error('в снимке нет каталога ВБ — не с чем сопоставить артикулы'); process.exit(1); }
 
 const T={rows:0,ord:0,del:0,ret:0,rev:0,pts:0,prt:0,voz:0,acq:0,ads:0,oth:0,prof:0};
@@ -200,7 +200,7 @@ let foreign=0;
 for(let i=HR+1;i<a.length;i++){
   const r=a[i]; if(!r) continue;
   const art=String(r[I.art]==null?'':r[I.art]).trim(); if(!art) continue;
-  if(!sup.has(art)){ foreign++; continue; }
+  if(!OUR.take(art)){ foreign++; continue; }
   T.rows++;
   T.ord+=N(r[I.ord]); T.del+=N(r[I.del]); T.ret+=N(r[I.ret]);
   T.rev+=N(r[I.rev]); T.pts+=N(r[I.pts]); T.prt+=N(r[I.prt]);
@@ -250,6 +250,7 @@ if(t) t.adsNote='ставка рекламы берётся ИЗ ОТЧЁТА ю
 console.log('');
 console.log('ОТЧЁТ OZON «ЮНИТ-ЭКОНОМИКА» · '+FROM+' … '+TO+' · ТОЛЬКО НАШИ ТОВАРЫ');
 console.log('  строк наших '+T.rows+' (чужих пропущено '+foreign+')');
+{ const rep=OUR.report(''); if(rep) console.log('  '+rep); }
 console.log('  штуки: заказано '+F(T.ord)+' · доставлено '+F(T.del)+' · возвращено '+F(T.ret)
   +'  → доставлено/заказано '+(T.ord?(T.del/T.ord*100).toFixed(1):'—')+'%');
 console.log('');

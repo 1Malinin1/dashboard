@@ -11,8 +11,11 @@ let files=process.argv.slice(2);
 const RESET=files.includes('--reset'); files=files.filter(f=>f!=='--reset');
 if(!files.length){console.error('usage: node scripts/ozon-ingest-orders.cjs [--reset] <файл1> <файл2> ...');process.exit(1);}
 const ctx={};vm.createContext(ctx);
-vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+"\nglobalThis.__C=REAL_DATA.catalog;",ctx);
-const wbSup=new Set(ctx.__C.map(x=>(''+(x.supplierCode||'')).trim()).filter(Boolean));
+vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+"\nglobalThis.__RD=REAL_DATA;",ctx);
+/* «НАШ» — ЕДИНЫЙ ПРИЗНАК lib/our-codes.cjs (16.11.2026). Раньше здесь был фильтр «есть карточка ВБ»,
+   и заказы новинок, которые продаются только на Ozon (519573, 519575, 519400…), выпадали молча:
+   20 заказов за 09–15.11 не попали в ряд, хотя воронка и XWAY их видели. Отсеянное теперь печатается. */
+const OUR=require('./lib/our-codes.cjs')(ctx.__RD);
 function num(v){const n=parseFloat((''+v).replace(/\s/g,'').replace(',','.'));return isNaN(n)?0:n;}
 function load(f){ if(f.endsWith('.csv')){const t=fs.readFileSync(f,'utf8');const sep=(t.split(/\r?\n/)[0].split(';').length>2)?';':',';/* raw:true — даты остаются ТЕКСТОМ. Без него SheetJS сам читает «05.11.2026 10:40» как
      5 мая/11 мая (М.Д) ещё до detectFmt — так 06.11.2026 день 05.11 лёг 11 мая. */
@@ -79,7 +82,7 @@ for(const f of files){
   // берём УНИКАЛЬНЫЕ строки дат по всему файлу — так формат определяется надёжно
   const dset=new Set();for(let i=1;i<rows.length;i++){const s=(''+(rows[i][iAcc]||'')).trim().split(' ')[0];if(s)dset.add(s);}
   const fmt=detectFmt([...dset]);
-  for(let i=1;i<rows.length;i++){const r=rows[i];const a=(''+(r[iArt]||'')).trim();if(!wbSup.has(a))continue;
+  for(let i=1;i<rows.length;i++){const r=rows[i];const a=(''+(r[iArt]||'')).trim();if(!OUR.take(a))continue;
     const key=(''+(r[iOtpr]||''))+'|'+(''+(r[iSku]||''));if(rowsByKey.has(key))continue;
     const o=parts(r[iAcc],fmt);if(!o)continue;const d=iso(o);newDates.add(d);
     const q=num(r[iQty])||1, st=(''+(r[iStatus]||'')).trim(), rub=num(r[iPrice]);  // цена заказа (см. PRICE_COLS)
@@ -124,6 +127,7 @@ M.builtAt=new Date().toISOString();
 fs.writeFileSync(outPath,JSON.stringify(M));
 const totG=Object.values(M.byDate).reduce((a,b)=>a+b,0), totN=Object.values(M.byDateNet).reduce((a,b)=>a+b,0);
 const allDates=[...new Set(Object.keys(M.byDateArt).map(k=>k.slice(0,10)))].sort();
+{ const rep=OUR.report('заказы Ozon'); if(rep) console.log('\n'+rep); }
 console.log('\nozon-orders.json'+(RESET?' (ПЕРЕСОБРАН с нуля)':' (мерж)')+': наших строк из файлов',ours,
   '· уже были в своде (пропущено):',skipped,'· добавлено:',(ours-skipped));
 console.log('  дни в файлах:',[...newDates].sort()[0],'…',[...newDates].sort().slice(-1)[0]);

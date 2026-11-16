@@ -105,7 +105,9 @@ const canonWh=v=>{ if(whForced) return whForced; const s=S(v);
 const ctx={};vm.createContext(ctx);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);
 const RD=ctx.__RD;
-const supSet=new Set(RD.catalog.map(c=>S(c.supplierCode)).filter(Boolean));
+/* «НАШ» — единый признак lib/our-codes.cjs (16.11.2026): раньше только карточки ВБ, и свой остаток
+   новинок, которые продаются только на Ozon, считался «розничным» и в подсорт Ozon не шёл. */
+const supSet=require('./lib/our-codes.cjs')(RD).all;
 /* Коды из файла заказов на производство без карточки ВБ (новые товары) в склад не пишем — как и раньше, —
    но их остаток копим отдельно (`RD.prodStockHist`): по нему lib/prod-arrivals.cjs ловит приход партии
    нового товара ещё до появления карточки (ЗАП-15). «Не для маркетплейсов» (`prodOrders.notMp`) — нет. */
@@ -393,7 +395,7 @@ if(mpCols.length){
   mpCols.forEach(c=>console.log('   '+c.name+': '+Math.round(mpBy[c.name]||0).toLocaleString('ru-RU')+' шт'));
   console.log('   Если среди них появится ваш реальный склад — добавьте его в KNOWN_WH.');
 }
-console.log('Розничные коды (нет на ВБ и Озоне, в расчёт не идут): '+uk.length+' кодов · '
+console.log('Розничные коды (нет ни на ВБ, ни на Озоне, ни в XWAY, ни в реестре новых кодов — в расчёт не идут): '+uk.length+' кодов · '
   +Math.round(skipQty).toLocaleString('ru-RU')+' шт'
   +(uk.length? ' · '+uk.slice(0,12).map(k=>k+' ('+skipped[k]+')').join(', ')+(uk.length>12?' …':'') : ''));
 const top=Object.entries(bySup).sort((a,b)=>b[1].qty-a[1].qty).slice(0,8);

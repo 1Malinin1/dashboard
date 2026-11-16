@@ -26,6 +26,8 @@ vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThi
 const RD=ctx.__RD;
 // товары продавца из выгрузки XWAY Ozon (02.11.2026) — признак «наш» для новинок без карточки ВБ
 const XW_CODES=new Set((RD.ozon&&RD.ozon.meta&&RD.ozon.meta.adSpend&&RD.ozon.meta.adSpend.codes)||[]);
+// единый признак «наш» (lib/our-codes.cjs, 16.11.2026): XWAY Ozon + реестр новых кодов + каталоги + ряд заказов
+const OUR=require('./lib/our-codes.cjs')(RD);
 const supToWb={}, wbCatBySku={};RD.catalog.forEach(c=>{const s=(''+(c.supplierCode||'')).trim();if(s)supToWb[s]=c.sku; wbCatBySku[c.sku]=c.category;});
 
 // 2) Озон-каталог: из листа «Июль» (обычный режим) ИЛИ из существующего снимка (--reuse)
@@ -117,7 +119,7 @@ if(stockFile){
     if(!byA[art] && !supToWb[art]){
       // кабинет общий (в отчёте ~14 тыс. строк чужого ассортимента), поэтому «наш» новый код = есть в выгрузке XWAY
       // продавца (adSpend.codes копит ozon-ads-spend.cjs: 163 его товара); без карточки ВБ, но с остатком
-      if(!XW_CODES.has(art)) continue;
+      if(!OUR.take(art)) continue;   // было: только XW_CODES — новинка из реестра new-codes без рекламы выпадала
       (global.__newStock=global.__newStock||[]).push(art);
     }
     const c=ensure(art); if(c.name===art){ const nm=(''+(r[1]||'')).trim(); if(nm) c.name=nm; }
@@ -305,6 +307,7 @@ console.log('  заказы:', keepOrders
      +ozCat.filter(c=>series.byArt[c.sku]&&series.byArt[c.sku].some(x=>x>0)).length));
 if(!keepOrders) console.log('    из них из свежих отчётов: '+dates.length+' дн ('+dates[0]+'…'+dates[dates.length-1]+')'
   +' · перенесено из снимка: '+backfilled.length+' дн'+(backfilled.length? ' ('+backfilled[0]+'…'+backfilled[backfilled.length-1]+')':''));
+{ const rep=OUR.report('остатки Ozon'); if(rep) console.log('  '+rep); }
 if(global.__newStock&&global.__newStock.length) console.log('  ⚠ НОВЫЕ КОДЫ в остатках Ozon (нет карточки ВБ, добавлены в каталог Ozon): '+[...new Set(global.__newStock)].join(', ')+' — проверь себестоимость (missing-cost-report.cjs)');
 console.log('  остатки:',stockFile?('строк '+stockRows+' · сумма «Доступно» '+stockSum+' шт · дата '+stockDate):'(файл не передан)');
 if(stockFile) console.log('  в пути на Озон:',(sumZayav+sumPath),'шт = заявки на поставку '+sumZayav+' + физически в пути '+sumPath);

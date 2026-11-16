@@ -22,7 +22,7 @@ function num(v){const n=parseFloat((''+v).replace(/[\s ,₽%]/g,''));return isN
 const cd={};vm.createContext(cd);
 vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',cd);
 const RD=cd.__RD;
-const supSet=new Set(RD.catalog.map(c=>(''+(c.supplierCode||'')).trim()).filter(Boolean));
+const OUR=require('./lib/our-codes.cjs')(RD), supSet=OUR.all;   // единый признак «наш» (16.11.2026)
 const wbBySup={}; RD.catalog.forEach(c=>{const s=(''+(c.supplierCode||'')).trim();if(s)wbBySup[s]=c;});
 const ozCat=(RD.ozon&&RD.ozon.catalog)||[];
 const ozBySku={}; ozCat.forEach(c=>ozBySku[(''+c.sku).trim()]=c);
@@ -85,7 +85,7 @@ function readReport(f){
     const r=rows[i]; const art=(''+(r[cArt]||'')).trim(); const day=fixedDay? (art? fixedDay : '') : (''+(r[cDay]||'')).trim();
     if(!/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;          // не строка данных (напр. «Итого и среднее»)
     // наш товар: карточка ВБ, каталог Ozon или 6-значный код 1С (новинки без карточки ВБ терялись молча — 02.11.2026)
-    if(!supSet.has(art) && !ozBySku[art]){ skipped++; continue; }   // каталог Ozon теперь сам берёт новинки с остатком (ozon-build)
+    if(!OUR.take(art) && !ozBySku[art]){ skipped++; continue; }   // каталог Ozon теперь сам берёт новинки с остатком (ozon-build)
     if(cOzSku>=0 && !ozSkuByArt[art]){ const s=(''+(r[cOzSku]||'')).trim(); if(s) ozSkuByArt[art]=s; }
     const oz=ozBySku[art], wb=wbBySup[art];
     const name=(oz&&oz.name)||(wb&&wb.name)||(''+(r[0]||'')).trim()||art;
@@ -114,6 +114,7 @@ for(const f of files){
   console.log('  '+path.basename(f)+': строк наших '+matched+' (пропущено чужих '+skipped+') · показы '+tot.imp.toLocaleString('ru-RU')
     +' · заказы '+tot.ord+' · доставлено '+(tot.noDeliv?'нет колонки в файле':tot.deliv)+' · заказано '+Math.round(tot.sum).toLocaleString('ru-RU')+' ₽'
     +'  [база суммы: '+tot.base+']');
+  { const rep=OUR.report(''); if(rep) console.log('    '+rep); OUR.skipped.clear(); }
   if(tot.bothCols) console.log('    в файле ЕСТЬ обе колонки: по предельной '+Math.round(tot.sum).toLocaleString('ru-RU')
     +' ₽ · по цене реализации '+Math.round(tot.sumReal).toLocaleString('ru-RU')+' ₽ ('
     +(tot.sum?Math.round(tot.sumReal/tot.sum*100):0)+'% от предельной) — в снимок идёт ПРЕДЕЛЬНАЯ, как orderSeries.money');

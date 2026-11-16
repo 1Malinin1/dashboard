@@ -58,7 +58,7 @@ vm.runInContext(fs.readFileSync(path.join(OUT,'wb-data.js'),'utf8')+'\nglobalThi
 const RD=cd.__RD, O=RD.ozon;
 if(!O) throw new Error('в снимке нет блока Озона');
 O.meta=O.meta||{};
-const supSet=new Set(RD.catalog.map(c=>(''+(c.supplierCode||'')).trim()).filter(Boolean));
+const OUR=require('./lib/our-codes.cjs')(RD), supSet=OUR.all;   // единый признак «наш» (16.11.2026): раньше только карточки ВБ
 const hist=(O.meta.buyoutWin&&Array.isArray(O.meta.buyoutWin.history))? O.meta.buyoutWin.history.slice() : [];
 const pc=n=>(n*100).toFixed(1)+'%';
 
@@ -119,12 +119,13 @@ if(fromFunnel){
       if(!art) continue;
       const day=cDay>=0? (''+(r[cDay]||'')).trim() : '';
       if(cDay>=0 && !/^\d{4}-\d{2}-\d{2}$/.test(day)) continue;       // «Итого и среднее» и прочее
-      if(!supSet.has(art)){ skipped++; continue; }
+      if(!OUR.take(art)){ skipped++; continue; }
       if(day){ if(winFrom&&day<winFrom) continue; if(winTo&&day>winTo) continue; days.add(day); }
       add(art, num(r[cOrd]), num(r[cDel]), num(r[cCan])); taken++;
     }
     console.log('  '+path.basename(f)+': строк наших '+taken+' · чужих пропущено '+skipped
       +(cDay>=0? ' · подённый':' · за период'));
+    { const rep=OUR.report(''); if(rep) console.log('    '+rep); OUR.skipped.clear(); }
   }
 }
 
