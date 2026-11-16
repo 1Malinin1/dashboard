@@ -5,7 +5,7 @@ const URL = process.env.URL || 'http://127.0.0.1:8765/index.html';
 const CODE = process.env.VERIFY_CODE;
 if (!CODE) { console.error('no code'); process.exit(2); }
 (async () => {
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
+  const browser = await chromium.launch({ executablePath: (process.env.PW_CHROME||'/opt/pw-browsers/chromium'), args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1500, height: 1000 } });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e && e.message || e)));

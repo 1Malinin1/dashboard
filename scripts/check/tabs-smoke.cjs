@@ -3,7 +3,7 @@
 const { chromium } = require(require('path').join(__dirname,'..','node_modules','playwright-core'));
 const CODE=process.env.VERIFY_CODE, PORT=process.env.PORT||8765;
 (async()=>{
-  const browser=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+  const browser=await chromium.launch({executablePath:(process.env.PW_CHROME||'/opt/pw-browsers/chromium'),args:['--no-sandbox']});
   const page=await (await browser.newContext({viewport:{width:1500,height:1000}})).newPage(); const errors=[];
   page.on('pageerror',e=>errors.push('PAGEERR '+String(e.message)));
   page.on('console',m=>{if(m.type()==='error')errors.push('CONSOLE '+m.text());});

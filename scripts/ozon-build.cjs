@@ -164,8 +164,13 @@ const wGross={},wNet={}; let wGrossAll=0,wNetAll=0;
 Object.entries(ord.byDateArt||{}).forEach(([k,q])=>{ if(winSet.has(k.slice(0,10))){const a=k.slice(11);wGross[a]=(wGross[a]||0)+q;wGrossAll+=q;} });
 Object.entries(ord.byDateArtNet||{}).forEach(([k,q])=>{ if(winSet.has(k.slice(0,10))){const a=k.slice(11);wNet[a]=(wNet[a]||0)+q;wNetAll+=q;} });
 const buyoutAll = wGrossAll>0 ? wNetAll/wGrossAll : 1;
+/* НАКОПИТЕЛЬ КОРОЧЕ ОКНА — % ВЫКУПА НЕ ПЕРЕСЧИТЫВАЕМ (16.11.2026). Новый контейнер → накопителя нет → в нём только
+   свежая партия (13–15.11, три дня, выкуп не дозрел: одни отмены, 92% вместо 88–94% по товарам). Пересчёт затёр бы
+   ozBuyout всех 213 товаров. Если в накопителе меньше HOLD+WIN дней, % выкупа, его окно и общий % берём из снимка. */
+const shortAcc = reuse && !keepOrders && dates.length < HOLD+WIN;
+if(shortAcc) console.log('  в накопителе заказов '+dates.length+' дн. (< '+(HOLD+WIN)+') — % выкупа по товарам оставляю из снимка');
 // без накопителя оставляем ozBuyout из снимка (в --reuse каталог перенесён целиком)
-if(!keepOrders) ozCat.forEach(c=>{ const g=wGross[c.sku]||0, n=wNet[c.sku]||0;
+if(!keepOrders && !shortAcc) ozCat.forEach(c=>{ const g=wGross[c.sku]||0, n=wNet[c.sku]||0;
   c.ozBuyout = g>=10 ? +(n/g).toFixed(4) : +buyoutAll.toFixed(4); });
 const buyoutWindow = winDates.length ? winDates[0]+'…'+winDates[winDates.length-1] : null;
 
@@ -248,8 +253,8 @@ RD.ozon={
   ordersMeta: keepOrders && RD.ozon && RD.ozon.ordersMeta ? RD.ozon.ordersMeta
     : {period:finalDates[0]+'…'+finalDates[finalDates.length-1], totalOrdered:ord.statuses?Object.values(ord.statuses).reduce((a,b)=>a+b,0):0, cancelled:(ord.statuses&&ord.statuses['Отменён'])||0},
   meta:{ stockDate: stockFile? stockDate : prevMeta.stockDate||null,
-    buyoutAll: keepOrders? (prevMeta.buyoutAll!=null? prevMeta.buyoutAll : +buyoutAll.toFixed(4)) : +buyoutAll.toFixed(4),
-    buyoutWindow: keepOrders? (prevMeta.buyoutWindow||null) : buyoutWindow,
+    buyoutAll: (keepOrders||shortAcc)? (prevMeta.buyoutAll!=null? prevMeta.buyoutAll : +buyoutAll.toFixed(4)) : +buyoutAll.toFixed(4),
+    buyoutWindow: (keepOrders||shortAcc)? (prevMeta.buyoutWindow||null) : buyoutWindow,
     adRate: prevMeta.adRate!=null? prevMeta.adRate : null,
     adRateBasis: prevMeta.adRateBasis || null,
     terms: prevMeta.terms || null,

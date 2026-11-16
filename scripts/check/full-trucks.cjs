@@ -24,7 +24,7 @@ try { cp.execFileSync('node', [tmp, '-', '5'], { stdio: 'pipe' }); } finally { f
 const S = JSON.parse(fs.readFileSync(dumpPath, 'utf8'));
 
 (async () => {
-  const browser = await chromium.launch({ executablePath: '/opt/pw-browsers/chromium-1194/chrome-linux/chrome', args: ['--no-sandbox'] });
+  const browser = await chromium.launch({ executablePath: (process.env.PW_CHROME||'/opt/pw-browsers/chromium'), args: ['--no-sandbox'] });
   const page = await browser.newPage({ viewport: { width: 1500, height: 1000 }, acceptDownloads: true });
   const errors = [];
   page.on('pageerror', e => errors.push(String(e && e.message || e)));

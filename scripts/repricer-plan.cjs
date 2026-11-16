@@ -31,7 +31,7 @@ const MIN=10, MAX=30, PORT=+(process.env.PORT||8791);
 async function dump(){
   const srv=cp.spawn('python3',['-m','http.server',String(PORT),'--bind','127.0.0.1'],{cwd:ROOT,stdio:'ignore'});
   await new Promise(r=>setTimeout(r,1000));
-  const b=await chromium.launch({executablePath:'/opt/pw-browsers/chromium-1194/chrome-linux/chrome',args:['--no-sandbox']});
+  const b=await chromium.launch({executablePath:(process.env.PW_CHROME||'/opt/pw-browsers/chromium'),args:['--no-sandbox']});
   try{
     const p=await b.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(String(e.message)));
     await p.goto(`http://127.0.0.1:${PORT}/index.html`,{waitUntil:'load'});

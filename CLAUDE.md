@@ -157,7 +157,7 @@ git add wb-secure.js data-version.json && git commit && git push
 
 ## Тестирование (CI нет — Playwright руками)
 
-Chromium: `/opt/pw-browsers/chromium-1194/chrome-linux/chrome`, модуль `scripts/node_modules/playwright-core`.
+Chromium: `/opt/pw-browsers/chromium` (ссылка на текущую версию; номер папки меняется от контейнера к контейнеру — 16.11.2026 был 1243, скрипты берут ссылку или `PW_CHROME`), модуль `scripts/node_modules/playwright-core`.
 Статический сервер из корня репозитория (`python3 -m http.server PORT --bind 127.0.0.1`), разблокировка:
 `page.fill('#lockInput', process.env.VERIFY_CODE)` → `click('.lock-btn')` → `waitForFunction(() => FINANCE_CACHE.length > 0)`.
 **Все три проверки одной командой: `VERIFY_CODE=… sh scripts/check/run-all.sh`** (сам поднимает сервер); git-хук гоняет её на каждый коммит `index.html`/`wb-secure.js`, если `VERIFY_CODE` задан в окружении. **Минимальный прогон после правок index.html — `scripts/check/`** (см. README там): все вкладки × три площадки без
