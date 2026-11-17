@@ -22,10 +22,19 @@ const CFB = XLSX.CFB;
 
 const argv = process.argv.slice(2);
 const RECORD = argv.includes('--record'); const dIdx = argv.indexOf('--date'); const REC_DATE = dIdx >= 0 ? argv[dIdx + 1] : new Date().toISOString().slice(0, 10);
-const [optFile, srcFile, outDirArg] = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--date');
+const [optFile, srcFile, outDirArg] = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--date' && argv[i - 1] !== '--tag');
 if (!optFile || !srcFile) { console.error('usage: node scripts/repricer-prices.cjs <оптовые.xlsx> <выгрузка репрайсера.xlsx> [папка]'); process.exit(1); }
 const outDir = outDirArg || path.dirname(srcFile);
 const S = v => (v == null ? '' : ('' + v)).replace(/\s/g, '');
+const TAG = (() => { const i = argv.indexOf('--tag'); return i >= 0 ? '_' + argv[i + 1] : ''; })();
+
+/* ПРАВИЛА ЦЕНА-11 (продавец 17.11.2026). Скидки считаются от «цены до скидки» = 4 × оптовая.
+   ВБ: минимальная — скидка 70% (1,2 × оптовая), базовая — 60% (1,6 × оптовая).
+   ИСКЛЮЧЕНИЕ ВБ (продавец 17.11, вечер): минимальная — скидка 65% (1,4 × оптовая) у товаров с большой логистикой на ВБ —
+   «накинул на минимальную цену, чтобы нивелировать возвраты КГТ».
+   Ozon: цена до скидки = 4 × оптовая; базовая — 60% у ВСЕХ (продавец 17.11, вечер); минимальную Ozon НЕ трогаем. */
+const LIST_K = 4, WB_MIN_DISC = 0.70, WB_BASE_DISC = 0.60, OZ_BASE_DISC = 0.60;
+const WB_MIN_DISC_BY_CODE = { '512189': 0.65, '512187': 0.65, '501432': 0.65, '487189': 0.65, '487187': 0.65, '487188': 0.65, '487190': 0.65 };
 
 // 1) оптовые
 const optRows = XLSX.utils.sheet_to_json(XLSX.readFile(optFile).Sheets[XLSX.readFile(optFile).SheetNames[0]], { header: 1, defval: '' });
@@ -44,10 +53,10 @@ const col = code => H.findIndex(h => h.includes('(' + code + ')'));
 let MP, iKey, targets;
 if (col('SupplierArticle') >= 0 && col('PriceBeforeDiscount') >= 0) {
   MP = 'ВБ'; iKey = col('SupplierArticle');
-  targets = [['PriceBeforeDiscount', w => 4 * w], ['MinPrice', w => 1.2 * w], ['MaxPrice', w => 1.6 * w]];
+  targets = [['PriceBeforeDiscount', (w) => LIST_K * w], ['MinPrice', (w, k) => LIST_K * w * (1 - (WB_MIN_DISC_BY_CODE[k] || WB_MIN_DISC))], ['MaxPrice', (w) => LIST_K * w * (1 - WB_BASE_DISC)]];
 } else if (col('OfferId') >= 0 && col('MaxMarginAmount') >= 0) {
   MP = 'Ozon'; iKey = col('OfferId');
-  targets = [['MaxMarginAmount', w => 4 * w]];
+  targets = [['MaxMarginAmount', (w) => LIST_K * w], ['MaxPrice', (w) => LIST_K * w * (1 - OZ_BASE_DISC)]];
 } else throw new Error('не узнал выгрузку: нет колонок ВБ (SupplierArticle/PriceBeforeDiscount) и Ozon (OfferId/MaxMarginAmount)');
 targets = targets.map(([code, f]) => { const i = col(code); if (i < 0) throw new Error('нет колонки (' + code + ')'); return { code, i, f, name: H[i] }; });
 // целые рубли: оптовые кратны 10 → 1,2·W и 1,6·W целые; иначе — отказ (продавец: цена должна быть «круглой»)
@@ -59,9 +68,15 @@ rows.slice(1).forEach((r, k) => {
   const key = S(r[iKey]); const w = W[key];
   if (!w) { rowsWithout++; return; }
   rowsWith++;
-  targets.forEach(t => { const now = round(t.f(w)); const was = r[t.i];
+  targets.forEach(t => { const now = round(t.f(w, key)); const was = r[t.i];
     if (+was !== now) changes.push({ row: k + 2, ci: t.i, was, now, key, w, col: t.name }); });
 });
+
+// проверка Ozon: минимальная (её не трогаем) не должна оказаться выше новой базовой
+if (MP === 'Ozon') { const iMin = col('RecommendedRetailPrice'), iMax = col('MaxPrice'); const bad = [];
+  rows.slice(1).forEach(r => { const key = S(r[iKey]); const w = W[key]; if (!w) return; const base = round(LIST_K * w * (1 - OZ_BASE_DISC));
+    if (+r[iMin] > base) bad.push(key + ' мин ' + r[iMin] + ' > базовой ' + base); });
+  if (bad.length) console.log('  ⚠ Ozon: минимальная выше новой базовой (репрайсеру не во что ходить) — ' + bad.length + ': ' + bad.slice(0, 15).join(' · ')); }
 
 // 3) правка XML листа
 const z = CFB.read(fs.readFileSync(srcFile), { type: 'buffer' });
@@ -94,7 +109,7 @@ if (positional) {
 ent.content = Buffer.from(xml, 'utf8');
 const dt = new Date().toISOString().slice(0, 10).split('-').reverse().join('.');
 fs.mkdirSync(outDir, { recursive: true });
-const outFile = path.join(outDir, `${MP}_цены_репрайсер_${dt}.xlsx`);
+const outFile = path.join(outDir, `${MP}_цены_репрайсер_${dt}${TAG}.xlsx`);
 fs.writeFileSync(outFile, CFB.write(z, { type: 'buffer', fileType: 'zip', compression: true }));
 
 // 4) сверка: изменились ровно нужные ячейки; остальные листы — байт в байт
@@ -117,10 +132,10 @@ const touched = [...new Set(changes.map(c => c.row))];
 touched.forEach(rw => { const r = rows[rw - 1]; const key = S(r[iKey]); const w = W[key];
   const o = { 'Код 1С': +key || key, 'Оптовая, ₽': w };
   targets.forEach(t => { const short = t.name.replace(/\s*\([^)]*\)\s*$/, '').trim(); const was = r[t.i];
-    o[short + ' — было'] = was === '' ? 'пусто' : Math.round(+was * 100) / 100; o[short + ' — стало'] = round(t.f(w)); });
+    o[short + ' — было'] = was === '' ? 'пусто' : Math.round(+was * 100) / 100; o[short + ' — стало'] = round(t.f(w, key)); });
   rep.push(o); });
 rep.sort((a, b) => String(a['Код 1С']).localeCompare(String(b['Код 1С'])));
-const repFile = path.join(outDir, `${MP}_цены_было_стало_${dt}.xlsx`);
+const repFile = path.join(outDir, `${MP}_цены_было_стало_${dt}${TAG}.xlsx`);
 const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, XLSX.utils.json_to_sheet(rep), 'было → стало'); XLSX.writeFile(wb2, repFile);
 
 console.log(MP + ': строк ' + (rows.length - 1) + ' · с оптовой ' + rowsWith + ' · без оптовой (не трогал) ' + rowsWithout);
@@ -139,7 +154,7 @@ if (RECORD) {
   const byCode = {};
   rows.slice(1).forEach(r => { const key = S(r[iKey]); const w = W[key]; if (!w) return;
     const o = { W: w, old: {}, new: {} };
-    targets.forEach(t => { o.old[t.code] = num(r[t.i]); o.new[t.code] = round(t.f(w)); });
+    targets.forEach(t => { o.old[t.code] = num(r[t.i]); o.new[t.code] = round(t.f(w, key)); });
     const extra = MP === 'ВБ' ? { nm: S(r[col('SupSku')]), disabled: num(r[col('Disabled')]), strategy: S(r[col('StrategyId')]), plan: num(r[col('OrdersPlanQty')]) }
       : { sku: S(r[col('CurrentSku')]), min: num(r[col('RecommendedRetailPrice')]), base: num(r[col('MaxPrice')]), reprice: num(r[col('Reprice')]), strategy: S(r[col('StrategyId')]) };
     byCode[key] = Object.assign(o, extra); });

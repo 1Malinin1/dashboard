@@ -105,7 +105,9 @@ function follow(fromW, toW) { let n = 0, sum = 0; Object.keys(wbRec).forEach(s =
   if (wq >= 3 && oq >= 3) { n++; sum += (orb / oq) / (wr / wq); } }); return n ? { n, r: sum / n } : null; }
 const fb = follow(bFrom, bTo), fa = OA.n ? follow(aFrom, '9999-12-31') : null;
 console.log('  ЦЕНА OZON ÷ ЦЕНА ВБ (средняя по кодам с продажами на обеих): до ' + (fb ? fb.r.toFixed(3) + ' (' + fb.n + ' кодов)' : '—') + ' · после ' + (fa ? fa.r.toFixed(3) + ' (' + fa.n + ' кодов)' : '—'));
-const cap = Object.entries(ozRec).filter(([s, r]) => r.base != null && wbRec[s] && r.base < wbRec[s].new.MaxPrice - 0.5);
-console.log('  УПОР В БАЗОВУЮ OZON (ниже новой базовой ВБ — выше неё Ozon за ВБ не пойдёт): ' + cap.length + ' · ' + cap.slice(0, 10).map(([s, r]) => s + ' ' + F(r.base) + '<' + F(wbRec[s].new.MaxPrice)).join(' · '));
+// базовая Ozon: новая, если её меняли (17.11 вечер — 60% у всех), иначе как была
+const ozBase = r => (r.new && r.new.MaxPrice != null) ? r.new.MaxPrice : r.base;
+const cap = Object.entries(ozRec).filter(([s, r]) => ozBase(r) != null && wbRec[s] && ozBase(r) < wbRec[s].new.MaxPrice - 0.5);
+console.log('  УПОР В БАЗОВУЮ OZON (ниже новой базовой ВБ — выше неё Ozon за ВБ не пойдёт): ' + cap.length + ' · ' + cap.slice(0, 10).map(([s, r]) => s + ' ' + F(ozBase(r)) + '<' + F(wbRec[s].new.MaxPrice)).join(' · '));
 const off = Object.entries(ozRec).filter(([s, r]) => r.reprice !== 1 || r.strategy === '');
 if (off.length) console.log('  Ozon: отправка цен не разрешена / нет стратегии: ' + off.map(([s, r]) => s + (r.reprice !== 1 ? '(отправка не разрешена)' : '') + (r.strategy === '' ? '(без стратегии)' : '')).join(' '));
