@@ -340,10 +340,18 @@ if(cmd==='check'){
   if(!Object.keys(all).length){ console.log('Ни один из '+list.length+' ожидающих кодов в этих файлах не встретился.'); process.exit(0); }
   console.log('НАЙДЕНО В ОТЧЁТАХ:');
   let changed=0;
+  const conflicts=[];
   Object.entries(all).forEach(([c,v])=>{
-    const it=list.find(x=>x.code===c); if(!it) return;
+    const c0=c; const it=list.find(x=>x.code===c); if(!it) return;
     const upd=[];
-    if(v.wbSku && /^\d{6,}$/.test(v.wbSku) && it.wbSku!==v.wbSku){ it.wbSku=v.wbSku; upd.push('арт. ВБ '+v.wbSku); }
+    /* УЖЕ ИЗВЕСТНЫЙ АРТИКУЛ ВБ НЕ ПЕРЕЗАПИСЫВАЕМ МОЛЧА (17.11.2026): в ведомости 1С у 519398 и 519406 стоял один и тот же
+       «Код Wildberries» 2144987049 (ошибка в 1С; у 519398 на ВБ 2144885006), и check перезаписал верный артикул неверным.
+       Теперь расхождение — предупреждение; заменить осознанно: --force. Заодно ловим артикул, уже занятый другим кодом. */
+    if(v.wbSku && /^\d{6,}$/.test(v.wbSku) && it.wbSku!==v.wbSku){
+      const busy=(RD.catalog||[]).find(c=>String(c.sku)===String(v.wbSku)&&norm(c.supplierCode)!==c0);
+      if(busy){ conflicts.push(c0+': в файле арт. ВБ '+v.wbSku+', но эта карточка в каталоге — код '+busy.supplierCode+' ('+v.file+')'); }
+      else if(it.wbSku && !argv.includes('--force')){ conflicts.push(c0+': в реестре арт. ВБ '+it.wbSku+', в файле '+v.wbSku+' ('+v.file+') — оставил прежний, заменить: --force'); }
+      else { it.wbSku=v.wbSku; upd.push('арт. ВБ '+v.wbSku); } }
     if(v.ozonSku && /^\d{6,}$/.test(v.ozonSku) && it.ozonSku!==v.ozonSku){ it.ozonSku=v.ozonSku; upd.push('SKU Озона '+v.ozonSku); }
     if(v.name && !it.name){ it.name=v.name; }
     if(v.cat && !it.cat){ it.cat=v.cat; }
@@ -352,6 +360,7 @@ if(cmd==='check'){
       +'   ['+v.file+' / '+v.sheet+']'+(it.name? '  — '+String(it.name).slice(0,42) : ''));
   });
   if(changed) save();
+  if(conflicts.length) console.log('\n⚠ КОНФЛИКТ АРТИКУЛОВ ВБ (не перезаписано, проверить в 1С/кабинете):\n   '+conflicts.join('\n   '));
   console.log('\nОбновлено записей: '+changed);
   const ready=list.filter(it=>{const w=where(it.code);return (it.wbSku&&!w.wb)||(it.ozonSku&&!w.oz);});
   if(ready.length){
