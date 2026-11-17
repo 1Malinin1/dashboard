@@ -398,6 +398,11 @@ if(mpCols.length){
 console.log('Розничные коды (нет ни на ВБ, ни на Озоне, ни в XWAY, ни в реестре новых кодов — в расчёт не идут): '+uk.length+' кодов · '
   +Math.round(skipQty).toLocaleString('ru-RU')+' шт'
   +(uk.length? ' · '+uk.slice(0,12).map(k=>k+' ('+skipped[k]+')').join(', ')+(uk.length>12?' …':'') : ''));
+/* СВЕРКА КОДОВ 1С С КАБИНЕТАМИ (17.11.2026, просьба продавца «несостыковки скидывай мне»): одинаковый «Код Wildberries»/
+   «Код Ozon» у двух кодов, код карточки другого товара, незаполненное. Только по снимку; точнее — check-1c-codes.cjs с отчётами площадок. */
+if(kind==='stock') try{ const r=require('./check-1c-codes.cjs')(RD,file); if(!Array.isArray(r)){
+  if(r.wrong.length) console.log('\n⚠ НЕСТЫКОВКИ КОДОВ 1С С КАБИНЕТАМИ ('+r.wrong.length+') — отдать продавцу:\n   '+r.wrong.join('\n   '));
+  if(r.empty.length) console.log('Не заполнено в 1С, хотя карточка есть ('+r.empty.length+'):\n   '+r.empty.join('\n   ')); } }catch(e){ console.log('(сверка кодов 1С не выполнилась: '+e.message+')'); }
 const top=Object.entries(bySup).sort((a,b)=>b[1].qty-a[1].qty).slice(0,8);
 if(top.length){ console.log('\nТоп по количеству:');
   top.forEach(([k,v])=>console.log('   1С '+k+' · '+v.qty.toLocaleString('ru-RU')+' шт'
