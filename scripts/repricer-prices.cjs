@@ -11,14 +11,18 @@
 // что в repricer-plan.cjs). Выгрузка репрайсера — «позиционная» (`<x:row>` без адресов ячеек), поддержан и формат
 // с адресами (файл, пересохранённый Excel). После записи — сверка: изменились ровно нужные ячейки, остальные совпадают.
 //
-//   node scripts/repricer-prices.cjs <оптовые.xlsx> <выгрузка репрайсера.xlsx> [папка_для_результата]
+//   node scripts/repricer-prices.cjs <оптовые.xlsx> <выгрузка репрайсера.xlsx> [папка_для_результата] [--record --date ГГГГ-ММ-ДД]
+// --record: записать «было/стало» по каждому коду в снимок (`meta.priceChanges[дата].wb|oz`) — по нему следит price-watch.cjs.
+// Запись — по ИСХОДНОЙ выгрузке (до правки), чтобы «было» было настоящим.
 // Пишет <папка>/<ВБ|Ozon>_цены_репрайсер_ДД.ММ.ГГГГ.xlsx (грузить в репрайсер) и …_было_стало_….xlsx (посмотреть).
 'use strict';
 const fs = require('fs'), path = require('path');
 const XLSX = require('./node_modules/xlsx');
 const CFB = XLSX.CFB;
 
-const [optFile, srcFile, outDirArg] = process.argv.slice(2);
+const argv = process.argv.slice(2);
+const RECORD = argv.includes('--record'); const dIdx = argv.indexOf('--date'); const REC_DATE = dIdx >= 0 ? argv[dIdx + 1] : new Date().toISOString().slice(0, 10);
+const [optFile, srcFile, outDirArg] = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--date');
 if (!optFile || !srcFile) { console.error('usage: node scripts/repricer-prices.cjs <оптовые.xlsx> <выгрузка репрайсера.xlsx> [папка]'); process.exit(1); }
 const outDir = outDirArg || path.dirname(srcFile);
 const S = v => (v == null ? '' : ('' + v)).replace(/\s/g, '');
@@ -124,3 +128,23 @@ targets.forEach(t => { const cs = changes.filter(c => c.ci === t.i);
   console.log('  ' + XLSX.utils.encode_col(t.i) + ' «' + t.name + '»: изменено ' + cs.length + (cs.length ? ' (вверх ' + cs.filter(c => c.now > +c.was).length + ', вниз ' + cs.filter(c => c.now < +c.was).length + ')' : '')); });
 console.log('  сверка: изменились только эти ячейки, остальные листы байт в байт ✓');
 console.log('  → ' + outFile + '\n  → ' + repFile);
+
+if (RECORD) {
+  const vm = require('vm'); const dataFile = path.join(__dirname, '..', 'decrypted', 'wb-data.js');
+  const txt = fs.readFileSync(dataFile, 'utf8'); const ctx = {}; vm.createContext(ctx);
+  vm.runInContext(txt + '\nglobalThis.__RD=REAL_DATA;', ctx); const RD = ctx.__RD;
+  RD.meta = RD.meta || {}; RD.meta.priceChanges = RD.meta.priceChanges || {};
+  const rec = RD.meta.priceChanges[REC_DATE] || (RD.meta.priceChanges[REC_DATE] = { date: REC_DATE, rule: 'ЦЕНА-11', createdAt: new Date().toISOString() });
+  const num = v => (v === '' || v == null) ? null : Math.round(+v * 100) / 100;
+  const byCode = {};
+  rows.slice(1).forEach(r => { const key = S(r[iKey]); const w = W[key]; if (!w) return;
+    const o = { W: w, old: {}, new: {} };
+    targets.forEach(t => { o.old[t.code] = num(r[t.i]); o.new[t.code] = round(t.f(w)); });
+    const extra = MP === 'ВБ' ? { nm: S(r[col('SupSku')]), disabled: num(r[col('Disabled')]), strategy: S(r[col('StrategyId')]), plan: num(r[col('OrdersPlanQty')]) }
+      : { sku: S(r[col('CurrentSku')]), min: num(r[col('RecommendedRetailPrice')]), base: num(r[col('MaxPrice')]), reprice: num(r[col('Reprice')]), strategy: S(r[col('StrategyId')]) };
+    byCode[key] = Object.assign(o, extra); });
+  rec[MP === 'ВБ' ? 'wb' : 'oz'] = { file: path.basename(srcFile), rows: rows.length - 1, byCode };
+  const head = txt.slice(0, txt.indexOf('const REAL_DATA'));
+  fs.writeFileSync(dataFile, head + 'const REAL_DATA = ' + JSON.stringify(RD) + ';\n');
+  console.log('  записано в снимок: meta.priceChanges[' + REC_DATE + '].' + (MP === 'ВБ' ? 'wb' : 'oz') + ' · кодов ' + Object.keys(byCode).length + ' (дальше: encrypt.cjs)');
+}
