@@ -5740,6 +5740,7 @@ async function fdbRefreshCache(){
   _recOutCache=null; _outSkuCache=null;  // список выведенных из ассортимента кодов — тоже производная каталога
   _wbFbsCache=null; _klinCache=null; _ozAsgCache=null; _rsCalc=null; // покрытие ВБ включает FBS-запас, Клин — склад-источник, покрытие Ozon — виртуальные склады СФО/ЦФО
   _prodCache=null; _prodContCache=null; _facCache=null; _prodSigCache=null;  // заказы на производство, контейнеры, коды фабрики
+  _srMgCache=null;   // маржа ВБ по коду за 7 дней (вердикт «Запаса и темпа»)
   _adMskCache=null; _adMskHeld={};  // московский запас для рекламы — за вычетом собранного в паллеты
 }
 
@@ -6946,7 +6947,17 @@ function renderHomeWeeks(cat,q){
    Ozon  — цена не рычаг, поэтому вопрос один: когда отгружать, чтобы не уйти в аут.
            Считаем, на сколько хватит того, что уже на площадке и едет на неё, и вычитаем
            срок доставки: `отгрузить через = хватит дней − OZ_LEAD_DAYS`. */
-const SR_BAND=0.15;      // ±15% вокруг цели — «держать», за пределами — действовать
+const SR_BAND=0.15;      // ±15% — граница «Избыток» на виде «Всего» (у ВБ с 18.11.2026 пороги репрайсера, ниже)
+/* ВЕРДИКТ ВБ — ПО ПОРОГАМ САМОГО РЕПРАЙСЕРА (18.11.2026, разбор по просьбе продавца «нашёл много логических расхождений»).
+   Стратегия 4782 «План-факт по динамике заказов» (ЦЕНА-11): заказов меньше 75% плана — цена вниз на 1 п.п., больше 125% —
+   вверх, между — держит. До 18.11 дашборд судил по ±15% и показывал «Поднять цену»/«Разогнать» там, где репрайсер держит
+   цену (9 позиций). План в репрайсер уходит в рамке 10…30 (ЗАП-17/18, scripts/repricer-plan.cjs) — `planRep`; что сделает
+   репрайсер с этим планом — `repAct`. Если рамка разворачивает действие (цель 0,2 заказа/дн → план 10 → репрайсер ОПУСКАЕТ
+   цену у товара, которого почти нет), строка помечается. */
+const SR_REP_LO=0.75, SR_REP_HI=1.25;
+const SR_PLAN_MIN=10, SR_PLAN_MAX=30;
+const SR_SHIP_DAYS=7;    // на ВБ (FBO + в пути + FBS) меньше чем на неделю продаж — темп ограничен наличием, а не ценой
+const SR_MG_REV_MIN=7*3000;   // выручка ВБ за 7 дней, ниже — маржа шумная (REC_MARGIN_REV_MIN × 7)
 const OZ_LEAD_DAYS=30;   // поставка со склада продавца до продажи на Ozon — около месяца
 /* СЕЗОН (ЗАП-05, продавец 19.10.2026: «впереди у нас ещё чёрная пятница и новый год, новый год пусть
    считается как 2-3 средних месяца, чёрная пятница как 1.5, посмотрим как будет по факту»).
@@ -7224,6 +7235,10 @@ function srRows(){
       /* Поля для видов «Ozon» и «Всего» (18.10.2026) — только справочные, в цель ВБ не идут:
          остаток Ozon отдельно от «в пути» и признак, что код вообще есть на Ozon. */
       whKlin, ozOnly:o.stock||0, ozTr:o.transit||0, onOz:!!O[sup],
+      /* Отгрузки на ВБ в пути (журнал `shipments`: ушло с Клина/склада, ВБ ещё не принял). В `total` их нет — «Всего»
+         прибавляет их сам (`bizTotal`), а в базу плана ВБ они до 18.11.2026 не входили вовсе: товар, уехавший на ВБ,
+         пропадал из базы, цель падала, и выходило «Поднять цену» (429598: 1 491 шт в пути, цель 6,5 вместо 16,5). */
+      wbTr:w.transit||0,
       spdWb, spdOz, spd,
       days: srSeasonReach(total,spd),             // с учётом сезона (ЗАП-05)
       ordWb:ordW[sup]||0, ordOz:ordO[sup]||0,
@@ -7237,6 +7252,20 @@ function srRows(){
 }
 // цель и вердикт зависят от выбранного горизонта
 let srHorizonMode="eta", srAction="all";
+/* Маржа ВБ по коду 1С за последние 7 дней заказов ВБ — та же прибыль, что на «Главной» ВБ (после рекламы и себестоимости),
+   через recWithMp: на виде Ozon/«Всего» себестоимость ВБ иначе берётся не из той карты. Сбрасывается в hydrateData/fdbRefreshCache. */
+let _srMgCache=null;
+function srMarginWb(){
+  if(_srMgCache) return _srMgCache;
+  const out={}, dates=((WBDATA&&WBDATA.dates)||[]).slice(-7);
+  if(!dates.length) return (_srMgCache=out);
+  let rows=[]; try{ rows=recWithMp("wb",()=>productPnL(dates)); }catch(e){ rows=[]; }
+  const supOf={}; ((RD&&RD.catalog)||[]).forEach(c=>{ supOf[""+c.sku]=(""+(c.supplierCode||"")).trim(); });
+  rows.forEach(r=>{ const s=supOf[""+r.sku]; if(!s) return; const e=out[s]||(out[s]={rev:0,profit:0});
+    e.rev+=r.revenue||0; e.profit+=r.profit||0; });
+  Object.values(out).forEach(e=>{ e.margin=e.rev>0? e.profit/e.rev : 0; });
+  return (_srMgCache=out);
+}
 function srDecorate(rows){
   return rows.map(r=>{
     let hz=null, hzSrc="";
@@ -7273,23 +7302,36 @@ function srDecorate(rows){
     const ozOwn  = (r.stockOz||0);                           // чем закроется сам (остаток + его «в пути»)
     const whReach= (r.whMsk||0)+(r.whNsk1||0)+(r.whNsk2||0)+(r.whKlin||0); // склад, доступный Озону
     const ozTake = hz>0 ? Math.max(0, Math.min(ozNeed-ozOwn, whReach)) : 0;
-    const wbBase = (r.stockWb||0)+(r.whQty||0);              // ВБ FBO + весь свой склад
+    const wbTr   = r.wbTr||0;                                // отгрузки на ВБ в пути — товар уже едет на ВБ
+    const wbBase = (r.stockWb||0)+wbTr+(r.whQty||0);         // ВБ FBO + в пути на ВБ + весь свой склад
     const wbAvail = hz>0 ? Math.max(0, wbBase-ozTake) : null;
     const target = hz>0 ? wbAvail/hz : null;                 // сколько можно продавать в день НА ВБ, чтобы дотянуть до партии
     let verdict="none", ratio=null;
+    const fbs=(r.whMsk||0)+(r.whNsk1||0);                    // склады, с которых ВБ продаёт по FBS (Москва, Нск-1)
+    const onWb=(r.stockWb||0)+wbTr+fbs;                      // чем ВБ может торговать сейчас или вот-вот
+    const mg=srMarginWb()[r.sup]||null;
     /* Товара нет нигде и продаж нет (строка есть только ради статуса «партия должна была прийти» — ЗАП-15):
        судить цену не о чем, «Не хватит и Озону» здесь было бы неправдой. */
     if(target!=null && (r.total>0 || r.spd>0)){
+      /* НЕТ ТОВАРА НИ НА ВБ, НИ НА СВОИХ СКЛАДАХ (18.11.2026). Раньше такая строка получала цель 0 и попадала в «Не хватит
+         и Озону» — 29 из 32 таких строк были просто пустыми кодами, у части Ozon вполне хватало запаса. */
+      if(wbBase<=0) verdict="nostock";
       /* Особый случай: Озон СВОИМ спросом выбирает весь запас (ozTake >= total). Тогда «поднять
          цену на ВБ» — неполный ответ: даже при нуле продаж на ВБ товар кончится. Помечаем отдельно,
          потому что рычаги тут другие: цена общая (Озон следует за ВБ, значит рост притормозит и его)
          либо ускорять партию. Раньше такие строки шли как обычное «поднять цену» с целью 0/дн. */
-      if(target<=0) verdict="short";                          // Озон один выбирает весь запас
+      else if(target<=0) verdict="short";                     // Озон один выбирает весь склад
+      /* НА ВБ НЕЧЕМ ТОРГОВАТЬ, А НА КЛИНУ/ЕВРОСИБЕ (МП) ЕСТЬ (18.11.2026): темп ограничен наличием, а не ценой — сначала
+         отгрузка. Раньше это было «Разогнать» (снизить цену) — 36 позиций, напр. 429597: на ВБ 0, на Клину 1 020. */
+      else if(onWb<=0 || (fbs<=0 && r.spdWb>0 && onWb/r.spdWb<SR_SHIP_DAYS && wbBase-onWb>0)) verdict="ship";
       else { ratio=r.spdWb/target;   // = ordWb/targetOrders, % выкупа сокращается
-        if(r.spdWb<=0) verdict="down";                        // на ВБ не продаётся вовсе
-        else if(ratio>1+SR_BAND) verdict="up";                // кончится раньше партии
-        else if(ratio<1-SR_BAND) verdict="down";              // зависнет
+        if(r.spdWb<=0) verdict="down";                        // на ВБ лежит, но не продаётся
+        else if(ratio>SR_REP_HI) verdict="up";                // кончится раньше партии (порог репрайсера 125%)
+        else if(ratio<SR_REP_LO) verdict="down";              // зависнет (порог репрайсера 75%)
         else verdict="hold"; }
+      /* «РАЗОГНАТЬ» ПРИ МАРЖЕ НИЖЕ 10% — ПРОТИВ ЦЕНА-10 (18.11.2026): снижение цены у товара, который и так почти без прибыли,
+         уводит его в минус (487187: маржа ВБ за 7 дней 1%, дашборд советовал снизить цену). */
+      if(verdict==="down" && mg && mg.rev>=SR_MG_REV_MIN && mg.margin*100<REC_MARGIN_MIN) verdict="lowm";
     }
     // Ozon: цена не рычаг — считаем, когда отгружать, чтобы не уйти в аут
     const ozDays = srSeasonReach(r.stockOz,r.spdOz);       // с учётом сезона
@@ -7300,7 +7342,11 @@ function srDecorate(rows){
     const boWb = r.ordWb>0 && r.spdWb>0 ? r.spdWb/r.ordWb
       : ((RD.meta&&RD.meta.buyoutWin&&RD.meta.buyoutWin.all)||0.75);
     const targetOrders = target!=null? target/boWb : null;
-    return {...r, hz, hzSrc, sd, ozTake, wbAvail, target, targetOrders, boWb, ratio, verdict,
+    /* Что получит и сделает репрайсер: план в рамке 10…30 (как пишет scripts/repricer-plan.cjs) против заказов. */
+    const planRep = targetOrders!=null? Math.max(SR_PLAN_MIN, Math.min(SR_PLAN_MAX, Math.round(targetOrders))) : null;
+    const repQ = planRep? (r.ordWb||0)/planRep : null;
+    const repAct = repQ==null? null : (repQ<SR_REP_LO? "down" : repQ>SR_REP_HI? "up" : "hold");
+    return {...r, hz, hzSrc, sd, ozTake, wbAvail, target, targetOrders, boWb, ratio, verdict, planRep, repAct, mgWb:mg,
       gap:(target!=null? r.spdWb-target : null),
       gapOrders:(targetOrders!=null? r.ordWb-targetOrders : null), ozDays, shipIn};
   });
@@ -7381,7 +7427,7 @@ function srExtend(rows){
   return rows.map(r=>{
     const s=r.sup, hz=r.hz;
     // ---- Wildberries: только производные для показа, сам план — из srDecorate ----
-    const wbBase=(r.stockWb||0)+(r.whQty||0);
+    const wbBase=(r.stockWb||0)+(r.wbTr||0)+(r.whQty||0);   // как в srDecorate: + отгрузки на ВБ в пути
     const sd=r.sd||0;                                  // «дни спроса» горизонта с сезоном (srDecorate)
     const wbDays = r.wbAvail==null? null : srSeasonReach(r.wbAvail,r.spdWb);
     const wbLeft = (hz>0 && r.wbAvail!=null)? r.wbAvail-r.spdWb*sd : null;   // >0 — останется к партии
@@ -7430,6 +7476,8 @@ function srExtend(rows){
     if(r.verdict==="short") acts.push("ВБ: не хватит и Озону");
     else if(r.verdict==="up") acts.push("ВБ: поднять цену");
     else if(r.verdict==="down") acts.push("ВБ: разогнать");
+    else if(r.verdict==="ship") acts.push("ВБ: отгрузить");
+    else if(r.verdict==="lowm") acts.push("ВБ: маржа ниже 10%");
     if(ozSt==="ship") acts.push(whFreeOz>0? "Ozon: отгрузить сейчас" : "Ozon: отгружать нечем");
     else if(ozSt==="short") acts.push("Ozon: отгрузка через "+Math.max(0,r.shipIn)+" дн");
     const wkW=wk(WKw&&WKw.wb,s), wkO=wk(WKo&&WKo.oz,s), aW=wk(WKa&&WKa.wb,s), aO=wk(WKa&&WKa.oz,s);
@@ -7449,7 +7497,7 @@ function srViewRows(){
 }
 // сегмент «Что показать» — свой набор у каждого вида; значение = статус строки этого вида
 const SR_ACTS={
-  wb:[["all","Все"],["short","Не хватит и Озону"],["up","Поднять цену"],["down","Разогнать"],["hold","Держать"]],
+  wb:[["all","Все"],["short","Не хватит и Озону"],["up","Поднять цену"],["lowm","Маржа ниже 10%"],["ship","Отгрузить на ВБ"],["down","Разогнать"],["hold","Держать"]],
   ozon:[["all","Все"],["ship","Отгружать сейчас"],["short","Кончится до партии"],["ok","Хватит до партии"],["none","Нет продаж"]],
   all:[["all","Все"],["short","Не хватит до партии"],["ok","Хватит"],["over","Избыток"],["nosale","Нет продаж"]]};
 function srStatusOf(r,mp){ return mp==="ozon"? r.ozSt : mp==="all"? r.bizSt : r.verdict; }
@@ -7477,7 +7525,7 @@ function srColDefs(){
     defs.push({key:"act", val:r=>(r.act||"—").replace(/Ozon: отгрузка через \d+ дн/,"Ozon: запланировать отгрузку"),
       sortVal:v=>v==="Держать"? 90 : (v==="—"? 99 : 0)});
   } else defs.push({key:"verdict",  val:r=>SR_VERDICT[r.verdict].lbl,
-    sortVal:ord(["Не хватит и Озону","Поднять цену","Разогнать","Держать"])});
+    sortVal:ord(["Не хватит и Озону","Поднять цену","Маржа ниже 10%","Отгрузить на ВБ","Разогнать","Держать","Нет товара"])});
   defs.push({key:"prodSt", val:r=>PROD_ST[(r.prod&&r.prod.st)||"none"].lbl,
     sortVal:ord(["urgent","soon","plan","inbatch","wait","far","nosale","none"].map(k=>PROD_ST[k].lbl))});
   return defs;
@@ -9484,7 +9532,7 @@ const SR_SORT_ACC={
   name:r=>r.name, category:r=>r.category||"", sup:r=>r.sup, etaLeft:r=>r.etaLeft==null?1e9:r.etaLeft,
   wbAvail:r=>r.wbAvail!=null? r.wbAvail : r.wbBase, wbDays:r=>r.wbDays==null?1e14:r.wbDays,
   ordWb:r=>r.ordWb, targetOrders:r=>r.targetOrders==null?-1:r.targetOrders,
-  verdict:r=>({short:0,up:1,down:2,hold:3,none:4})[r.verdict], wkWb:r=>r.wkWb[0],
+  verdict:r=>({short:0,up:1,lowm:2,ship:3,down:4,hold:5,nostock:6,none:7})[r.verdict], wkWb:r=>r.wkWb[0],
   stockOz:r=>r.stockOz, ordOz:r=>r.ordOz, wkOz:r=>r.wkOz[0],
   ozDays:r=>r.spdOz>0? r.ozDays : 1e14, ozSt:r=>["ship","short","ok","nohz","none"].indexOf(r.ozSt),
   shipIn:r=>(r.spdOz>0&&r.shipIn!=null)? r.shipIn : 1e9, whFreeOz:r=>r.whFreeOz,
@@ -9679,6 +9727,7 @@ function srKpisWb(rows,WK){
     {lbl:"Wildberries: база плана, шт", val:fmt(sum(rows,r=>r.wbAvail!=null? r.wbAvail : r.wbBase)),
       tip:"Сколько товара Wildberries может продать до партии:\n"
         +"склады ВБ (FBO): "+fmt(sum(rows,r=>r.stockWb))+" шт\n"
+        +"+ отгрузки на ВБ в пути: "+fmt(sum(rows,r=>r.wbTr))+" шт\n"
         +"+ ваши склады: "+fmt(sum(rows,r=>r.whQty))+" шт\n"
         +"− заберёт Ozon с ваших складов до партии: "+fmt(sum(rows,r=>r.ozTake))+" шт\n\n"
         +"Остаток на складах Ozon ("+fmt(sum(rows,r=>r.stockOz))+" шт вместе с тем, что едет) сюда не входит: Wildberries его не продаст."
@@ -9686,16 +9735,28 @@ function srKpisWb(rows,WK){
     {lbl:"ВБ: поднять цену", val:up.length+(sh.length? " + "+sh.length : ""),
       valColor:hot.length?"var(--crit-txt)":"var(--text-1)",
       delta:hot.length? `<div class="delta down">заказов/дн: ${srNum1(ordHot)} → план ${srNum1(tgtHot)}</div>` : "",
-      tip:"«"+up.length+"» — на ВБ продаёте быстрее плана больше чем на "+Math.round(SR_BAND*100)+"%: товар кончится раньше, чем партия выйдет в продажу. Поднимите цену в репрайсере или снимите рекламу.\n"
+      tip:"«"+up.length+"» — на ВБ заказов больше 125% плана (порог репрайсера): товар кончится раньше, чем партия выйдет в продажу. Поднимите цену в репрайсере или снимите рекламу.\n"
         +(sh.length? "\n«+"+sh.length+"» — запаса не хватит даже одному Ozon: поднятие цены на ВБ поможет лишь частично (Ozon следует за ценой ВБ).\n" : "")
         +(hot.length? "\nПо этим позициям сейчас "+srNum1(ordHot)+" заказов в день, по плану — "+srNum1(tgtHot)+". Разницу и нужно срезать ценой." : "")},
     {lbl:"ВБ: разогнать", val:dn.length, valColor:dn.length?"var(--warn-txt)":"var(--text-1)",
       delta:dn.length? `<div class="delta" style="background:var(--surface-2);color:var(--text-2)">к партии останется ≈ ${fmt(leftDn)} шт</div>` : "",
-      tip:"На ВБ продаёте медленнее плана больше чем на "+Math.round(SR_BAND*100)+"%: при нынешнем темпе к выходу партии на ВБ и ваших складах останется ≈ "+fmt(leftDn)+" шт сверх продаж. Снижайте цену или включайте рекламу.\n\n"
-        +"«Держать» (темп в плане ±"+Math.round(SR_BAND*100)+"%): "+hd.length+" "+plural(hd.length,"позиция","позиции","позиций")+".\n\n"
+      tip:"На ВБ заказов меньше 75% плана (порог репрайсера): при нынешнем темпе к выходу партии на ВБ и ваших складах останется ≈ "+fmt(leftDn)+" шт сверх продаж. Снижайте цену или включайте рекламу.\n\n"
+        +"«Держать» (75–125% плана): "+hd.length+" "+plural(hd.length,"позиция","позиции","позиций")+".\n\n"
         +"Почему здесь нет суммы целей: по выборке она "+fmt(sumT)+" заказов в день при нынешних "+fmt(sum(rows,r=>r.ordWb))+", и "
         +(sumT>0? Math.round(sumTdn/sumT*100) : 0)+"% её дают позиции «Разогнать» — товар с большим остатком, у которого цель в разы выше нынешнего темпа. Такую сумму нельзя ни ввести в репрайсер, ни выполнить: план ставится по каждой позиции."},
     srWeekTile("ВБ",rows,"wkWb",WK,WK&&srOpenDaysTxt(WK.wb)&&"за "+srOpenDaysTxt(WK.wb)), srProdTile(rows)];
+}
+/* Что уйдёт в репрайсер и что он сделает (18.11.2026): план в рамке 10…30 (ЗАП-17/18) против заказов за 7 дней по порогам
+   стратегии 75/125%. Когда рамка разворачивает действие против вердикта — предупреждение: дашборд просит одно, а репрайсер
+   с этим планом сделает другое (цель 0,2 → план 10 → цену ОПУСТИТ у товара, которого почти не осталось). */
+function srRepCell(r){
+  if(r.planRep==null) return "";
+  const act={down:"опустит цену",up:"поднимет цену",hold:"держит цену"}[r.repAct]||"";
+  const want={up:"up",down:"down",hold:"hold",lowm:"hold"}[r.verdict];
+  const clash=want && r.repAct && r.repAct!==want && !(r.verdict==="lowm" && r.repAct==="up");
+  const clamp=Math.round(r.targetOrders)!==r.planRep;
+  return `<span class="sub2 ${clash?"delta-down":"mut"}" title="${esc("В репрайсер уходит план в рамке "+SR_PLAN_MIN+"…"+SR_PLAN_MAX+" заказов в день. Репрайсер сравнивает заказы с планом: меньше 75% — опускает цену на 1 п.п., больше 125% — поднимает, между — держит."+(clash? "\nС этим планом репрайсер сделает не то, что нужно по цели"+(clamp? " — из-за рамки плана "+SR_PLAN_MIN+"…"+SR_PLAN_MAX : "")+"." : ""))}">`
+    +`${clash?"⚠ ":""}в репрайсер ${r.planRep}${clamp? " (рамка)" : ""} → ${act}</span>`;
 }
 function srTableWb(rows,WK){
   let html=`<thead><tr>${thSort("Наименование","name",srSortState,"metric")}`
@@ -9708,9 +9769,9 @@ function srTableWb(rows,WK){
     const crit=r.verdict==="up" && r.wbDays!=null && r.wbDays<30;
     const late=r.hz>0 && r.wbDays!=null && r.wbDays<r.hz;
     html+=`<tr class="${crit?"row-critical":""}">`+srName(r,"wb")
-      +`<td style="font-weight:650" title="База = склады ВБ (FBO) + ваши склады − то, что Ozon заберёт с ваших складов до партии">`
+      +`<td style="font-weight:650" title="База = склады ВБ (FBO) + отгрузки на ВБ в пути + ваши склады − то, что Ozon заберёт с ваших складов до партии">`
         +`${fmt(r.wbAvail!=null? r.wbAvail : r.wbBase)}`
-        +`<span class="sub2 mut">FBO ${fmt(r.stockWb)} · скл ${fmt(r.whQty)}</span>`
+        +`<span class="sub2 mut">FBO ${fmt(r.stockWb)}${r.wbTr>0? " · в пути "+fmt(r.wbTr) : ""} · скл ${fmt(r.whQty)}</span>`
         +`${r.ozTake>0? `<span class="sub2 mut">− заберёт Ozon ${fmt(r.ozTake)}</span>`:""}`
         +`${r.wbAvail==null? `<span class="sub2 mut">без вычета Ozon</span>`:""}</td>`
       +`<td style="font-weight:650${late?";color:var(--crit-txt)":""}" title="База ÷ нынешние продажи на ВБ в день">${srDaysTxt(r.wbDays)}${srHzSub(r)}</td>`
@@ -9719,9 +9780,11 @@ function srTableWb(rows,WK){
       +`<td style="font-weight:700;${r.targetOrders!=null&&r.targetOrders<=0?"color:var(--crit-txt)":""}" `
         +`title="Это число ставится в репрайсер: сколько заказов в день он должен набирать на ВБ.">`
         +`${r.targetOrders!=null? srNum1(r.targetOrders) : "—"}`
-        +`${r.targetOrders!=null&&r.gapOrders!=null&&r.ordWb>0?`<span class="sub2 ${r.gapOrders>0?"delta-down":"delta-up"}">${r.gapOrders>0?"−":"+"}${srNum1(Math.abs(r.gapOrders))} к текущему</span>`:""}</td>`
+        +`${r.targetOrders!=null&&r.gapOrders!=null&&r.ordWb>0?`<span class="sub2 ${r.gapOrders>0?"delta-down":"delta-up"}">${r.gapOrders>0?"−":"+"}${srNum1(Math.abs(r.gapOrders))} к текущему</span>`:""}`
+        +srRepCell(r)+`</td>`
       +`<td><span class="badge ${v.cls}" title="${esc(r.verdict==="none"? v.tip+"\n"+r.hzSrc : v.tip)}"><span class="d"></span>`
-        +`${r.verdict==="none"? (!(r.total>0)&&!(r.spd>0)? "нет товара" : (r.incoming>0? "дата не задана" : "нет партии")) : v.lbl}</span></td>`
+        +`${r.verdict==="none"? (!(r.total>0)&&!(r.spd>0)? "нет товара" : (r.incoming>0? "дата не задана" : "нет партии")) : v.lbl}</span>`
+        +`${r.verdict==="lowm"&&r.mgWb? `<span class="sub2 mut">маржа 7 дн ${Math.round(r.mgWb.margin*100)}%</span>` : ""}</td>`
       +srWkCell(r.wkWb)+srBatchCell(r)+srProdCell(r)+`</tr>`;
   });
   return html+"</tbody>";
@@ -9875,17 +9938,18 @@ function srHowTo(mp){
       "Товар бизнеса = склады ВБ (FBO) + в пути на ВБ + Ozon (остаток и в пути) + ваши склады. Каждая штука один раз: Клин и «Ozon СФО/ЦФО» не задваиваются — та же сумма, что «Всего товара» на вкладке «Остатки».",
       "Продаж в день = продажи ВБ + продажи Ozon (заказы за 7 дней × % выкупа своей площадки).",
       "Хватит дней = товар бизнеса ÷ продаж в день, с учётом сезона (веса месяцев — ниже).",
-      "«До партии»: хватит дней сравниваем с горизонтом ("+hz+"). Меньше — «Не хватит»; заметно больше (темп ниже нужного больше чем на "+band+"%, та же граница, что «Разогнать» на ВБ) — «Избыток»; между — «Хватит».",
+      "«До партии»: хватит дней сравниваем с горизонтом ("+hz+"). Меньше — «Не хватит»; заметно больше (темп ниже нужного больше чем на "+band+"%) — «Избыток»; между — «Хватит».",
       "«Лежит / продаётся»: верхняя полоска — где лежит товар (ВБ вместе с Клином · Ozon вместе с назначенным · ваши склады), нижняя — где он продаётся (ВБ · Ozon). Перекос показывает, на какой площадке действовать."],
       notes:["«Что делать» собран из двух других видов: цена — только на ВБ (вид «Wildberries»), на Ozon — отгрузка (вид «Ozon»).", ss, wk].concat(pr).filter(Boolean)};
   return {title:"Как считается — Wildberries (план продаж для репрайсера)", steps:[
-      "База — то, что Wildberries может продать до партии: склады ВБ (FBO) + ваши склады.",
+      "База — то, что Wildberries может продать до партии: склады ВБ (FBO) + отгрузки на ВБ в пути + ваши склады.",
       "Из базы вычитаем, что Ozon заберёт с ваших складов до партии: его продажи за горизонт минус то, что у него уже лежит и едет. Остаток на складах Ozon в базу не входит — Wildberries его не продаст.",
       "Цель продаж в день = база ÷ горизонт ("+hz+"), без сезона: репрайсер держит одно число, в ноябре–декабре он просто удержит цену выше (решение продавца 06.11.2026).",
       "Цель заказов в день = цель продаж ÷ % выкупа товара на ВБ. Это число ставится в репрайсер.",
-      "Сравниваем с заказами за последние 7 дней: выше цели больше чем на "+band+"% — «Поднять цену», ниже больше чем на "+band+"% — «Разогнать», между — «Держать»."],
+      "Сравниваем с заказами за последние 7 дней по порогам самого репрайсера (стратегия «План-факт»): больше 125% цели — «Поднять цену», меньше 75% — «Разогнать», между — «Держать». Под целью — какой план уйдёт в репрайсер (рамка "+SR_PLAN_MIN+"…"+SR_PLAN_MAX+") и что он с ним сделает; ⚠ — сделает не то, что нужно."],
     notes:["План только для Wildberries: ценой вы управляете на ВБ, Ozon следует за ней ради индекса.",
       "«Не хватит и Озону» — Ozon один выберет весь ваш склад до партии: даже без продаж на ВБ товара не хватит. Поднятие цены поможет лишь частично.",
+      "«Отгрузить на ВБ» — на ВБ (FBO, в пути, склады FBS) товара нет или меньше чем на неделю, а на Клину/Евросибе (МП) есть: темп держит наличие, а не цена. «Маржа ниже 10%» — товара с запасом, но снижать цену нельзя (ЦЕНА-10). «Нет товара» — нет ни на ВБ, ни на складах.",
       "«Хватит на ВБ» = база ÷ нынешние продажи в день с учётом сезона; меньше горизонта — товар кончится раньше партии.", ss, wk].concat(pr).filter(Boolean)};
 }
 function renderSrHowTo(mp){
@@ -10064,9 +10128,12 @@ function exportStockXLSX(){
    «crit»/«warn», которых в стилях нет: «Поднять цену» и «Разогнать» рисовались бесцветными. */
 const SR_VERDICT={
   short:{lbl:"Не хватит и Озону",cls:"critical",tip:"Даже если на ВБ не продавать вообще, запаса не хватит: один Ozon выберет его до выхода партии.\nПоднятие цены на ВБ притормозит и Ozon (он следует за ценой), но одного этого может не хватить — смотрите, можно ли ускорить партию."},
-  up:{lbl:"Поднять цену",cls:"critical",tip:"На ВБ продаёте быстрее целевого темпа: запаса не хватит до выхода партии в продажу. Поднимите цену в репрайсере или снимите рекламу."},
-  down:{lbl:"Разогнать",cls:"warning",tip:"На ВБ продаёте медленнее целевого: к выходу партии останется лишнее. Снижайте цену или включайте рекламу."},
-  hold:{lbl:"Держать",cls:"good",tip:"Темп на ВБ совпадает с целевым (±15%) — менять ничего не нужно."},
+  up:{lbl:"Поднять цену",cls:"critical",tip:"На ВБ заказов больше 125% цели (порог репрайсера): запаса не хватит до выхода партии в продажу. Репрайсер сам поднимет цену, если план в нём не выше цели; иначе поднимите план или снимите рекламу."},
+  down:{lbl:"Разогнать",cls:"warning",tip:"На ВБ заказов меньше 75% цели (порог репрайсера): к выходу партии останется лишнее. Репрайсер с планом на уровне цели сам опустит цену; рычаги — цена и реклама."},
+  hold:{lbl:"Держать",cls:"good",tip:"Заказы на ВБ в пределах 75–125% цели — репрайсер цену держит, менять ничего не нужно."},
+  ship:{lbl:"Отгрузить на ВБ",cls:"warning",tip:"На ВБ (склады FBO, в пути и ваши склады FBS — Москва, Нск-1) товара нет или меньше чем на неделю продаж, а на Клину / Евросибе (МП) он есть. Темп ограничен наличием, а не ценой: сначала отгрузка (подсорт), цену не трогать."},
+  lowm:{lbl:"Маржа ниже 10%",cls:"critical",tip:"Заказов меньше цели (товара хватает с запасом), но маржа ВБ за 7 дней ниже 10% (ЦЕНА-10): снижать цену нельзя — товар уйдёт в минус. Рычаги — реклама и закупочная цена; план в репрайсер — не выше нынешних заказов, иначе он сам опустит цену."},
+  nostock:{lbl:"Нет товара",cls:"nodata",tip:"Ни на складах ВБ, ни в пути на ВБ, ни на ваших складах товара нет — цену судить не о чем. Когда придёт — колонка «Партия»."},
   none:{lbl:"—",cls:"nodata",tip:"Горизонт не задан: неизвестно, когда партия выйдет в продажу."}};
 
 /* ---- главная: сводный P&L на основе загруженной "Финансы" ---- */
@@ -12983,7 +13050,7 @@ function recRulesWb(addAny, rs){
     keys: shortSr.flatMap(r=>[r.sup,r.wbSku]), n: shortSr.length, tab:"stockrate", rank: 2});
   if(upSr.length) add({sev:"warn", key:"srUp",
     title:"Поднять цену на ВБ: "+upSr.length+" "+plural(upSr.length,"позиция продаётся","позиции продаются","позиций продаются")+" быстрее, чем нужно",
-    why:`Темп выше цели больше чем на ${Math.round(SR_BAND*100)}% — товар кончится раньше, чем придёт партия. Цель в таблице дана в ЗАКАЗАХ в день, её и вводите в репрайсер.`,
+    why:`Заказов больше 125% цели (порог репрайсера) — товар кончится раньше, чем придёт партия. Цель в таблице дана в ЗАКАЗАХ в день, её и вводите в репрайсер.`,
     items: upSr.slice(0,6).map(r=>({n:"план "+srOrd(r.targetOrders)+" в день", x:r.name,
       w:"сейчас "+srOrd(r.ordWb||0)+" в день"})),
     keys: upSr.flatMap(r=>[r.sup,r.wbSku]), n: upSr.length, tab:"stockrate", rank: 6});
@@ -15015,6 +15082,7 @@ function hydrateData(){
   _buyoutWin={};                 // окно % выкупа считается от воронки — пересобрать
   _wbFbsCache=null; _klinCache=null; _ozAsgCache=null; _rsCalc=null;   // раскладка своих складов: покрытие ВБ + Клин + назначенное на Ozon
   _prodCache=null; _prodContCache=null; _facCache=null; _prodSigCache=null;  // заказы на производство, контейнеры, коды фабрики
+  _srMgCache=null;   // маржа ВБ по коду за 7 дней (вердикт «Запаса и темпа»)
   _adMskCache=null; _adMskHeld={};  // московский запас для рекламы — за вычетом собранного в паллеты
   _recOutCache=null; _outSkuCache=null;   // списки товаров «На вывод» — производные каталога
   _ozCostCache=null; _ozFinCache=null; _ozCalc=null;    // финансы Озона считаются из каталога и тарифа (calc/ozon-fin.js)
