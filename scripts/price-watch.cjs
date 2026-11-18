@@ -75,7 +75,9 @@ else {
   if (big.length) console.log('  САМЫЙ БОЛЬШОЙ ПОДЪЁМ ЦЕНЫ (>12%):'), big.forEach(x => console.log('     ' + x.s + ': цена ' + sgn(x.dp) + ' · заказы ' + (x.qb / B.n).toFixed(1) + ' → ' + (x.qa / A.n).toFixed(1) + '/дн (z=' + x.z.toFixed(1) + ')'));
   // 4) репрайсер завтра: последний день против плана
   const last = IA[IA.length - 1], dl = sd[last]; let dn = 0, hold = 0, up = 0; const dnL = [];
-  Object.entries(bySup).forEach(([s, c]) => { const r = wbRec[s]; if (!r.plan || r.disabled) return; const y = (S.bySku[c.sku] || [])[last] || 0; const f = y / r.plan;
+  /* План — последний отданный продавцу (`meta.planSet`, ЗАП-22, с 18.11.2026), иначе тот, что стоял в файле 17.11. */
+  const PSW = (RD.meta && RD.meta.planSet && RD.meta.planSet.wb) || {};
+  Object.entries(bySup).forEach(([s, c]) => { const r = wbRec[s]; const pl = PSW[s] != null ? PSW[s] : r.plan; if (!pl || r.disabled) return; const y = (S.bySku[c.sku] || [])[last] || 0; const f = y / pl;
     if (f < 0.75) { dn++; dnL.push(s); } else if (f > 1.25) up++; else hold++; });
   console.log('  РЕПРАЙСЕР по ' + dl + ' (заказы ÷ план): ниже 75% плана → −1 п.п. скидки у ' + dn + ' · 75–125% → держит у ' + hold + ' · выше 125% → +1 п.п. у ' + up + ' (правило 2–3 дней не учтено)');
 }

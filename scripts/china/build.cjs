@@ -15,6 +15,10 @@ const TODAY=arg('--date'), STOCK_ISO=arg('--stock-at'), STOCK_AT=STOCK_ISO.slice
 const iso=s=>{const m=String(s||'').match(/(\d\d)\.(\d\d)\.(\d{4})/);return m?m[3]+'-'+m[2]+'-'+m[1]:null};
 const dmy=i=>i?i.slice(8,10)+'.'+i.slice(5,7)+'.'+i.slice(0,4):'';
 const plus2m=i=>{const y=+i.slice(0,4),m=+i.slice(5,7)+2,d=i.slice(8,10);const yy=y+Math.floor((m-1)/12),mm=((m-1)%12)+1;return yy+'-'+String(mm).padStart(2,'0')+'-'+d;};
+/* --mp "коды" — товар МП, хотя колонка H пустая: продавец исправил в 1С, а выгрузка ещё старая (18.11: 515286, 500182, 500171). */
+const MPX=new Set(String(arg('--mp')||'').split(/[\s,;]+/).filter(Boolean));
+ved.forEach(x=>{ if(MPX.has(x.code)&&!x.h){ x.h='RF/WB'; x.hFix='1С исправлен, выгрузка старая'; } });
+if(MPX.size) fs.writeFileSync(B+'/in-ved/items.json',JSON.stringify(ved));
 const V={};ved.forEach(x=>V[x.code]=x);
 const pBy={};prod.forEach(r=>(pBy[r.code]=pBy[r.code]||[]).push(r));
 const oBy={};RD.prodOrders.rows.forEach(r=>(oBy[r.sup]=oBy[r.sup]||[]).push(r));
@@ -39,9 +43,11 @@ ved.filter(x=>x.h).forEach(x=>{
     if(match) rowsT=[{qty:T,ready:match.ready,mp:match.mp}];
     else if(gone.length&&gone.reduce((a,r)=>a+r.qty,0)===T) rowsT=gone.map(r=>({qty:r.qty,ready:r.ready,mp:r.mp}));
     else { const g=gone.slice().sort((a,b)=>(a.ready||'').localeCompare(b.ready||''));const mp=(g.find(r=>r.mp)||{}).mp||null;rowsT=[{qty:T,ready:(g[0]||{}).ready||null,mp,approx:true}]; }
-    rowsT.forEach(t=>{ const r={code:c,art:fac[c]||'',name:x.name,qty:t.qty,ready:t.ready,mpDate:t.mp&&t.mp>=TODAY?t.mp:null,
-        mpText:t.mp&&t.mp>=TODAY?'':(stage+' по 1С на '+STOCK_AT+', дата на МП не известна'),kind:'transit',stage};
-      out.push(r); (r.mpDate?log.transitKeep:log.transitNoDate).push(r); });
+    /* В пути без даты (или дата прошла) — дата остатков «4 пер.» + 2 мес (продавец 18.11.2026 на вопрос «через сколько попадает на МП
+       товар в пути до таможни?» — «тоже два месяца»). */
+    rowsT.forEach(t=>{ const keep=t.mp&&t.mp>=TODAY; const r={code:c,art:fac[c]||'',name:x.name,qty:t.qty,ready:t.ready,mpDate:keep?t.mp:plus2m(STOCK_ISO),
+        mpText:'',kind:'transit',stage,est:!keep};
+      out.push(r); (r.est?log.transitNoDate:log.transitKeep).push(r); });
   }
   // у поставщика: открытые заказы
   let openSum=0;
@@ -65,8 +71,8 @@ fs.writeFileSync(B+'/out/china/build.json',JSON.stringify({out,log}));
 const S=a=>a.reduce((s,r)=>s+r.qty,0);
 console.log('пришло 18.11 (снято с «в пути»):',log.arrived18.map(a=>a.code+' '+a.qty).join(', '),'=',log.arrived18.reduce((s,a)=>s+a.qty,0),'шт');
 console.log('строк',out.length,'кодов',new Set(out.map(r=>r.code)).size,'шт',S(out));
-console.log('в пути, дата из файла 27.10:',log.transitKeep.length,'строк',S(log.transitKeep),'шт');
-console.log('в пути, даты нет (было «должен был уже придти»):',log.transitNoDate.length,'строк',S(log.transitNoDate),'шт');
+console.log('в пути, дата из прошлой загрузки:',log.transitKeep.length,'строк',S(log.transitKeep),'шт');
+console.log('в пути без своей даты → '+plus2m(STOCK_ISO)+' (дата остатков + 2 мес):',log.transitNoDate.length,'строк',S(log.transitNoDate),'шт');
 console.log('у поставщика, дата на МП впереди (изготовление + 2 мес):',log.supplierPending.length,'строк',S(log.supplierPending),'шт');
 console.log('у поставщика, срок прошёл / не указан:',log.supplierOverdue.length,'строк',S(log.supplierOverdue),'шт');
 console.log('у поставщика без открытого заказа:',log.supplierExtra.length,'строк',S(log.supplierExtra),'шт');

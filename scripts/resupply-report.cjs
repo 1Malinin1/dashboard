@@ -164,6 +164,18 @@ if(urgent.length){
       +(x.r.order? ' · едет с производства '+x.r.order : '')+'  '+(x.r.name||'').slice(0,34)));
     if(lst.length>TOP) console.log('  … ещё '+(lst.length-TOP));
   } }
+// ---- ТОВАР-ПРЕЕМНИК (ЗАП-23, 18.11.2026): «как только 519575 закончится на Ozon и на ВБ, мы будем поставлять 519578» ----
+// `meta.successors` = [{code, after, since, note}]: код лежит (обычно на Евросибе как розница) и ждёт, пока кончится другой. Печатаем
+// состояние «предшественника» на площадках; кончился на обеих — сигнал продавцу (сам подсорт он ставит руками: резерв/пометка WB).
+{ const SC=(RD.meta&&RD.meta.successors)||[];
+  if(SC.length){ const wbBy={}; (RD.catalog||[]).forEach(c=>{ const s=(''+(c.supplierCode||'')).trim(); if(s) wbBy[s]=(wbBy[s]||0)+(c.wbStock||0); });
+    (RD.shipments||[]).forEach(x=>{ if(x.mp==='wb'&&x.left>0) wbBy[x.sup]=(wbBy[x.sup]||0)+x.left; });
+    const ozBy={}; ((RD.ozon&&RD.ozon.catalog)||[]).forEach(c=>{ ozBy[''+c.sku]=(c.ozStock||0)+(c.ozTransit||0); });
+    const wh=(RD.warehouse&&RD.warehouse.bySup)||{};
+    console.log('\nЖДУТ, ПОКА КОНЧИТСЯ ДРУГОЙ ТОВАР (ЗАП-23):');
+    SC.forEach(x=>{ const w=wbBy[x.after]||0, o=ozBy[x.after]||0, have=(wh[x.code]&&wh[x.code].qty)||0;
+      console.log('  '+(w<=0&&o<=0? '⚠ ПОРА: ' : '  ')+x.code+' после '+x.after+' — у '+x.after+' сейчас ВБ '+w+' шт (с отгрузками в пути) · Ozon '+o+' шт (с путём)'
+        +' · у '+x.code+' на своих складах '+have+' шт'+(w<=0&&o<=0? ' → ставьте '+x.code+' в отгрузку (резерв/пометка WB в 1С)' : '')); }); } }
 // ---- самопроверка правил ЗАП-13 (печатает только нарушения) ----
 { const bad=[];
   rows.forEach(r=>WH_ORDER.forEach(w=>{ if(r.pool[w]<0) bad.push(r.sup+': склад '+WH_NAME[w]+' ушёл в минус '+r.pool[w]);
