@@ -92,23 +92,14 @@ async function dump(){
         note: (r.mgWb && r.mgWb.rev>=(D.mgRevMin||21000) && r.mgWb.margin*100<(D.mgMin||10)? 'маржа ВБ за 7 дн после рекламы '+Math.round(r.mgWb.margin*100)+'%, до рекламы '+Math.round((r.mgWb.preAd||0)*100)+'% — дело в рекламе; цену репрайсер опустит не ниже минимальной' : '') || (r.planRep==null? 'горизонта нет — 10, как раньше' : (r.wbAvail||0)<=0 && !(r.supplies||[]).length? 'товара для ВБ нет' : '')});
       continue;
     }
-    /* ЗАП-22: товар и партии на 180 дн, не кончиться до каждой партии; самое жёсткое условие. */
-    const H=D.planHz||180, share=D.mpShare||0.65, wbOwn=(r.stockWb||0)+(r.wbShip||0);
-    const sup2=(r.supplies||[]).filter(x=>x.t>0&&x.t<=H).sort((a,b)=>a.t-b.t);
-    const baseAt=(t,inc)=>{ const wh=(r.whQty||0)+inc*share, take=Math.max(0,Math.min((r.spdWb||0)*t-wbOwn, wh));
-      return {base:(r.stockOz||0)+Math.max(0,wh-take), take}; };
-    let cum=0, best=Infinity, bind=null, bb=null;
-    sup2.forEach(x=>{ const v=baseAt(x.t,cum); if(v.base/x.t<best){ best=v.base/x.t; bind=x; bb=v; } cum+=x.q; });
-    const vEnd=baseAt(H,cum); if(vEnd.base/H<=best){ best=vEnd.base/H; bind=null; bb=vEnd; }
+    /* Формула — scripts/lib/plan-oz.cjs (одна для repricer-plan и plan-review, ЗАП-24). */
     const bo=(r.ordOz>0&&r.spdOz>0)? r.spdOz/r.ordOz : (boBy[sup]||boAll);
-    const raw=best/bo; let J=Math.max(1,Math.round(raw)), note='';
-    /* Нет товара вовсе (Ozon, свои склады, партии) — план не считаем: «нет товара — 10», как на ВБ и как раньше. */
-    const noGoods=(r.stockOz||0)+(r.whQty||0)+(r.supplies||[]).reduce((a,x)=>a+(x.q||0),0)<=0;
-    if(noGoods){ J=NODATA; note='товара нет — 10, как раньше'; }
+    const P=require('./lib/plan-oz.cjs').planOz(r,{share:D.mpShare,H:D.planHz||180,bo,nodata:NODATA});
+    const J=P.J, raw=P.raw, bb={base:P.base,take:P.take}, hzTxt=P.noGoods? 'товара нет' : P.src, bind=P.bind, H=D.planHz||180;
+    let note=P.noGoods? 'товара нет — 10, как раньше' : '';
     const mg=(D.ozMg||{})[sup];
     /* ЗАП-24: план по марже НЕ подменяем — порог держит минимальная цена репрайсера; низкая маржа после рекламы — только пометка. */
-    if(!noGoods && mg && mg.rev>=(D.mgRevMin||21000) && mg.margin*100<(D.mgMin||10)) note='маржа Ozon за 7 дн после рекламы '+Math.round(mg.margin*100)+'%, до рекламы '+Math.round((mg.preAd||0)*100)+'% — дело в рекламе; цену репрайсер опустит не ниже минимальной';
-    const hzTxt=bind? 'не кончиться до партии через '+bind.t+' дн' : (sup2.length? 'товар и партии — на '+H+' дн' : 'товар на '+H+' дн: партий нет');
+    if(!P.noGoods && mg && mg.rev>=(D.mgRevMin||21000) && mg.margin*100<(D.mgMin||10)) note='маржа Ozon за 7 дн после рекламы '+Math.round(mg.margin*100)+'%, до рекламы '+Math.round((mg.preAd||0)*100)+'% — дело в рекламе; цену репрайсер опустит не ниже минимальной';
     res.push({xr,sup,name:r.name||row[iName],J,raw,ordNow:r.ordOz||0,stockOz:r.stockOz||0,wh:r.whQty||0,wbTake:bb?bb.take:0,base:bb?bb.base:0,hz:bind?bind.t:H,hzSrc:hzTxt,bo,
       note: note || ((bb?bb.base:0)<=0? 'товара нет' : '')});
   }
