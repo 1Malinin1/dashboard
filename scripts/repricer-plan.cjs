@@ -11,7 +11,7 @@
 // С 18.11.2026 (ЗАП-22) — ИНДИВИДУАЛЬНО ПО ТОВАРУ, БЕЗ РАМКИ 10…30 (продавец: «рамка плана будет индивидуально по каждому товару и всё,
 // убираем ограничения»): целое, не меньше 1. Цель — товар и все партии на 180 дней: не кончиться до прихода каждой партии и дожить
 // до 180 дней со всеми партиями (их доля маркетплейсов — PROD_MP_SHARE сайта, 65%); берётся самое жёсткое условие. Маржа площадки
-// за 7 дней ниже 10% и заказов меньше 75% плана — план = нынешние заказы, чтобы репрайсер не опускал цену («нижний порог 10%»).
+// маржу держит минимальная цена репрайсера; маржа после рекламы ниже 10% — только пометка (ЗАП-24, исправлено 18.11).
 // Сезона нет нигде (ЗАП-22). Нет товара в данных дашборда — 10, как раньше.
 //
 // ВБ: план = `planRep` сайта (srDecorate: цель заказов «Запаса и темпа» с теми же правилами) — одно число на сайте и в файле.
@@ -45,8 +45,8 @@ async function dump(){
         supplies:r.supplies||[],wbTr:r.wbTr||0,stockWbOnly:r.stockWb||0,mgWb:r.mgWb||null})),
       mpShare:PROD_MP_SHARE, planHz:PLAN_HZ, mgMin:REC_MARGIN_MIN, mgRevMin:SR_MG_REV_MIN,
       ozMg:(()=>{ const ds=((OZDATA&&OZDATA.dates)||[]).slice(-7), set=new Set(ds), m={};
-        try{ ozFinRows().filter(x=>set.has(x.date)).forEach(x=>{ const e=m[x.sku]||(m[x.sku]={rev:0,profit:0}); e.rev+=x.revenue||0; e.profit+=x.profit||0; }); }catch(e){}
-        Object.values(m).forEach(e=>{ e.margin=e.rev>0? e.profit/e.rev : 0; }); return m; })(),
+        try{ ozFinRows().filter(x=>set.has(x.date)).forEach(x=>{ const e=m[x.sku]||(m[x.sku]={rev:0,profit:0,ad:0}); e.rev+=x.revenue||0; e.profit+=x.profit||0; e.ad+=x.ad||0; }); }catch(e){}
+        Object.values(m).forEach(e=>{ e.margin=e.rev>0? e.profit/e.rev : 0; e.preAd=e.rev>0? (e.profit+e.ad)/e.rev : 0; }); return m; })(),
       bo:(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutWin)||null,
       ozCodes:((RD.ozon&&RD.ozon.catalog)||[]).map(c=>""+c.sku),
       outSups:[...recOutSups()].map(String)}));
@@ -89,7 +89,7 @@ async function dump(){
       const raw=r.targetOrders==null? null : r.targetOrders, J=r.planRep!=null? r.planRep : NODATA;
       res.push({xr,sup,nm:row[iNm],name:r.name||row[iName],J,raw,was:tableOnly?'':row[iPlan],ordNow:r.ordWb||0,stockWb:(r.stockWb||0),wh:r.whQty||0,
         ozTake:r.ozTake||0,base:r.wbAvail||0,hz:r.hz,hzSrc:r.tgtSrc||r.hzSrc,bo:r.boWb,
-        note: r.planNote || (r.planRep==null? 'горизонта нет — 10, как раньше' : (r.wbAvail||0)<=0 && !(r.supplies||[]).length? 'товара для ВБ нет' : '')});
+        note: (r.mgWb && r.mgWb.rev>=(D.mgRevMin||21000) && r.mgWb.margin*100<(D.mgMin||10)? 'маржа ВБ за 7 дн после рекламы '+Math.round(r.mgWb.margin*100)+'%, до рекламы '+Math.round((r.mgWb.preAd||0)*100)+'% — дело в рекламе; цену репрайсер опустит не ниже минимальной' : '') || (r.planRep==null? 'горизонта нет — 10, как раньше' : (r.wbAvail||0)<=0 && !(r.supplies||[]).length? 'товара для ВБ нет' : '')});
       continue;
     }
     /* ЗАП-22: товар и партии на 180 дн, не кончиться до каждой партии; самое жёсткое условие. */
@@ -106,7 +106,8 @@ async function dump(){
     const noGoods=(r.stockOz||0)+(r.whQty||0)+(r.supplies||[]).reduce((a,x)=>a+(x.q||0),0)<=0;
     if(noGoods){ J=NODATA; note='товара нет — 10, как раньше'; }
     const mg=(D.ozMg||{})[sup];
-    if(!noGoods && mg && mg.rev>=(D.mgRevMin||21000) && mg.margin*100<(D.mgMin||10) && (r.ordOz||0)<J*0.75){ J=Math.max(1,Math.round(r.ordOz||0)); note='маржа Ozon за 7 дн '+Math.round(mg.margin*100)+'% — план = нынешние заказы, цену не опускаем'; }
+    /* ЗАП-24: план по марже НЕ подменяем — порог держит минимальная цена репрайсера; низкая маржа после рекламы — только пометка. */
+    if(!noGoods && mg && mg.rev>=(D.mgRevMin||21000) && mg.margin*100<(D.mgMin||10)) note='маржа Ozon за 7 дн после рекламы '+Math.round(mg.margin*100)+'%, до рекламы '+Math.round((mg.preAd||0)*100)+'% — дело в рекламе; цену репрайсер опустит не ниже минимальной';
     const hzTxt=bind? 'не кончиться до партии через '+bind.t+' дн' : (sup2.length? 'товар и партии — на '+H+' дн' : 'товар на '+H+' дн: партий нет');
     res.push({xr,sup,name:r.name||row[iName],J,raw,ordNow:r.ordOz||0,stockOz:r.stockOz||0,wh:r.whQty||0,wbTake:bb?bb.take:0,base:bb?bb.base:0,hz:bind?bind.t:H,hzSrc:hzTxt,bo,
       note: note || ((bb?bb.base:0)<=0? 'товара нет' : '')});
@@ -165,19 +166,19 @@ async function dump(){
     ['Партии из Китая идут маркетплейсам долей 65% (30–40% — розница); Ozon добирает со складов и партий свою недостачу'],
     ['Цель продаж в день — самое жёсткое из условий: не кончиться до прихода каждой партии и дожить до 180 дней со всеми партиями'],
     ['План = цель ÷ % выкупа ВБ по товару, целое, не меньше 1, без рамки — то же число, что «в репрайсер» на «Запасе и темпе»'],
-    ['Маржа ВБ за 7 дней ниже 10% и заказов меньше 75% плана — план = нынешние заказы: репрайсер не будет опускать цену'],
+    ['Ниже минимальной цены репрайсер не опустит — она держит маржу; маржа после рекламы ниже 10% — только пометка (дело в рекламе)'],
     ['Сезон не учитывается (решение 18.11.2026); нет товара в данных дашборда — 10']]
   : [['Как считается план заказов Ozon (ЗАП-22, с 18.11.2026)'],[''],
     ['Товар для Ozon = остаток Ozon (склады + в пути, вкл. «Ozon СФО/ЦФО») + свои склады − что со своих складов заберёт ВБ'],
     ['ВБ заберёт = его продажи в день × дней − его остаток FBO и в пути (не больше своих складов); партии — долей 65%'],
     ['Цель продаж в день — самое жёсткое из условий: не кончиться до прихода каждой партии и дожить до 180 дней со всеми партиями'],
     ['План = цель ÷ % выкупа Ozon по товару, целое, не меньше 1, без рамки'],
-    ['Маржа Ozon за 7 дней ниже 10% и заказов меньше 75% плана — план = нынешние заказы: репрайсер не будет опускать цену'],
+    ['Ниже минимальной цены репрайсер не опустит — она держит маржу; маржа после рекламы ниже 10% — только пометка (дело в рекламе)'],
     ['Сезон не учитывается (решение 18.11.2026); нет товара в данных дашборда — 10']];
   const W=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(W,XLSX.utils.json_to_sheet(rep),'Разбор'); XLSX.utils.book_append_sheet(W,XLSX.utils.aoa_to_sheet(how),'Как считается');
   const out2=path.join(outDir,`${MPN}_план_заказов_разбор_${dt}.xlsx`); XLSX.writeFile(W,out2);
   const cnt={}; res.forEach(x=>cnt[x.J]=(cnt[x.J]||0)+1);
   console.log(`строк заполнено ${res.length}${skippedForeign? ' · чужих строк не тронуто '+skippedForeign : ''}${skippedOut? ' · «на вывод» без остатка не тронуто '+skippedOut : ''} (проверено чтением: ${chk.filter((r,k)=>filled.has(k+2)).length}) · по значениям ${JSON.stringify(cnt)}`);
-  console.log(`${MPN}: план ≥ 30: ${res.filter(x=>x.J>=30).length} · 10–29: ${res.filter(x=>x.J>=10&&x.J<30).length} · 2–9: ${res.filter(x=>x.J>=2&&x.J<10).length} · 1: ${res.filter(x=>x.J===1).length} · маржа ниже 10% (план = заказы): ${res.filter(x=>/маржа/.test(x.note||'')).length} · нет в данных: ${res.filter(x=>x.why).length}`);
+  console.log(`${MPN}: план ≥ 30: ${res.filter(x=>x.J>=30).length} · 10–29: ${res.filter(x=>x.J>=10&&x.J<30).length} · 2–9: ${res.filter(x=>x.J>=2&&x.J<10).length} · 1: ${res.filter(x=>x.J===1).length} · маржа после рекламы ниже 10% (пометка, план не меняли): ${res.filter(x=>/маржа/.test(x.note||'')).length} · нет в данных: ${res.filter(x=>x.why).length}`);
   console.log((out? '→ '+out+'\n' : '')+'→ '+out2);
 })().catch(e=>{ console.error(e.message||e); process.exit(1); });
