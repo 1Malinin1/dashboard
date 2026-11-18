@@ -77,7 +77,7 @@ else {
   const last = IA[IA.length - 1], dl = sd[last]; let dn = 0, hold = 0, up = 0; const dnL = [];
   Object.entries(bySup).forEach(([s, c]) => { const r = wbRec[s]; if (!r.plan || r.disabled) return; const y = (S.bySku[c.sku] || [])[last] || 0; const f = y / r.plan;
     if (f < 0.75) { dn++; dnL.push(s); } else if (f > 1.25) up++; else hold++; });
-  console.log('  РЕПРАЙСЕР по ' + dl + ' (заказы ÷ план): ниже 75% плана → −1% у ' + dn + ' · 75–125% → держит у ' + hold + ' · выше 125% → +1% у ' + up + ' (правило 2–3 дней не учтено)');
+  console.log('  РЕПРАЙСЕР по ' + dl + ' (заказы ÷ план): ниже 75% плана → −1 п.п. скидки у ' + dn + ' · 75–125% → держит у ' + hold + ' · выше 125% → +1 п.п. у ' + up + ' (правило 2–3 дней не учтено)');
 }
 // особые: опущенный коридор; запрет отправки — только если товар продаётся или лежит на ВБ (старые «на вывод» без остатка не шумят); без стратегии
 const live = s => (B.per[s] && B.per[s].q > 0) || ((bySup[s] || {}).wbStock > 0);
