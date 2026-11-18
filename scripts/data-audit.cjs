@@ -29,6 +29,11 @@ function audit(ctx, opts) {
   warn('КАРТОЧКА ВБ ЕСТЬ, В КАТАЛОГЕ ВБ НЕТ — заказы, остатки и реклама ВБ по ней не грузятся → node scripts/new-codes.cjs wb-cards --apply',
     reg.filter(x => x.wbSku && !wbSkus.has('' + x.wbSku)).map(x => x.code + ' · ВБ ' + x.wbSku + ' · ' + String(x.name || '').slice(0, 40)));
 
+  // 1б) реестр новинок: SKU Ozon известен, карточки в каталоге Ozon нет (18.11.2026: 5 новинок с SKU Ozon в 1С без карточки)
+  const ozCodes = new Set(((RD.ozon || {}).catalog || []).map(c => '' + c.sku));
+  warn('SKU OZON ЕСТЬ, В КАТАЛОГЕ OZON НЕТ — подсорт и остатки Ozon по нему не считаются → node scripts/new-codes.cjs oz <код> <SKU Ozon>',
+    reg.filter(x => x.ozonSku && /^\d{6,}$/.test('' + x.ozonSku) && !ozCodes.has('' + x.code)).map(x => x.code + ' · Ozon ' + x.ozonSku + ' · ' + String(x.name || '').slice(0, 40)));
+
   // 2) Ozon: воронка видит заказы, ряд заказов — нет (или сильно меньше)
   const S = O.orderSeries;
   if (S && S.dates && S.dates.length) {

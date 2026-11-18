@@ -16,13 +16,17 @@
 //   2) код в каталоге Ozon снимка (ozon.catalog[].sku) — его собирает ozon-build из остатков;
 //   3) код, уже бывший в ряду заказов Ozon (ozon.orderSeries.byArt);
 //   4) код из выгрузок XWAY Ozon продавца (ozon.meta.adSpend.codes — копит ozon-ads-spend.cjs);
-//   5) код из реестра новых товаров (meta.newCodes.items[].code — new-codes.cjs).
+//   5) код из реестра новых товаров (meta.newCodes.items[].code — new-codes.cjs);
+//   6) код с «WB» в колонке 1С «Артикул для WB» (warehouse.dirBySup: «WB», «RF/WB») — продавец 18.11.2026:
+//      «RF/WB либо WB — эти товары будут в продаже для маркетплейса, где пусто — розничные». update-warehouse
+//      такие коды и сам заносит в реестр (п. 5); этот источник — страховка для загрузчиков между ведомостями.
 'use strict';
 
 function S(v) { return v == null ? '' : ('' + v).replace(/\s/g, ''); }
 
 function ourCodes(RD) {
-  const src = { wb: new Set(), oz: new Set(), ser: new Set(), xw: new Set(), nc: new Set() };
+  const src = { wb: new Set(), oz: new Set(), ser: new Set(), xw: new Set(), nc: new Set(), dir: new Set() };
+  Object.entries((RD && RD.warehouse && RD.warehouse.dirBySup) || {}).forEach(([k, d]) => { if (/WB/i.test(d || '')) src.dir.add(S(k)); });
   ((RD && RD.catalog) || []).forEach(c => { const s = S(c.supplierCode); if (s) src.wb.add(s); });
   const O = (RD && RD.ozon) || {};
   (O.catalog || []).forEach(c => { const s = S(c.sku); if (s) src.oz.add(s); });

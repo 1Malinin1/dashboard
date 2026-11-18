@@ -135,6 +135,7 @@ const layout = isOrders ? 'B' : 'A';
 if(layout==='A'&&hr<0){ console.error('не нашёл строку-шапку с ячейкой «Номенклатура.Код» или «Код»'); process.exit(1); }
 const bySup={}, byWh={}; let taken=0, skipped={}, total=0;
 const dirBySup={}; let iMarker=-1;   // направление товара из колонки «Артикул для WB» (ЗАП-19)
+const autoMp=[];                     // коды с «WB» в этой колонке, которых не было в каталогах/реестре (18.11.2026)
 let cols=[];   // колонки-склады из шапки (нужны и ниже, при мерже по складам)
 const inbCols={china:[],order:[]};   // колонки «едет ко мне» — это не склад
 const mpCols=[]; const mpBy={};      // незнакомые колонки — не считаем (белый список KNOWN_WH)
@@ -149,6 +150,19 @@ if(layout==='A'){
      Свободный Евросиб у «RF/WB» — розница (ключ `retail`), а у «WB» розницы нет — это товар маркетплейсов, он пишется
      складом «Склад Евросиб (МП)» (whKey → `nsk2`, склад-источник как до 10.11). */
   iMarker=H.findIndex(x=>/артикул\s+для\s+wb/i.test(x));
+  /* ТОВАР МАРКЕТПЛЕЙСОВ — ПО ЭТОЙ ЖЕ КОЛОНКЕ, А НЕ ТОЛЬКО ПО КАТАЛОГАМ (18.11.2026). Продавец (18.11): «где идут позиции
+     с RF/WB либо WB — эти товары будут в продаже для маркетплейса, где пусто — розничные». 18.11 десять новинок с «RF/WB»,
+     кодами ВБ и Ozon в 1С и 11 тыс. шт свободного остатка (519377–519380, 519578, 519579, 520305–520311) скрипт счёл
+     «розничными»: их не было ни в каталогах, ни в реестре новинок, а признак «наш» смотрел только туда. Теперь код
+     с «WB» в колонке — наш: остаток берём, код сам заносится в реестр новинок (meta.newCodes) с артикулами ВБ/Ozon
+     из 1С; карточки ВБ заводит new-codes.cjs wb-cards --apply, Ozon — ozon-build из stocks_report. */
+  if(iMarker>=0){
+    const iWbC=H.findIndex(x=>/^код\s*wildberries/i.test(x)), iOzC=H.findIndex(x=>/^код\s*ozon/i.test(x)), iNmC=H.findIndex(x=>/^номенклатура$/i.test(x));
+    for(let i=hr+1;i<rows.length;i++){ const r=rows[i]; const k=code(r[iCode]); if(!k||!/^\d+$/.test(k)) continue;
+      const mk=S(r[iMarker]).toUpperCase().replace(/\s+/g,''); if(!/WB/.test(mk)||supSet.has(k)) continue;
+      supSet.add(k);
+      autoMp.push({code:k, dir:mk, name:iNmC>=0? S(r[iNmC]) : '', wbSku:iWbC>=0? S(r[iWbC]).replace(/\D/g,'') : '', ozonSku:iOzC>=0? S(r[iOzC]).replace(/\D/g,'') : ''}); }
+  }
   // колонки складов — всё между кодом и «Итог» (сам «Итог» не берём, чтобы не задвоить)
   for(let i=iCode+1;i<H.length;i++){ const h=H[i]; if(!h) continue; if(/^Итог/i.test(h)) break;
     // «плановый запас» и прочие справочные колонки складами не являются
@@ -375,6 +389,14 @@ if(kind==='stock'){
    остатков — см. lib/out-when-empty.cjs (правило продавца 13.10.2026). Проверка стоит
    ПЕРЕД записью снимка, чтобы изменённый статус попал в тот же файл. */
 require('./lib/out-when-empty.cjs').check(RD);
+/* Новые товары маркетплейсов по колонке «Артикул для WB» → реестр новинок (см. выше, 18.11.2026). Уже бывшие в реестре
+   не трогаем: там артикулы могли быть поправлены руками (new-codes.cjs check ловит конфликты с 1С). */
+if(autoMp.length){ RD.meta=RD.meta||{}; const NC=RD.meta.newCodes||(RD.meta.newCodes={items:[]}); NC.items=NC.items||[];
+  const have=new Set(NC.items.map(x=>code(x.code)));
+  autoMp.forEach(a=>{ if(have.has(a.code)) return; NC.items.push({code:a.code, addedAt:dateArg,
+    note:'товар МП по ведомости 1С («Артикул для WB» = '+a.dir+'), в каталогах дашборда не было — занёс update-warehouse',
+    wbSku:a.wbSku||'', ozonSku:a.ozonSku||'', name:a.name}); });
+  NC.updatedAt=dateArg; }
 fs.writeFileSync(path.join(OUT,'wb-data.js'),
   '// Автосгенерировано из выгрузки продавца. Обновляется целиком при новой загрузке.\n'
   +'const REAL_DATA = '+JSON.stringify(RD)+';\n');
@@ -395,7 +417,11 @@ if(mpCols.length){
   mpCols.forEach(c=>console.log('   '+c.name+': '+Math.round(mpBy[c.name]||0).toLocaleString('ru-RU')+' шт'));
   console.log('   Если среди них появится ваш реальный склад — добавьте его в KNOWN_WH.');
 }
-console.log('Розничные коды (нет ни на ВБ, ни на Озоне, ни в XWAY, ни в реестре новых кодов — в расчёт не идут): '+uk.length+' кодов · '
+if(autoMp.length) console.log('\n⚠ НОВЫЕ ТОВАРЫ МАРКЕТПЛЕЙСОВ по колонке «Артикул для WB» — в каталогах дашборда их не было ('+autoMp.length
+  +'): остаток взят, коды занесены в реестр новинок:\n   '+autoMp.map(a=>a.code+' '+a.dir+' · ВБ '+(a.wbSku||'—')+' · Ozon '+(a.ozonSku||'—')
+  +' · своб. '+((bySup[a.code]||{}).qty||0)+' шт · '+String(a.name).slice(0,40)).join('\n   ')
+  +'\n   Дальше: node scripts/new-codes.cjs wb-cards --apply (карточки ВБ); карточки Ozon заведёт ozon-build из ближайшего stocks_report.');
+console.log('Розничные коды (направление RF/пусто: нет ни на ВБ, ни на Озоне, ни в XWAY, ни в реестре новых кодов — в расчёт не идут): '+uk.length+' кодов · '
   +Math.round(skipQty).toLocaleString('ru-RU')+' шт'
   +(uk.length? ' · '+uk.slice(0,12).map(k=>k+' ('+skipped[k]+')').join(', ')+(uk.length>12?' …':'') : ''));
 /* СВЕРКА КОДОВ 1С С КАБИНЕТАМИ (17.11.2026, просьба продавца «несостыковки скидывай мне»): одинаковый «Код Wildberries»/
