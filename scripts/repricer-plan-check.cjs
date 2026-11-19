@@ -45,7 +45,7 @@ const planWb=r=>{ if(!r) return {J:10,why:'нет в данных'}; const wbBas
   return {J:Math.max(1,Math.round(best/r.boWb)),raw:best/r.boWb}; };
 const planOz=(r,bo)=>{ if(!r) return {J:10,why:'нет в данных'}; const wbOwn=r.stockWb+r.wbTr; const sup=bat(r.sup).filter(x=>x.t<=H).sort((a,b)=>a.t-b.t);
   if(r.stockOz+r.whQty+sup.reduce((a,x)=>a+x.q,0)<=0) return {J:10,why:'нет товара'};
-  const base=(t,inc)=>{const wh=r.whQty+inc*SH, take=Math.max(0,Math.min(r.spdWb*t-wbOwn,wh));return r.stockOz+Math.max(0,wh-take);};
+  const base=(t,inc)=>r.stockOz+r.whQty+inc*SH;   // ЗАП-26: приоритет Ozon — ВБ не вычитаем
   let cum=0,best=Infinity;sup.forEach(x=>{best=Math.min(best,base(x.t,cum)/x.t);cum+=x.q;});best=Math.min(best,base(H,cum)/H);
   return {J:Math.max(1,Math.round(best/bo)),raw:best/bo}; };
 // --- файлы
