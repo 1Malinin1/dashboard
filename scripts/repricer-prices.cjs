@@ -23,7 +23,7 @@ const CFB = XLSX.CFB;
 
 const argv = process.argv.slice(2);
 const RECORD = argv.includes('--record'); const dIdx = argv.indexOf('--date'); const REC_DATE = dIdx >= 0 ? argv[dIdx + 1] : new Date().toISOString().slice(0, 10);
-const [optFile, srcFile, outDirArg] = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--date' && argv[i - 1] !== '--tag');
+const [optFile, srcFile, outDirArg] = argv.filter((a, i) => !a.startsWith('--') && argv[i - 1] !== '--date' && argv[i - 1] !== '--tag' && argv[i - 1] !== '--enable');
 if (!optFile || !srcFile) { console.error('usage: node scripts/repricer-prices.cjs <оптовые.xlsx> <выгрузка репрайсера.xlsx> [папка]'); process.exit(1); }
 const outDir = outDirArg || path.dirname(srcFile);
 const S = v => (v == null ? '' : ('' + v)).replace(/\s/g, '');
@@ -88,9 +88,16 @@ if (FLAGS) {
     else if (+st !== OUR) flagNote.push(key + ': стратегия ' + st + ' (не наша, не трогал)');
     if (iRep >= 0 && S(r[iRep]) === '') flagCh.push({ row: k + 2, ci: iRep, was: r[iRep], now: 1, key, col: H[iRep] });
     if (iRep >= 0 && S(r[iRep]) === '0') flagNote.push(key + ': отправка цен выключена (0) — не трогал');
-    if (iDis >= 0 && +S(r[iDis]) === 1) flagNote.push(key + ': запрет отправки цен (Disabled=1) — не трогал'); });
+    if (iDis >= 0 && +S(r[iDis]) === 1 && !(argv.includes('--enable') && argv[argv.indexOf('--enable') + 1].split(/[,\s]+/).includes(key))) flagNote.push(key + ': запрет отправки цен (Disabled=1) — не трогал'); });
   changes.push(...flagCh);
 }
+// --enable "код,код" (19.11.2026, продавец: «500182 сними, остальные не трогай»): снять запрет отправки цен у названных кодов —
+// ВБ «Запретить отправку цен» (Disabled) 1→0, Ozon «Разрешить отправку цен» (Reprice) →1. Только по прямому слову продавца.
+const EN = (() => { const i = argv.indexOf('--enable'); return i >= 0 ? new Set(argv[i + 1].split(/[,\s]+/).filter(Boolean)) : null; })();
+if (EN) { const iF = MP === 'ВБ' ? col('Disabled') : col('Reprice'), want = MP === 'ВБ' ? 0 : 1; const seen = new Set();
+  rows.slice(1).forEach((r, k) => { const key = S(r[iKey]); if (!EN.has(key)) return; seen.add(key);
+    if (S(r[iF]) !== String(want)) { const c = { row: k + 2, ci: iF, was: r[iF], now: want, key, col: H[iF] }; flagCh.push(c); changes.push(c); } });
+  [...EN].filter(k => !seen.has(k)).forEach(k => flagNote.push(k + ': --enable — строки нет в выгрузке')); }
 
 // проверка Ozon: минимальная (её не трогаем) не должна оказаться выше новой базовой
 if (MP === 'Ozon') { const iMin = col('RecommendedRetailPrice'), iMax = col('MaxPrice'); const bad = [];
@@ -161,7 +168,7 @@ const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, XLSX.utils.
 console.log(MP + ': строк ' + (rows.length - 1) + ' · с оптовой ' + rowsWith + ' · без оптовой (не трогал) ' + rowsWithout);
 targets.forEach(t => { const cs = changes.filter(c => c.ci === t.i);
   console.log('  ' + XLSX.utils.encode_col(t.i) + ' «' + t.name + '»: изменено ' + cs.length + (cs.length ? ' (вверх ' + cs.filter(c => c.now > +c.was).length + ', вниз ' + cs.filter(c => c.now < +c.was).length + ')' : '')); });
-if (FLAGS) { const by = {}; flagCh.forEach(c => { (by[c.col] || (by[c.col] = [])).push(c.key + ' ' + (S(c.was) || 'пусто') + '→' + c.now); });
+if (FLAGS || EN) { const by = {}; flagCh.forEach(c => { (by[c.col] || (by[c.col] = [])).push(c.key + ' ' + (S(c.was) || 'пусто') + '→' + c.now); });
   Object.entries(by).forEach(([c, a]) => console.log('  «' + c + '»: изменено ' + a.length + ' — ' + a.join(' · ')));
   if (flagNote.length) console.log('  не трогал: ' + flagNote.join(' · ')); }
 console.log('  сверка: изменились только эти ячейки, остальные листы байт в байт ✓');
