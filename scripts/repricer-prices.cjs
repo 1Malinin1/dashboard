@@ -11,7 +11,8 @@
 // что в repricer-plan.cjs). Выгрузка репрайсера — «позиционная» (`<x:row>` без адресов ячеек), поддержан и формат
 // с адресами (файл, пересохранённый Excel). После записи — сверка: изменились ровно нужные ячейки, остальные совпадают.
 //
-//   node scripts/repricer-prices.cjs <оптовые.xlsx> <выгрузка репрайсера.xlsx> [папка_для_результата] [--record --date ГГГГ-ММ-ДД]
+//   node scripts/repricer-prices.cjs <оптовые.xlsx> <выгрузка репрайсера.xlsx> [папка_для_результата] [--flags] [--record --date ГГГГ-ММ-ДД]
+// --flags: у строк с оптовой поставить нашу стратегию, где пусто/0 (ВБ 4782, Ozon 2900), и Ozon «Разрешить отправку цен» = 1, где пусто.
 // --record: записать «было/стало» по каждому коду в снимок (`meta.priceChanges[дата].wb|oz`) — по нему следит price-watch.cjs.
 // Запись — по ИСХОДНОЙ выгрузке (до правки), чтобы «было» было настоящим.
 // Пишет <папка>/<ВБ|Ozon>_цены_репрайсер_ДД.ММ.ГГГГ.xlsx (грузить в репрайсер) и …_было_стало_….xlsx (посмотреть).
@@ -73,6 +74,23 @@ rows.slice(1).forEach((r, k) => {
   targets.forEach(t => { const now = round(t.f(w, key)); const was = r[t.i];
     if (+was !== now) changes.push({ row: k + 2, ci: t.i, was, now, key, w, col: t.name }); });
 });
+
+// 2б) --flags (19.11.2026, продавец: «проверь … стоят ли стратегии», «разрешения на отправку цен»): у строк С ОПТОВОЙ
+// ставим нашу стратегию, если её нет (ВБ 4782 «План-факт», Ozon 2900 «следование за ВБ»), и на Ozon — «Разрешить отправку цен» = 1,
+// если пусто. Чужую стратегию (не 0/пусто) не перебиваем — только печатаем. Запрет отправки цен на ВБ (Disabled) НЕ трогаем — печатаем.
+const FLAGS = argv.includes('--flags');
+const flagCh = [], flagNote = [];
+if (FLAGS) {
+  const iStr = col('StrategyId'), OUR = MP === 'ВБ' ? 4782 : 2900, iRep = MP === 'Ozon' ? col('Reprice') : -1, iDis = MP === 'ВБ' ? col('Disabled') : -1;
+  rows.slice(1).forEach((r, k) => { const key = S(r[iKey]); if (!W[key]) return;
+    const st = S(r[iStr]);
+    if (st === '' || st === '0') flagCh.push({ row: k + 2, ci: iStr, was: r[iStr], now: OUR, key, col: H[iStr] });
+    else if (+st !== OUR) flagNote.push(key + ': стратегия ' + st + ' (не наша, не трогал)');
+    if (iRep >= 0 && S(r[iRep]) === '') flagCh.push({ row: k + 2, ci: iRep, was: r[iRep], now: 1, key, col: H[iRep] });
+    if (iRep >= 0 && S(r[iRep]) === '0') flagNote.push(key + ': отправка цен выключена (0) — не трогал');
+    if (iDis >= 0 && +S(r[iDis]) === 1) flagNote.push(key + ': запрет отправки цен (Disabled=1) — не трогал'); });
+  changes.push(...flagCh);
+}
 
 // проверка Ozon: минимальная (её не трогаем) не должна оказаться выше новой базовой
 if (MP === 'Ozon') { const iMin = col('RecommendedRetailPrice'), iMax = col('MaxPrice'); const bad = [];
@@ -143,6 +161,9 @@ const wb2 = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb2, XLSX.utils.
 console.log(MP + ': строк ' + (rows.length - 1) + ' · с оптовой ' + rowsWith + ' · без оптовой (не трогал) ' + rowsWithout);
 targets.forEach(t => { const cs = changes.filter(c => c.ci === t.i);
   console.log('  ' + XLSX.utils.encode_col(t.i) + ' «' + t.name + '»: изменено ' + cs.length + (cs.length ? ' (вверх ' + cs.filter(c => c.now > +c.was).length + ', вниз ' + cs.filter(c => c.now < +c.was).length + ')' : '')); });
+if (FLAGS) { const by = {}; flagCh.forEach(c => { (by[c.col] || (by[c.col] = [])).push(c.key + ' ' + (S(c.was) || 'пусто') + '→' + c.now); });
+  Object.entries(by).forEach(([c, a]) => console.log('  «' + c + '»: изменено ' + a.length + ' — ' + a.join(' · ')));
+  if (flagNote.length) console.log('  не трогал: ' + flagNote.join(' · ')); }
 console.log('  сверка: изменились только эти ячейки, остальные листы байт в байт ✓');
 console.log('  → ' + outFile + '\n  → ' + repFile);
 

@@ -10,7 +10,9 @@ function planOz(r, o){
   const H=o.H||180, share=o.share==null? 0.65 : o.share, wbOwn=(r.stockWb||0)+(r.wbShip!=null? r.wbShip : (r.wbTr||0));
   const sup=(r.supplies||[]).filter(x=>x.t>0&&x.t<=H).sort((a,b)=>a.t-b.t);
   const all=(r.stockOz||0)+(r.whQty||0)+(r.supplies||[]).reduce((a,x)=>a+(x.q||0),0);
-  if(all<=0) return {J:o.nodata||10, raw:null, base:0, take:0, bind:null, hz:H, noGoods:true};
+  /* 19.11.2026: «нет товара» — по товару СЕЙЧАС (Ozon с путём + свои склады), как `nostock` у ВБ на сайте. Раньше партия в будущем
+     делала товар «живым»: база до партии 0 → план 1 у 39 пустых кодов Ozon (487191 и др.); после прихода партии репрайсер задрал бы цену. */
+  if(all<=0 || (r.stockOz||0)+(r.whQty||0)<=0) return {J:o.nodata||10, raw:null, base:0, take:0, bind:null, hz:H, noGoods:true};
   const baseAt=(t,inc)=>{ const wh=(r.whQty||0)+inc*share, take=0;   // ЗАП-26: приоритет Ozon — ВБ со своих складов для плана Ozon не забирает
     return {base:(r.stockOz||0)+Math.max(0,wh-take), take}; };
   let cum=0, best=Infinity, bind=null, bb=null;
