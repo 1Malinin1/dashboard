@@ -7032,23 +7032,24 @@ const PROD_MP_LOW=30;   // партия пришла к вам, а на площ
    (середина 30–40%). Сам заказ считается только на продажи ВБ + Ozon — динамики розницы нет, её часть продавец
    добавляет сам. */
 const PROD_MP_SHARE=0.65;
-/* НОВИНКИ — СТАРТОВЫЙ ПЛАН 15 (ЗАП-27, продавец 20.11.2026): «давай все таки начнем у всех новых товаров с динамикой в 15, дальше смотрим…
-   нам важно нащупать и понять, сколько и какого товара нужно закупить, чтобы продавать с маржой 15–20% на ВБ». Новинка стартует с минимальной
-   цены (−70%), репрайсер поднимает её, когда заказы выше 125% плана; план 1–5 по расчёту «растянуть на 180 дн» держал цену у базовой и прятал
-   настоящий спрос — заказ на производство (за 4 мес) ушёл бы по заниженной динамике. НОВИНКА = заказов ещё не было или первый заказ
-   (ВБ или Ozon) не раньше чем за NEW_DAYS до последнего дня ряда заказов. План новинки = max(15, расчёт). Не новинки — расчёт ЗАП-26 как был
-   (вкл. «спрос известен, до партии мало» — план по расчёту). ТА ЖЕ ЛОГИКА: scripts/repricer-plan.cjs (Ozon), repricer-plan-check.cjs, plan-review.cjs. */
-const NEW_PLAN_MIN=15, NEW_DAYS=120;
+/* НОВИНКИ — СТАРТОВЫЙ ПЛАН 15 (ЗАП-27 от 20.11.2026; ЗАП-28 — уточнение продавца в тот же день). ЗАП-27: «давай все таки начнем у всех
+   новых товаров с динамикой в 15, дальше смотрим… понять, сколько и какого товара нужно закупить, чтобы продавать с маржой 15–20% на ВБ».
+   ЗАП-28: «новинка в первую очередь это товар, у которого не было заказов. Дальше смотрим на товар как на новинку в разрезе каждого из
+   маркетплейсов: как только начались продажи — начинаем отсчёт, смотрим на 30 дней, анализируем среднее кол-во продаж, динамику, и дальше
+   предполагаем, сколько товара нужно и нужно ли вообще». Поэтому НОВИНКА НА ПЛОЩАДКЕ = на этой площадке заказов ещё не было или первый
+   заказ на ней не раньше NEW_DAYS (30) дней до последнего дня её ряда заказов. План новинки на площадке = max(15, расчёт). Через 30 дней —
+   вердикт в понедельничном разборе (ЗАП-25) и план по решению. ТА ЖЕ ЛОГИКА: scripts/repricer-plan.cjs (Ozon), repricer-plan-check.cjs,
+   plan-review.cjs. До ЗАП-28 (20.11, утро): первый заказ на любой площадке, 120 дней. */
+const NEW_PLAN_MIN=15, NEW_DAYS=30;
 let _srNewCache=null;
-function srIsNew(sup){
-  if(!_srNewCache){ const first={}, W=RD.orderSeries||{}, O=(RD.ozon&&RD.ozon.orderSeries)||{}, s2={};
-    (RD.catalog||[]).forEach(c=>{ s2[c.sku]=(""+(c.supplierCode||"")).trim(); });
-    Object.entries(W.bySku||{}).forEach(([k,v])=>{ const s=s2[k]; if(!s) return; const i=v.findIndex(x=>x>0); if(i>=0&&(!first[s]||W.dates[i]<first[s])) first[s]=W.dates[i]; });
-    Object.entries(O.byArt||{}).forEach(([s,v])=>{ const i=v.findIndex(x=>x>0); if(i>=0&&(!first[s]||O.dates[i]<first[s])) first[s]=O.dates[i]; });
-    const last=(W.dates||[])[(W.dates||[]).length-1]||new Date().toISOString().slice(0,10);
-    const cut=new Date(Date.parse(last+"T00:00:00Z")-NEW_DAYS*864e5).toISOString().slice(0,10);
-    _srNewCache={first,cut}; }
-  const f=_srNewCache.first[""+sup]; return !f || f>=_srNewCache.cut;
+function srIsNew(sup, mp){
+  if(!_srNewCache){ const s2={}; (RD.catalog||[]).forEach(c=>{ s2[c.sku]=(""+(c.supplierCode||"")).trim(); });
+    const mk=(S,key,map)=>{ const first={}; Object.entries((S&&S[key])||{}).forEach(([k,v])=>{ const s=map(k); if(!s) return; const i=v.findIndex(x=>x>0);
+        if(i>=0&&(!first[s]||S.dates[i]<first[s])) first[s]=S.dates[i]; });
+      const ds=(S&&S.dates)||[], last=ds[ds.length-1]||new Date().toISOString().slice(0,10);
+      return {first, cut:new Date(Date.parse(last+"T00:00:00Z")-NEW_DAYS*864e5).toISOString().slice(0,10)}; };
+    _srNewCache={wb:mk(RD.orderSeries,"bySku",k=>s2[k]), ozon:mk(RD.ozon&&RD.ozon.orderSeries,"byArt",k=>k)}; }
+  const c=_srNewCache[mp==="ozon"?"ozon":"wb"], f=c.first[""+sup]; return !f || f>=c.cut;
 }
 let _prodCache=null;
 function prodIdx(){
@@ -7387,11 +7388,11 @@ function srDecorate(rows){
     /* Нет товара (на ВБ, в пути и на складах — `nostock`; или вовсе ни товара, ни продаж — `none`) — план не считаем: в файл уйдёт
        прежнее «нет товара — 10» (repricer-plan.cjs), иначе 68 пустых кодов получили бы 1. */
     let planRep = (targetOrders!=null && verdict!=="nostock" && verdict!=="none")? Math.max(1, Math.round(targetOrders)) : null, planNote="";
-    const isNew=srIsNew(r.sup);
+    const isNew=srIsNew(r.sup,"wb"), isNewOz=srIsNew(r.sup,"ozon");
     if(isNew && (planRep==null || planRep<NEW_PLAN_MIN)){ planRep=NEW_PLAN_MIN; planNote="новинка — старт "+NEW_PLAN_MIN+" (ЗАП-27)"; }
     const repQ = planRep? (r.ordWb||0)/planRep : null;
     const repAct = repQ==null? null : (repQ<SR_REP_LO? "down" : repQ>SR_REP_HI? "up" : "hold");
-    return {...r, hz, hzSrc, sd, ozTake, wbAvail, target, tgtSrc, targetOrders, boWb, ratio, verdict, planRep, planNote, repAct, mgWb:mg, isNew,
+    return {...r, hz, hzSrc, sd, ozTake, wbAvail, target, tgtSrc, targetOrders, boWb, ratio, verdict, planRep, planNote, repAct, mgWb:mg, isNew, isNewOz,
       gap:(target!=null? r.spdWb-target : null),
       gapOrders:(targetOrders!=null? r.ordWb-targetOrders : null), ozDays, shipIn};
   });

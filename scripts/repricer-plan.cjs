@@ -42,7 +42,7 @@ async function dump(){
     const d=await p.evaluate(()=>({
       rows:srExtend(srDecorate(srRows())).map(r=>({sup:r.sup,name:r.name,hz:r.hz,hzSrc:r.hzSrc,stockOz:r.stockOz,stockWb:r.stockWb,
         wbShip:r.wbShip,whQty:r.whQty,spdWb:r.spdWb,ordWb:r.ordWb,ordOz:r.ordOz,spdOz:r.spdOz,
-        targetOrders:r.targetOrders,wbAvail:r.wbAvail,ozTake:r.ozTake,boWb:r.boWb,planRep:r.planRep,planNote:r.planNote||'',isNew:!!r.isNew,tgtSrc:r.tgtSrc||'',
+        targetOrders:r.targetOrders,wbAvail:r.wbAvail,ozTake:r.ozTake,boWb:r.boWb,planRep:r.planRep,planNote:r.planNote||'',isNew:!!r.isNew,isNewOz:!!r.isNewOz,tgtSrc:r.tgtSrc||'',
         supplies:r.supplies||[],wbTr:r.wbTr||0,stockWbOnly:r.stockWb||0,mgWb:r.mgWb||null})),
       mpShare:PROD_MP_SHARE, planHz:PLAN_HZ, mgMin:REC_MARGIN_MIN, mgRevMin:SR_MG_REV_MIN,
       ozMg:(()=>{ const ds=((OZDATA&&OZDATA.dates)||[]).slice(-7), set=new Set(ds), m={};
@@ -98,8 +98,8 @@ async function dump(){
     const P=require('./lib/plan-oz.cjs').planOz(r,{share:D.mpShare,H:D.planHz||180,bo,nodata:NODATA});
     let J=P.J; const raw=P.raw, bb={base:P.base,take:P.take}, hzTxt=P.noGoods? 'товара нет' : P.src, bind=P.bind, H=D.planHz||180;
     let note=P.noGoods? 'товара нет — 10, как раньше' : '';
-    /* ЗАП-27 (20.11.2026): новинка — план не ниже 15, как на ВБ (сайт: srIsNew / NEW_PLAN_MIN). */
-    if(r.isNew && J<NEW_MIN){ J=NEW_MIN; note='новинка — старт '+NEW_MIN+' (ЗАП-27)'; }
+    /* ЗАП-27/28 (20.11.2026): новинка НА OZON (заказов на Ozon не было или первый — не раньше 30 дн) — план не ниже 15 (сайт: srIsNew(sup,'ozon')). */
+    if(r.isNewOz && J<NEW_MIN){ J=NEW_MIN; note='новинка — старт '+NEW_MIN+' (ЗАП-27)'; }
     const mg=(D.ozMg||{})[sup];
     /* ЗАП-24: план по марже НЕ подменяем — порог держит минимальная цена репрайсера; низкая маржа после рекламы — только пометка. */
     if(!P.noGoods && mg && mg.rev>=(D.mgRevMin||21000) && mg.margin*100<(D.mgMin||10)) note='маржа Ozon за 7 дн после рекламы '+Math.round(mg.margin*100)+'%, до рекламы '+Math.round((mg.preAd||0)*100)+'% — дело в рекламе; цену репрайсер опустит не ниже минимальной';

@@ -35,12 +35,12 @@ const own=s=>{const q={msk:0,nsk1:0,nsk2:0,klin:0,other:0,retail:0,ozsfo:0,ozcfo
 const W=RD.orderSeries,nW=W.dates.length;const ordWbRaw=s=>{let q=0;(cards[s]||[]).forEach(k=>{const v=W.bySku[k]||[];for(let i=nW-7;i<nW;i++)q+=v[i]||0;});return q/7;};
 const O=RD.ozon.orderSeries,nO=O.dates.length;const ordOzRaw=s=>{const v=O.byArt[s]||[];let q=0;for(let i=nO-7;i<nO;i++)q+=v[i]||0;return q/7;};
 const bat=s=>RD.prodOrders.rows.filter(x=>x.sup===s&&x.mp&&(x.st==='pending'||x.st==='manual')).map(x=>({t:dl(x.mp),q:x.done?0:Math.max(0,x.qty-(x.got||0))})).filter(x=>x.q>0&&x.t>0);
-// --- новинка (ЗАП-27, 20.11.2026): заказов не было или первый заказ ВБ/Ozon не раньше 120 дн до последнего дня ряда ВБ → план не ниже 15
-const firstOrd={};Object.entries(cards).forEach(([s,ks])=>ks.forEach(k=>{const v=W.bySku[k]||[];const i=v.findIndex(x=>x>0);if(i>=0&&(!firstOrd[s]||W.dates[i]<firstOrd[s]))firstOrd[s]=W.dates[i];}));
-Object.entries(O.byArt).forEach(([s,v])=>{const i=v.findIndex(x=>x>0);if(i>=0&&(!firstOrd[s]||O.dates[i]<firstOrd[s]))firstOrd[s]=O.dates[i];});
-const NEWCUT=new Date(Date.parse(W.dates[nW-1]+'T00:00:00Z')-120*864e5).toISOString().slice(0,10);
-const isNewRaw=s=>!firstOrd[s]||firstOrd[s]>=NEWCUT;
-const floorNew=(s,p,r)=>r&&isNewRaw(s)&&p.J<15? {J:15,why:'новинка — старт 15'} : p;
+// --- новинка на площадке (ЗАП-27/28, 20.11.2026): заказов на ЭТОЙ площадке не было или первый — не раньше 30 дн до последнего дня её ряда → план не ниже 15
+const fW={},fO={};Object.entries(cards).forEach(([s,ks])=>ks.forEach(k=>{const v=W.bySku[k]||[];const i=v.findIndex(x=>x>0);if(i>=0&&(!fW[s]||W.dates[i]<fW[s]))fW[s]=W.dates[i];}));
+Object.entries(O.byArt).forEach(([s,v])=>{const i=v.findIndex(x=>x>0);if(i>=0&&(!fO[s]||O.dates[i]<fO[s]))fO[s]=O.dates[i];});
+const cutOf=S=>new Date(Date.parse(S.dates[S.dates.length-1]+'T00:00:00Z')-30*864e5).toISOString().slice(0,10);const cW=cutOf(W),cO=cutOf(O);
+const isNewRaw=(s,mp)=>mp==='oz'? (!fO[s]||fO[s]>=cO) : (!fW[s]||fW[s]>=cW);
+const floorNew=(s,p,r,mp)=>r&&isNewRaw(s,mp)&&p.J<15? {J:15,why:'новинка — старт 15'} : p;
 // --- своя формула
 const planWb=r=>{ if(!r) return {J:10,why:'нет в данных'}; const wbBase=r.stockWb+r.wbTr+r.whQty, reach=r.whMsk+r.whNsk1+r.whNsk2+r.whKlin, ozOwn=r.stockOz;
   if(!(r.total>0||r.spdWb+r.spdOz>0)) return {J:10,why:'нет ни товара, ни продаж'};
@@ -61,11 +61,11 @@ const ozBo={};D.rows.forEach(r=>{ if(r.ordOz>0&&r.spdOz>0) ozBo[r.sup]=r.spdOz/r
 const iW=fw[0].findIndex(h=>/OrdersPlanQty/.test(h)), iS=fw[0].findIndex(h=>/SupplierArticle/.test(h));
 const iO=fo[0].findIndex(h=>/OrdersPlanQty/.test(h)), iOf=fo[0].findIndex(h=>/OfferId/.test(h));
 const out={wbRows:0,wbBad:[],ozRows:0,ozBad:[],inBad:[],gaps:[],one:[]};
-fw.slice(1).forEach(row=>{const s=String(row[iS]);if(!s)return;out.wbRows++;const r=by[s];const p=floorNew(s,planWb(r),r);if(p.J!==row[iW])out.wbBad.push(s+': файл '+row[iW]+', проверка '+p.J+(p.why?' ('+p.why+')':' (до окр. '+(Math.round(p.raw*100)/100)+')'));
+fw.slice(1).forEach(row=>{const s=String(row[iS]);if(!s)return;out.wbRows++;const r=by[s];const p=floorNew(s,planWb(r),r,'wb');if(p.J!==row[iW])out.wbBad.push(s+': файл '+row[iW]+', проверка '+p.J+(p.why?' ('+p.why+')':' (до окр. '+(Math.round(p.raw*100)/100)+')'));
   if(!r&&((wbStock[s]||0)>0||(((RD.warehouse.bySup||{})[s]||{}).qty||0)>0))out.gaps.push('ВБ '+s+': в файле «нет данных», а товар есть (ВБ '+(wbStock[s]||0)+', свой склад '+((((RD.warehouse.bySup||{})[s]||{}).qty)||0)+')');
   if(row[iW]===1&&r){const stock=r.stockWb+r.wbTr+r.whQty;out.one.push(s+' ВБ: товара для ВБ '+stock+' шт, заказов '+(Math.round(r.ordWb*10)/10)+'/дн');}});
 const ourOz=new Set(((RD.ozon||{}).catalog||[]).map(c=>''+c.sku));
-fo.slice(1).forEach(row=>{const s=String(row[iOf]);if(!ourOz.has(s)||row[iO]==='')return;out.ozRows++;const r=by[s];const p=floorNew(s,planOz(r,ozBo[s]||boL.all||0.8),r);if(p.J!==row[iO])out.ozBad.push(s+': файл '+row[iO]+', проверка '+p.J+(p.why?' ('+p.why+')':' (до окр. '+(Math.round(p.raw*100)/100)+')'));});
+fo.slice(1).forEach(row=>{const s=String(row[iOf]);if(!ourOz.has(s)||row[iO]==='')return;out.ozRows++;const r=by[s];const p=floorNew(s,planOz(r,ozBo[s]||boL.all||0.8),r,'oz');if(p.J!==row[iO])out.ozBad.push(s+': файл '+row[iO]+', проверка '+p.J+(p.why?' ('+p.why+')':' (до окр. '+(Math.round(p.raw*100)/100)+')'));});
 // входы против сырых данных
 D.rows.forEach(r=>{const s=r.sup;const e=[];
   if(Math.abs((r.ordWb||0)-ordWbRaw(s))>0.01)e.push('заказы ВБ/дн сайт '+r.ordWb+' ≠ ряд '+ordWbRaw(s));

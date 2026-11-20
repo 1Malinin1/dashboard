@@ -34,7 +34,7 @@ async function dump(){
     await p.waitForFunction(()=>typeof FINANCE_CACHE!=='undefined'&&FINANCE_CACHE.length>0&&typeof srRows==='function'&&OZDATA,null,{timeout:120000});
     const d=await p.evaluate(()=>({rows:srExtend(srDecorate(srRows())).map(r=>({sup:r.sup,name:r.name,stockWb:r.stockWb||0,wbTr:r.wbTr||0,wbShip:r.wbShip||0,
       whQty:r.whQty||0,stockOz:r.stockOz||0,spdWb:r.spdWb||0,spdOz:r.spdOz||0,ordWb:r.ordWb||0,ordOz:r.ordOz||0,supplies:r.supplies||[],planRep:r.planRep,
-      tgtSrc:r.tgtSrc||'',isNew:!!r.isNew})), share:PROD_MP_SHARE, H:PLAN_HZ, bo:(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutWin)||null}));
+      tgtSrc:r.tgtSrc||'',isNew:!!r.isNew,isNewOz:!!r.isNewOz})), share:PROD_MP_SHARE, H:PLAN_HZ, bo:(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutWin)||null}));
     if(errs.length) throw new Error('ошибки на сайте: '+errs.join(' | '));
     return d;
   } finally { await b.close(); srv.kill(); } }
@@ -43,7 +43,7 @@ async function dump(){
   const D=await dump(); const by={}; D.rows.forEach(r=>by[r.sup]=r);
   const hist=(D.bo&&D.bo.history)||[], lb=hist[hist.length-1]||{};
   const ozPlanNow=r=>{ const J=planOz(r,{share:D.share,H:D.H,bo:(r.ordOz>0&&r.spdOz>0)? r.spdOz/r.ordOz : ((lb.bySku||{})[r.sup]||lb.all||0.8),nodata:10}).J;
-    return r.isNew? Math.max(15,J) : J; };   // ЗАП-27: новинка — не ниже 15
+    return r.isNewOz? Math.max(15,J) : J; };   // ЗАП-27/28: новинка на Ozon — не ниже 15
   const sumSup=r=>(r.supplies||[]).reduce((a,x)=>a+(x.q||0),0);
   if(INIT){
     PS.base={}; Object.keys(Object.assign({},PS.wb,PS.oz)).forEach(c=>{ const r=by[c]; if(!r) return;
