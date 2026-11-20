@@ -26,6 +26,7 @@ const ROOT=path.join(__dirname,'..');
 const [src, outDir=process.cwd()]=process.argv.slice(2);
 const CODE=process.env.VERIFY_CODE;
 if(!src||!CODE){ console.error('usage: VERIFY_CODE=… node scripts/repricer-plan.cjs <выгрузка.xlsx> [папка]'); process.exit(1); }
+const NEW_MIN=15;   // ЗАП-27: стартовый план новинки (как NEW_PLAN_MIN сайта)
 const NODATA=10, PORT=+(process.env.PORT||8791);   // нет товара в данных дашборда — 10, как раньше
 
 async function dump(){
@@ -41,7 +42,7 @@ async function dump(){
     const d=await p.evaluate(()=>({
       rows:srExtend(srDecorate(srRows())).map(r=>({sup:r.sup,name:r.name,hz:r.hz,hzSrc:r.hzSrc,stockOz:r.stockOz,stockWb:r.stockWb,
         wbShip:r.wbShip,whQty:r.whQty,spdWb:r.spdWb,ordWb:r.ordWb,ordOz:r.ordOz,spdOz:r.spdOz,
-        targetOrders:r.targetOrders,wbAvail:r.wbAvail,ozTake:r.ozTake,boWb:r.boWb,planRep:r.planRep,planNote:r.planNote||'',tgtSrc:r.tgtSrc||'',
+        targetOrders:r.targetOrders,wbAvail:r.wbAvail,ozTake:r.ozTake,boWb:r.boWb,planRep:r.planRep,planNote:r.planNote||'',isNew:!!r.isNew,tgtSrc:r.tgtSrc||'',
         supplies:r.supplies||[],wbTr:r.wbTr||0,stockWbOnly:r.stockWb||0,mgWb:r.mgWb||null})),
       mpShare:PROD_MP_SHARE, planHz:PLAN_HZ, mgMin:REC_MARGIN_MIN, mgRevMin:SR_MG_REV_MIN,
       ozMg:(()=>{ const ds=((OZDATA&&OZDATA.dates)||[]).slice(-7), set=new Set(ds), m={};
@@ -89,14 +90,16 @@ async function dump(){
       const raw=r.targetOrders==null? null : r.targetOrders, J=r.planRep!=null? r.planRep : NODATA;
       res.push({xr,sup,nm:row[iNm],name:r.name||row[iName],J,raw,was:tableOnly?'':row[iPlan],ordNow:r.ordWb||0,stockWb:(r.stockWb||0),wh:r.whQty||0,
         ozTake:r.ozTake||0,base:r.wbAvail||0,hz:r.hz,hzSrc:r.tgtSrc||r.hzSrc,bo:r.boWb,
-        note: (r.mgWb && r.mgWb.rev>=(D.mgRevMin||21000) && r.mgWb.margin*100<(D.mgMin||10)? 'маржа ВБ за 7 дн после рекламы '+Math.round(r.mgWb.margin*100)+'%, до рекламы '+Math.round((r.mgWb.preAd||0)*100)+'% — дело в рекламе; цену репрайсер опустит не ниже минимальной' : '') || (r.planRep==null? 'горизонта нет — 10, как раньше' : (r.wbAvail||0)<=0 && !(r.supplies||[]).length? 'товара для ВБ нет' : '')});
+        note: (r.isNew && r.planNote ? r.planNote : '') || (r.mgWb && r.mgWb.rev>=(D.mgRevMin||21000) && r.mgWb.margin*100<(D.mgMin||10)? 'маржа ВБ за 7 дн после рекламы '+Math.round(r.mgWb.margin*100)+'%, до рекламы '+Math.round((r.mgWb.preAd||0)*100)+'% — дело в рекламе; цену репрайсер опустит не ниже минимальной' : '') || (r.planRep==null? 'горизонта нет — 10, как раньше' : (r.wbAvail||0)<=0 && !(r.supplies||[]).length? 'товара для ВБ нет' : '')});
       continue;
     }
     /* Формула — scripts/lib/plan-oz.cjs (одна для repricer-plan и plan-review, ЗАП-24). */
     const bo=(r.ordOz>0&&r.spdOz>0)? r.spdOz/r.ordOz : (boBy[sup]||boAll);
     const P=require('./lib/plan-oz.cjs').planOz(r,{share:D.mpShare,H:D.planHz||180,bo,nodata:NODATA});
-    const J=P.J, raw=P.raw, bb={base:P.base,take:P.take}, hzTxt=P.noGoods? 'товара нет' : P.src, bind=P.bind, H=D.planHz||180;
+    let J=P.J; const raw=P.raw, bb={base:P.base,take:P.take}, hzTxt=P.noGoods? 'товара нет' : P.src, bind=P.bind, H=D.planHz||180;
     let note=P.noGoods? 'товара нет — 10, как раньше' : '';
+    /* ЗАП-27 (20.11.2026): новинка — план не ниже 15, как на ВБ (сайт: srIsNew / NEW_PLAN_MIN). */
+    if(r.isNew && J<NEW_MIN){ J=NEW_MIN; note='новинка — старт '+NEW_MIN+' (ЗАП-27)'; }
     const mg=(D.ozMg||{})[sup];
     /* ЗАП-24: план по марже НЕ подменяем — порог держит минимальная цена репрайсера; низкая маржа после рекламы — только пометка. */
     if(!P.noGoods && mg && mg.rev>=(D.mgRevMin||21000) && mg.margin*100<(D.mgMin||10)) note='маржа Ozon за 7 дн после рекламы '+Math.round(mg.margin*100)+'%, до рекламы '+Math.round((mg.preAd||0)*100)+'% — дело в рекламе; цену репрайсер опустит не ниже минимальной';
