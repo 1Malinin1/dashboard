@@ -20,7 +20,7 @@ try { vm.runInContext(fs.readFileSync(path.join(D, 'wb-reports.js'), 'utf8').rep
 const RD = ctx.__RD, MF = ctx.MODELED_FINANCE || [];
 const argv = process.argv.slice(2), arg = (k, d) => { const i = argv.indexOf(k); return i >= 0 ? argv[i + 1] : d; };
 const PC = (RD.meta && RD.meta.priceChanges) || {};
-const DATE = arg('--date', Object.keys(PC).sort().pop());
+const DATE = arg('--date', Object.keys(PC).sort()[0]);   // по умолчанию — первое изменение (17.11, ЦЕНА-13); позднейшие правки (19.11 — новинки) смотреть --date
 const REC = PC[DATE]; if (!REC) { console.error('нет записи meta.priceChanges[' + DATE + '] — сначала repricer-prices.cjs --record'); process.exit(1); }
 const NB = +arg('--before', 7);
 const addD = (d, n) => { const t = new Date(d + 'T00:00:00Z'); t.setUTCDate(t.getUTCDate() + n); return t.toISOString().slice(0, 10); };
