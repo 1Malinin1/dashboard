@@ -15,19 +15,22 @@ const OUT = path.join(ROOT, 'decrypted');
 const ITER = 250000;
 
 const pass = process.argv[2];
-if (!pass) { console.error('usage: node scripts/encrypt.cjs <код-доступа>'); process.exit(1); }
+const allowDrop = process.argv.slice(3).includes('--allow-drop');
+if (!pass) { console.error('usage: node scripts/encrypt.cjs <код-доступа> [--allow-drop]'); process.exit(1); }
 
-const ctx = {}; vm.createContext(ctx);
-vm.runInContext(
-  fs.readFileSync(path.join(OUT, 'wb-data.js'), 'utf8') + '\n'
-  + fs.readFileSync(path.join(OUT, 'wb-reports.js'), 'utf8') + '\n'
-  + 'globalThis.__OUT = {REAL_DATA, BAKED_AT, BAKED_PERIOD, BAKED_FINANCE_ROWS, BAKED_ADS_ROWS, BAKED_FINANCE, BAKED_ADS,'
-  + ' BAKED_FUNNEL: (typeof BAKED_FUNNEL!=="undefined"? BAKED_FUNNEL : []),'
-  + ' BAKED_FUNNEL_ROWS: (typeof BAKED_FUNNEL_ROWS!=="undefined"? BAKED_FUNNEL_ROWS : 0),'
-  + ' MODELED_FINANCE: (typeof MODELED_FINANCE!=="undefined"? MODELED_FINANCE : [])};',
-  ctx
-);
-const out = ctx.__OUT;
+function readCandidate() {
+  const ctx = {}; vm.createContext(ctx);
+  vm.runInContext(
+    fs.readFileSync(path.join(OUT, 'wb-data.js'), 'utf8') + '\n'
+    + fs.readFileSync(path.join(OUT, 'wb-reports.js'), 'utf8') + '\n'
+    + 'globalThis.__OUT = {REAL_DATA, BAKED_AT, BAKED_PERIOD, BAKED_FINANCE_ROWS, BAKED_ADS_ROWS, BAKED_FINANCE, BAKED_ADS,'
+    + ' BAKED_FUNNEL: (typeof BAKED_FUNNEL!=="undefined"? BAKED_FUNNEL : []),'
+    + ' BAKED_FUNNEL_ROWS: (typeof BAKED_FUNNEL_ROWS!=="undefined"? BAKED_FUNNEL_ROWS : 0),'
+    + ' MODELED_FINANCE: (typeof MODELED_FINANCE!=="undefined"? MODELED_FINANCE : [])};',
+    ctx
+  );
+  return ctx.__OUT;
+}
 
 /* ЗАЩИТА ОТ ТИХОЙ ПРОПАЖИ (30.10.2026). Скрипты переписывают снимок целиком, и забытое поле пропадает без ошибки
    и без пустой таблицы — так однажды вышло 7,3 млн «прибыли из воздуха». Перед записью сравниваем новый снимок
@@ -36,97 +39,178 @@ const out = ctx.__OUT;
 function snapshotStats(o){
   const R=o.REAL_DATA||{}, Z=R.ozon||{}, M=Z.meta||{}, len=v=>Array.isArray(v)? v.length : (v&&typeof v==='object'? Object.keys(v).length : 0);
   return {
-    keysRD: Object.keys(R), keysOzon: Object.keys(Z), keysOzonMeta: Object.keys(M), keysMeta: Object.keys(R.meta||{}),
+    keysPayload: Object.keys(o), keysRD: Object.keys(R), keysOzon: Object.keys(Z), keysOzonMeta: Object.keys(M), keysMeta: Object.keys(R.meta||{}),
     n: { 'каталог ВБ':len(R.catalog), 'дни заказов ВБ':len(R.orderSeries&&R.orderSeries.dates), 'дни заказов Ozon':len(Z.orderSeries&&Z.orderSeries.dates),
       'каталог Ozon':len(Z.catalog), 'фин. отчёты ВБ (строк)':len(o.BAKED_FINANCE), 'оценка финансов ВБ (строк)':len(o.MODELED_FINANCE),
-      'воронка ВБ (строк)':len(o.BAKED_FUNNEL), 'выгрузки рекламы ВБ':len(R.adPerf&&R.adPerf.parts), 'выгрузки XWAY Ozon':len(M.adSpend&&M.adSpend.parts),
+      'отчёты рекламы ВБ (строк)':len(o.BAKED_ADS), 'воронка ВБ (строк)':len(o.BAKED_FUNNEL), 'выгрузки рекламы ВБ':len(R.adPerf&&R.adPerf.parts), 'выгрузки XWAY Ozon':len(M.adSpend&&M.adSpend.parts),
       'дни «Оплаты за заказ»':len(M.orderFee&&M.orderFee.periods), 'история остатков Ozon':len(Z.stockHistory), 'история остатков ВБ':len(R.wbStockHistory),
       'история своего склада':len(R.whHistory), 'журнал отгрузок ВБ':len(R.shipments), 'партии производства':len(R.prodOrders&&R.prodOrders.rows) } };
 }
-if (!process.argv.includes('--allow-drop') && fs.existsSync(path.join(ROOT, 'wb-secure.js'))) {
-  let prev = null;
-  try {
-    const src = fs.readFileSync(path.join(ROOT, 'wb-secure.js'), 'utf8'); const S = JSON.parse(src.slice(src.indexOf('{'), src.lastIndexOf('}') + 1));
-    const k = crypto.pbkdf2Sync(Buffer.from(pass, 'utf8'), Buffer.from(S.salt, 'base64'), S.iter, 32, 'sha256');
-    const ct = Buffer.from(S.ct, 'base64'), d = crypto.createDecipheriv('aes-256-gcm', k, Buffer.from(S.iv, 'base64'));
-    d.setAuthTag(ct.subarray(ct.length - 16)); let b = Buffer.concat([d.update(ct.subarray(0, ct.length - 16)), d.final()]);
-    if (S.zip === 'gzip') b = zlib.gunzipSync(b); prev = JSON.parse(b.toString('utf8'));
-  } catch (e) { console.warn('⚠ прошлый снимок не прочитан этим кодом — сверку пропускаю (' + e.message + ')'); }
-  if (prev) {
-    const A = snapshotStats(prev), B = snapshotStats(out), bad = [];
-    [['keysRD','REAL_DATA'],['keysOzon','REAL_DATA.ozon'],['keysOzonMeta','ozon.meta'],['keysMeta','REAL_DATA.meta']].forEach(([f,nm]) => {
-      A[f].filter(x => !B[f].includes(x)).forEach(x => bad.push('пропало поле ' + nm + '.' + x)); });
-    Object.keys(A.n).forEach(x => { if (B.n[x] < A.n[x]) bad.push(x + ': было ' + A.n[x] + ' → стало ' + B.n[x]); });
-    if (bad.length) {
-      console.error('СТОП: новый снимок потерял данные против текущего wb-secure.js:\n  · ' + bad.join('\n  · ')
-        + '\nЕсли это сознательно (например, model-finance --clear) — повторите с --allow-drop. wb-secure.js НЕ перезаписан.');
-      process.exit(2);
-    }
-    console.log('сверка с прошлым снимком: ничего не пропало (' + Object.entries(B.n).filter(([x,v]) => v !== A.n[x]).map(([x,v]) => x + ' ' + A.n[x] + '→' + v).join(', ') + ')');
+
+function decodeBase64(value) {
+  const bytes = Buffer.from(value, 'base64');
+  if (bytes.toString('base64') !== value) throw new Error('Некорректный base64 в снимке.');
+  return bytes;
+}
+
+// Читаем тот же JS-контейнер, что получает браузер. Старый формат без gzip по-прежнему поддерживается.
+function decryptSnapshot(file) {
+  const src = fs.readFileSync(file, 'utf8');
+  const match = /^(?:\s*\/\/[^\n]*\n)*\s*const\s+WB_SECURE\s*=\s*(\{[\s\S]*\})\s*;\s*$/.exec(src);
+  if (!match) throw new Error('Некорректный файл снимка.');
+  const s = JSON.parse(match[1]);
+  if (s.v !== 1 || s.alg !== 'AES-GCM' || s.kdf !== 'PBKDF2-SHA256' || s.hash !== 'SHA-256'
+      || (s.zip !== undefined && s.zip !== 'gzip')) throw new Error('Неизвестный формат снимка.');
+  const salt = decodeBase64(s.salt), iv = decodeBase64(s.iv), ct = decodeBase64(s.ct);
+  if (salt.length !== 16 || iv.length !== 12 || ct.length <= 16) throw new Error('Повреждён контейнер.');
+  const key = crypto.pbkdf2Sync(pass, salt, s.iter, 32, 'sha256');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', key, iv);
+  decipher.setAuthTag(ct.subarray(-16));
+  const payload = Buffer.concat([decipher.update(ct.subarray(0, -16)), decipher.final()]);
+  const json = s.zip === 'gzip' ? zlib.gunzipSync(payload) : payload;
+  return { json, period: s.period };
+}
+
+function validateData(data) {
+  if (!Array.isArray(data?.REAL_DATA?.catalog) || !Array.isArray(data.BAKED_FINANCE)
+      || !Array.isArray(data.BAKED_ADS) || typeof data.BAKED_PERIOD !== 'string') {
+    throw new Error('Отсутствуют обязательные данные снимка.');
+  }
+  for (const field of ['BAKED_FUNNEL', 'MODELED_FINANCE']) {
+    if (field in data && !Array.isArray(data[field])) throw new Error('Повреждено поле ' + field);
   }
 }
-// СЖИМАЕМ до шифрования. JSON снимка — около 9,5 МБ, а base64 в файле раздувал его до
-// 12,7 МБ: на слабой связи браузер просто не догружал wb-secure.js и дашборд открывался
-// пустым. gzip даёт ~1,2 МБ (данные очень однотипные). Флаг `zip` читает страница;
-// старые снимки без него по-прежнему читаются как обычный текст.
-const rawJson = Buffer.from(JSON.stringify(out), 'utf8');
-const payload = zlib.gzipSync(rawJson, { level: 9 });
 
-const salt = crypto.randomBytes(16);
-const iv = crypto.randomBytes(12);
-const key = crypto.pbkdf2Sync(Buffer.from(pass, 'utf8'), salt, ITER, 32, 'sha256');
-const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
-const enc = Buffer.concat([cipher.update(payload), cipher.final()]);
-const tag = cipher.getAuthTag();
-const ct = Buffer.concat([enc, tag]);
+function checkLosses(previous, candidate, allowDrop) {
+  const a = snapshotStats(previous), b = snapshotStats(candidate), losses = [];
+  for (const [field, name] of [['keysPayload','снимок'], ['keysRD','REAL_DATA'], ['keysOzon','REAL_DATA.ozon'],
+    ['keysOzonMeta','ozon.meta'], ['keysMeta','REAL_DATA.meta']]) {
+    for (const key of a[field]) {
+      if (!b[field].includes(key)) losses.push('пропало поле ' + name + '.' + key);
+    }
+  }
+  for (const [name, count] of Object.entries(a.n)) {
+    if (b.n[name] < count) losses.push(name + ': было ' + count + ' → стало ' + b.n[name]);
+  }
+  if (losses.length) {
+    const details = losses.join('\n  · ');
+    if (!allowDrop) {
+      const error = new Error('Новый снимок потерял данные:\n  · ' + details
+        + '\nДля подтверждённого сокращения предусмотрен --allow-drop.');
+      error.exitCode = 2;
+      throw error;
+    }
+    console.warn('Подтверждено сокращение (--allow-drop):\n  · ' + details);
+  } else {
+    const changes = Object.keys(b.n).filter(k => a.n[k] !== b.n[k]);
+    console.log('Сверка с прошлым снимком: ничего не пропало (' +
+      changes.map(k => k + ' ' + a.n[k] + '→' + b.n[k]).join(', ') + ')');
+  }
+}
 
-const secure = {
-  v: 1, alg: 'AES-GCM', kdf: 'PBKDF2-SHA256', hash: 'SHA-256', iter: ITER, zip: 'gzip',
-  salt: salt.toString('base64'), iv: iv.toString('base64'), ct: ct.toString('base64'),
-  period: out.BAKED_PERIOD,
-};
-const js = '// Зашифрованный снимок данных (финансы, реклама, каталог). Без кода доступа не читается.\n'
-  + '// Ключ выводится из кода через PBKDF2-SHA256; шифр AES-256-GCM. Расшифровка — только в браузере.\n'
-  + 'const WB_SECURE = ' + JSON.stringify(secure) + ';\n';
-fs.writeFileSync(path.join(ROOT, 'wb-secure.js'), js);
+function encryptSnapshot(rawJson, period) {
+  const payload = zlib.gzipSync(rawJson, { level: 9 });
+  console.log('сжатие: JSON', (rawJson.length / 1048576).toFixed(2), 'МБ → gzip',
+    (payload.length / 1048576).toFixed(2), 'МБ ·', (payload.length / rawJson.length * 100).toFixed(1) + '% от исходного');
+  const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12);
+  const key = crypto.pbkdf2Sync(pass, salt, ITER, 32, 'sha256');
+  const cipher = crypto.createCipheriv('aes-256-gcm', key, iv);
+  const ct = Buffer.concat([cipher.update(payload), cipher.final(), cipher.getAuthTag()]);
+  const secure = {
+    v: 1, alg: 'AES-GCM', kdf: 'PBKDF2-SHA256', hash: 'SHA-256', iter: ITER, zip: 'gzip',
+    salt: salt.toString('base64'), iv: iv.toString('base64'), ct: ct.toString('base64'), period,
+  };
+  return '// Зашифрованный снимок данных (финансы, реклама, каталог). Без кода доступа не читается.\n'
+    + '// Ключ выводится из кода через PBKDF2-SHA256; шифр AES-256-GCM. Расшифровка — только в браузере.\n'
+    + 'const WB_SECURE = ' + JSON.stringify(secure) + ';\n';
+}
 
-// самопроверка: расшифруем тем же кодом и сверим размеры
-const key2 = crypto.pbkdf2Sync(Buffer.from(pass, 'utf8'), salt, ITER, 32, 'sha256');
-const decipher = crypto.createDecipheriv('aes-256-gcm', key2, iv);
-decipher.setAuthTag(tag);
-const backBuf = Buffer.concat([decipher.update(enc), decipher.final()]);
-const back = JSON.parse(zlib.gunzipSync(backBuf).toString('utf8'));
-const ok = back.BAKED_FINANCE.length === out.BAKED_FINANCE.length
-  && back.BAKED_ADS.length === out.BAKED_ADS.length
-  && back.BAKED_FUNNEL.length === out.BAKED_FUNNEL.length
-  && back.REAL_DATA.catalog.length === out.REAL_DATA.catalog.length;
+function updateSnapshot() {
+  const snapshot = path.join(ROOT, 'wb-secure.js'), manifest = path.join(ROOT, 'data-version.json');
+  // Один писатель. После прерывания каталог и резервные файлы остаются для ручной сверки.
+  const pending = path.join(ROOT, '.encrypt-pending');
+  try {
+    fs.mkdirSync(pending, { mode: 0o700 });
+  } catch (e) {
+    if (e.code === 'EEXIST') throw new Error('Есть незавершённая запись .encrypt-pending. Проверьте её перед повтором.');
+    throw e;
+  }
+  let keepBackups = false;
+  try {
+    let previous;
+    try {
+      const old = decryptSnapshot(snapshot);
+      previous = JSON.parse(old.json);
+      validateData(previous);
+      if (old.period !== previous.BAKED_PERIOD) throw new Error('Период снимка расходится.');
+    } catch {
+      throw new Error('Не удалось прочитать и проверить прежний wb-secure.js. Проверьте файл и код доступа.');
+    }
+    const candidate = readCandidate();
+    validateData(candidate);
+    checkLosses(previous, candidate, allowDrop);
 
-// Версия снимка для кеш-бастинга. Лежит отдельным крошечным файлом: index.html грузит его
-// БЕЗ кеша и уже по нему запрашивает wb-secure.js. Так обновление данных доезжает до браузера
-// даже с закешированной разметкой (раньше версия жила в index.html и залипала вместе с ним).
-const stamp = new Date().toISOString().replace(/[-:T]/g, '').slice(0, 12);
-// ВАЖНО: дописываем в существующий файл, а не перезаписываем его целиком. Рядом с версией
-// данных там живёт `build` — отпечаток index.html, по которому страница понимает, что вышла
-// новая разметка. Полная перезапись сносила его, и самообновление молча выключалось:
-// заливка данных (index.html при этом не менялся) не поднимала git-хук, и `build` не возвращался.
-const vfile = path.join(ROOT, 'data-version.json');
-let vj = {}; try { vj = JSON.parse(fs.readFileSync(vfile, 'utf8')); } catch (e) {}
-vj.v = stamp; vj.period = out.BAKED_PERIOD; vj.builtAt = new Date().toISOString();
-fs.writeFileSync(vfile, JSON.stringify(vj) + '\n');
-console.log('data-version.json:', stamp, vj.build ? '· build ' + vj.build + ' сохранён' : '· ⚠ build отсутствует — запустите scripts/stamp-build.cjs');
+    let version;
+    try {
+      version = JSON.parse(fs.readFileSync(manifest, 'utf8'));
+      if (!version || typeof version !== 'object' || Array.isArray(version)) throw new Error();
+    } catch {
+      throw new Error('Не удалось прочитать прежний data-version.json.');
+    }
+    const now = new Date().toISOString();
+    version.v = now.replace(/[-:T]/g, '').slice(0, 12);
+    version.period = candidate.BAKED_PERIOD;
+    version.builtAt = now;
+    const manifestText = JSON.stringify(version) + '\n';
+    const rawJson = Buffer.from(JSON.stringify(candidate));
+    const nextSnapshot = path.join(pending, 'next.js'), nextManifest = path.join(pending, 'next.json');
+    fs.writeFileSync(nextSnapshot, encryptSnapshot(rawJson, candidate.BAKED_PERIOD),
+      { flag: 'wx', mode: fs.statSync(snapshot).mode & 0o777, flush: true });
+    fs.writeFileSync(nextManifest, manifestText, { flag: 'wx', mode: fs.statSync(manifest).mode & 0o777, flush: true });
 
-console.log('сжатие: JSON', (rawJson.length / 1048576).toFixed(2), 'МБ → gzip',
-  (payload.length / 1048576).toFixed(2), 'МБ ·', (payload.length / rawJson.length * 100).toFixed(1) + '% от исходного');
-console.log('wb-secure.js записан:', (js.length / 1024 | 0), 'KB · каталог', out.REAL_DATA.catalog.length,
-  '· фин.агрегатов', out.BAKED_FINANCE.length, '· рекл.агрегатов', out.BAKED_ADS.length,
-  '· строк воронки', out.BAKED_FUNNEL.length,
-  '· период', out.BAKED_PERIOD, '· roundtrip', ok ? 'OK' : 'FAILED');
-if (!ok) process.exit(1);
+    const checked = decryptSnapshot(nextSnapshot);
+    if (!checked.json.equals(rawJson) || checked.period !== candidate.BAKED_PERIOD) {
+      throw new Error('Самопроверка нового снимка не прошла.');
+    }
+    if (fs.readFileSync(nextManifest, 'utf8') !== manifestText) throw new Error('Самопроверка манифеста не прошла.');
 
-// АУДИТ ПОЛНОТЫ ДАННЫХ (16.11.2026) — после каждой записи печатает молчаливые пропажи: новинка не считается нашей,
-// воронка видит заказы, а ряд нет, дни без части данных, продажи без себестоимости. Ничего не меняет и не блокирует —
-// но читать обязательно и разбирать в том же заходе (scripts/data-audit.cjs).
+    // Обе ссылки остаются привязаны к исходным байтам после rename. Всё на одной файловой системе.
+    const oldSnapshot = path.join(pending, 'previous.js');
+    fs.linkSync(snapshot, oldSnapshot);
+    fs.linkSync(manifest, path.join(pending, 'previous.json'));
+    fs.renameSync(nextSnapshot, snapshot);
+    try {
+      fs.renameSync(nextManifest, manifest);
+    } catch (manifestError) {
+      try {
+        fs.renameSync(oldSnapshot, snapshot);
+      } catch {
+        keepBackups = true;
+        throw new Error('Откат не удался. Оба исходных файла сохранены в .encrypt-pending/previous.{js,json}.');
+      }
+      throw manifestError;
+    }
+    return { candidate, version };
+  } finally {
+    if (!keepBackups) {
+      try { fs.rmSync(pending, { recursive: true }); }
+      catch { console.warn('Не удалось очистить .encrypt-pending. Перед повтором проверьте состояние файлов.'); }
+    }
+  }
+}
+
 try {
-  const res = require('./data-audit.cjs')({ __RD: out.REAL_DATA, BAKED_FUNNEL: out.BAKED_FUNNEL }, { days: 14 });
-  console.log(res.length ? '\nАУДИТ ПОЛНОТЫ ДАННЫХ:\n' + res.join('\n') : '\nАУДИТ ПОЛНОТЫ ДАННЫХ: пропаж не найдено.');
-} catch (e) { console.log('\n(аудит полноты не выполнился: ' + e.message + ')'); }
+  const { candidate, version } = updateSnapshot();
+  console.log('wb-secure.js записан · каталог', candidate.REAL_DATA.catalog.length,
+    '· фин.агрегатов', candidate.BAKED_FINANCE.length, '· рекл.агрегатов', candidate.BAKED_ADS.length,
+    '· строк воронки', candidate.BAKED_FUNNEL.length, '· период', version.period, '· roundtrip OK');
+  console.log('data-version.json:', version.v, '· build', version.build || 'отсутствует');
+  // После успешной записи печатаем прежний аудит полноты.
+  try {
+    const res = require('./data-audit.cjs')({ __RD: candidate.REAL_DATA, BAKED_FUNNEL: candidate.BAKED_FUNNEL }, { days: 14 });
+    console.log(res.length ? '\nАУДИТ ПОЛНОТЫ ДАННЫХ:\n' + res.join('\n') : '\nАУДИТ ПОЛНОТЫ ДАННЫХ: пропаж не найдено.');
+  } catch (e) { console.log('\n(аудит полноты не выполнился: ' + e.message + ')'); }
+} catch (e) {
+  console.error('СТОП:', e.message);
+  process.exitCode = e.exitCode || 1;
+}
