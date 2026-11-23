@@ -3,6 +3,7 @@
 wb-data.js
 wb-reports.js
 /decrypted/
+/.encrypt-pending/
 
 # зависимости офлайн-скриптов (scripts/package.json) — ставятся через npm install
 scripts/node_modules
