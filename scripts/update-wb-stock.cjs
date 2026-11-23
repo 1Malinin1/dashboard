@@ -95,7 +95,15 @@ if(histOnly){
   process.exit(0);
 }
 
-let matched=0, zeroed=0, oldTotal=0, newTotal=0; const zeroedHad=[];
+let matched=0, zeroed=0, oldTotal=0, newTotal=0; const zeroedHad=[], carried=[];
+/* КОРОТКИЙ ОТЧЁТ ОСТАТКОВ (20.11.2026): отчёт продавца 17–19.11 и 23.11 был «урезанным» (5,6–5,7 тыс. строк против 8,9 тыс.) — в нём НЕ БЫЛО
+   512174 (950 шт) и 512186 (287 шт), хотя товар лежал на ВБ. Загрузчик обнулял их → план ВБ 19.11 считался без этих остатков (512174: 1 вместо 8),
+   а при возврате строки рост «0 → 950» мог бы ложно закрыть отгрузки. Теперь: кода НЕТ В ОТЧЁТЕ вовсе, а прежний остаток не мог уйти продажами
+   (больше 3 × заказов ВБ по карточке с прошлого снимка + 10) — оставляем прежний остаток и печатаем ⚠. Нулевая строка в отчёте — обнуляем как раньше. */
+const prevSnap=(RD.meta&&RD.meta.stockSnapshotDate)||null;
+const ordSince=sku=>{ const W=RD.orderSeries; if(!W||!prevSnap) return 0; const v=W.bySku[sku]||[]; let q=0; W.dates.forEach((d,i)=>{ if(d>=prevSnap) q+=v[i]||0; }); return q; };
+const keepIfMissing=c=>{ const was=c.wbStock||0; return !noCarry && was>3*ordSince(''+c.sku)+10; };
+const noCarry=process.argv.includes('--no-carry');
 const grew={};   // арт.поставщика → на сколько вырос остаток (для закрытия отгрузок, см. ниже)
 RD.catalog.forEach(c=>{ const sku=''+c.sku, sup=(''+(c.supplierCode||'')).trim();
   oldTotal+=(c.wbStock||0);
@@ -104,11 +112,14 @@ RD.catalog.forEach(c=>{ const sku=''+c.sku, sup=(''+(c.supplierCode||'')).trim()
   if(repByWB[sku]!=null) v=repByWB[sku];
   else if(sup && repBySup[sup]!=null) v=repBySup[sup];
   if(v!=null){ c.wbStock=v; matched++; }
+  else if(keepIfMissing(c)){ carried.push({sku,sup,name:c.name,was:c.wbStock}); matched++; }   // прежний остаток — см. keepIfMissing
   else { if((c.wbStock||0)>0) zeroedHad.push({sku,name:c.name,was:c.wbStock}); c.wbStock=0; zeroed++; }
   newTotal+=(c.wbStock||0);
   const d=(c.wbStock||0)-was; if(sup && d>0) grew[sup]=(grew[sup]||0)+d;
 });
 
+if(carried.length) console.log('⚠ НЕТ В ОТЧЁТЕ ОСТАТКОВ, остаток оставлен прежним (продажами столько уйти не могло; отчёт урезан?) — '+carried.length+': '+
+  carried.map(x=>(x.sup||x.sku)+' '+x.was+' шт').join(' · ')+'\n  Если товар действительно ушёл с ВБ — перезапусти с --no-carry.');
 // ---- Автозакрытие отгрузок на ВБ ----
 // ВБ не показывает путь товара от отправки до приёмки, поэтому продавец сообщает об отгрузке
 // сам (wb-shipment.cjs), а признаком прихода служит РОСТ остатка по этому же коду 1С: продажи
