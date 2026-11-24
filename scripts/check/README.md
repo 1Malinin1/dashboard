@@ -1,16 +1,15 @@
 # Проверки после правок index.html и скриптов
 
-**Всё разом:** `VERIFY_CODE=… sh scripts/check/run-all.sh` — сам поднимает сервер (порт 8799), печатает ✓/✗ по трём проверкам, код возврата 1 при провале. Его же вызывает `.githooks/pre-commit` на коммитах `index.html`/`wb-secure.js`, если `VERIFY_CODE` задан.
+**Всё разом:** `sh scripts/check/run-all.sh` с заранее заданной в окружении `VERIFY_CODE` — сам поднимает сервер (порт 8799), печатает ✓/✗ по трём проверкам, код возврата 1 при провале. Его же вызывает `.githooks/pre-commit` на коммитах `index.html`/`wb-secure.js`, если `VERIFY_CODE` задан.
 
 CI нет — эти три прогона заменяют его. Запускать из корня репозитория, страница должна отдаваться
 статическим сервером, код доступа — только через переменную окружения (в файлы его не писать).
 
 ```
 python3 -m http.server 8765 --bind 127.0.0.1 &          # из корня репозитория
-export VERIFY_CODE='<код доступа из чата>'
 node scripts/check/tabs-smoke.cjs     # все вкладки × площадки: ошибок консоли 0, ни одной пустой панели
 node scripts/check/ozon-profit.cjs    # прибыль Ozon 01–14.10 / сентябрь / август, mpBad 0, errors []
-node scripts/decrypt.cjs "$VERIFY_CODE" && node scripts/check/full-trucks.cjs   # машины: браузер = скрипт
+node -e "process.argv[2] = process.env.VERIFY_CODE; require('./scripts/decrypt.cjs')" && node scripts/check/full-trucks.cjs   # машины: браузер = скрипт
 ```
 
 - `tabs-smoke.cjs` (`PORT`, по умолчанию 8765) — печатает строку на каждую пару вкладка × площадка и `ERRORS N`.
