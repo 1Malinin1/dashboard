@@ -284,11 +284,23 @@ test('принудительная остановка между переиме�
   const result = f.run({ fault(fs, path) {
     const rename = fs.renameSync;
     fs.renameSync = (src, dst) => {
-      if (path.basename(src) === 'next.json') process.kill(process.pid, 'SIGKILL');
+      if (path.basename(src) === 'next.json') {
+        // Windows возвращает 1 и при обычной ошибке. Отмечаем точку остановки и отличаем штатный выход.
+        process.on('exit', () => fs.writeSync(2, 'Штатный выход\n'));
+        fs.writeSync(2, 'Перед заменой манифеста\n');
+        process.kill(process.pid, 'SIGKILL');
+      }
       rename(src, dst);
     };
   } });
-  assert.equal(result.signal, 'SIGKILL');
+  assert.equal(result.stderr.trim(), 'Перед заменой манифеста');
+  if (process.platform === 'win32') {
+    assert.equal(result.signal, null);
+    assert.equal(result.status, 1);
+  } else {
+    assert.equal(result.signal, 'SIGKILL');
+    assert.equal(result.status, null);
+  }
   checkRecovery(f, before);
 });
 

@@ -9,20 +9,19 @@
 // Строки отсортированы по важности: сверху то, что нужно везти прямо сейчас и лежит на складе.
 // Продавец заполняет две последние колонки и присылает файл обратно → update-pallets.cjs.
 //
-// Требует запущенного локального сервера дашборда (данные подсорта берутся из него,
-// чтобы цифры совпадали один в один):  http-server . -p 8123
+// Отчёт сам поднимает сервер дашборда на 127.0.0.1 и закрывает его после чтения страницы.
 //
-// Использование: WB_CODE=<код доступа> node scripts/missing-pallets-report.cjs [--all]
+// Использование: node scripts/missing-pallets-report.cjs [--all]
 // Код доступа берётся ТОЛЬКО из переменной окружения WB_CODE: в репозитории его быть не должно
 // (репозиторий публичный, 18.10.2026 код нашёлся здесь вписанным в текст скрипта).
-const {chromium}=require('/opt/node22/lib/node_modules/playwright');
+const { withDashboardBrowser, unlockDashboard } = require('./lib/dashboard-browser.cjs');
 const XLSX=require('./node_modules/xlsx');
 const fs=require('fs'),vm=require('vm');
 const path=require('path');
 const DEC=path.join(__dirname,'..','decrypted');
 const OUT=path.join(DEC,'паллеты-заполнить.xlsx');
 const CODE=process.env.WB_CODE;
-if(!CODE){ console.error('Нужен код доступа: WB_CODE=<код> node scripts/missing-pallets-report.cjs'); process.exit(2); }
+if(!CODE){ console.error('Задайте WB_CODE в окружении для запуска отчёта.'); process.exit(2); }
 (async()=>{
   const c={};vm.createContext(c);
   vm.runInContext(fs.readFileSync(path.join(DEC,'wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',c);
@@ -32,21 +31,22 @@ if(!CODE){ console.error('Нужен код доступа: WB_CODE=<код> nod
   const ozSet=new Set((RD.ozon&&RD.ozon.catalog||[]).map(x=>''+x.sku));
 
   // данные подсорта и продаж — из дашборда, чтобы совпадало один в один
-  const br=await chromium.launch(); const p=await br.newPage();
-  await p.goto('http://127.0.0.1:8123/index.html',{waitUntil:'networkidle'});
-  await p.fill('#lockInput',CODE); await p.click('.lock-btn');
-  await p.waitForFunction(()=>typeof FINANCE_CACHE!=='undefined'&&FINANCE_CACHE.length>0,{timeout:60000});
-  await p.waitForTimeout(1500);
-  const R=await p.evaluate(()=>{
-    switchTab('turnover'); turnView='resupply'; renderTurnoverTab();
-    const res={}; resupplyRows().forEach(r=>{ res[r.sup]={need:(r.needW||0)+(r.needO||0),
-      ship:(r.shipW||0)+(r.shipO||0), note:r.palNote||''}; });
-    switchTab('stockrate'); renderStockRateTab();
-    const sr={}; srDecorate(srRows()).forEach(r=>{ sr[r.sup]={spd:r.spd,total:r.total,
-      wb:r.stockWb,oz:r.stockOz,wh:r.whQty,name:r.name,cat:r.category,sku:r.wbSku}; });
-    return {res,sr};
+  const R = await withDashboardBrowser(Number(process.env.PORT || 0), async (browser, url) => {
+    const p = await browser.newPage();
+    await p.goto(url,{waitUntil:'networkidle'});
+    await unlockDashboard(p, CODE);
+    await p.waitForFunction(()=>typeof FINANCE_CACHE!=='undefined'&&FINANCE_CACHE.length>0,null,{timeout:60000});
+    await p.waitForTimeout(1500);
+    return p.evaluate(()=>{
+      switchTab('turnover'); turnView='resupply'; renderTurnoverTab();
+      const res={}; resupplyRows().forEach(r=>{ res[r.sup]={need:(r.needW||0)+(r.needO||0),
+        ship:(r.shipW||0)+(r.shipO||0), note:r.palNote||''}; });
+      switchTab('stockrate'); renderStockRateTab();
+      const sr={}; srDecorate(srRows()).forEach(r=>{ sr[r.sup]={spd:r.spd,total:r.total,
+        wb:r.stockWb,oz:r.stockOz,wh:r.whQty,name:r.name,cat:r.category,sku:r.wbSku}; });
+      return {res,sr};
+    });
   });
-  await br.close();
 
   // все коды 1С каталога ВБ + те, что есть на складе
   const sups=new Set();

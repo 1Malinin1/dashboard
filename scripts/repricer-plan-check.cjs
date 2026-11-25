@@ -4,16 +4,14 @@
 // сайта с сырыми данными снимка (заказы ВБ/Ozon за 7 дн, остаток ВБ, отгрузки в пути, свои склады, партии) + пропуски.
 //   VERIFY_CODE=… node scripts/repricer-plan-check.cjs <готовый файл ВБ> <готовый файл Ozon>
 'use strict';
-const cp=require('child_process'),fs=require('fs'),vm=require('vm'),path=require('path');const ROOT=path.join(__dirname,'..');
-const X=require('./node_modules/xlsx');const { chromium }=require('./node_modules/playwright-core');
+const fs=require('fs'),vm=require('vm'),path=require('path');const ROOT=path.join(__dirname,'..');
+const X=require('./node_modules/xlsx');const { withDashboardBrowser, unlockDashboard } = require('./lib/dashboard-browser.cjs');
 const [FW,FO]=process.argv.slice(2), CODE=process.env.VERIFY_CODE, PORT=+(process.env.PORT||8796);
 if(!FW||!FO||!CODE){ console.error('usage: VERIFY_CODE=… node scripts/repricer-plan-check.cjs <файл ВБ> <файл Ozon>'); process.exit(1); }
 async function dump(){
-  const srv=cp.spawn('python3',['-m','http.server',String(PORT),'--bind','127.0.0.1'],{cwd:ROOT,stdio:'ignore'});
-  await new Promise(r=>setTimeout(r,800));
-  const b=await chromium.launch({executablePath:(process.env.PW_CHROME||'/opt/pw-browsers/chromium'),args:['--no-sandbox']});
-  try{ const p=await b.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(e.message));
-    await p.goto(`http://127.0.0.1:${PORT}/index.html`,{waitUntil:'load'}); await p.fill('#lockInput',CODE); await p.click('.lock-btn');
+  return withDashboardBrowser(PORT, async (b, url) => {
+    const p=await b.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(e.message));
+    await p.goto(url,{waitUntil:'load'}); await unlockDashboard(p, CODE);
     await p.waitForFunction(()=>typeof FINANCE_CACHE!=='undefined'&&FINANCE_CACHE.length>0&&typeof srRows==='function'&&OZDATA,null,{timeout:120000});
     const d=await p.evaluate(()=>({rows:srExtend(srDecorate(srRows())).map(r=>({sup:r.sup,stockWb:r.stockWb,wbTr:r.wbTr,wbShip:r.wbShip,whQty:r.whQty,
       whMsk:r.whMsk,whNsk1:r.whNsk1,whNsk2:r.whNsk2,whKlin:r.whKlin,whOther:r.whOther,stockOz:r.stockOz,spdWb:r.spdWb,spdOz:r.spdOz,ordWb:r.ordWb,ordOz:r.ordOz,
@@ -21,7 +19,8 @@ async function dump(){
       share:PROD_MP_SHARE,H:PLAN_HZ,bo:(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutWin)||null}));
     if(errs.length) throw new Error('ошибки на сайте: '+errs.join(' | '));
     return d;
-  } finally { await b.close(); srv.kill(); } }
+  });
+}
 (async()=>{
 const D=await dump();
 const ctx={};vm.createContext(ctx);vm.runInContext(fs.readFileSync(path.join(ROOT,'decrypted','wb-data.js'),'utf8')+'\nglobalThis.__RD=REAL_DATA;',ctx);const RD=ctx.__RD;

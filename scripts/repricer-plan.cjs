@@ -19,10 +19,9 @@
 //   (ВБ заберёт = max(0, min(продажи ВБ/дн × дней − (ВБ FBO + отгрузки в пути на ВБ), свои склады + партии)));
 //   план = база ÷ дней ÷ % выкупа Ozon по товару (7 дн; нет продаж — по замеру окна, иначе общий), по тем же условиям 180 дн.
 'use strict';
-const fs=require('fs'), path=require('path'), cp=require('child_process'), zlib=require('zlib');
+const fs=require('fs'), path=require('path'), zlib=require('zlib');
 const XLSX=require('./node_modules/xlsx');
-const { chromium }=require('./node_modules/playwright-core');
-const ROOT=path.join(__dirname,'..');
+const { withDashboardBrowser, unlockDashboard } = require('./lib/dashboard-browser.cjs');
 const [src, outDir=process.cwd()]=process.argv.slice(2);
 const CODE=process.env.VERIFY_CODE;
 if(!src||!CODE){ console.error('usage: VERIFY_CODE=… node scripts/repricer-plan.cjs <выгрузка.xlsx> [папка]'); process.exit(1); }
@@ -30,13 +29,10 @@ const NEW_MIN=15;   // ЗАП-27: стартовый план новинки (к
 const NODATA=10, PORT=+(process.env.PORT||8791);   // нет товара в данных дашборда — 10, как раньше
 
 async function dump(){
-  const srv=cp.spawn('python3',['-m','http.server',String(PORT),'--bind','127.0.0.1'],{cwd:ROOT,stdio:'ignore'});
-  await new Promise(r=>setTimeout(r,1000));
-  const b=await chromium.launch({executablePath:(process.env.PW_CHROME||'/opt/pw-browsers/chromium'),args:['--no-sandbox']});
-  try{
+  return withDashboardBrowser(PORT, async (b, url) => {
     const p=await b.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(String(e.message)));
-    await p.goto(`http://127.0.0.1:${PORT}/index.html`,{waitUntil:'load'});
-    await p.fill('#lockInput',CODE); await p.click('.lock-btn');
+    await p.goto(url,{waitUntil:'load'});
+    await unlockDashboard(p, CODE);
     await p.waitForFunction(()=>typeof FINANCE_CACHE!=='undefined'&&FINANCE_CACHE.length>0&&typeof srRows==='function'&&OZDATA,null,{timeout:120000});
     await p.waitForTimeout(1500);
     const d=await p.evaluate(()=>({
@@ -53,7 +49,7 @@ async function dump(){
       outSups:[...recOutSups()].map(String)}));
     if(errs.length) throw new Error('ошибки на сайте: '+errs.join(' | '));
     return d;
-  } finally { await b.close(); srv.kill(); }
+  });
 }
 
 (async()=>{

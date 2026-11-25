@@ -15,8 +15,8 @@
 // плана (решает продавец): «упёрлись в минимальную цену» (заказов < 75% плана 3+ дня, цена у минимальной — план недостижим на
 // минимуме, рычаг — реклама) и «упёрлись в базовую» (заказов > 125% плана, цена у базовой — кончится раньше 180 дней).
 'use strict';
-const fs=require('fs'), vm=require('vm'), path=require('path'), cp=require('child_process');
-const { chromium }=require('./node_modules/playwright-core');
+const fs=require('fs'), vm=require('vm'), path=require('path');
+const { withDashboardBrowser, unlockDashboard } = require('./lib/dashboard-browser.cjs');
 const { planOz }=require('./lib/plan-oz.cjs');
 const ROOT=path.join(__dirname,'..'), OUT=path.join(ROOT,'decrypted'), F=path.join(OUT,'wb-data.js');
 const CODE=process.env.VERIFY_CODE, INIT=process.argv.includes('--init'), PORT=+(process.env.PORT||8797);
@@ -26,18 +26,17 @@ const PS=RD.meta&&RD.meta.planSet; if(!PS){ console.error('нет meta.planSet �
 const f1=v=>v==null? '—' : (Math.round(v*10)/10).toString().replace('.',','), F0=n=>Math.round(n||0).toLocaleString('ru-RU');
 
 async function dump(){
-  const srv=cp.spawn('python3',['-m','http.server',String(PORT),'--bind','127.0.0.1'],{cwd:ROOT,stdio:'ignore'});
-  await new Promise(r=>setTimeout(r,800));
-  const b=await chromium.launch({executablePath:(process.env.PW_CHROME||'/opt/pw-browsers/chromium'),args:['--no-sandbox']});
-  try{ const p=await b.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(e.message));
-    await p.goto(`http://127.0.0.1:${PORT}/index.html`,{waitUntil:'load'}); await p.fill('#lockInput',CODE); await p.click('.lock-btn');
+  return withDashboardBrowser(PORT, async (b, url) => {
+    const p=await b.newPage(); const errs=[]; p.on('pageerror',e=>errs.push(e.message));
+    await p.goto(url,{waitUntil:'load'}); await unlockDashboard(p, CODE);
     await p.waitForFunction(()=>typeof FINANCE_CACHE!=='undefined'&&FINANCE_CACHE.length>0&&typeof srRows==='function'&&OZDATA,null,{timeout:120000});
     const d=await p.evaluate(()=>({rows:srExtend(srDecorate(srRows())).map(r=>({sup:r.sup,name:r.name,stockWb:r.stockWb||0,wbTr:r.wbTr||0,wbShip:r.wbShip||0,
       whQty:r.whQty||0,stockOz:r.stockOz||0,spdWb:r.spdWb||0,spdOz:r.spdOz||0,ordWb:r.ordWb||0,ordOz:r.ordOz||0,supplies:r.supplies||[],planRep:r.planRep,
       tgtSrc:r.tgtSrc||'',isNew:!!r.isNew,isNewOz:!!r.isNewOz})), share:PROD_MP_SHARE, H:PLAN_HZ, bo:(RD.ozon&&RD.ozon.meta&&RD.ozon.meta.buyoutWin)||null}));
     if(errs.length) throw new Error('ошибки на сайте: '+errs.join(' | '));
     return d;
-  } finally { await b.close(); srv.kill(); } }
+  });
+}
 
 (async()=>{
   const D=await dump(); const by={}; D.rows.forEach(r=>by[r.sup]=r);
